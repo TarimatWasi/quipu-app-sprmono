@@ -73,6 +73,7 @@ public class AuthApplicationService
   }
 
   @Override
+  @Transactional(readOnly = true)
   public CurrentSession currentSession(String userId) {
     UserAccount user =
         lookup(userId)
