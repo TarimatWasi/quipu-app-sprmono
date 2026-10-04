@@ -178,7 +178,7 @@ class ProfileFilesContractTest {
    * production alias and the branch and deployment aliases as anchored patterns. Nothing else.
    */
   @Test
-  void dev_corsAllowsTheVercelAliasesAndNothingElse() throws IOException {
+  void dev_corsAllowsTheVercelAliasesAndTheDevDomainAndNothingElse() throws IOException {
     var primary = "https://quipu-app-angweb-dev.vercel.app";
     var env = new MockEnvironment().withProperty("CORS_ALLOWED_ORIGIN", primary);
     new YamlPropertySourceLoader()
@@ -192,9 +192,15 @@ class ProfileFilesContractTest {
             primary,
             "https://quipu-app-angweb-dev-shizukajikus-projects.vercel.app",
             "https://quipu-app-angweb-dev-git-development-shizukajikus-projects.vercel.app",
-            "https://quipu-app-angweb-9n80jc9hm-shizukajikus-projects.vercel.app")
+            "https://quipu-app-angweb-9n80jc9hm-shizukajikus-projects.vercel.app",
+            "https://quipu-dev.tarimatwasi.com")
         .forEach(origin -> assertThat(config.checkOrigin(origin)).isEqualTo(origin));
     List.of(
+            "https://quipu-dev.tarimatwasi.com.evil.com",
+            "https://evil.quipu-dev.tarimatwasi.com",
+            "http://quipu-dev.tarimatwasi.com",
+            // the production domain is not an origin of dev
+            "https://quipu.tarimatwasi.com",
             "https://quipu-app-angweb-dev.vercel.app.evil.com",
             "https://evil-quipu-app-angweb-dev-git-x-shizukajikus-projects.vercel.app",
             "https://quipu-app-angweb-9n80jc9hm-other-projects.vercel.app",

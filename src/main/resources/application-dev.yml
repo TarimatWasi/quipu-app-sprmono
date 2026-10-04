@@ -19,6 +19,9 @@ app:
     # Vercel asigna las etiquetas y la cookie de sesión vive en el dominio de Vercel.
     allowed-origins:
       - https://quipu-app-angweb-dev-shizukajikus-projects.vercel.app
+      # Dominio propio del frontend de desarrollo (TAR-128). El de producción
+      # (quipu.tarimatwasi.com) no se lista aquí: es de application-prod.yml.
+      - https://quipu-dev.tarimatwasi.com
     # El comodín casa [a-z0-9-]+ (nunca un punto) y cubre los alias de rama
     # (quipu-app-angweb-dev-git-<rama>-...) y los despliegues por hash; un solo patrón.
     allowed-origin-patterns:
