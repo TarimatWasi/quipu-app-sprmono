@@ -40,6 +40,8 @@ class AuthBffControllerTest {
 
   private static final String LOGIN = "/bff/auth/login";
   private static final String CHANGE_PASSWORD = "/bff/auth/change-password";
+  private static final String ME = "/bff/auth/me";
+  private static final String LOGOUT = "/bff/auth/logout";
 
   private static final String ADMIN_LOGIN_BODY =
       """
@@ -326,6 +328,74 @@ class AuthBffControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.field").value("newPassword"));
+  }
+
+  /** TAR-74: /me answers the account as it is now, so a reload never trusts stale claims. */
+  @Test
+  void meAnswersTheCurrentStateOfTheAccount() throws Exception {
+    Cookie forced = loginCookie("Temporal123!");
+
+    mockMvc
+        .perform(get(ME).cookie(forced))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.role").value("ADMIN"))
+        .andExpect(jsonPath("$.name").value("admin@example.test"))
+        .andExpect(jsonPath("$.mustChangePassword").value(true));
+
+    jdbc.update("UPDATE users SET must_change_password = FALSE");
+
+    mockMvc
+        .perform(get(ME).cookie(forced))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.mustChangePassword").value(false));
+  }
+
+  @Test
+  void meWithoutASessionIs401NoSession() throws Exception {
+    mockMvc
+        .perform(get(ME))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
+  }
+
+  @Test
+  void meOfAnAccountDisabledAfterLoginIs401NoSession() throws Exception {
+    Cookie session = loginCookie("Temporal123!");
+    jdbc.update("UPDATE users SET status = 'INACTIVE'");
+
+    mockMvc
+        .perform(get(ME).cookie(session))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
+  }
+
+  @Test
+  void logoutExpiresTheSessionCookieWithTheFlagsOfTheLogin() throws Exception {
+    Cookie session = loginCookie("Temporal123!");
+
+    var setCookie =
+        mockMvc
+            .perform(post(LOGOUT).cookie(session))
+            .andExpect(status().isNoContent())
+            .andReturn()
+            .getResponse()
+            .getHeader("Set-Cookie");
+
+    assertThat(setCookie)
+        .startsWith("sessionToken=;")
+        .contains("; Path=/")
+        .contains("; Max-Age=0")
+        .contains("; Secure")
+        .contains("; HttpOnly")
+        .contains("; SameSite=Lax");
+  }
+
+  @Test
+  void logoutWithoutASessionIs401NoSession() throws Exception {
+    mockMvc
+        .perform(post(LOGOUT))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
   }
 
   @Test

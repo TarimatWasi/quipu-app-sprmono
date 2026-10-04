@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,6 +49,8 @@ class BffContractTest {
   private static final String SPEC = SPEC_FILE.toString();
   private static final String LOGIN = "/bff/auth/login";
   private static final String CHANGE_PASSWORD = "/bff/auth/change-password";
+  private static final String ME = "/bff/auth/me";
+  private static final String LOGOUT = "/bff/auth/logout";
   private static final String TEMPORARY = "Temporal123!";
   private static final String ADMIN_EMAIL = "00000000@example.com";
 
@@ -151,6 +154,42 @@ class BffContractTest {
                 .content("{\"documentType\":\"DNI\",\"documentNumber\":\"00000000\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContractToARequestWith("validation.request.body.schema.required"));
+  }
+
+  @Test
+  void currentSessionOk() throws Exception {
+    Cookie session = sessionOf(login("00000000", TEMPORARY));
+
+    mockMvc
+        .perform(get(ME).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract());
+  }
+
+  @Test
+  void currentSessionWithoutASession() throws Exception {
+    mockMvc
+        .perform(get(ME))
+        .andExpect(status().isUnauthorized())
+        .andExpect(answersTheContractToARequestWith("validation.request.security.missing"));
+  }
+
+  @Test
+  void logoutOk() throws Exception {
+    Cookie session = sessionOf(login("00000000", TEMPORARY));
+
+    mockMvc
+        .perform(post(LOGOUT).cookie(session))
+        .andExpect(status().isNoContent())
+        .andExpect(satisfiesTheContract());
+  }
+
+  @Test
+  void logoutWithoutASession() throws Exception {
+    mockMvc
+        .perform(post(LOGOUT))
+        .andExpect(status().isUnauthorized())
+        .andExpect(answersTheContractToARequestWith("validation.request.security.missing"));
   }
 
   @Test
