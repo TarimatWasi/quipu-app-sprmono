@@ -76,20 +76,25 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
-    UserJpaEntity user =
-        jpaRepository
-            .findWithLockById(id)
-            .orElseThrow(() -> new IllegalStateException("No user with id " + id));
-    user.registerFailedLogin(now, maxAttempts, lockDuration);
+  public boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+    UserJpaEntity user = loadLocked(id);
+    boolean alreadyLocked = user.registerFailedLogin(now, maxAttempts, lockDuration);
     jpaRepository.save(user);
+    return alreadyLocked;
   }
 
   @Override
   public void clearFailedLogins(UUID id) {
-    UserJpaEntity user = load(id);
+    UserJpaEntity user = loadLocked(id);
     user.clearFailedLogins();
     jpaRepository.save(user);
+  }
+
+  /** The row stays locked until the commit, so concurrent updates of the counter queue up. */
+  private UserJpaEntity loadLocked(UUID id) {
+    return jpaRepository
+        .findWithLockById(id)
+        .orElseThrow(() -> new IllegalStateException("No user with id " + id));
   }
 
   private UserJpaEntity load(UUID id) {

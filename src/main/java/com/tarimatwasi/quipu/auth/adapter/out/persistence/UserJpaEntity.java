@@ -59,15 +59,22 @@ public class UserJpaEntity extends AuditableEntity {
     clearFailedLogins();
   }
 
-  /** SEG-06: an expired lock restarts the count; reaching the limit locks the account. */
-  public void registerFailedLogin(Instant now, int maxAttempts, Duration lockDuration) {
-    if (lockedUntil != null && !lockedUntil.isAfter(now)) {
+  /**
+   * SEG-06: an expired lock restarts the count; reaching the limit locks the account. Returns true,
+   * changing nothing, if the account is already locked.
+   */
+  public boolean registerFailedLogin(Instant now, int maxAttempts, Duration lockDuration) {
+    if (lockedUntil != null) {
+      if (lockedUntil.isAfter(now)) {
+        return true;
+      }
       clearFailedLogins();
     }
     failedLoginAttempts++;
     if (failedLoginAttempts >= maxAttempts) {
       lockedUntil = now.plus(lockDuration);
     }
+    return false;
   }
 
   public void clearFailedLogins() {

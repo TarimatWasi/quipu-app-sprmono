@@ -32,6 +32,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Login flow of the BFF against a real database and the bootstrapped ADMIN. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
@@ -54,6 +56,7 @@ class AuthBffControllerTest {
   @Autowired PasswordEncoder passwordEncoder;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired UserRepositoryPort users;
+  @Autowired PlatformTransactionManager transactionManager;
 
   /** The PostgreSQL container is shared by all integration tests: this test owns its ADMIN. */
   @BeforeEach
@@ -432,6 +435,31 @@ class AuthBffControllerTest {
         .isZero();
     assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
         .isNull();
+  }
+
+  @Test
+  void failuresThatArriveWhileLockedDoNotExtendTheLock() {
+    UUID id = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM users", UUID.class));
+    java.time.Instant start = java.time.Instant.now();
+    java.time.Duration fifteen = java.time.Duration.ofMinutes(15);
+    // The application layer owns the transaction; the row lock needs one.
+    var tx = new TransactionTemplate(transactionManager);
+    for (int i = 0; i < 5; i++) {
+      Boolean alreadyLocked = tx.execute(s -> users.registerFailedLogin(id, start, 5, fifteen));
+      assertThat(alreadyLocked).isFalse();
+    }
+    var lockedUntil =
+        jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class);
+
+    boolean alreadyLocked =
+        Boolean.TRUE.equals(
+            tx.execute(s -> users.registerFailedLogin(id, start.plusSeconds(60), 5, fifteen)));
+
+    assertThat(alreadyLocked).isTrue();
+    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
+        .isEqualTo(lockedUntil);
+    assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
+        .isEqualTo(5);
   }
 
   @Test

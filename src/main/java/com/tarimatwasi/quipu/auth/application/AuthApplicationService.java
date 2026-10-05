@@ -74,8 +74,10 @@ public class AuthApplicationService
       throw new AccountLockedException();
     }
     if (!passwordMatches) {
-      userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
-      throw new InvalidCredentialsException();
+      // The snapshot above can be stale (a burst of requests): the row lock decides.
+      boolean alreadyLocked =
+          userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
+      throw alreadyLocked ? new AccountLockedException() : new InvalidCredentialsException();
     }
     if (user.isDisabled()) {
       throw new AccountDisabledException();

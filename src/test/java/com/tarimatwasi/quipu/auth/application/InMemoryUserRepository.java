@@ -82,11 +82,14 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+  public boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
     UserAccount user = find(id);
     int attempts = user.failedLoginAttempts();
     Instant lockedUntil = user.lockedUntil();
-    if (lockedUntil != null && !lockedUntil.isAfter(now)) {
+    if (lockedUntil != null) {
+      if (lockedUntil.isAfter(now)) {
+        return true;
+      }
       attempts = 0;
       lockedUntil = null;
     }
@@ -95,6 +98,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
       lockedUntil = now.plus(lockDuration);
     }
     save(withLock(user, attempts, lockedUntil));
+    return false;
   }
 
   @Override

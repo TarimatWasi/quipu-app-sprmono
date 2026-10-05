@@ -2,6 +2,11 @@ package com.tarimatwasi.quipu.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -15,9 +20,11 @@ import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
+import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.MutableClock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
@@ -315,6 +322,31 @@ class AuthApplicationServiceTest {
     failLogins(4);
 
     assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+  }
+
+  /** The lock is decided under the row lock: a burst that read the account before it locked. */
+  @Test
+  void aFailureThatFindsTheAccountAlreadyLockedAnswersLocked() {
+    UserAccount unlocked =
+        new UserAccount(
+            UUID.randomUUID(),
+            "user@tarimatwasi.local",
+            DocumentType.DNI,
+            "11111111",
+            encoder.encode("Correcta-123"),
+            Role.GUEST,
+            null,
+            false,
+            "ACTIVE",
+            4,
+            null);
+    UserRepositoryPort stale = mock(UserRepositoryPort.class);
+    when(stale.findByDocument(DocumentType.DNI, "11111111")).thenReturn(Optional.of(unlocked));
+    when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
+    var racing = new AuthApplicationService(stale, encoder, (u, r, m) -> "t", clock);
+
+    assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
+        .isInstanceOf(AccountLockedException.class);
   }
 
   @Test
