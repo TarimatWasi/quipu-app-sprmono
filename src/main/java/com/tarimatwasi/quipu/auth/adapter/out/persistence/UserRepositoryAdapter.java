@@ -27,6 +27,14 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
+  public Optional<UserAccount> findByDocumentForUpdate(
+      DocumentType documentType, String documentNumber) {
+    return jpaRepository
+        .findWithLockByDocumentTypeAndDocumentNumber(documentType, documentNumber)
+        .map(UserJpaEntity::toDomain);
+  }
+
+  @Override
   public Optional<UserAccount> findById(UUID id) {
     return jpaRepository.findById(id).map(UserJpaEntity::toDomain);
   }

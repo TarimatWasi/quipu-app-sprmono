@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
@@ -341,12 +343,27 @@ class AuthApplicationServiceTest {
             4,
             null);
     UserRepositoryPort stale = mock(UserRepositoryPort.class);
-    when(stale.findByDocument(DocumentType.DNI, "11111111")).thenReturn(Optional.of(unlocked));
+    when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
+        .thenReturn(Optional.of(unlocked));
     when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
     var racing = new AuthApplicationService(stale, encoder, (u, r, m) -> "t", clock);
 
     assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
         .isInstanceOf(AccountLockedException.class);
+  }
+
+  /** The whole login decision is serialized per account: the row is locked before anything else. */
+  @Test
+  void theLoginReadsTheAccountUnderTheRowLock() {
+    UserRepositoryPort repo = mock(UserRepositoryPort.class);
+    when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
+    var locking = new AuthApplicationService(repo, encoder, (u, r, m) -> "t", clock);
+
+    assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
+        .isInstanceOf(InvalidCredentialsException.class);
+
+    verify(repo).findByDocumentForUpdate(DocumentType.DNI, "11111111");
+    verify(repo, never()).findByDocument(any(), any());
   }
 
   @Test

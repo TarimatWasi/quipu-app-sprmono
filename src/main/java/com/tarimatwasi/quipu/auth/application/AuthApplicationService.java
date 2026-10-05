@@ -59,7 +59,10 @@ public class AuthApplicationService
         AccountDisabledException.class
       })
   public LoginResult login(LoginCommand command) {
-    var userOpt = userRepository.findByDocument(command.documentType(), command.documentNumber());
+    // The account is read under its row lock: simultaneous logins of one account (a burst of
+    // guesses) are decided one by one, so none can slip past the lock with a stale reading.
+    var userOpt =
+        userRepository.findByDocumentForUpdate(command.documentType(), command.documentNumber());
     UserAccount user = userOpt.orElse(null);
     String passwordHashToCheck = user != null ? user.passwordHash() : DUMMY_PASSWORD_HASH;
 
@@ -74,7 +77,7 @@ public class AuthApplicationService
       throw new AccountLockedException();
     }
     if (!passwordMatches) {
-      // The snapshot above can be stale (a burst of requests): the row lock decides.
+      // Defensive: the row is already locked, but the repository still answers if it was locked.
       boolean alreadyLocked =
           userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
       throw alreadyLocked ? new AccountLockedException() : new InvalidCredentialsException();

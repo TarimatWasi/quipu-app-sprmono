@@ -11,6 +11,11 @@ public interface UserJpaRepository extends JpaRepository<UserJpaEntity, UUID> {
   Optional<UserJpaEntity> findByDocumentTypeAndDocumentNumber(
       DocumentType documentType, String documentNumber);
 
+  /** Locked until the commit: simultaneous logins of one account are decided one by one. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<UserJpaEntity> findWithLockByDocumentTypeAndDocumentNumber(
+      DocumentType documentType, String documentNumber);
+
   /** Locked until the commit: simultaneous failed logins of one account count one by one. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<UserJpaEntity> findWithLockById(UUID id);

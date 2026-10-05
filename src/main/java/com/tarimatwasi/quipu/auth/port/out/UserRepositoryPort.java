@@ -12,6 +12,12 @@ public interface UserRepositoryPort {
 
   Optional<UserAccount> findById(UUID id);
 
+  /**
+   * Like {@link #findByDocument} but the account's row stays locked until the transaction ends, so
+   * simultaneous logins of one account are decided one by one (SEG-06). Needs a transaction.
+   */
+  Optional<UserAccount> findByDocumentForUpdate(DocumentType documentType, String documentNumber);
+
   /** Stores the new hash and clears the pending-change flag of the account. */
   void changePassword(UUID id, String newPasswordHash);
 
