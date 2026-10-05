@@ -1,14 +1,15 @@
 name: deploy
 # Despliegue de development al entorno de desarrollo por pipeline (TAR-72), independiente del
 # proveedor: el workflow solo llama a .github/deploy/deploy.sh. No se activa hasta que existe la
-# variable DEPLOY_PROVIDER del repositorio.
+# variable de REPOSITORIO DEPLOY_PROVIDER (las variables de un entorno no existen todavía cuando
+# se evalúa el if del job).
 on:
   push:
     branches: [development]
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Commit completo a desplegar (vacío: el último de development). Sirve de reversión.'
+        description: 'Commit completo a desplegar (vacío: el último de development). Debe ser un ancestro de development; sirve de reversión.'
         required: false
 permissions:
   contents: read
@@ -17,7 +18,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: ${{ vars.DEPLOY_PROVIDER != '' }}
+    # Solo se ejecuta desde development: los scripts que reciben los secretos salen siempre de la
+    # rama protegida, y el commit pedido llega como dato.
+    if: ${{ vars.DEPLOY_PROVIDER != '' && github.ref == 'refs/heads/development' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Secretos y variables del proveedor viven solo en este entorno.
@@ -25,11 +28,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+      - name: Comprobar el commit pedido
+        env:
+          REQUESTED: ${{ inputs.ref }}
+        run: |
+          set -eu
+          commit="${REQUESTED:-$(git rev-parse HEAD)}"
+          if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "El commit debe ser un hash completo de 40 caracteres"; exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit" HEAD; then
+            echo "El commit $commit no pertenece a development"; exit 1
+          fi
+          echo "COMMIT_SHA=$commit" >> "$GITHUB_ENV"
+        shell: bash
       - name: Desplegar
         env:
           DEPLOY_PROVIDER: ${{ vars.DEPLOY_PROVIDER }}
-          COMMIT_SHA: ${{ inputs.ref || github.sha }}
           HEALTH_URL: ${{ vars.HEALTH_URL }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
