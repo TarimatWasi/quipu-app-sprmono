@@ -47,6 +47,11 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
+  public Optional<UserAccount> findByIdForUpdate(UUID id) {
+    return Optional.ofNullable(byId.get(id));
+  }
+
+  @Override
   public Optional<UserAccount> findById(UUID id) {
     return Optional.ofNullable(byId.get(id));
   }

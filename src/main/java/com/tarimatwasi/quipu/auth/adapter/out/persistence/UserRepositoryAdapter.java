@@ -40,6 +40,11 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
+  public Optional<UserAccount> findByIdForUpdate(UUID id) {
+    return jpaRepository.findWithLockById(id).map(UserJpaEntity::toDomain);
+  }
+
+  @Override
   public void changePassword(UUID id, String newPasswordHash, Instant changedAt) {
     UserJpaEntity user =
         jpaRepository

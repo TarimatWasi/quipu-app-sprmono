@@ -95,7 +95,7 @@ public class AuthApplicationService
   @Override
   @Transactional
   public ChangePasswordResult changePassword(ChangePasswordCommand command) {
-    UserAccount user = findAccount(command.userId());
+    UserAccount user = findAccountForUpdate(command.userId());
     if (user.isDisabled()) {
       throw new AccountDisabledException();
     }
@@ -104,8 +104,9 @@ public class AuthApplicationService
     if (passwordEncoder.matches(command.newPassword(), user.passwordHash())) {
       throw new PasswordUnchangedException();
     }
-    Instant now = clock.instant();
-    userRepository.changePassword(user.id(), passwordEncoder.encode(command.newPassword()), now);
+    // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
+    String newHash = passwordEncoder.encode(command.newPassword());
+    userRepository.changePassword(user.id(), newHash, clock.instant());
     return new ChangePasswordResult(
         sessionTokens.issue(command.userId(), user.role().name(), false));
   }
@@ -120,9 +121,18 @@ public class AuthApplicationService
     return new CurrentSession(user.role().name(), user.email(), user.mustChangePassword());
   }
 
-  /** The id comes from the session, but a malformed or unknown one is just another bad session. */
-  private UserAccount findAccount(String userId) {
-    return lookup(userId).orElseThrow(InvalidCredentialsException::new);
+  /**
+   * The id comes from the session, but a malformed or unknown one is just another bad session. The
+   * row stays locked until the end of the transaction.
+   */
+  private UserAccount findAccountForUpdate(String userId) {
+    try {
+      return userRepository
+          .findByIdForUpdate(UUID.fromString(userId))
+          .orElseThrow(InvalidCredentialsException::new);
+    } catch (IllegalArgumentException e) {
+      throw new InvalidCredentialsException();
+    }
   }
 
   private Optional<UserAccount> lookup(String userId) {

@@ -370,6 +370,19 @@ class AuthApplicationServiceTest {
     verify(repo, never()).findByDocument(any(), any());
   }
 
+  /** TAR-125: a change of password and a login of the same account are decided one by one. */
+  @Test
+  void changingThePasswordReadsTheAccountUnderTheRowLock() {
+    UserAccount user = savedUser("Actual12345", false, "ACTIVE");
+    UserRepositoryPort spied = org.mockito.Mockito.spy(repository);
+    var locking = new AuthApplicationService(spied, encoder, (u, r, m) -> "t", clock);
+
+    locking.changePassword(change(user, "Actual12345", "Nueva12345"));
+
+    verify(spied).findByIdForUpdate(user.id());
+    verify(spied, never()).findById(any());
+  }
+
   @Test
   void anUnknownDocumentIsNeverLocked() {
     for (int i = 0; i < 8; i++) {

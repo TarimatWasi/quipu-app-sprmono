@@ -13,6 +13,12 @@ public interface UserRepositoryPort {
   Optional<UserAccount> findById(UUID id);
 
   /**
+   * Like {@link #findById} but the row stays locked until the transaction ends, so a change of
+   * password and a login of the same account are decided one by one (TAR-125). Needs a transaction.
+   */
+  Optional<UserAccount> findByIdForUpdate(UUID id);
+
+  /**
    * Like {@link #findByDocument} but the account's row stays locked until the transaction ends, so
    * simultaneous logins of one account are decided one by one (SEG-06). Needs a transaction.
    */
