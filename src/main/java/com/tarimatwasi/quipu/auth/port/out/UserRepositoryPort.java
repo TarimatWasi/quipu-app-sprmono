@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.port.out;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,6 +11,12 @@ public interface UserRepositoryPort {
   Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber);
 
   Optional<UserAccount> findById(UUID id);
+
+  /**
+   * Like {@link #findByDocument} but the account's row stays locked until the transaction ends, so
+   * simultaneous logins of one account are decided one by one (SEG-06). Needs a transaction.
+   */
+  Optional<UserAccount> findByDocumentForUpdate(DocumentType documentType, String documentNumber);
 
   /** Stores the new hash and clears the pending-change flag of the account. */
   void changePassword(UUID id, String newPasswordHash);
@@ -30,6 +37,19 @@ public interface UserRepositoryPort {
    * cannot be used again.
    */
   void resetPassword(UUID id, String newPasswordHash);
+
+  /**
+   * SEG-06. Counts a failed login of the account and, when it reaches {@code maxAttempts}, locks it
+   * until {@code now + lockDuration}. A lock that already expired restarts the count. Safe against
+   * simultaneous failures: the account's row is locked while it is updated.
+   *
+   * @return true if the account was already locked when its row was locked: the attempt is not
+   *     counted and the lock is not extended
+   */
+  boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration);
+
+  /** Forgets the failed logins and the lock of the account (a successful login). */
+  void clearFailedLogins(UUID id);
 
   /** The account a recovery code belongs to and when the code expires. */
   record PendingReset(UserAccount account, Instant expiresAt) {}

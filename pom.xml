@@ -48,8 +48,8 @@
     <!-- Contrato del BFF (TAR-23): tag de quipu-lib-contracts y sha256 de su openapi/bff.yaml.
          Para subir de versión se cambian los dos juntos: el hash se obtiene con
          `curl -sL <url del tag> | sha256sum` y el build rechaza un spec con otro hash. -->
-    <contract.version>v0.1.3</contract.version>
-    <contract.sha256>21bc34c92dc71bf19f6b793799c8b6cb63de5421671c5053e38be1d9fa503dec</contract.sha256>
+    <contract.version>v0.1.5</contract.version>
+    <contract.sha256>5b75a9bc3cbfeb1427ab0f2c08aee8ea2e47efb71e1af71225a3744c7a1a303c</contract.sha256>
   </properties>
 
   <dependencyManagement>

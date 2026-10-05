@@ -3,12 +3,14 @@ package com.tarimatwasi.quipu.auth.application;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /** The user store of the application tests: same behavior as the port, without a database. */
 final class InMemoryUserRepository implements UserRepositoryPort {
@@ -36,6 +38,12 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   @Override
   public Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber) {
     return Optional.ofNullable(byDocument.get(documentType + ":" + documentNumber));
+  }
+
+  @Override
+  public Optional<UserAccount> findByDocumentForUpdate(
+      DocumentType documentType, String documentNumber) {
+    return findByDocument(documentType, documentNumber);
   }
 
   @Override
@@ -79,6 +87,47 @@ final class InMemoryUserRepository implements UserRepositoryPort {
     resetTokens.remove(id);
   }
 
+  @Override
+  public boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+    UserAccount user = find(id);
+    int attempts = user.failedLoginAttempts();
+    Instant lockedUntil = user.lockedUntil();
+    if (lockedUntil != null) {
+      if (lockedUntil.isAfter(now)) {
+        return true;
+      }
+      attempts = 0;
+      lockedUntil = null;
+    }
+    attempts++;
+    if (attempts >= maxAttempts) {
+      lockedUntil = now.plus(lockDuration);
+    }
+    save(withLock(user, attempts, lockedUntil));
+    return false;
+  }
+
+  @Override
+  public void clearFailedLogins(UUID id) {
+    save(withLock(find(id), 0, null));
+  }
+
+  private static UserAccount withLock(
+      UserAccount user, int attempts, @Nullable Instant lockedUntil) {
+    return new UserAccount(
+        user.id(),
+        user.email(),
+        user.documentType(),
+        user.documentNumber(),
+        user.passwordHash(),
+        user.role(),
+        user.guestId(),
+        user.mustChangePassword(),
+        user.status(),
+        attempts,
+        lockedUntil);
+  }
+
   private static UserAccount withPassword(UserAccount user, String passwordHash) {
     return new UserAccount(
         user.id(),
@@ -89,6 +138,8 @@ final class InMemoryUserRepository implements UserRepositoryPort {
         user.role(),
         user.guestId(),
         false,
-        user.status());
+        user.status(),
+        0,
+        null);
   }
 }

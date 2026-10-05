@@ -145,6 +145,8 @@ class JwtTokenProviderTest {
         Role.ADMIN,
         null,
         mustChangePassword,
-        "ACTIVE");
+        "ACTIVE",
+        0,
+        null);
   }
 }

@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.tarimatwasi.quipu.auth.application.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.InvalidCredentialsException;
+import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
@@ -24,6 +25,17 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
         .body(
             new BffErrorResponse("AUTH_INVALID_CREDENTIALS", "Documento o contraseña incorrectos"));
+  }
+
+  /** SEG-06: too many failed logins; the lock lifts by itself or with a password reset. */
+  @ExceptionHandler(AccountLockedException.class)
+  public ResponseEntity<BffErrorResponse> handleAccountLocked() {
+    return ResponseEntity.status(HttpStatus.LOCKED)
+        .body(
+            new BffErrorResponse(
+                "AUTH_ACCOUNT_LOCKED",
+                "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo en 15 minutos o"
+                    + " recupera tu contraseña"));
   }
 
   /** Same body as the security entry point: the session is gone, whatever the reason. */

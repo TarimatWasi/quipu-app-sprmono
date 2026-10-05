@@ -53,6 +53,9 @@ Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.ta
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.domain.Role within module 'auth'!
 Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController$LoginRequest, jakarta.servlet.http.HttpServletResponse)> calls method <com.tarimatwasi.quipu.auth.domain.Role.name()> in (AuthBffController.java)
 ----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.AccountLockedException within module 'auth'!
+Method <com.tarimatwasi.quipu.bff.adapter.in.rest.BffExceptionHandler.handleAccountLocked()> has annotation member of type <com.tarimatwasi.quipu.auth.port.in.AccountLockedException> in (BffExceptionHandler.java)
+----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase within module 'auth'!
 AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
 ----

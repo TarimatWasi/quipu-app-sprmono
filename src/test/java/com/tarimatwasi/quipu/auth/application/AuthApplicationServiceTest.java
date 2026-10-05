@@ -2,10 +2,18 @@ package com.tarimatwasi.quipu.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordResult;
 import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase.CurrentSession;
@@ -14,6 +22,11 @@ import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
+import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.support.MutableClock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +36,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 class AuthApplicationServiceTest {
 
   private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+  private final MutableClock clock = new MutableClock(Instant.parse("2026-10-05T10:00:00Z"));
   private InMemoryUserRepository repository;
   private AuthApplicationService service;
 
@@ -33,7 +47,8 @@ class AuthApplicationServiceTest {
         new AuthApplicationService(
             repository,
             encoder,
-            (userId, role, mustChange) -> userId + ":" + role + ":" + mustChange);
+            (userId, role, mustChange) -> userId + ":" + role + ":" + mustChange,
+            clock);
   }
 
   @Test
@@ -48,7 +63,9 @@ class AuthApplicationServiceTest {
             Role.ADMIN,
             null,
             true,
-            "ACTIVE");
+            "ACTIVE",
+            0,
+            null);
     repository.save(admin);
 
     LoginResult result =
@@ -70,7 +87,9 @@ class AuthApplicationServiceTest {
             Role.ADMIN,
             null,
             true,
-            "ACTIVE");
+            "ACTIVE",
+            0,
+            null);
     repository.save(admin);
 
     assertThatThrownBy(() -> service.login(new LoginCommand(DocumentType.DNI, "00000000", "wrong")))
@@ -95,7 +114,9 @@ class AuthApplicationServiceTest {
             Role.GUEST,
             null,
             mustChangePassword,
-            status);
+            status,
+            0,
+            null);
     repository.save(user);
     return user;
   }
@@ -243,5 +264,113 @@ class AuthApplicationServiceTest {
         .isInstanceOf(NoActiveSessionException.class);
     assertThatThrownBy(() -> service.currentSession("no-es-un-uuid"))
         .isInstanceOf(NoActiveSessionException.class);
+  }
+
+  /** SEG-06 (TAR-99): 5 consecutive failed logins lock the account for 15 minutes. */
+  private void failLogins(int times) {
+    for (int i = 0; i < times; i++) {
+      assertThatThrownBy(() -> service.login(loginOf("Mala-clave-1")))
+          .isInstanceOf(InvalidCredentialsException.class);
+    }
+  }
+
+  private LoginCommand loginOf(String password) {
+    return new LoginCommand(DocumentType.DNI, "11111111", password);
+  }
+
+  @Test
+  void fiveConsecutiveFailuresLockTheAccountEvenForTheRightPassword() {
+    savedUser("Correcta-123", false, "ACTIVE");
+
+    failLogins(5);
+
+    assertThatThrownBy(() -> service.login(loginOf("Correcta-123")))
+        .isInstanceOf(AccountLockedException.class);
+  }
+
+  @Test
+  void fourFailuresDoNotLockAndASuccessfulLoginRestartsTheCount() {
+    savedUser("Correcta-123", false, "ACTIVE");
+
+    failLogins(4);
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+    failLogins(4);
+
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+  }
+
+  @Test
+  void theLockLastsFifteenMinutesAndIsNotExtendedByAttemptsMadeWhileLocked() {
+    savedUser("Correcta-123", false, "ACTIVE");
+    failLogins(5);
+
+    clock.advance(Duration.ofMinutes(10));
+    assertThatThrownBy(() -> service.login(loginOf("Mala-clave-1")))
+        .isInstanceOf(AccountLockedException.class);
+    clock.advance(Duration.ofMinutes(5).minusSeconds(1));
+    assertThatThrownBy(() -> service.login(loginOf("Correcta-123")))
+        .isInstanceOf(AccountLockedException.class);
+
+    clock.advance(Duration.ofSeconds(1));
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+  }
+
+  @Test
+  void aFailureAfterTheLockExpiredStartsANewCountInsteadOfLockingAgain() {
+    savedUser("Correcta-123", false, "ACTIVE");
+    failLogins(5);
+    clock.advance(Duration.ofMinutes(15));
+
+    failLogins(4);
+
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+  }
+
+  /** The lock is decided under the row lock: a burst that read the account before it locked. */
+  @Test
+  void aFailureThatFindsTheAccountAlreadyLockedAnswersLocked() {
+    UserAccount unlocked =
+        new UserAccount(
+            UUID.randomUUID(),
+            "user@tarimatwasi.local",
+            DocumentType.DNI,
+            "11111111",
+            encoder.encode("Correcta-123"),
+            Role.GUEST,
+            null,
+            false,
+            "ACTIVE",
+            4,
+            null);
+    UserRepositoryPort stale = mock(UserRepositoryPort.class);
+    when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
+        .thenReturn(Optional.of(unlocked));
+    when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
+    var racing = new AuthApplicationService(stale, encoder, (u, r, m) -> "t", clock);
+
+    assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
+        .isInstanceOf(AccountLockedException.class);
+  }
+
+  /** The whole login decision is serialized per account: the row is locked before anything else. */
+  @Test
+  void theLoginReadsTheAccountUnderTheRowLock() {
+    UserRepositoryPort repo = mock(UserRepositoryPort.class);
+    when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
+    var locking = new AuthApplicationService(repo, encoder, (u, r, m) -> "t", clock);
+
+    assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
+        .isInstanceOf(InvalidCredentialsException.class);
+
+    verify(repo).findByDocumentForUpdate(DocumentType.DNI, "11111111");
+    verify(repo, never()).findByDocument(any(), any());
+  }
+
+  @Test
+  void anUnknownDocumentIsNeverLocked() {
+    for (int i = 0; i < 8; i++) {
+      assertThatThrownBy(() -> service.login(loginOf("Mala-clave-1")))
+          .isInstanceOf(InvalidCredentialsException.class);
+    }
   }
 }

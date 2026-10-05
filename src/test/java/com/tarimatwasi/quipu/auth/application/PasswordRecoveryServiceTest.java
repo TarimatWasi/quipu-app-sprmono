@@ -11,10 +11,9 @@ import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
-import java.time.Clock;
+import com.tarimatwasi.quipu.support.MutableClock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -54,7 +53,9 @@ class PasswordRecoveryServiceTest {
             Role.GUEST,
             null,
             true,
-            status);
+            status,
+            0,
+            null);
     repository.save(user);
     return user;
   }
@@ -206,7 +207,9 @@ class PasswordRecoveryServiceTest {
             user.role(),
             null,
             user.mustChangePassword(),
-            "INACTIVE"));
+            "INACTIVE",
+            0,
+            null));
 
     assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD))
         .isInstanceOf(InvalidResetCodeException.class);
@@ -234,34 +237,6 @@ class PasswordRecoveryServiceTest {
         .isInstanceOfSatisfying(
             WeakPasswordException.class,
             e -> assertThat(e.reason()).isEqualTo(WeakPasswordException.Reason.TOO_LONG));
-  }
-
-  /** A clock the tests move forward. */
-  private static final class MutableClock extends Clock {
-    private Instant now;
-
-    MutableClock(Instant start) {
-      this.now = start;
-    }
-
-    void advance(Duration by) {
-      now = now.plus(by);
-    }
-
-    @Override
-    public ZoneId getZone() {
-      return ZoneId.of("America/Lima");
-    }
-
-    @Override
-    public Clock withZone(ZoneId zone) {
-      return this;
-    }
-
-    @Override
-    public Instant instant() {
-      return now;
-    }
   }
 
   private record Sent(String email, String code, Duration validFor) {}

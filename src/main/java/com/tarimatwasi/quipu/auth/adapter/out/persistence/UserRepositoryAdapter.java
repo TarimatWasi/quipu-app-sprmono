@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,6 +23,14 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   public Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber) {
     return jpaRepository
         .findByDocumentTypeAndDocumentNumber(documentType, documentNumber)
+        .map(UserJpaEntity::toDomain);
+  }
+
+  @Override
+  public Optional<UserAccount> findByDocumentForUpdate(
+      DocumentType documentType, String documentNumber) {
+    return jpaRepository
+        .findWithLockByDocumentTypeAndDocumentNumber(documentType, documentNumber)
         .map(UserJpaEntity::toDomain);
   }
 
@@ -72,6 +81,28 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     UserJpaEntity user = load(id);
     user.changePassword(newPasswordHash);
     jpaRepository.save(user);
+  }
+
+  @Override
+  public boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+    UserJpaEntity user = loadLocked(id);
+    boolean alreadyLocked = user.registerFailedLogin(now, maxAttempts, lockDuration);
+    jpaRepository.save(user);
+    return alreadyLocked;
+  }
+
+  @Override
+  public void clearFailedLogins(UUID id) {
+    UserJpaEntity user = loadLocked(id);
+    user.clearFailedLogins();
+    jpaRepository.save(user);
+  }
+
+  /** The row stays locked until the commit, so concurrent updates of the counter queue up. */
+  private UserJpaEntity loadLocked(UUID id) {
+    return jpaRepository
+        .findWithLockById(id)
+        .orElseThrow(() -> new IllegalStateException("No user with id " + id));
   }
 
   private UserJpaEntity load(UUID id) {
