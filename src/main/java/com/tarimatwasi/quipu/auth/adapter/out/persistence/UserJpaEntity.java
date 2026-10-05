@@ -42,6 +42,9 @@ public class UserJpaEntity extends AuditableEntity {
   @Column(name = "locked_until")
   private @Nullable Instant lockedUntil;
 
+  @Column(name = "password_changed_at")
+  private @Nullable Instant passwordChangedAt;
+
   @Column(name = "reset_token_hash")
   private @Nullable String resetTokenHash;
 
@@ -51,8 +54,9 @@ public class UserJpaEntity extends AuditableEntity {
   protected UserJpaEntity() {}
 
   /** A new password also kills a recovery code that was emailed before it. */
-  public void changePassword(String newPasswordHash) {
+  public void changePassword(String newPasswordHash, Instant changedAt) {
     this.passwordHash = newPasswordHash;
+    this.passwordChangedAt = changedAt;
     this.mustChangePassword = false;
     this.resetTokenHash = null;
     this.resetTokenExpiresAt = null;
@@ -103,6 +107,7 @@ public class UserJpaEntity extends AuditableEntity {
         mustChangePassword,
         status,
         failedLoginAttempts,
-        lockedUntil);
+        lockedUntil,
+        passwordChangedAt);
   }
 }
