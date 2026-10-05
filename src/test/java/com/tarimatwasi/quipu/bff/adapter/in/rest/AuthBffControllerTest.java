@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import io.jsonwebtoken.Jwts;
 import jakarta.servlet.http.Cookie;
@@ -52,6 +53,7 @@ class AuthBffControllerTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired PasswordEncoder passwordEncoder;
   @Autowired JwtTokenProvider jwtTokenProvider;
+  @Autowired UserRepositoryPort users;
 
   /** The PostgreSQL container is shared by all integration tests: this test owns its ADMIN. */
   @BeforeEach
@@ -396,6 +398,59 @@ class AuthBffControllerTest {
         .perform(post(LOGOUT))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
+  }
+
+  /** SEG-06 (TAR-99): 5 consecutive failures lock the account, whatever password comes next. */
+  @Test
+  void fiveWrongPasswordsLockTheAccountAndTheLoginAnswers423() throws Exception {
+    var wrong =
+        """
+        {"documentType":"DNI","documentNumber":"00000000","password":"Equivocada-1"}
+        """;
+    for (int i = 0; i < 5; i++) {
+      mockMvc
+          .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(wrong))
+          .andExpect(status().isUnauthorized());
+    }
+
+    mockMvc
+        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+        .andExpect(status().isLocked())
+        .andExpect(jsonPath("$.code").value("AUTH_ACCOUNT_LOCKED"));
+  }
+
+  @Test
+  void aLockThatAlreadyExpiredLetsTheAccountInAndClearsTheCount() throws Exception {
+    jdbc.update(
+        "UPDATE users SET failed_login_attempts = 5, locked_until = now() - interval '1 minute'");
+
+    mockMvc
+        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+        .andExpect(status().isOk());
+
+    assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
+        .isZero();
+    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
+        .isNull();
+  }
+
+  @Test
+  void changingThePasswordLiftsTheLock() throws Exception {
+    jdbc.update(
+        "UPDATE users SET failed_login_attempts = 5, locked_until = now() + interval '10 minutes'");
+    UUID id = jdbc.queryForObject("SELECT id FROM users", UUID.class);
+
+    users.changePassword(Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"));
+
+    mockMvc
+        .perform(
+            post(LOGIN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"documentType":"DNI","documentNumber":"00000000","password":"Nueva12345"}
+                    """))
+        .andExpect(status().isOk());
   }
 
   @Test

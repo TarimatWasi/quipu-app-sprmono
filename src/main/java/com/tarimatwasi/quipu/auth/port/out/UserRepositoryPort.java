@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.port.out;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +31,16 @@ public interface UserRepositoryPort {
    * cannot be used again.
    */
   void resetPassword(UUID id, String newPasswordHash);
+
+  /**
+   * SEG-06. Counts a failed login of the account and, when it reaches {@code maxAttempts}, locks it
+   * until {@code now + lockDuration}. A lock that already expired restarts the count. Safe against
+   * simultaneous failures: the account's row is locked while it is updated.
+   */
+  void registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration);
+
+  /** Forgets the failed logins and the lock of the account (a successful login). */
+  void clearFailedLogins(UUID id);
 
   /** The account a recovery code belongs to and when the code expires. */
   record PendingReset(UserAccount account, Instant expiresAt) {}

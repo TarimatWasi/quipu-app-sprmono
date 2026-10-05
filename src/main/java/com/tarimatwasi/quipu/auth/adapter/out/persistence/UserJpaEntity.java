@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.shared.domain.AuditableEntity;
 import jakarta.persistence.*;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -35,6 +36,12 @@ public class UserJpaEntity extends AuditableEntity {
 
   private String status;
 
+  @Column(name = "failed_login_attempts")
+  private short failedLoginAttempts;
+
+  @Column(name = "locked_until")
+  private @Nullable Instant lockedUntil;
+
   @Column(name = "reset_token_hash")
   private @Nullable String resetTokenHash;
 
@@ -49,6 +56,23 @@ public class UserJpaEntity extends AuditableEntity {
     this.mustChangePassword = false;
     this.resetTokenHash = null;
     this.resetTokenExpiresAt = null;
+    clearFailedLogins();
+  }
+
+  /** SEG-06: an expired lock restarts the count; reaching the limit locks the account. */
+  public void registerFailedLogin(Instant now, int maxAttempts, Duration lockDuration) {
+    if (lockedUntil != null && !lockedUntil.isAfter(now)) {
+      clearFailedLogins();
+    }
+    failedLoginAttempts++;
+    if (failedLoginAttempts >= maxAttempts) {
+      lockedUntil = now.plus(lockDuration);
+    }
+  }
+
+  public void clearFailedLogins() {
+    this.failedLoginAttempts = 0;
+    this.lockedUntil = null;
   }
 
   public @Nullable Instant resetTokenExpiresAt() {
@@ -70,6 +94,8 @@ public class UserJpaEntity extends AuditableEntity {
         role,
         guestId,
         mustChangePassword,
-        status);
+        status,
+        failedLoginAttempts,
+        lockedUntil);
   }
 }

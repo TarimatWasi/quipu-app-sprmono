@@ -146,6 +146,14 @@ class BffContractTest {
   }
 
   @Test
+  void loginOfALockedAccount() throws Exception {
+    jdbc.update(
+        "UPDATE users SET failed_login_attempts = 5, locked_until = now() + interval '10 minutes'");
+
+    login("00000000", TEMPORARY).andExpect(status().isLocked()).andExpect(satisfiesTheContract());
+  }
+
+  @Test
   void loginWithAMissingField() throws Exception {
     mockMvc
         .perform(

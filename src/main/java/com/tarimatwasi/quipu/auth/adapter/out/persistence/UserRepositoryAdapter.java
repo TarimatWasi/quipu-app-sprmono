@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -71,6 +72,23 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   public void resetPassword(UUID id, String newPasswordHash) {
     UserJpaEntity user = load(id);
     user.changePassword(newPasswordHash);
+    jpaRepository.save(user);
+  }
+
+  @Override
+  public void registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+    UserJpaEntity user =
+        jpaRepository
+            .findWithLockById(id)
+            .orElseThrow(() -> new IllegalStateException("No user with id " + id));
+    user.registerFailedLogin(now, maxAttempts, lockDuration);
+    jpaRepository.save(user);
+  }
+
+  @Override
+  public void clearFailedLogins(UUID id) {
+    UserJpaEntity user = load(id);
+    user.clearFailedLogins();
     jpaRepository.save(user);
   }
 
