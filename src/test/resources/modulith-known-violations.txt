@@ -15,10 +15,10 @@ Module 'auth' depends on non-exposed type com.tarimatwasi.quipu.shared.domain.Au
 Constructor <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity.<init>()> calls constructor <com.tarimatwasi.quipu.shared.domain.AuditableEntity.<init>()> in (UserJpaEntity.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider within module 'auth'!
-AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
+AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider within module 'auth'!
-Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider> in (AuthBffController.java)
+Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider> in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider within module 'auth'!
 Field <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.jwtTokenProvider> has type <com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider> in (AuthBffController.java)
@@ -54,10 +54,10 @@ Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.domain.Role 
 Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController$LoginRequest, jakarta.servlet.http.HttpServletResponse)> calls method <com.tarimatwasi.quipu.auth.domain.Role.name()> in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase within module 'auth'!
-AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
+AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase within module 'auth'!
-Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase> in (AuthBffController.java)
+Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase> in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase within module 'auth'!
 Field <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.changePasswordUseCase> has type <com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase> in (AuthBffController.java)
@@ -71,14 +71,35 @@ Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.changePasswo
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase$ChangePasswordResult within module 'auth'!
 Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.changePassword(com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController$ChangePasswordRequest, org.springframework.security.core.Authentication, jakarta.servlet.http.HttpServletResponse)> calls method <com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase$ChangePasswordResult.sessionToken()> in (AuthBffController.java)
 ----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase within module 'auth'!
+AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase within module 'auth'!
+Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase> in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase within module 'auth'!
+Field <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.currentSessionUseCase> has type <com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase> in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase within module 'auth'!
+Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.me(org.springframework.security.core.Authentication)> calls method <com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase.currentSession(java.lang.String)> in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase$CurrentSession within module 'auth'!
+Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.me(org.springframework.security.core.Authentication)> calls method <com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase$CurrentSession.displayEmail()> in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase$CurrentSession within module 'auth'!
+Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.me(org.springframework.security.core.Authentication)> calls method <com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase$CurrentSession.mustChangePassword()> in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase$CurrentSession within module 'auth'!
+Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.me(org.springframework.security.core.Authentication)> calls method <com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase$CurrentSession.role()> in (AuthBffController.java)
+----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException within module 'auth'!
 Method <com.tarimatwasi.quipu.bff.adapter.in.rest.BffExceptionHandler.handleInvalidResetCode()> has annotation member of type <com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException> in (BffExceptionHandler.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.LoginUseCase within module 'auth'!
-AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
+AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.LoginUseCase within module 'auth'!
-Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.LoginUseCase> in (AuthBffController.java)
+Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.LoginUseCase> in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.LoginUseCase within module 'auth'!
 Field <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.loginUseCase> has type <com.tarimatwasi.quipu.auth.port.in.LoginUseCase> in (AuthBffController.java)
@@ -107,11 +128,14 @@ Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.ta
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.LoginUseCase$LoginResult within module 'auth'!
 Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController$LoginRequest, jakarta.servlet.http.HttpServletResponse)> calls method <com.tarimatwasi.quipu.auth.port.in.LoginUseCase$LoginResult.userId()> in (AuthBffController.java)
 ----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase within module 'auth'!
-AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException within module 'auth'!
+Method <com.tarimatwasi.quipu.bff.adapter.in.rest.BffExceptionHandler.handleNoActiveSession()> has annotation member of type <com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException> in (BffExceptionHandler.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase within module 'auth'!
-Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase> in (AuthBffController.java)
+AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)
+----
+Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase within module 'auth'!
+Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.<init>(com.tarimatwasi.quipu.auth.port.in.LoginUseCase, com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase, com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase, com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties)> has parameter of type <com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase> in (AuthBffController.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase within module 'auth'!
 Field <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.passwordRecoveryUseCase> has type <com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase> in (AuthBffController.java)

@@ -5,6 +5,8 @@ import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordResult;
+import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase;
+import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase.CurrentSession;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
@@ -15,10 +17,12 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.Duration;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +32,7 @@ public class AuthBffController {
 
   private final LoginUseCase loginUseCase;
   private final ChangePasswordUseCase changePasswordUseCase;
+  private final CurrentSessionUseCase currentSessionUseCase;
   private final PasswordRecoveryUseCase passwordRecoveryUseCase;
   private final JwtTokenProvider jwtTokenProvider;
   private final SessionCookieProperties sessionCookie;
@@ -35,11 +40,13 @@ public class AuthBffController {
   public AuthBffController(
       LoginUseCase loginUseCase,
       ChangePasswordUseCase changePasswordUseCase,
+      CurrentSessionUseCase currentSessionUseCase,
       PasswordRecoveryUseCase passwordRecoveryUseCase,
       JwtTokenProvider jwtTokenProvider,
       SessionCookieProperties sessionCookie) {
     this.loginUseCase = loginUseCase;
     this.changePasswordUseCase = changePasswordUseCase;
+    this.currentSessionUseCase = currentSessionUseCase;
     this.passwordRecoveryUseCase = passwordRecoveryUseCase;
     this.jwtTokenProvider = jwtTokenProvider;
     this.sessionCookie = sessionCookie;
@@ -51,6 +58,8 @@ public class AuthBffController {
       @NotBlank String password) {}
 
   public record LoginResponse(String role, String name, boolean mustChangePassword) {}
+
+  public record CurrentSessionResponse(String role, String name, boolean mustChangePassword) {}
 
   public record ChangePasswordRequest(
       @Nullable String currentPassword, @NotNull String newPassword) {}
@@ -71,6 +80,24 @@ public class AuthBffController {
     return ResponseEntity.ok(
         new LoginResponse(
             result.role().name(), result.displayEmail(), result.mustChangePassword()));
+  }
+
+  /** TAR-74: restores the session after a reload; answers the account as it is now. */
+  @GetMapping("/bff/auth/me")
+  public CurrentSessionResponse me(Authentication authentication) {
+    CurrentSession session = currentSessionUseCase.currentSession(authentication.getName());
+    return new CurrentSessionResponse(
+        session.role(), session.displayEmail(), session.mustChangePassword());
+  }
+
+  /**
+   * TAR-74: the JWT cannot be revoked, so logging out expires the browser's cookie (same path and
+   * flags as the login). Needs a session, as the contract says.
+   */
+  @PostMapping("/bff/auth/logout")
+  public ResponseEntity<Void> logout(HttpServletResponse response) {
+    response.addHeader("Set-Cookie", sessionCookie("", Duration.ZERO).toString());
+    return ResponseEntity.noContent().build();
   }
 
   /** RF-12: the change replaces the session cookie with one that no longer forces the change. */
@@ -102,11 +129,15 @@ public class AuthBffController {
   }
 
   private ResponseCookie sessionCookie(String token) {
+    return sessionCookie(token, sessionCookie.maxAge());
+  }
+
+  private ResponseCookie sessionCookie(String token, Duration maxAge) {
     return ResponseCookie.from("sessionToken", token)
         .httpOnly(true)
         .secure(true)
         .sameSite(sessionCookie.sameSite().attribute())
-        .maxAge(sessionCookie.maxAge())
+        .maxAge(maxAge)
         .path("/")
         .build();
   }

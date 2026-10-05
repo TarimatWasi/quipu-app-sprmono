@@ -2,10 +2,13 @@ package com.tarimatwasi.quipu.auth.application;
 
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase;
+import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase;
+import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,7 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AuthApplicationService implements LoginUseCase, ChangePasswordUseCase {
+public class AuthApplicationService
+    implements LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase {
 
   private static final String DUMMY_PASSWORD_HASH =
       "$2b$10$izcb2KSDHR.LLCnLSqUYZ.2cp1yucRUSMDq0Eo9HEg4LQaSzNfmEC";
@@ -68,14 +72,26 @@ public class AuthApplicationService implements LoginUseCase, ChangePasswordUseCa
         sessionTokens.issue(command.userId(), user.role().name(), false));
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public CurrentSession currentSession(String userId) {
+    UserAccount user =
+        lookup(userId)
+            .filter(account -> !account.isDisabled())
+            .orElseThrow(NoActiveSessionException::new);
+    return new CurrentSession(user.role().name(), user.email(), user.mustChangePassword());
+  }
+
   /** The id comes from the session, but a malformed or unknown one is just another bad session. */
   private UserAccount findAccount(String userId) {
+    return lookup(userId).orElseThrow(InvalidCredentialsException::new);
+  }
+
+  private Optional<UserAccount> lookup(String userId) {
     try {
-      return userRepository
-          .findById(UUID.fromString(userId))
-          .orElseThrow(InvalidCredentialsException::new);
+      return userRepository.findById(UUID.fromString(userId));
     } catch (IllegalArgumentException e) {
-      throw new InvalidCredentialsException();
+      return Optional.empty();
     }
   }
 

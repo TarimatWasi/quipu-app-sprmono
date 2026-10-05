@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 import com.tarimatwasi.quipu.auth.application.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
+import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import org.springframework.core.Ordered;
@@ -23,6 +24,13 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
         .body(
             new BffErrorResponse("AUTH_INVALID_CREDENTIALS", "Documento o contraseña incorrectos"));
+  }
+
+  /** Same body as the security entry point: the session is gone, whatever the reason. */
+  @ExceptionHandler(NoActiveSessionException.class)
+  public ResponseEntity<BffErrorResponse> handleNoActiveSession() {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(new BffErrorResponse("AUTH_NO_SESSION", "Tu sesión no es válida o expiró"));
   }
 
   @ExceptionHandler(AccountDisabledException.class)

@@ -8,8 +8,10 @@ import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordResult;
+import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase.CurrentSession;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
+import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import java.util.UUID;
@@ -214,5 +216,32 @@ class AuthApplicationServiceTest {
 
     assertThatThrownBy(() -> service.changePassword(change(user, null, "Nueva12345")))
         .isInstanceOf(AccountDisabledException.class);
+  }
+
+  /**
+   * TAR-74: the session shown to the client is the account as it is now, not the token's claims.
+   */
+  @Test
+  void currentSessionReadsTheAccountAsItIsNow() {
+    UserAccount user = savedUser("Temporal123!", true, "ACTIVE");
+
+    CurrentSession session = service.currentSession(user.id().toString());
+
+    assertThat(session.role()).isEqualTo("GUEST");
+    assertThat(session.displayEmail()).isEqualTo("user@tarimatwasi.local");
+    assertThat(session.mustChangePassword()).isTrue();
+  }
+
+  @Test
+  void currentSessionOfADisabledUnknownOrMalformedAccountIsNoSession() {
+    String disabled = savedUser("Temporal123!", false, "INACTIVE").id().toString();
+    String unknown = UUID.randomUUID().toString();
+
+    assertThatThrownBy(() -> service.currentSession(disabled))
+        .isInstanceOf(NoActiveSessionException.class);
+    assertThatThrownBy(() -> service.currentSession(unknown))
+        .isInstanceOf(NoActiveSessionException.class);
+    assertThatThrownBy(() -> service.currentSession("no-es-un-uuid"))
+        .isInstanceOf(NoActiveSessionException.class);
   }
 }
