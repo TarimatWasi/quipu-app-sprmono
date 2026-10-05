@@ -65,6 +65,7 @@ class AuthApplicationServiceTest {
             true,
             "ACTIVE",
             0,
+            null,
             null);
     repository.save(admin);
 
@@ -89,6 +90,7 @@ class AuthApplicationServiceTest {
             true,
             "ACTIVE",
             0,
+            null,
             null);
     repository.save(admin);
 
@@ -116,6 +118,7 @@ class AuthApplicationServiceTest {
             mustChangePassword,
             status,
             0,
+            null,
             null);
     repository.save(user);
     return user;
@@ -341,6 +344,7 @@ class AuthApplicationServiceTest {
             false,
             "ACTIVE",
             4,
+            null,
             null);
     UserRepositoryPort stale = mock(UserRepositoryPort.class);
     when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
@@ -364,6 +368,19 @@ class AuthApplicationServiceTest {
 
     verify(repo).findByDocumentForUpdate(DocumentType.DNI, "11111111");
     verify(repo, never()).findByDocument(any(), any());
+  }
+
+  /** TAR-125: a change of password and a login of the same account are decided one by one. */
+  @Test
+  void changingThePasswordReadsTheAccountUnderTheRowLock() {
+    UserAccount user = savedUser("Actual12345", false, "ACTIVE");
+    UserRepositoryPort spied = org.mockito.Mockito.spy(repository);
+    var locking = new AuthApplicationService(spied, encoder, (u, r, m) -> "t", clock);
+
+    locking.changePassword(change(user, "Actual12345", "Nueva12345"));
+
+    verify(spied).findByIdForUpdate(user.id());
+    verify(spied, never()).findById(any());
   }
 
   @Test

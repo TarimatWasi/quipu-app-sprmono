@@ -55,6 +55,7 @@ class PasswordRecoveryServiceTest {
             true,
             status,
             0,
+            null,
             null);
     repository.save(user);
     return user;
@@ -209,6 +210,7 @@ class PasswordRecoveryServiceTest {
             user.mustChangePassword(),
             "INACTIVE",
             0,
+            null,
             null));
 
     assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD))
