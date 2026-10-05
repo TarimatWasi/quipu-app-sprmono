@@ -104,7 +104,8 @@ public class AuthApplicationService
     if (passwordEncoder.matches(command.newPassword(), user.passwordHash())) {
       throw new PasswordUnchangedException();
     }
-    userRepository.changePassword(user.id(), passwordEncoder.encode(command.newPassword()));
+    Instant now = clock.instant();
+    userRepository.changePassword(user.id(), passwordEncoder.encode(command.newPassword()), now);
     return new ChangePasswordResult(
         sessionTokens.issue(command.userId(), user.role().name(), false));
   }

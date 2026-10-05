@@ -18,8 +18,11 @@ public interface UserRepositoryPort {
    */
   Optional<UserAccount> findByDocumentForUpdate(DocumentType documentType, String documentNumber);
 
-  /** Stores the new hash and clears the pending-change flag of the account. */
-  void changePassword(UUID id, String newPasswordHash);
+  /**
+   * Stores the new hash and clears the pending-change flag of the account. {@code changedAt} is
+   * when the password changed: tokens issued before it stop being valid (TAR-125).
+   */
+  void changePassword(UUID id, String newPasswordHash, Instant changedAt);
 
   /** Emails are unique ignoring case. */
   Optional<UserAccount> findByEmail(String email);
@@ -36,7 +39,7 @@ public interface UserRepositoryPort {
    * Stores the new hash, clears the pending-change flag and removes the recovery code, so the code
    * cannot be used again.
    */
-  void resetPassword(UUID id, String newPasswordHash);
+  void resetPassword(UUID id, String newPasswordHash, Instant changedAt);
 
   /**
    * SEG-06. Counts a failed login of the account and, when it reaches {@code maxAttempts}, locks it

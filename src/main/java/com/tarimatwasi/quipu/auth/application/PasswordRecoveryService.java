@@ -75,6 +75,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     }
     // Checked after the code and before consuming it: a weak password can be corrected.
     PasswordPolicy.require(newPassword);
-    userRepository.resetPassword(pending.account().id(), passwordEncoder.encode(newPassword));
+    userRepository.resetPassword(
+        pending.account().id(), passwordEncoder.encode(newPassword), clock.instant());
   }
 }

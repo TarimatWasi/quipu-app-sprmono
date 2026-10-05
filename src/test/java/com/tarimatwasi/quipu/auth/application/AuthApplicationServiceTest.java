@@ -65,6 +65,7 @@ class AuthApplicationServiceTest {
             true,
             "ACTIVE",
             0,
+            null,
             null);
     repository.save(admin);
 
@@ -89,6 +90,7 @@ class AuthApplicationServiceTest {
             true,
             "ACTIVE",
             0,
+            null,
             null);
     repository.save(admin);
 
@@ -116,6 +118,7 @@ class AuthApplicationServiceTest {
             mustChangePassword,
             status,
             0,
+            null,
             null);
     repository.save(user);
     return user;
@@ -341,6 +344,7 @@ class AuthApplicationServiceTest {
             false,
             "ACTIVE",
             4,
+            null,
             null);
     UserRepositoryPort stale = mock(UserRepositoryPort.class);
     when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))

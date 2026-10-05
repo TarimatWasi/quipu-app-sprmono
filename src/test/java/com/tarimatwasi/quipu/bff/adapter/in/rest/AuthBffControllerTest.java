@@ -276,6 +276,7 @@ class AuthBffControllerTest {
         Jwts.builder()
             .subject(id)
             .claim("role", "ADMIN")
+            .issuedAt(Date.from(Instant.now()))
             .expiration(Date.from(Instant.now().plusSeconds(600)))
             .signWith(signingKey, Jwts.SIG.HS256)
             .compact();
@@ -468,7 +469,8 @@ class AuthBffControllerTest {
         "UPDATE users SET failed_login_attempts = 5, locked_until = now() + interval '10 minutes'");
     UUID id = jdbc.queryForObject("SELECT id FROM users", UUID.class);
 
-    users.changePassword(Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"));
+    users.changePassword(
+        Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"), java.time.Instant.now());
 
     mockMvc
         .perform(
@@ -479,6 +481,51 @@ class AuthBffControllerTest {
                     {"documentType":"DNI","documentNumber":"00000000","password":"Nueva12345"}
                     """))
         .andExpect(status().isOk());
+  }
+
+  /** TAR-125: a session opened before a password change does not survive it. */
+  @Test
+  void aSessionOpenedBeforeThePasswordChangeStopsWorkingAfterIt() throws Exception {
+    // The token's issue time has second precision: the old session is one from ten seconds ago.
+    String id = jdbc.queryForObject("SELECT id::text FROM users", String.class);
+    SecretKey signingKey =
+        (SecretKey) Objects.requireNonNull(ReflectionTestUtils.getField(jwtTokenProvider, "key"));
+    Cookie old =
+        new Cookie(
+            "sessionToken",
+            Jwts.builder()
+                .subject(id)
+                .claim("role", "ADMIN")
+                .issuedAt(Date.from(Instant.now().minusSeconds(10)))
+                .expiration(Date.from(Instant.now().plusSeconds(600)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact());
+    mockMvc.perform(get(ME).cookie(old)).andExpect(status().isOk());
+
+    Cookie fresh =
+        Objects.requireNonNull(
+            changePassword(old, "{\"newPassword\":\"Nueva12345\"}")
+                .andExpect(status().isNoContent())
+                .andReturn()
+                .getResponse()
+                .getCookie("sessionToken"));
+
+    mockMvc
+        .perform(get(ME).cookie(old))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
+    mockMvc.perform(get(ME).cookie(fresh)).andExpect(status().isOk());
+  }
+
+  @Test
+  void aSessionOpenedBeforeAPasswordResetStopsWorking() throws Exception {
+    Cookie session = loginCookie("Temporal123!");
+    jdbc.update("UPDATE users SET password_changed_at = now() + interval '1 minute'");
+
+    mockMvc
+        .perform(get(ME).cookie(session))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
   }
 
   @Test

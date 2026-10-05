@@ -40,12 +40,12 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void changePassword(UUID id, String newPasswordHash) {
+  public void changePassword(UUID id, String newPasswordHash, Instant changedAt) {
     UserJpaEntity user =
         jpaRepository
             .findById(id)
             .orElseThrow(() -> new IllegalStateException("No user with id " + id));
-    user.changePassword(newPasswordHash);
+    user.changePassword(newPasswordHash, changedAt);
     jpaRepository.save(user);
   }
 
@@ -77,9 +77,9 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void resetPassword(UUID id, String newPasswordHash) {
+  public void resetPassword(UUID id, String newPasswordHash, Instant changedAt) {
     UserJpaEntity user = load(id);
-    user.changePassword(newPasswordHash);
+    user.changePassword(newPasswordHash, changedAt);
     jpaRepository.save(user);
   }
 

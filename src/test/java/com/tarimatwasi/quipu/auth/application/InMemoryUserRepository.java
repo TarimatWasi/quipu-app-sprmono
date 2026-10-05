@@ -52,9 +52,9 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void changePassword(UUID id, String newPasswordHash) {
+  public void changePassword(UUID id, String newPasswordHash, Instant changedAt) {
     UserAccount user = find(id);
-    save(withPassword(user, newPasswordHash));
+    save(withPassword(user, newPasswordHash, changedAt));
     resetTokens.remove(id);
   }
 
@@ -82,8 +82,8 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void resetPassword(UUID id, String newPasswordHash) {
-    changePassword(id, newPasswordHash);
+  public void resetPassword(UUID id, String newPasswordHash, Instant changedAt) {
+    changePassword(id, newPasswordHash, changedAt);
     resetTokens.remove(id);
   }
 
@@ -125,10 +125,12 @@ final class InMemoryUserRepository implements UserRepositoryPort {
         user.mustChangePassword(),
         user.status(),
         attempts,
-        lockedUntil);
+        lockedUntil,
+        user.passwordChangedAt());
   }
 
-  private static UserAccount withPassword(UserAccount user, String passwordHash) {
+  private static UserAccount withPassword(
+      UserAccount user, String passwordHash, Instant changedAt) {
     return new UserAccount(
         user.id(),
         user.email(),
@@ -140,6 +142,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
         false,
         user.status(),
         0,
-        null);
+        null,
+        changedAt);
   }
 }
