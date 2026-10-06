@@ -17,6 +17,10 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  # El contrato pide números JSON y booleanos JSON: "10" o "true" entre comillas no se convierten.
+  jackson:
+    mapper:
+      allow-coercion-of-scalars: false
   # Hilos virtuales (Java 25, ADR-F4): el applicationTaskExecutor de Boot pasa a ser un
   # SimpleAsyncTaskExecutor de hilos virtuales, que ignora spring.task.execution.pool.*. Su límite
   # y la espera al apagar se fijan abajo. El ejecutor es compartido: lo usa el correo de recuperación

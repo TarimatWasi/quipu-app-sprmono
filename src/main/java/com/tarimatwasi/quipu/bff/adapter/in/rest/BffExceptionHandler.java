@@ -11,12 +11,16 @@ import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
+import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
+import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
+import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -128,6 +132,53 @@ public class BffExceptionHandler {
   public ResponseEntity<BffErrorResponse> handleUnreadableBody() {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos"));
+  }
+
+  @ExceptionHandler(ExpenseNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handleExpenseNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("EXPENSE_NOT_FOUND", "El egreso no existe"));
+  }
+
+  /** RF-07: the amount is positive and has at most two decimals. */
+  @ExceptionHandler(InvalidExpenseException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidExpense() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR",
+                "El monto debe ser mayor que 0 y tener como máximo 2 decimales",
+                "amount"));
+  }
+
+  /** The description is longer than 500 characters. */
+  @ExceptionHandler(InvalidExpenseDescriptionException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidExpenseDescription() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR",
+                "La descripción admite como máximo 500 caracteres",
+                "description"));
+  }
+
+  /** A query parameter that is there but not in the documented shape. */
+  @ExceptionHandler(InvalidQueryParameterException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidQueryParameter(
+      InvalidQueryParameterException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.parameter()));
+  }
+
+  /** A required query parameter that is not there. */
+  @ExceptionHandler(MissingServletRequestParameterException.class)
+  public ResponseEntity<BffErrorResponse> handleMissingParameter(
+      MissingServletRequestParameterException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR", "Datos de entrada inválidos", e.getParameterName()));
   }
 
   /** A path or query value of the wrong shape, such as an id that is not a UUID. */
