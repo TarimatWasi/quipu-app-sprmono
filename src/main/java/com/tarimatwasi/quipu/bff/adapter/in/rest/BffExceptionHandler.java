@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 import com.tarimatwasi.quipu.ambiente.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.ambiente.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.auth.application.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
@@ -14,6 +15,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -108,6 +110,20 @@ public class BffExceptionHandler {
   public ResponseEntity<BffErrorResponse> handleEmptyEnvironmentUpdate() {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("VALIDATION_ERROR", "Indica al menos un dato para cambiar"));
+  }
+
+  /** A code of only whitespace that the schema did not catch, such as non-breaking spaces. */
+  @ExceptionHandler(InvalidEnvironmentCodeException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidEnvironmentCode() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "El código no puede estar vacío", "code"));
+  }
+
+  /** A body that is not JSON or has a value the type cannot read, such as an unknown enum. */
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<BffErrorResponse> handleUnreadableBody() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos"));
   }
 
   /** A path or query value of the wrong shape, such as an id that is not a UUID. */

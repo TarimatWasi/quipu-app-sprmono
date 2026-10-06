@@ -108,6 +108,37 @@ class EnvironmentsBffControllerTest {
   }
 
   @Test
+  void aCodeOfOnlyUnicodeWhitespaceIs400OnCreateAndEdit() throws Exception {
+    var id = createdId("201", "ROOM");
+
+    create("\u2003", "ROOM")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("code"));
+    update(id, "{\"code\":\"\u2003\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("code"));
+    update(id, "{\"code\":\"\u00a0\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("code"));
+  }
+
+  @Test
+  void anUnreadableBodyIs400InTheBffFormat() throws Exception {
+    mockMvc
+        .perform(
+            post(URL)
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"201\",\"type\":\"TENT\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    mockMvc
+        .perform(post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content("{"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+  }
+
+  @Test
   void anEditWithOneFieldKeepsTheOther() throws Exception {
     var id = createdId("201", "ROOM");
 

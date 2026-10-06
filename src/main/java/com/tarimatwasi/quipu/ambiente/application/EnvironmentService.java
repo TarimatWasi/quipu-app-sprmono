@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
 import com.tarimatwasi.quipu.ambiente.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.ambiente.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentCodeAlreadyExistsException;
 import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentRepositoryPort;
@@ -27,10 +28,9 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
   @Override
   @Transactional
   public EnvironmentView create(CreateCommand command) {
+    String code = visibleCode(command.code());
     try {
-      return view(
-          environments.insert(
-              command.code().strip(), EnvironmentType.valueOf(command.type().name())));
+      return view(environments.insert(code, EnvironmentType.valueOf(command.type().name())));
     } catch (EnvironmentCodeAlreadyExistsException e) {
       throw new EnvironmentCodeTakenException(e);
     }
@@ -42,7 +42,7 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
     if (command.code() == null && command.type() == null) {
       throw new EmptyEnvironmentUpdateException();
     }
-    String code = command.code() == null ? null : command.code().strip();
+    String code = command.code() == null ? null : visibleCode(command.code());
     try {
       return environments
           .update(id, code, optionalType(command.type()))
@@ -86,5 +86,14 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
         environment.code(),
         EnvironmentKind.valueOf(environment.type().name()),
         EnvironmentState.valueOf(environment.status().name()));
+  }
+
+  /** Whatever the caller sent, the stored code has at least one visible character. */
+  private static String visibleCode(String code) {
+    String stripped = code.strip();
+    if (stripped.isEmpty()) {
+      throw new InvalidEnvironmentCodeException();
+    }
+    return stripped;
   }
 }

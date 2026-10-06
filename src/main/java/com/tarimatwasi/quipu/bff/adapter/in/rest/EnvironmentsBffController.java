@@ -28,7 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class EnvironmentsBffController {
 
-  private static final String NOT_BLANK = ".*\\S.*";
+  // (?U): the Unicode whitespace (EM SPACE and others) counts as whitespace, as in the contract
+  private static final String NOT_BLANK = "(?U).*\\S.*";
 
   private final ManageEnvironmentsUseCase environments;
 

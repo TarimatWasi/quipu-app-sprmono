@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
 import com.tarimatwasi.quipu.ambiente.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.ambiente.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.CreateCommand;
 import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.EnvironmentKind;
 import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.EnvironmentState;
@@ -61,6 +62,17 @@ class EnvironmentServiceTest {
 
     assertThat(service().get(ID))
         .isEqualTo(new EnvironmentView(ID, "C1", EnvironmentKind.CABIN, EnvironmentState.INACTIVE));
+  }
+
+  @Test
+  void aCodeThatStripsToNothingIsRejectedOnCreateAndUpdate() {
+    assertThatThrownBy(() -> service().create(new CreateCommand("  ", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(" ", null)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+
+    verify(repository, never()).insert(any(), any());
+    verify(repository, never()).update(any(), any(), any());
   }
 
   @Test
