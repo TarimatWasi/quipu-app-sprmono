@@ -115,8 +115,9 @@ class JwtTokenProviderTest {
   @Test
   void rejectsExpiredToken() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
-    String expired =
-        new JwtTokenProvider(SECRET, -1, Clock.systemUTC(), users).issue(id.toString(), "ADMIN");
+    // Same clock as the provider that parses: a token issued against the real clock stops being
+    // expired once the real time passes the fixed NOW of this test.
+    String expired = new JwtTokenProvider(SECRET, -1, clock, users).issue(id.toString(), "ADMIN");
 
     assertThat(provider.parse(expired)).isEmpty();
   }

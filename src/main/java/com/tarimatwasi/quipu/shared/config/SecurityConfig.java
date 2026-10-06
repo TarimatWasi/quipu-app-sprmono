@@ -37,7 +37,10 @@ class SecurityConfig {
             h ->
                 h.contentSecurityPolicy(
                     csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
-        .exceptionHandling(e -> e.authenticationEntryPoint(new NoSessionEntryPoint()))
+        .exceptionHandling(
+            e ->
+                e.authenticationEntryPoint(new NoSessionEntryPoint())
+                    .accessDeniedHandler(new ForbiddenHandler()))
         .authorizeHttpRequests(
             a ->
                 a.requestMatchers(
@@ -48,7 +51,7 @@ class SecurityConfig {
                         "/bff/auth/reset-password",
                         "/error")
                     .permitAll()
-                    .requestMatchers("/bff/diagnostics/**")
+                    .requestMatchers("/bff/diagnostics/**", "/bff/admin/**")
                     .hasRole("ADMIN")
                     .anyRequest()
                     .authenticated())

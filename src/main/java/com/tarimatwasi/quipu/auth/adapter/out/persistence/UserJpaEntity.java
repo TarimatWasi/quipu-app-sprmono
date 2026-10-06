@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.shared.domain.AuditableEntity;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity;
 import jakarta.persistence.*;
 import java.time.Duration;
 import java.time.Instant;

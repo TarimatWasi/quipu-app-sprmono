@@ -80,16 +80,14 @@ final class ArchitectureRules {
 
   @ArchTest static final ArchRule BE_SPR_ARQ_03 = ArchitectureConditions.layersFollowTheTable(ROOT);
 
-  // TAR-62 PR2: remove FreezingArchRule when AuditableEntity leaves shared.domain.
   @ArchTest
   static final ArchRule BE_SPR_ARQ_08 =
-      FreezingArchRule.freeze(
-          classes()
-              .that()
-              .resideInAPackage("..domain..")
-              .should()
-              .onlyDependOnClassesThat()
-              .resideInAnyPackage("java..", "org.jspecify..", "..domain.."));
+      classes()
+          .that()
+          .resideInAPackage("..domain..")
+          .should()
+          .onlyDependOnClassesThat()
+          .resideInAnyPackage("java..", "org.jspecify..", "..domain..");
 
   @ArchTest
   static final ArchRule BE_SPR_ARQ_09_CONTROLLERS =
@@ -304,20 +302,17 @@ final class ArchitectureRules {
 
   // --- Persistencia (DAT) ---
 
-  // TAR-62 PR2: remove FreezingArchRule when AuditableEntity moves to
-  // shared.adapter.out.persistence.
   @ArchTest
   static final ArchRule BE_SPR_DAT_01 =
-      FreezingArchRule.freeze(
-          classes()
-              .that()
-              .areAnnotatedWith(jakarta.persistence.Entity.class)
-              .or()
-              .areAnnotatedWith(jakarta.persistence.MappedSuperclass.class)
-              .or()
-              .areAnnotatedWith(jakarta.persistence.Embeddable.class)
-              .should()
-              .resideInAPackage("..adapter.out.persistence.."));
+      classes()
+          .that()
+          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .or()
+          .areAnnotatedWith(jakarta.persistence.MappedSuperclass.class)
+          .or()
+          .areAnnotatedWith(jakarta.persistence.Embeddable.class)
+          .should()
+          .resideInAPackage("..adapter.out.persistence..");
 
   // TAR-62 PR2: remove FreezingArchRule when the Spring Data repository becomes package-private.
   @ArchTest
@@ -403,14 +398,11 @@ final class ArchitectureRules {
   @ArchTest
   static final ArchRule QP_SPRMONO_API_03 = ArchitectureConditions.newApiVersionsCoexistWithV1();
 
-  // TAR-62 PR2: remove FreezingArchRule when AuditableEntity moves to
-  // shared.adapter.out.persistence.
   @ArchTest
   static final ArchRule QP_SPRMONO_DAT_01 =
-      FreezingArchRule.freeze(
-          classes()
-              .that()
-              .areAnnotatedWith(jakarta.persistence.Entity.class)
-              .should()
-              .beAssignableTo(ROOT + ".shared.adapter.out.persistence.AuditableEntity"));
+      classes()
+          .that()
+          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .should()
+          .beAssignableTo(ROOT + ".shared.adapter.out.persistence.AuditableEntity");
 }

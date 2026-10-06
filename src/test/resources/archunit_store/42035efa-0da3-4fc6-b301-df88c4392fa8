@@ -1,1 +1,0 @@
-Class <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity> is not assignable to com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity in (UserJpaEntity.java:0)
