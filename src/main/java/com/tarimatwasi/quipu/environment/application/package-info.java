@@ -1,4 +1,4 @@
 @NullMarked
-package com.tarimatwasi.quipu.ambiente.port.out;
+package com.tarimatwasi.quipu.environment.application;
 
 import org.jspecify.annotations.NullMarked;

@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.port.in;
+package com.tarimatwasi.quipu.environment.port.in;
 
 /** Another environment already has the code (RF-01). */
 public class EnvironmentCodeTakenException extends RuntimeException {

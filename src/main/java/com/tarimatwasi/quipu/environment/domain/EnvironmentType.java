@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.domain;
+package com.tarimatwasi.quipu.environment.domain;
 
 /** What kind of rentable space an environment is (RF-01). */
 public enum EnvironmentType {

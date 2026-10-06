@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.port.in;
+package com.tarimatwasi.quipu.environment.port.in;
 
 import java.util.List;
 import java.util.UUID;

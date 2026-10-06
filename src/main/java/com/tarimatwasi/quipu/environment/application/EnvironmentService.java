@@ -1,15 +1,15 @@
-package com.tarimatwasi.quipu.ambiente.application;
+package com.tarimatwasi.quipu.environment.application;
 
-import com.tarimatwasi.quipu.ambiente.domain.Environment;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentStatus;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
-import com.tarimatwasi.quipu.ambiente.port.in.EmptyEnvironmentUpdateException;
-import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentCodeTakenException;
-import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentNotFoundException;
-import com.tarimatwasi.quipu.ambiente.port.in.InvalidEnvironmentCodeException;
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase;
-import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentCodeAlreadyExistsException;
-import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentRepositoryPort;
+import com.tarimatwasi.quipu.environment.domain.Environment;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
+import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
+import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
+import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;

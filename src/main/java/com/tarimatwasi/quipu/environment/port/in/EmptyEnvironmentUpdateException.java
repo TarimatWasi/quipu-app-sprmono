@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.port.in;
+package com.tarimatwasi.quipu.environment.port.in;
 
 /** An edit that changes nothing is a malformed request. */
 public class EmptyEnvironmentUpdateException extends RuntimeException {

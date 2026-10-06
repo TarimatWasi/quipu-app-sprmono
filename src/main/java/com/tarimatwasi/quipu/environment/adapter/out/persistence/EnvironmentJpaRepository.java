@@ -1,6 +1,6 @@
-package com.tarimatwasi.quipu.ambiente.adapter.out.persistence;
+package com.tarimatwasi.quipu.environment.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentStatus;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;

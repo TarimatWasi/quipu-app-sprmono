@@ -1,8 +1,8 @@
-package com.tarimatwasi.quipu.ambiente.port.out;
+package com.tarimatwasi.quipu.environment.port.out;
 
-import com.tarimatwasi.quipu.ambiente.domain.Environment;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentStatus;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
+import com.tarimatwasi.quipu.environment.domain.Environment;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

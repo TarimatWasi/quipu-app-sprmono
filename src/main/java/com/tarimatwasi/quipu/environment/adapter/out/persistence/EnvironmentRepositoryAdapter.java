@@ -1,10 +1,10 @@
-package com.tarimatwasi.quipu.ambiente.adapter.out.persistence;
+package com.tarimatwasi.quipu.environment.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.ambiente.domain.Environment;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentStatus;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
-import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentCodeAlreadyExistsException;
-import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentRepositoryPort;
+import com.tarimatwasi.quipu.environment.domain.Environment;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
+import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
+import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

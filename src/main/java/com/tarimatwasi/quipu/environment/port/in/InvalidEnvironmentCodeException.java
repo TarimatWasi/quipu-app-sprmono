@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.port.in;
+package com.tarimatwasi.quipu.environment.port.in;
 
 /** The code, without its surrounding whitespace, is empty or has characters it cannot have. */
 public class InvalidEnvironmentCodeException extends RuntimeException {

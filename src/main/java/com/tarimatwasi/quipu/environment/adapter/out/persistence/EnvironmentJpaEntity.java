@@ -1,8 +1,8 @@
-package com.tarimatwasi.quipu.ambiente.adapter.out.persistence;
+package com.tarimatwasi.quipu.environment.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.ambiente.domain.Environment;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentStatus;
-import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
+import com.tarimatwasi.quipu.environment.domain.Environment;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
+import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
