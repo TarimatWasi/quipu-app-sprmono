@@ -29,6 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class ExpensesBffController {
 
+  // PostgreSQL cannot store the NUL character in a TEXT column
+  private static final String NO_NUL = "(?s)[^\\x00]*";
+
   private static final String MONTH = "^\\d{4}-(0[1-9]|1[0-2])$";
 
   private static final java.util.regex.Pattern MONTH_PATTERN =
@@ -45,7 +48,7 @@ public class ExpensesBffController {
       @NotNull ExpenseKind category,
       @NotNull BigDecimal amount,
       @NotNull @Pattern(regexp = MONTH) String month,
-      @Nullable @Size(max = 500) String description) {}
+      @Nullable @Size(max = 500) @Pattern(regexp = NO_NUL) String description) {}
 
   /** The description is left out when there is none. */
   @JsonInclude(JsonInclude.Include.NON_NULL)

@@ -129,6 +129,25 @@ class ExpensesBffControllerTest {
   }
 
   @Test
+  void aDescriptionWithANulCharacterIs400OnCreateAndEdit() throws Exception {
+    var id = idOf(create(WATER));
+    var body =
+        "{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"x\\u0000y\"}";
+
+    create(body)
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("description"));
+    mockMvc
+        .perform(
+            patch(URL + "/" + id)
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("description"));
+  }
+
+  @Test
   void theMonthOfTheListingIsRequiredAndWellFormed() throws Exception {
     for (var month : new String[] {"+10000-01", "20260-01", "2026-9", "2026-09-01", "  "}) {
       mockMvc
