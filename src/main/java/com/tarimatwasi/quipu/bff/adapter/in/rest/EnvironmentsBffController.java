@@ -38,7 +38,8 @@ public class EnvironmentsBffController {
   }
 
   public record CreateEnvironmentRequest(
-      @NotBlank @Size(max = 50) String code, @NotNull EnvironmentKind type) {}
+      @NotBlank @Pattern(regexp = NOT_BLANK) @Size(max = 50) String code,
+      @NotNull EnvironmentKind type) {}
 
   public record UpdateEnvironmentRequest(
       @Nullable @Pattern(regexp = NOT_BLANK) @Size(max = 50) String code,

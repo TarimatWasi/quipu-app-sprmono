@@ -12,12 +12,16 @@ import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentCodeAlreadyExistsExcep
 import com.tarimatwasi.quipu.ambiente.port.out.EnvironmentRepositoryPort;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class EnvironmentService implements ManageEnvironmentsUseCase {
+
+  /** Whitespace and Unicode separators (NBSP, EM SPACE...), which String.strip() leaves. */
+  private static final Pattern EDGE_SPACE = Pattern.compile("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$");
 
   private final EnvironmentRepositoryPort environments;
 
@@ -90,7 +94,7 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
 
   /** Whatever the caller sent, the stored code has at least one visible character. */
   private static String visibleCode(String code) {
-    String stripped = code.strip();
+    String stripped = EDGE_SPACE.matcher(code).replaceAll("");
     if (stripped.isEmpty()) {
       throw new InvalidEnvironmentCodeException();
     }

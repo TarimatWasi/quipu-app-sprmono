@@ -65,8 +65,19 @@ class EnvironmentServiceTest {
   }
 
   @Test
+  void nonBreakingSpacesAtTheEdgesAreNotPartOfTheCode() {
+    when(repository.insert("201", EnvironmentType.ROOM)).thenReturn(ROOM_201);
+
+    service().create(new CreateCommand(" 201 ", EnvironmentKind.ROOM));
+
+    verify(repository).insert("201", EnvironmentType.ROOM);
+  }
+
+  @Test
   void aCodeThatStripsToNothingIsRejectedOnCreateAndUpdate() {
     assertThatThrownBy(() -> service().create(new CreateCommand("  ", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+    assertThatThrownBy(() -> service().create(new CreateCommand(" ", EnvironmentKind.ROOM)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().update(ID, new UpdateCommand(" ", null)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
