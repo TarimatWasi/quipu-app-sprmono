@@ -66,6 +66,14 @@ class EnvironmentServiceTest {
 
   @Test
   void invisibleCharactersMakeTheCodeInvalid() {
+    assertThatThrownBy(() -> service().create(new CreateCommand("ㅤ", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+    assertThatThrownBy(() -> service().create(new CreateCommand("⠀", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+    assertThatThrownBy(() -> service().create(new CreateCommand("2 01", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+    assertThatThrownBy(() -> service().create(new CreateCommand("<b>1", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().create(new CreateCommand("​", EnvironmentKind.ROOM)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().create(new CreateCommand("2​01", EnvironmentKind.ROOM)))
@@ -74,6 +82,17 @@ class EnvironmentServiceTest {
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     verify(repository, never()).insert(any(), any());
     verify(repository, never()).update(any(), any(), any());
+  }
+
+  @Test
+  void aCodeInTheAlphabetIsKeptAsIs() {
+    for (var code : new String[] {"201", "C1", "Cabaña 3", "A-1/b_2.3", "ÁTICO 2"}) {
+      when(repository.insert(code, EnvironmentType.ROOM)).thenReturn(ROOM_201);
+
+      service().create(new CreateCommand(code, EnvironmentKind.ROOM));
+
+      verify(repository).insert(code, EnvironmentType.ROOM);
+    }
   }
 
   @Test

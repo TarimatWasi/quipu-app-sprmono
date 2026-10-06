@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.ambiente.port.in;
 
-/** The code has no visible character once its surrounding whitespace is removed. */
+/** The code, without its surrounding whitespace, is empty or has characters it cannot have. */
 public class InvalidEnvironmentCodeException extends RuntimeException {
 
   private static final long serialVersionUID = 1L;

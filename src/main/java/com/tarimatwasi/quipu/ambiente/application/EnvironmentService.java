@@ -21,10 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class EnvironmentService implements ManageEnvironmentsUseCase {
 
   /**
-   * Control and format characters (zero-width space, joiners, BOM...): invisible, so no code has
-   * them.
+   * An explicit visible alphabet, not a list of invisible characters to exclude: Latin letters
+   * (accents and ñ included), digits, and after the first character also a space, dot, underscore,
+   * slash or hyphen. Blank letters such as U+3164 and zero-width characters are outside it.
    */
-  private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cc}\\p{Cf}]");
+  private static final Pattern VALID_CODE =
+      Pattern.compile("[\\p{IsLatin}0-9][\\p{IsLatin}0-9 ._/-]*");
 
   /** Whitespace and Unicode separators (NBSP, EM SPACE...), which String.strip() leaves. */
   private static final Pattern EDGE_SPACE = Pattern.compile("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$");
@@ -98,12 +100,10 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
         EnvironmentState.valueOf(environment.status().name()));
   }
 
-  /**
-   * Whatever the caller sent, the stored code is visible: no edge spaces, no invisible characters.
-   */
+  /** Whatever the caller sent, the stored code has no edge spaces and only {@link #VALID_CODE}. */
   private static String visibleCode(String code) {
     String stripped = EDGE_SPACE.matcher(code).replaceAll("");
-    if (stripped.isEmpty() || INVISIBLE.matcher(stripped).find()) {
+    if (!VALID_CODE.matcher(stripped).matches()) {
       throw new InvalidEnvironmentCodeException();
     }
     return stripped;

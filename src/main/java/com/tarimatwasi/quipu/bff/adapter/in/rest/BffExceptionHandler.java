@@ -112,11 +112,15 @@ public class BffExceptionHandler {
         .body(new BffErrorResponse("VALIDATION_ERROR", "Indica al menos un dato para cambiar"));
   }
 
-  /** A code of only whitespace that the schema did not catch, such as non-breaking spaces. */
+  /** A code the schema let through that is empty, invisible or outside the allowed alphabet. */
   @ExceptionHandler(InvalidEnvironmentCodeException.class)
   public ResponseEntity<BffErrorResponse> handleInvalidEnvironmentCode() {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(new BffErrorResponse("VALIDATION_ERROR", "El código no puede estar vacío", "code"));
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR",
+                "El código solo puede tener letras, números, espacios y . _ / -",
+                "code"));
   }
 
   /** A body that is not JSON or has a value the type cannot read, such as an unknown enum. */

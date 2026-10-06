@@ -110,19 +110,29 @@ class EnvironmentsBffControllerTest {
         .andExpect(jsonPath("$.status").value("ACTIVE"));
   }
 
+  /**
+   * Spaces, no-break spaces, zero-width and blank letters: none is a visible code (POST and PATCH).
+   */
   @Test
-  void aCodeOfOnlyUnicodeWhitespaceIs400OnCreateAndEdit() throws Exception {
+  void aCodeWithoutVisibleCharactersIs400OnCreateAndEdit() throws Exception {
     var id = createdId("201", "ROOM");
 
-    create("\u2003", "ROOM")
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("code"));
-    update(id, "{\"code\":\"\u2003\"}")
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("code"));
-    update(id, "{\"code\":\"\u00a0\"}")
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("code"));
+    for (var invisible : new String[] {"\u2003", "\u00a0", "\u200b", "\u3164", "\u2800", "<b>"}) {
+      create(invisible, "ROOM")
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.field").value("code"));
+      update(id, "{\"code\":\"" + invisible + "\"}")
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.field").value("code"));
+    }
+  }
+
+  @Test
+  void aCodeWithAccentsAndSeparatorsIsAccepted() throws Exception {
+    create("Caba\u00f1a 3-A/1.b_2", "CABIN")
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.code").value("Caba\u00f1a 3-A/1.b_2"));
   }
 
   @Test
