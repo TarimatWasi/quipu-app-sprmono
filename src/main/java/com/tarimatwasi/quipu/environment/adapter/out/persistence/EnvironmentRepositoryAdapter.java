@@ -57,6 +57,13 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
             });
   }
 
+  @Override
+  public boolean updateStatus(UUID id, EnvironmentStatus status) {
+    var entity = jpaRepository.findWithLockById(id);
+    entity.ifPresent(found -> found.changeStatus(status));
+    return entity.isPresent();
+  }
+
   /** Flushes so that the unique violation of two simultaneous writes surfaces here, not later. */
   private EnvironmentJpaEntity saveAndFlush(EnvironmentJpaEntity entity) {
     try {

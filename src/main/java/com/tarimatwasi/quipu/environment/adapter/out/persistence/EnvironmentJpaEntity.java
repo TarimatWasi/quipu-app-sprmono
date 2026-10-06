@@ -45,6 +45,10 @@ public class EnvironmentJpaEntity extends AuditableEntity {
     this.type = newType;
   }
 
+  void changeStatus(EnvironmentStatus newStatus) {
+    this.status = newStatus;
+  }
+
   Environment toDomain() {
     return new Environment(id, code, type, status);
   }
