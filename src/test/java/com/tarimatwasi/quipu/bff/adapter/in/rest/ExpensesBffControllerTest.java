@@ -137,6 +137,9 @@ class ExpensesBffControllerTest {
     create(json + emoji.repeat(501) + "\"}")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("description"));
+    create(json + " ".repeat(500) + "x\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("description"));
   }
 
   @Test

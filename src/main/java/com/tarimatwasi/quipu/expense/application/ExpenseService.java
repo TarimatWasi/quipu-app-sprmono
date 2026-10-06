@@ -83,11 +83,11 @@ public class ExpenseService implements ManageExpensesUseCase {
     if (description == null || description.isBlank()) {
       return null;
     }
-    String stripped = description.strip();
-    if (stripped.codePointCount(0, stripped.length()) > MAX_DESCRIPTION) {
+    // The limit of the contract applies to what the caller sent, before the edges are stripped
+    if (description.codePointCount(0, description.length()) > MAX_DESCRIPTION) {
       throw new InvalidExpenseDescriptionException();
     }
-    return stripped;
+    return description.strip();
   }
 
   private static ExpenseCategory category(ExpenseKind kind) {
