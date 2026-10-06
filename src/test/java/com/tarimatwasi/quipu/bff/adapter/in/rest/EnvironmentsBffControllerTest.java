@@ -9,7 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import jakarta.servlet.http.Cookie;
+import java.util.ArrayList;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -166,6 +169,34 @@ class EnvironmentsBffControllerTest {
     update(other, "{\"code\":\"201\"}")
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("ENVIRONMENT_CODE_TAKEN"));
+  }
+
+  /** Two administrators edit the same environment at once: both win in turn, none gets a 500. */
+  @Test
+  void simultaneousEditsOfOneEnvironmentNeverFailWithAServerError() throws Exception {
+    var id = createdId("201", "ROOM");
+    var token = admin();
+    var edits = new ArrayList<Callable<Integer>>();
+    for (int i = 0; i < 8; i++) {
+      var type = i % 2 == 0 ? "CABIN" : "ROOM";
+      edits.add(
+          () ->
+              mockMvc
+                  .perform(
+                      patch(URL + "/" + id)
+                          .cookie(token)
+                          .contentType(MediaType.APPLICATION_JSON)
+                          .content("{\"type\":\"" + type + "\"}"))
+                  .andReturn()
+                  .getResponse()
+                  .getStatus());
+    }
+
+    try (var pool = Executors.newFixedThreadPool(8)) {
+      for (var result : pool.invokeAll(edits)) {
+        org.assertj.core.api.Assertions.assertThat(result.get()).isEqualTo(200);
+      }
+    }
   }
 
   @Test

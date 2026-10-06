@@ -44,7 +44,7 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
   public Optional<Environment> update(
       UUID id, @Nullable String code, @Nullable EnvironmentType type) {
     return jpaRepository
-        .findById(id)
+        .findWithLockById(id)
         .map(
             entity -> {
               if (code != null) {
