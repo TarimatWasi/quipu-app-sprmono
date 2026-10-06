@@ -109,8 +109,7 @@ class ExpensesContractTest {
   void anAmountOfZeroIsAValidationError() throws Exception {
     create("{\"category\":\"WATER\",\"amount\":0,\"month\":\"2026-09\"}")
         .andExpect(status().isBadRequest())
-        .andExpect(
-            answersTheContractToARequestWith("validation.request.body.schema.exclusiveMinimum"));
+        .andExpect(answersTheContractToARequestWith("validation.request.body.schema.minimum"));
   }
 
   @Test
