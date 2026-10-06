@@ -1,11 +1,11 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase;
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.CreateCommand;
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.EnvironmentKind;
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.EnvironmentView;
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.StatusFilter;
-import com.tarimatwasi.quipu.ambiente.port.in.ManageEnvironmentsUseCase.UpdateCommand;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.CreateCommand;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.EnvironmentKind;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.EnvironmentView;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.StatusFilter;
+import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.UpdateCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

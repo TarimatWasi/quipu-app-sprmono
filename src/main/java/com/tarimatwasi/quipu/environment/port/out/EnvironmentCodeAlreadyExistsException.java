@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.port.out;
+package com.tarimatwasi.quipu.environment.port.out;
 
 /** Another environment already has the code. */
 public class EnvironmentCodeAlreadyExistsException extends RuntimeException {

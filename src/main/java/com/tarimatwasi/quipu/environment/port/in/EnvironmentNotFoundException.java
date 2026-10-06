@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.ambiente.port.in;
+package com.tarimatwasi.quipu.environment.port.in;
 
 /** No environment has the requested id. */
 public class EnvironmentNotFoundException extends RuntimeException {
