@@ -6,7 +6,6 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseComman
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseKind;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseView;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -32,16 +31,19 @@ public class ExpensesBffController {
 
   private static final String MONTH = "^\\d{4}-(0[1-9]|1[0-2])$";
 
+  private static final java.util.regex.Pattern MONTH_PATTERN =
+      java.util.regex.Pattern.compile(MONTH);
+
   private final ManageExpensesUseCase expenses;
 
   public ExpensesBffController(ManageExpensesUseCase expenses) {
     this.expenses = expenses;
   }
 
-  /** The amount is checked again by the use case, which also bounds it and its decimals. */
+  /** The use case checks the amount: greater than 0, at most two decimals and the column limit. */
   public record ExpenseRequest(
       @NotNull ExpenseKind category,
-      @NotNull @Digits(integer = 8, fraction = 2) BigDecimal amount,
+      @NotNull BigDecimal amount,
       @NotNull @Pattern(regexp = MONTH) String month,
       @Nullable @Size(max = 500) String description) {}
 
@@ -60,8 +62,11 @@ public class ExpensesBffController {
   }
 
   @GetMapping("/bff/admin/expenses")
-  public List<ExpenseResponse> list(@RequestParam("month") YearMonth month) {
-    return expenses.list(month).stream().map(ExpenseResponse::of).toList();
+  public List<ExpenseResponse> list(@RequestParam("month") String month) {
+    if (!MONTH_PATTERN.matcher(month).matches()) {
+      throw new InvalidQueryParameterException("month");
+    }
+    return expenses.list(YearMonth.parse(month)).stream().map(ExpenseResponse::of).toList();
   }
 
   @PostMapping("/bff/admin/expenses")

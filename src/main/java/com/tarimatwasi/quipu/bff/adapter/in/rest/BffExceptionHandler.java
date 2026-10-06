@@ -150,6 +150,15 @@ public class BffExceptionHandler {
                 "amount"));
   }
 
+  /** A query parameter that is there but not in the documented shape. */
+  @ExceptionHandler(InvalidQueryParameterException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidQueryParameter(
+      InvalidQueryParameterException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.parameter()));
+  }
+
   /** A required query parameter that is not there. */
   @ExceptionHandler(MissingServletRequestParameterException.class)
   public ResponseEntity<BffErrorResponse> handleMissingParameter(

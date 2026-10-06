@@ -122,7 +122,20 @@ class ExpensesBffControllerTest {
   }
 
   @Test
+  void anAmountWithTrailingZerosIsAccepted() throws Exception {
+    create("{\"category\":\"WATER\",\"amount\":10.500,\"month\":\"2026-09\"}")
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.amount").value(10.5));
+  }
+
+  @Test
   void theMonthOfTheListingIsRequiredAndWellFormed() throws Exception {
+    for (var month : new String[] {"+10000-01", "20260-01", "2026-9", "2026-09-01", "  "}) {
+      mockMvc
+          .perform(get(URL).param("month", month).cookie(admin()))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.field").value("month"));
+    }
     mockMvc
         .perform(get(URL).cookie(admin()))
         .andExpect(status().isBadRequest())
