@@ -121,6 +121,14 @@ class ExpensesBffControllerTest {
         .andExpect(jsonPath("$.field").value("description"));
   }
 
+  /** The contract asks for a JSON number: a quoted amount is not converted. */
+  @Test
+  void aQuotedAmountIs400() throws Exception {
+    create("{\"category\":\"WATER\",\"amount\":\"10\",\"month\":\"2026-09\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+  }
+
   @Test
   void anAmountWithTrailingZerosIsAccepted() throws Exception {
     create("{\"category\":\"WATER\",\"amount\":10.500,\"month\":\"2026-09\"}")
