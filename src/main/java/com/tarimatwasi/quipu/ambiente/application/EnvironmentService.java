@@ -20,6 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class EnvironmentService implements ManageEnvironmentsUseCase {
 
+  /**
+   * Control and format characters (zero-width space, joiners, BOM...): invisible, so no code has
+   * them.
+   */
+  private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cc}\\p{Cf}]");
+
   /** Whitespace and Unicode separators (NBSP, EM SPACE...), which String.strip() leaves. */
   private static final Pattern EDGE_SPACE = Pattern.compile("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$");
 
@@ -92,10 +98,12 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
         EnvironmentState.valueOf(environment.status().name()));
   }
 
-  /** Whatever the caller sent, the stored code has at least one visible character. */
+  /**
+   * Whatever the caller sent, the stored code is visible: no edge spaces, no invisible characters.
+   */
   private static String visibleCode(String code) {
     String stripped = EDGE_SPACE.matcher(code).replaceAll("");
-    if (stripped.isEmpty()) {
+    if (stripped.isEmpty() || INVISIBLE.matcher(stripped).find()) {
       throw new InvalidEnvironmentCodeException();
     }
     return stripped;
