@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.expense.application;
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
 import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
+import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
@@ -19,6 +20,9 @@ public class ExpenseService implements ManageExpensesUseCase {
 
   /** NUMERIC(10,2): eight digits before the point. */
   private static final BigDecimal MAX_AMOUNT = new BigDecimal("99999999.99");
+
+  /** The limit of the contract, in characters (code points) and not in UTF-16 units. */
+  private static final int MAX_DESCRIPTION = 500;
 
   private final ExpenseRepositoryPort expenses;
 
@@ -79,7 +83,11 @@ public class ExpenseService implements ManageExpensesUseCase {
     if (description == null || description.isBlank()) {
       return null;
     }
-    return description.strip();
+    String stripped = description.strip();
+    if (stripped.codePointCount(0, stripped.length()) > MAX_DESCRIPTION) {
+      throw new InvalidExpenseDescriptionException();
+    }
+    return stripped;
   }
 
   private static ExpenseCategory category(ExpenseKind kind) {

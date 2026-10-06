@@ -129,6 +129,17 @@ class ExpensesBffControllerTest {
   }
 
   @Test
+  void theDescriptionLimitCountsCharactersNotUtf16Units() throws Exception {
+    var emoji = "😀";
+    var json = "{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"";
+
+    create(json + emoji.repeat(500) + "\"}").andExpect(status().isCreated());
+    create(json + emoji.repeat(501) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("description"));
+  }
+
+  @Test
   void aDescriptionWithANulCharacterIs400OnCreateAndEdit() throws Exception {
     var id = idOf(create(WATER));
     var body =

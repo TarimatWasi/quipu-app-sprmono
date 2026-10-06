@@ -8,7 +8,6 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseView;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
@@ -48,7 +47,7 @@ public class ExpensesBffController {
       @NotNull ExpenseKind category,
       @NotNull BigDecimal amount,
       @NotNull @Pattern(regexp = MONTH) String month,
-      @Nullable @Size(max = 500) @Pattern(regexp = NO_NUL) String description) {}
+      @Nullable @Pattern(regexp = NO_NUL) String description) {}
 
   /** The description is left out when there is none. */
   @JsonInclude(JsonInclude.Include.NON_NULL)

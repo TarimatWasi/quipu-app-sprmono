@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
+import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -148,6 +149,17 @@ public class BffExceptionHandler {
                 "VALIDATION_ERROR",
                 "El monto debe ser mayor que 0 y tener como máximo 2 decimales",
                 "amount"));
+  }
+
+  /** The description is longer than 500 characters. */
+  @ExceptionHandler(InvalidExpenseDescriptionException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidExpenseDescription() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR",
+                "La descripción admite como máximo 500 caracteres",
+                "description"));
   }
 
   /** A query parameter that is there but not in the documented shape. */
