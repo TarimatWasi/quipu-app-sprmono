@@ -1,5 +1,8 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
+import com.tarimatwasi.quipu.ambiente.port.in.EmptyEnvironmentUpdateException;
+import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentCodeTakenException;
+import com.tarimatwasi.quipu.ambiente.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.auth.application.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
@@ -14,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 // Before Boot's ProblemDetails advice: the BFF answers {code, message, field?}, not problem+json.
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -83,6 +87,35 @@ public class BffExceptionHandler {
             .orElse(null);
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", field));
+  }
+
+  /** RF-01: the code is the visible key of the environment; two cannot share it. */
+  @ExceptionHandler(EnvironmentCodeTakenException.class)
+  public ResponseEntity<BffErrorResponse> handleEnvironmentCodeTaken() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "ENVIRONMENT_CODE_TAKEN", "Ya existe un ambiente con ese código", "code"));
+  }
+
+  @ExceptionHandler(EnvironmentNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handleEnvironmentNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("ENVIRONMENT_NOT_FOUND", "El ambiente no existe"));
+  }
+
+  @ExceptionHandler(EmptyEnvironmentUpdateException.class)
+  public ResponseEntity<BffErrorResponse> handleEmptyEnvironmentUpdate() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Indica al menos un dato para cambiar"));
+  }
+
+  /** A path or query value of the wrong shape, such as an id that is not a UUID. */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<BffErrorResponse> handleBadParameter(
+      MethodArgumentTypeMismatchException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.getName()));
   }
 
   /** One answer for an unknown, expired or used code and for a disabled account (RF-16). */

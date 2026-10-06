@@ -2,17 +2,11 @@ Cycle detected: Slice auth ->
                 Slice shared -> 
                 Slice auth
   1. Dependencies of Slice auth
-    - Class <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity> extends class <com.tarimatwasi.quipu.shared.domain.AuditableEntity> in (UserJpaEntity.java)
-    - Constructor <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity.<init>()> calls constructor <com.tarimatwasi.quipu.shared.domain.AuditableEntity.<init>()> in (UserJpaEntity.java)
+    - Class <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity> extends class <com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity> in (UserJpaEntity.java)
+    - Constructor <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity.<init>()> calls constructor <com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity.<init>()> in (UserJpaEntity.java)
   2. Dependencies of Slice shared
     - Method <com.tarimatwasi.quipu.shared.config.SecurityConfig.securityFilterChain(org.springframework.security.config.annotation.web.builders.HttpSecurity, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.shared.config.RateLimitProperties)> has parameter of type <com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider> in (SecurityConfig.java)
     - Method <com.tarimatwasi.quipu.shared.config.SecurityConfig.securityFilterChain(org.springframework.security.config.annotation.web.builders.HttpSecurity, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.shared.config.RateLimitProperties)> calls constructor <com.tarimatwasi.quipu.auth.adapter.out.security.JwtAuthenticationFilter.<init>(com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider)> in (SecurityConfig.java)
-----
-Module 'auth' depends on non-exposed type com.tarimatwasi.quipu.shared.domain.AuditableEntity within module 'shared'!
-Class <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity> extends class <com.tarimatwasi.quipu.shared.domain.AuditableEntity> in (UserJpaEntity.java)
-----
-Module 'auth' depends on non-exposed type com.tarimatwasi.quipu.shared.domain.AuditableEntity within module 'shared'!
-Constructor <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity.<init>()> calls constructor <com.tarimatwasi.quipu.shared.domain.AuditableEntity.<init>()> in (UserJpaEntity.java)
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider within module 'auth'!
 AuthBffController declares constructor AuthBffController(LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase, PasswordRecoveryUseCase, JwtTokenProvider, SessionCookieProperties) in (AuthBffController.java)

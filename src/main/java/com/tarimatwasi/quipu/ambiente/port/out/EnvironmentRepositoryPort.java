@@ -1,0 +1,31 @@
+package com.tarimatwasi.quipu.ambiente.port.out;
+
+import com.tarimatwasi.quipu.ambiente.domain.Environment;
+import com.tarimatwasi.quipu.ambiente.domain.EnvironmentStatus;
+import com.tarimatwasi.quipu.ambiente.domain.EnvironmentType;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+
+public interface EnvironmentRepositoryPort {
+
+  /**
+   * Stores a new ACTIVE environment.
+   *
+   * @throws EnvironmentCodeAlreadyExistsException if another environment has the code
+   */
+  Environment insert(String code, EnvironmentType type);
+
+  Optional<Environment> findById(UUID id);
+
+  /** Ordered by code; {@code status == null} returns every environment. */
+  List<Environment> findAll(@Nullable EnvironmentStatus status);
+
+  /**
+   * Changes the present fields of the environment; empty if there is none with that id.
+   *
+   * @throws EnvironmentCodeAlreadyExistsException if another environment has the new code
+   */
+  Optional<Environment> update(UUID id, @Nullable String code, @Nullable EnvironmentType type);
+}

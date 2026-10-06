@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.shared.domain;
+package com.tarimatwasi.quipu.shared.adapter.out.persistence;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;

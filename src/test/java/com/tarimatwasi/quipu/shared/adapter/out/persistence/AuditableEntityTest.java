@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.shared.domain;
+package com.tarimatwasi.quipu.shared.adapter.out.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
