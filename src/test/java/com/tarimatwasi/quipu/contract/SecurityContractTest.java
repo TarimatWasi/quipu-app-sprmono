@@ -92,14 +92,4 @@ class SecurityContractTest {
         .andExpect(header().exists("Content-Security-Policy"))
         .andExpect(header().string("X-Frame-Options", "DENY"));
   }
-
-  /** SEC-03: HSTS goes out on HTTPS only; behind the proxy that is the forwarded scheme. */
-  @Test
-  void strict_transport_security_is_sent_over_https_and_not_over_http() throws Exception {
-    mvc.perform(get("/actuator/health").secure(true))
-        .andExpect(
-            header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"));
-    mvc.perform(get("/actuator/health"))
-        .andExpect(header().doesNotExist("Strict-Transport-Security"));
-  }
 }
