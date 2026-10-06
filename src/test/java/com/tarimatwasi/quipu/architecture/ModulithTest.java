@@ -33,7 +33,7 @@ class ModulithTest {
         .as("violations of the modules, compared with %s (TAR-62 PR2)", KNOWN_UNTIL_PR2)
         .containsExactlyElementsOf(known());
     assertThat(modules.stream().map(m -> m.getIdentifier().toString()))
-        .containsExactlyInAnyOrder("environment", "auth", "bff", "shared");
+        .containsExactlyInAnyOrder("auth", "bff", "environment", "expense", "shared");
   }
 
   @Test
