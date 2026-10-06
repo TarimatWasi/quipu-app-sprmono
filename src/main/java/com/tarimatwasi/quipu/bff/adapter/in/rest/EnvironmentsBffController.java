@@ -79,4 +79,17 @@ public class EnvironmentsBffController {
     return EnvironmentResponse.of(
         environments.update(id, new UpdateCommand(request.code(), request.type())));
   }
+
+  /** RF-13: the environment leaves the operational listings but keeps its history (RN-12). */
+  @PostMapping("/bff/admin/environments/{id}/deactivate")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deactivate(@PathVariable UUID id) {
+    environments.deactivate(id);
+  }
+
+  @PostMapping("/bff/admin/environments/{id}/reactivate")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void reactivate(@PathVariable UUID id) {
+    environments.reactivate(id);
+  }
 }

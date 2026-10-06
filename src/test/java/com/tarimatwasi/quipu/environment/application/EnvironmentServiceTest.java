@@ -172,6 +172,28 @@ class EnvironmentServiceTest {
   }
 
   @Test
+  void deactivatingAndReactivatingSetTheStatus() {
+    when(repository.updateStatus(ID, EnvironmentStatus.INACTIVE)).thenReturn(true);
+    when(repository.updateStatus(ID, EnvironmentStatus.ACTIVE)).thenReturn(true);
+
+    service().deactivate(ID);
+    service().reactivate(ID);
+
+    verify(repository).updateStatus(ID, EnvironmentStatus.INACTIVE);
+    verify(repository).updateStatus(ID, EnvironmentStatus.ACTIVE);
+  }
+
+  @Test
+  void changingTheStatusOfAnUnknownEnvironmentIsNotFound() {
+    when(repository.updateStatus(eq(ID), any())).thenReturn(false);
+
+    assertThatThrownBy(() -> service().deactivate(ID))
+        .isInstanceOf(EnvironmentNotFoundException.class);
+    assertThatThrownBy(() -> service().reactivate(ID))
+        .isInstanceOf(EnvironmentNotFoundException.class);
+  }
+
+  @Test
   void theListingFilterBecomesTheStatusOfTheQuery() {
     when(repository.findAll(EnvironmentStatus.ACTIVE)).thenReturn(List.of(ROOM_201));
     when(repository.findAll(EnvironmentStatus.INACTIVE)).thenReturn(List.of());

@@ -28,4 +28,7 @@ public interface EnvironmentRepositoryPort {
    * @throws EnvironmentCodeAlreadyExistsException if another environment has the new code
    */
   Optional<Environment> update(UUID id, @Nullable String code, @Nullable EnvironmentType type);
+
+  /** Sets the status of the environment; false if there is none with that id. */
+  boolean updateStatus(UUID id, EnvironmentStatus status);
 }

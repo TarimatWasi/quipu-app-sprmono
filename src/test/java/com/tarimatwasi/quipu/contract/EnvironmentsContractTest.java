@@ -150,6 +150,30 @@ class EnvironmentsContractTest {
   }
 
   @Test
+  void deactivateAndReactivateAnswerTheContract() throws Exception {
+    var id = idOf(create("{\"code\":\"201\",\"type\":\"ROOM\"}"));
+
+    for (var action : new String[] {"deactivate", "reactivate"}) {
+      mockMvc
+          .perform(post(URL + "/" + id + "/" + action).cookie(admin()))
+          .andExpect(status().isNoContent())
+          .andExpect(satisfiesTheContract());
+      mockMvc
+          .perform(post(URL + "/" + UUID.randomUUID() + "/" + action).cookie(admin()))
+          .andExpect(status().isNotFound())
+          .andExpect(satisfiesTheContract());
+      mockMvc
+          .perform(
+              post(URL + "/" + id + "/" + action)
+                  .cookie(
+                      new Cookie(
+                          "sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"))))
+          .andExpect(status().isForbidden())
+          .andExpect(satisfiesTheContract());
+    }
+  }
+
+  @Test
   void aGuestSessionIs403() throws Exception {
     var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"));
 

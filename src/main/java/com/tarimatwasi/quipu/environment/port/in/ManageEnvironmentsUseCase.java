@@ -58,6 +58,22 @@ public interface ManageEnvironmentsUseCase {
    */
   EnvironmentView get(UUID id);
 
+  /**
+   * Takes the environment out of the operational listings, keeping its history (RN-12). Doing it to
+   * an inactive environment changes nothing.
+   *
+   * @throws EnvironmentNotFoundException if there is no environment with that id
+   */
+  void deactivate(UUID id);
+
+  /**
+   * Brings an inactive environment back to the operational listings. Doing it to an active
+   * environment changes nothing.
+   *
+   * @throws EnvironmentNotFoundException if there is no environment with that id
+   */
+  void reactivate(UUID id);
+
   /** Lists the environments of the filter, ordered by code. */
   List<EnvironmentView> list(StatusFilter filter);
 }

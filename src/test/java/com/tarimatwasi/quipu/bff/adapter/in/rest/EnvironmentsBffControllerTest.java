@@ -255,6 +255,70 @@ class EnvironmentsBffControllerTest {
         .andExpect(jsonPath("$[0].code").value("100"));
   }
 
+  /** RN-12: a deactivated environment leaves the active listing but is still readable. */
+  @Test
+  void deactivatingHidesFromTheActiveListingAndKeepsTheRecord() throws Exception {
+    var id = createdId("201", "ROOM");
+
+    post204(id, "deactivate");
+
+    mockMvc.perform(get(URL).cookie(admin())).andExpect(jsonPath("$.length()").value(0));
+    mockMvc
+        .perform(get(URL).param("status", "INACTIVE").cookie(admin()))
+        .andExpect(jsonPath("$[0].code").value("201"));
+    mockMvc
+        .perform(get(URL + "/" + id).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("INACTIVE"));
+  }
+
+  @Test
+  void reactivatingBringsItBackAndBothActionsAreIdempotent() throws Exception {
+    var id = createdId("201", "ROOM");
+
+    post204(id, "reactivate");
+    post204(id, "deactivate");
+    post204(id, "deactivate");
+    post204(id, "reactivate");
+    post204(id, "reactivate");
+
+    mockMvc
+        .perform(get(URL).cookie(admin()))
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+  }
+
+  @Test
+  void anInactiveEnvironmentCanStillBeEditedAndItsCodeStaysTaken() throws Exception {
+    var id = createdId("201", "ROOM");
+    post204(id, "deactivate");
+
+    update(id, "{\"type\":\"CABIN\"}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("INACTIVE"));
+    create("201", "ROOM").andExpect(status().isConflict());
+  }
+
+  @Test
+  void changingTheStatusOfAnUnknownEnvironmentIs404AndOfAGuestIs403() throws Exception {
+    var unknown = UUID.randomUUID();
+    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"));
+    var id = createdId("201", "ROOM");
+
+    for (var action : new String[] {"deactivate", "reactivate"}) {
+      mockMvc
+          .perform(post(URL + "/" + unknown + "/" + action).cookie(admin()))
+          .andExpect(status().isNotFound());
+      mockMvc
+          .perform(post(URL + "/" + id + "/" + action).cookie(guest))
+          .andExpect(status().isForbidden());
+      mockMvc.perform(post(URL + "/" + id + "/" + action)).andExpect(status().isUnauthorized());
+    }
+    mockMvc
+        .perform(get(URL + "/" + id).cookie(admin()))
+        .andExpect(jsonPath("$.status").value("ACTIVE"));
+  }
+
   @Test
   void anUnknownStatusFilterIs400() throws Exception {
     mockMvc
@@ -335,6 +399,12 @@ class EnvironmentsBffControllerTest {
             .getResponse()
             .getContentAsString();
     return com.jayway.jsonpath.JsonPath.read(body, "$.id");
+  }
+
+  private void post204(String id, String action) throws Exception {
+    mockMvc
+        .perform(post(URL + "/" + id + "/" + action).cookie(admin()))
+        .andExpect(status().isNoContent());
   }
 
   private ResultActions update(String id, String json) throws Exception {

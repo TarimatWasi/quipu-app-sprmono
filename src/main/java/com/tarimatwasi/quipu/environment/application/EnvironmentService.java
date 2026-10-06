@@ -66,6 +66,24 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
   }
 
   @Override
+  @Transactional
+  public void deactivate(UUID id) {
+    setStatus(id, EnvironmentStatus.INACTIVE);
+  }
+
+  @Override
+  @Transactional
+  public void reactivate(UUID id) {
+    setStatus(id, EnvironmentStatus.ACTIVE);
+  }
+
+  private void setStatus(UUID id, EnvironmentStatus status) {
+    if (!environments.updateStatus(id, status)) {
+      throw new EnvironmentNotFoundException();
+    }
+  }
+
+  @Override
   @Transactional(readOnly = true)
   public EnvironmentView get(UUID id) {
     return environments
