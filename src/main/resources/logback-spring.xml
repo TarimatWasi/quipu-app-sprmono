@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ADR-F5 (TAR-139): los logs salen por OTLP a Grafana Cloud solo desde dev y prod, y nunca por
+     debajo de INFO (BE-SPR-OBS-05 y OBS-06: dev registra la aplicación en DEBUG y eso se queda
+     en la consola). El resto es la configuración por defecto de Spring Boot. -->
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <appender name="OTEL"
+            class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>INFO</level>
+    </filter>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+
+  <springProfile name="dev | prod">
+    <root>
+      <appender-ref ref="OTEL"/>
+    </root>
+  </springProfile>
+</configuration>
