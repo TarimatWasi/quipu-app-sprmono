@@ -29,8 +29,12 @@ class JwtTokenProviderTest {
 
   private final UserRepositoryPort users = mock(UserRepositoryPort.class);
   private final MutableClock clock = new MutableClock(NOW);
-  private final JwtTokenProvider provider = new JwtTokenProvider(SECRET, 60, clock, users);
+  private final JwtTokenProvider provider = providerFor(SECRET, Duration.ofMinutes(60), clock);
   private final UUID id = UUID.randomUUID();
+
+  private JwtTokenProvider providerFor(String secret, Duration expiration, Clock clock) {
+    return new JwtTokenProvider(new JwtProperties(secret, expiration), clock, users);
+  }
 
   @Test
   void parsesTokenOfAnActiveAccountAndTakesTheSessionFromTheAccount() {
@@ -105,8 +109,10 @@ class JwtTokenProviderTest {
   void rejectsTokenSignedWithAnotherKey() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
     String forged =
-        new JwtTokenProvider(
-                "other-secret-other-secret-other-secret-other", 60, Clock.systemUTC(), users)
+        providerFor(
+                "other-secret-other-secret-other-secret-other",
+                Duration.ofMinutes(60),
+                Clock.systemUTC())
             .issue(id.toString(), "ADMIN");
 
     assertThat(provider.parse(forged)).isEmpty();
@@ -117,7 +123,9 @@ class JwtTokenProviderTest {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
     // Same clock as the provider that parses: a token issued against the real clock stops being
     // expired once the real time passes the fixed NOW of this test.
-    String expired = new JwtTokenProvider(SECRET, -1, clock, users).issue(id.toString(), "ADMIN");
+    String expired =
+        providerFor(SECRET, Duration.ofMinutes(1), clock).issue(id.toString(), "ADMIN");
+    clock.advance(Duration.ofMinutes(2));
 
     assertThat(provider.parse(expired)).isEmpty();
   }

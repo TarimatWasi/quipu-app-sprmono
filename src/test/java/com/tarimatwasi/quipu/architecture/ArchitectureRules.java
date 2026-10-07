@@ -144,7 +144,6 @@ final class ArchitectureRules {
           .areAnnotatedWith(ConfigurationProperties.class)
           .should()
           .haveSimpleNameEndingWith("Properties")
-          // empty until PR3 adds the @ConfigurationProperties records
           .allowEmptyShould(true);
 
   @ArchTest
@@ -191,9 +190,7 @@ final class ArchitectureRules {
 
   @ArchTest
   static final ArchRule BE_SPR_CFG_01 =
-      ArchitectureConditions.propertiesPrefixIsApp()
-          // empty until PR3 adds the @ConfigurationProperties records
-          .allowEmptyShould(true);
+      ArchitectureConditions.propertiesPrefixIsApp().allowEmptyShould(true);
 
   @ArchTest
   static final ArchRule BE_SPR_CFG_02 =
@@ -206,35 +203,28 @@ final class ArchitectureRules {
           .beAnnotatedWith(Validated.class)
           .andShould()
           .notBeAnnotatedWith(Component.class)
-          // empty until PR3 adds the @ConfigurationProperties records
           .allowEmptyShould(true);
 
-  // TAR-62 PR3: remove FreezingArchRule when JwtProperties, R2Properties, ResendProperties and
-  // AdminProperties replace the multiple @Value.
-  @ArchTest
-  static final ArchRule BE_SPR_CFG_03 =
-      FreezingArchRule.freeze(ArchitectureConditions.atMostOneValuePerClass());
+  @ArchTest static final ArchRule BE_SPR_CFG_03 = ArchitectureConditions.atMostOneValuePerClass();
 
   @ArchTest static final ArchRule BE_SPR_CFG_04 = ArchitectureConditions.noValueOnFieldsNorSpel();
 
   // --- Código (COD, NUL) ---
 
-  // TAR-62 PR3: remove FreezingArchRule when JwtTokenProvider uses the injected Clock.
   @ArchTest
   static final ArchRule BE_SPR_COD_03 =
-      FreezingArchRule.freeze(
-          noClasses()
-              .should()
-              .callMethod(Instant.class, "now")
-              .orShould()
-              .callMethod(LocalDate.class, "now")
-              .orShould()
-              .callMethod(LocalDateTime.class, "now")
-              .orShould()
-              .callMethod(ZonedDateTime.class, "now")
-              .orShould()
-              .callMethod(System.class, "currentTimeMillis")
-              .because("a Clock is injected instead (the clock zone is fixed by the profile)"));
+      noClasses()
+          .should()
+          .callMethod(Instant.class, "now")
+          .orShould()
+          .callMethod(LocalDate.class, "now")
+          .orShould()
+          .callMethod(LocalDateTime.class, "now")
+          .orShould()
+          .callMethod(ZonedDateTime.class, "now")
+          .orShould()
+          .callMethod(System.class, "currentTimeMillis")
+          .because("a Clock is injected instead (the clock zone is fixed by the profile)");
 
   @ArchTest static final ArchRule BE_SPR_COD_04 = NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS;
 

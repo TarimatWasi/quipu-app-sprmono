@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.auth.adapter.out.mail;
+package com.tarimatwasi.quipu.shared.adapter.out.email;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;

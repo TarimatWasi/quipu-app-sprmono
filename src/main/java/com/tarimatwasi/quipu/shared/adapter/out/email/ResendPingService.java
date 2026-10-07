@@ -1,7 +1,6 @@
 package com.tarimatwasi.quipu.shared.adapter.out.email;
 
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -12,15 +11,13 @@ public class ResendPingService {
   private final RestClient restClient;
   private final String fromEmail;
 
-  public ResendPingService(
-      @Value("${app.resend.api-key}") String apiKey,
-      @Value("${app.resend.from-email}") String fromEmail) {
+  public ResendPingService(ResendProperties properties) {
     this.restClient =
         RestClient.builder()
             .baseUrl("https://api.resend.com")
-            .defaultHeader("Authorization", "Bearer " + apiKey)
+            .defaultHeader("Authorization", "Bearer " + properties.apiKey())
             .build();
-    this.fromEmail = fromEmail;
+    this.fromEmail = properties.fromEmail();
   }
 
   public String ping() {

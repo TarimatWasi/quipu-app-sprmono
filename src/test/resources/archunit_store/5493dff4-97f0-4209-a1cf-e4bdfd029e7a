@@ -1,1 +1,0 @@
-Method <com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService.ping()> calls method <java.lang.System.currentTimeMillis()> in (R2PingService.java:34)

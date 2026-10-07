@@ -83,7 +83,8 @@ class AuthBffControllerTest {
 
   /**
    * TAR-75: behind the Vercel rewrite the browser talks to its own origin, so the cookie is
-   * first-party: SameSite=Lax, Secure and HttpOnly, with the lifetime of the JWT (480 minutes).
+   * first-party: SameSite=Lax, Secure and HttpOnly, with the lifetime of the JWT (30 days,
+   * QP-SPRMONO-SES-02).
    */
   @Test
   void loginCookieIsLaxSecureHttpOnlyAndLastsAsLongAsTheToken() throws Exception {
@@ -98,7 +99,7 @@ class AuthBffControllerTest {
     assertThat(setCookie)
         .startsWith("sessionToken=")
         .contains("; Path=/")
-        .contains("; Max-Age=28800")
+        .contains("; Max-Age=2592000")
         .contains("; Secure")
         .contains("; HttpOnly")
         .contains("; SameSite=Lax")

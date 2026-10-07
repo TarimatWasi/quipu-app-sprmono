@@ -9,13 +9,12 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 import javax.crypto.SecretKey;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -28,17 +27,13 @@ public class JwtTokenProvider implements SessionTokenPort {
   private static final String PASSWORD_CHANGE_PENDING_CLAIM = "mcp";
 
   private final SecretKey key;
-  private final long expirationMinutes;
+  private final Duration expiration;
   private final Clock clock;
   private final UserRepositoryPort users;
 
-  public JwtTokenProvider(
-      @Value("${app.jwt.secret}") String secret,
-      @Value("${app.jwt.expiration-minutes}") long expirationMinutes,
-      Clock clock,
-      UserRepositoryPort users) {
-    this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-    this.expirationMinutes = expirationMinutes;
+  public JwtTokenProvider(JwtProperties properties, Clock clock, UserRepositoryPort users) {
+    this.key = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
+    this.expiration = properties.expiration();
     this.clock = clock;
     this.users = users;
   }
@@ -55,7 +50,7 @@ public class JwtTokenProvider implements SessionTokenPort {
         .claim("role", role)
         .claim(PASSWORD_CHANGE_PENDING_CLAIM, mustChangePassword)
         .issuedAt(Date.from(now))
-        .expiration(Date.from(now.plus(expirationMinutes, ChronoUnit.MINUTES)))
+        .expiration(Date.from(now.plus(expiration)))
         .signWith(key, Jwts.SIG.HS256)
         .compact();
   }
