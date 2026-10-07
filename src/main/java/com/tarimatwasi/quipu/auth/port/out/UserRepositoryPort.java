@@ -4,6 +4,8 @@ import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,6 +13,11 @@ public interface UserRepositoryPort {
   Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber);
 
   Optional<UserAccount> findById(UUID id);
+
+  /**
+   * The accounts that belong to the guests with those ids; the ids without an account add nothing.
+   */
+  List<UserAccount> findAllByGuestIds(Collection<UUID> guestIds);
 
   /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so a change of
