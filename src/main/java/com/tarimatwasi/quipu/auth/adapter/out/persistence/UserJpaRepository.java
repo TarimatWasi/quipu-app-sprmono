@@ -9,7 +9,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 
-public interface UserJpaRepository extends JpaRepository<UserJpaEntity, UUID> {
+interface UserJpaRepository extends JpaRepository<UserJpaEntity, UUID> {
   List<UserJpaEntity> findByGuestIdIn(Collection<UUID> guestIds);
 
   Optional<UserJpaEntity> findByDocumentTypeAndDocumentNumber(

@@ -11,9 +11,9 @@ public interface ChangePasswordUseCase {
    * @throws WeakPasswordException the new password is shorter than 8 characters or longer than
    *     bcrypt can hash
    * @throws PasswordUnchangedException the new password is the same as the current one
-   * @throws com.tarimatwasi.quipu.auth.application.InvalidCredentialsException unknown account, or
-   *     the current password is wrong, or missing when the account is not in the forced flow
-   * @throws com.tarimatwasi.quipu.auth.application.AccountDisabledException the account is inactive
+   * @throws com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException unknown account, or the
+   *     current password is wrong, or missing when the account is not in the forced flow
+   * @throws com.tarimatwasi.quipu.auth.port.in.AccountDisabledException the account is inactive
    */
   ChangePasswordResult changePassword(ChangePasswordCommand command);
 

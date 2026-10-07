@@ -1,9 +1,12 @@
 package com.tarimatwasi.quipu.auth.application;
 
+import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.auth.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase;
 import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase;
+import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
@@ -62,7 +65,8 @@ public class AuthApplicationService
     // The account is read under its row lock: simultaneous logins of one account (a burst of
     // guesses) are decided one by one, so none can slip past the lock with a stale reading.
     var userOpt =
-        userRepository.findByDocumentForUpdate(command.documentType(), command.documentNumber());
+        userRepository.findByDocumentForUpdate(
+            DocumentType.valueOf(command.documentType().name()), command.documentNumber());
     UserAccount user = userOpt.orElse(null);
     String passwordHashToCheck = user != null ? user.passwordHash() : DUMMY_PASSWORD_HASH;
 
@@ -88,8 +92,13 @@ public class AuthApplicationService
     if (user.failedLoginAttempts() > 0 || user.lockedUntil() != null) {
       userRepository.clearFailedLogins(user.id());
     }
+    String role = user.role().name();
     return new LoginResult(
-        user.id().toString(), user.role(), user.email(), user.mustChangePassword());
+        user.id().toString(),
+        role,
+        user.email(),
+        user.mustChangePassword(),
+        sessionTokens.issue(user.id().toString(), role, user.mustChangePassword()));
   }
 
   @Override

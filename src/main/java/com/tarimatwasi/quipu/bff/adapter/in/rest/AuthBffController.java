@@ -1,13 +1,12 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
-import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordResult;
 import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase;
 import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase.CurrentSession;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase;
+import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
@@ -34,7 +33,6 @@ public class AuthBffController {
   private final ChangePasswordUseCase changePasswordUseCase;
   private final CurrentSessionUseCase currentSessionUseCase;
   private final PasswordRecoveryUseCase passwordRecoveryUseCase;
-  private final JwtTokenProvider jwtTokenProvider;
   private final SessionCookieProperties sessionCookie;
 
   public AuthBffController(
@@ -42,18 +40,16 @@ public class AuthBffController {
       ChangePasswordUseCase changePasswordUseCase,
       CurrentSessionUseCase currentSessionUseCase,
       PasswordRecoveryUseCase passwordRecoveryUseCase,
-      JwtTokenProvider jwtTokenProvider,
       SessionCookieProperties sessionCookie) {
     this.loginUseCase = loginUseCase;
     this.changePasswordUseCase = changePasswordUseCase;
     this.currentSessionUseCase = currentSessionUseCase;
     this.passwordRecoveryUseCase = passwordRecoveryUseCase;
-    this.jwtTokenProvider = jwtTokenProvider;
     this.sessionCookie = sessionCookie;
   }
 
   public record LoginRequest(
-      @NotNull DocumentType documentType,
+      @NotNull DocumentKind documentType,
       @NotBlank String documentNumber,
       @NotBlank String password) {}
 
@@ -74,12 +70,9 @@ public class AuthBffController {
     LoginResult result =
         loginUseCase.login(
             new LoginCommand(request.documentType(), request.documentNumber(), request.password()));
-    String token =
-        jwtTokenProvider.issue(result.userId(), result.role().name(), result.mustChangePassword());
-    response.addHeader("Set-Cookie", sessionCookie(token).toString());
+    response.addHeader("Set-Cookie", sessionCookie(result.sessionToken()).toString());
     return ResponseEntity.ok(
-        new LoginResponse(
-            result.role().name(), result.displayEmail(), result.mustChangePassword()));
+        new LoginResponse(result.role(), result.displayEmail(), result.mustChangePassword()));
   }
 
   /** TAR-74: restores the session after a reload; answers the account as it is now. */

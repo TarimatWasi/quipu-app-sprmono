@@ -2,9 +2,8 @@ package com.tarimatwasi.quipu.shared.adapter.out.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaRepository;
-import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import jakarta.persistence.EntityManager;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class AuditableEntityTest {
 
   @Autowired JdbcTemplate jdbc;
-  @Autowired UserJpaRepository users;
+  @Autowired EntityManager entityManager;
 
   @Test
   void auditColumnsAreMappedOnALoadedEntity() {
@@ -29,15 +28,18 @@ class AuditableEntityTest {
             + " 'ACTIVE', 'creator', 'editor')",
         UUID.randomUUID());
 
-    var entity = users.findByDocumentTypeAndDocumentNumber(DocumentType.DNI, "77777777");
+    // Read through the base type: the audit columns belong to it, whatever entity extends it.
+    var entity =
+        entityManager
+            .createQuery(
+                "select u from UserJpaEntity u where u.documentNumber = :number",
+                AuditableEntity.class)
+            .setParameter("number", "77777777")
+            .getSingleResult();
 
-    assertThat(entity)
-        .hasValueSatisfying(
-            e -> {
-              assertThat(e.getCreatedDate()).isNotNull();
-              assertThat(e.getLastModifiedDate()).isNotNull();
-              assertThat(e.getCreatedBy()).isEqualTo("creator");
-              assertThat(e.getLastModifiedBy()).isEqualTo("editor");
-            });
+    assertThat(entity.getCreatedDate()).isNotNull();
+    assertThat(entity.getLastModifiedDate()).isNotNull();
+    assertThat(entity.getCreatedBy()).isEqualTo("creator");
+    assertThat(entity.getLastModifiedBy()).isEqualTo("editor");
   }
 }
