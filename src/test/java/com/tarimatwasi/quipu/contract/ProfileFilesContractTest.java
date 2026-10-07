@@ -118,6 +118,25 @@ class ProfileFilesContractTest {
         .isEqualTo("${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/metrics");
   }
 
+  /**
+   * TAR-124: behind Vercel and Cloudflare the address of the connection is a Cloudflare edge that
+   * changes from one request to the next, so the deployed profiles key the address limit on the
+   * header that Cloudflare writes itself (a client cannot send it: it is refused at the edge).
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
+  void strictProfiles_keyTheAddressLimitOnTheCloudflareHeader(String file) throws IOException {
+    assertThat(load(file).get("app.rate-limit.client-ip-header")).isEqualTo("CF-Connecting-IP");
+  }
+
+  @Test
+  void base_limitsPerAddressGenerouslyAndPerAccountTightly() throws IOException {
+    var base = load("application.yml");
+
+    assertThat(base.get("app.rate-limit.per-minute")).isEqualTo(60);
+    assertThat(base.get("app.rate-limit.per-account-per-minute")).isEqualTo(10);
+  }
+
   @Test
   void base_hasNoDefaultsAndApiDocsOff() throws IOException {
     var base = load("application.yml");

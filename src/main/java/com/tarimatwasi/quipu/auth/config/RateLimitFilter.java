@@ -15,8 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -32,8 +30,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * thousands of addresses can make a real client start over, which only means a fresh allowance.
  */
 final class RateLimitFilter extends OncePerRequestFilter {
-
-  private static final Logger LOG = LoggerFactory.getLogger(RateLimitFilter.class);
 
   private static final Set<String> LIMITED =
       Set.of("/bff/auth/login", "/bff/auth/forgot-password", "/bff/auth/reset-password");
@@ -69,20 +65,7 @@ final class RateLimitFilter extends OncePerRequestFilter {
       chain.doFilter(request, response);
       return;
     }
-    String client = clientOf(request);
-    // TAR-124, TEMPORAL: qué dirección y qué cabeceras ve el backend detrás de Vercel y Cloudflare.
-    // Solo en DEBUG (dev; no sale a Grafana, que corta en INFO). Se retira con la decisión.
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "TAR-124 key={} remote={} cf={} xff={} xri={} xvff={}",
-          client,
-          request.getRemoteAddr(),
-          request.getHeader("CF-Connecting-IP"),
-          request.getHeader("X-Forwarded-For"),
-          request.getHeader("X-Real-IP"),
-          request.getHeader("X-Vercel-Forwarded-For"));
-    }
-    Bucket bucket = buckets.computeIfAbsent(client, key -> newBucket());
+    Bucket bucket = buckets.computeIfAbsent(clientOf(request), key -> newBucket());
     ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
     if (probe.isConsumed()) {
       chain.doFilter(request, response);

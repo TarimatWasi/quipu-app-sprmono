@@ -37,7 +37,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Login flow of the BFF against a real database and the bootstrapped ADMIN. */
-@SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
+// This class logs in the same account dozens of times in one context, with the counters shared:
+// the allowance per account (TAR-124) is not what it tests, AccountRateLimitBffTest covers it.
+@SpringBootTest(
+    properties = {
+      "app.cors.allowed-origin=http://localhost:3000",
+      "app.rate-limit.per-account-per-minute=1000"
+    })
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)
 class AuthBffControllerTest {
