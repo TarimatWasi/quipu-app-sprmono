@@ -22,6 +22,7 @@ import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -43,15 +44,21 @@ public class BffExceptionHandler {
             new BffErrorResponse("AUTH_INVALID_CREDENTIALS", "Documento o contraseña incorrectos"));
   }
 
-  /** SEG-06: too many failed logins; the lock lifts by itself or with a password reset. */
+  /**
+   * SEG-06: too many failed logins; the lock lifts by itself or with a password reset. TAR-131:
+   * {@code Retry-After} (seconds left) is what the login counts down from, and {@code lockedUntil}
+   * the time of day it shows.
+   */
   @ExceptionHandler(AccountLockedException.class)
-  public ResponseEntity<BffErrorResponse> handleAccountLocked() {
+  public ResponseEntity<BffAccountLockedResponse> handleAccountLocked(AccountLockedException e) {
     return ResponseEntity.status(HttpStatus.LOCKED)
+        .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.retryAfterSeconds()))
         .body(
-            new BffErrorResponse(
+            new BffAccountLockedResponse(
                 "AUTH_ACCOUNT_LOCKED",
-                "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo en 15 minutos o"
-                    + " recupera tu contraseña"));
+                "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo de nuevo más"
+                    + " tarde o restablece tu contraseña",
+                e.lockedUntil()));
   }
 
   /** Same body as the security entry point: the session is gone, whatever the reason. */

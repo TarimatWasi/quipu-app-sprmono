@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
@@ -435,10 +436,20 @@ class AuthBffControllerTest {
           .andExpect(status().isUnauthorized());
     }
 
-    mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
-        .andExpect(status().isLocked())
-        .andExpect(jsonPath("$.code").value("AUTH_ACCOUNT_LOCKED"));
+    var locked =
+        mockMvc
+            .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+            .andExpect(status().isLocked())
+            .andExpect(jsonPath("$.code").value("AUTH_ACCOUNT_LOCKED"))
+            .andReturn()
+            .getResponse();
+
+    // TAR-131: the 423 says how long is left (header, whole seconds) and when it ends (body, UTC).
+    var retryAfter = Long.parseLong(Objects.requireNonNull(locked.getHeader("Retry-After")));
+    assertThat(retryAfter).isBetween(1L, 900L);
+    var lockedUntil =
+        Instant.parse(JsonPath.<String>read(locked.getContentAsString(), "$.lockedUntil"));
+    assertThat(lockedUntil).isBetween(Instant.now(), Instant.now().plusSeconds(901));
   }
 
   @Test

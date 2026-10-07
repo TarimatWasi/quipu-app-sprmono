@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -78,13 +79,17 @@ public class AuthApplicationService
     Instant now = clock.instant();
     // A locked account neither counts attempts nor reveals whether the password was right.
     if (user.isLockedAt(now)) {
-      throw new AccountLockedException();
+      throw new AccountLockedException(now, Objects.requireNonNull(user.lockedUntil()));
     }
     if (!passwordMatches) {
       // Defensive: the row is already locked, but the repository still answers if it was locked.
       boolean alreadyLocked =
           userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
-      throw alreadyLocked ? new AccountLockedException() : new InvalidCredentialsException();
+      // The row was read under its lock, so this can only be a stale reading; the longest a lock
+      // can still last is the full duration, which is what the client is told.
+      throw alreadyLocked
+          ? new AccountLockedException(now, now.plus(LOCK_DURATION))
+          : new InvalidCredentialsException();
     }
     if (user.isDisabled()) {
       throw new AccountDisabledException();
