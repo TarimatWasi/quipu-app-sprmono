@@ -13,10 +13,13 @@ import static org.mockito.Mockito.when;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.auth.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordResult;
 import com.tarimatwasi.quipu.auth.port.in.CurrentSessionUseCase.CurrentSession;
+import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
+import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
@@ -70,9 +73,9 @@ class AuthApplicationServiceTest {
     repository.save(admin);
 
     LoginResult result =
-        service.login(new LoginCommand(DocumentType.DNI, "00000000", "Temporal123!"));
+        service.login(new LoginCommand(DocumentKind.DNI, "00000000", "Temporal123!"));
 
-    assertThat(result.role()).isEqualTo(Role.ADMIN);
+    assertThat(result.role()).isEqualTo("ADMIN");
     assertThat(result.mustChangePassword()).isTrue();
   }
 
@@ -94,14 +97,14 @@ class AuthApplicationServiceTest {
             null);
     repository.save(admin);
 
-    assertThatThrownBy(() -> service.login(new LoginCommand(DocumentType.DNI, "00000000", "wrong")))
+    assertThatThrownBy(() -> service.login(new LoginCommand(DocumentKind.DNI, "00000000", "wrong")))
         .isInstanceOf(InvalidCredentialsException.class);
   }
 
   @Test
   void rejectsUnknownDocumentWithSameGenericError() {
     assertThatThrownBy(
-            () -> service.login(new LoginCommand(DocumentType.DNI, "99999999", "whatever")))
+            () -> service.login(new LoginCommand(DocumentKind.DNI, "99999999", "whatever")))
         .isInstanceOf(InvalidCredentialsException.class);
   }
 
@@ -278,7 +281,7 @@ class AuthApplicationServiceTest {
   }
 
   private LoginCommand loginOf(String password) {
-    return new LoginCommand(DocumentType.DNI, "11111111", password);
+    return new LoginCommand(DocumentKind.DNI, "11111111", password);
   }
 
   @Test
@@ -296,10 +299,10 @@ class AuthApplicationServiceTest {
     savedUser("Correcta-123", false, "ACTIVE");
 
     failLogins(4);
-    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo("GUEST");
     failLogins(4);
 
-    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo("GUEST");
   }
 
   @Test
@@ -315,7 +318,7 @@ class AuthApplicationServiceTest {
         .isInstanceOf(AccountLockedException.class);
 
     clock.advance(Duration.ofSeconds(1));
-    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo("GUEST");
   }
 
   @Test
@@ -326,7 +329,7 @@ class AuthApplicationServiceTest {
 
     failLogins(4);
 
-    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo(Role.GUEST);
+    assertThat(service.login(loginOf("Correcta-123")).role()).isEqualTo("GUEST");
   }
 
   /** The lock is decided under the row lock: a burst that read the account before it locked. */

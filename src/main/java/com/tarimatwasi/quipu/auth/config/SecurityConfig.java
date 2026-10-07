@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.shared.config;
+package com.tarimatwasi.quipu.auth.config;
 
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtAuthenticationFilter;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;

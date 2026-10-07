@@ -15,7 +15,6 @@ import com.tngtech.archunit.core.domain.properties.HasOwner;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.CompositeArchRule;
-import com.tngtech.archunit.library.freeze.FreezingArchRule;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -252,19 +251,17 @@ final class ArchitectureRules {
           .should()
           .resideInAPackage("..adapter.in.rest..");
 
-  // TAR-62 PR2: remove FreezingArchRule when bff reaches auth only through port.in types.
   @ArchTest
   static final ArchRule BE_SPR_WEB_02 =
-      FreezingArchRule.freeze(
-          noClasses()
-              .that()
-              .resideInAPackage("..adapter.in.rest..")
-              .should()
-              .dependOnClassesThat()
-              .areAnnotatedWith(jakarta.persistence.Entity.class)
-              .orShould()
-              .dependOnClassesThat()
-              .resideInAPackage("..domain.."));
+      noClasses()
+          .that()
+          .resideInAPackage("..adapter.in.rest..")
+          .should()
+          .dependOnClassesThat()
+          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .orShould()
+          .dependOnClassesThat()
+          .resideInAPackage("..domain..");
 
   @ArchTest static final ArchRule BE_SPR_WEB_03 = ArchitectureConditions.requestBodyIsValidated();
 
@@ -304,17 +301,15 @@ final class ArchitectureRules {
           .should()
           .resideInAPackage("..adapter.out.persistence..");
 
-  // TAR-62 PR2: remove FreezingArchRule when the Spring Data repository becomes package-private.
   @ArchTest
   static final ArchRule BE_SPR_DAT_02 =
-      FreezingArchRule.freeze(
-          classes()
-              .that()
-              .areAssignableTo(Repository.class)
-              .should()
-              .bePackagePrivate()
-              .andShould()
-              .resideInAPackage("..adapter.out.persistence.."));
+      classes()
+          .that()
+          .areAssignableTo(Repository.class)
+          .should()
+          .bePackagePrivate()
+          .andShould()
+          .resideInAPackage("..adapter.out.persistence..");
 
   @ArchTest static final ArchRule BE_SPR_DAT_07 = ArchitectureConditions.toOneRelationsAreLazy();
 

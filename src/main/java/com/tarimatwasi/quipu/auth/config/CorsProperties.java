@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.shared.config;
+package com.tarimatwasi.quipu.auth.config;
 
 import java.util.ArrayList;
 import java.util.List;
