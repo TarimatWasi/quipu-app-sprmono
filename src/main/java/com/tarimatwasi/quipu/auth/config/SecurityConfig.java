@@ -51,7 +51,7 @@ class SecurityConfig {
                         "/bff/auth/reset-password",
                         "/error")
                     .permitAll()
-                    .requestMatchers("/bff/diagnostics/**", "/bff/admin/**")
+                    .requestMatchers("/bff/admin/**")
                     .hasRole("ADMIN")
                     .anyRequest()
                     .authenticated())
