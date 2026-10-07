@@ -278,7 +278,7 @@ class AuthBffControllerTest {
     Cookie forced = loginCookie("Temporal123!");
 
     mockMvc
-        .perform(get("/bff/diagnostics/ping-services").cookie(forced))
+        .perform(get("/bff/admin/environments").cookie(forced))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_PASSWORD_CHANGE_REQUIRED"))
         .andExpect(jsonPath("$.message").isNotEmpty());
@@ -301,7 +301,7 @@ class AuthBffControllerTest {
 
     assertThat(jwtTokenProvider.parse(legacy)).as("legacy token parses").isPresent();
     mockMvc
-        .perform(get("/bff/diagnostics/ping-services").cookie(new Cookie("sessionToken", legacy)))
+        .perform(get("/bff/admin/environments").cookie(new Cookie("sessionToken", legacy)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_PASSWORD_CHANGE_REQUIRED"));
   }
