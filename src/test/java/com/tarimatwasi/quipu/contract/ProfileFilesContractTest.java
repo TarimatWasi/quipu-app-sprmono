@@ -167,9 +167,10 @@ class ProfileFilesContractTest {
         .forEach(env.getPropertySources()::addLast);
 
     var cookie = Binder.get(env).bind("app.session", SessionCookieProperties.class).get();
-    var jwtMinutes = Long.parseLong(String.valueOf(env.getProperty("app.jwt.expiration-minutes")));
+    var jwt = Binder.get(env).bind("app.jwt.expiration", Duration.class).get();
 
-    assertThat(cookie.maxAge()).isEqualTo(Duration.ofMinutes(jwtMinutes));
+    assertThat(jwt).isEqualTo(Duration.ofDays(30));
+    assertThat(cookie.maxAge()).isEqualTo(jwt);
   }
 
   /**

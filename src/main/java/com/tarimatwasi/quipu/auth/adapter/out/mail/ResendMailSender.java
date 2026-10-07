@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.adapter.out.mail;
 
+import com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;

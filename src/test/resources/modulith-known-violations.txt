@@ -3,6 +3,9 @@ Cycle detected: Slice auth ->
                 Slice auth
   1. Dependencies of Slice auth
     - Class <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity> extends class <com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity> in (UserJpaEntity.java)
+    - Constructor <com.tarimatwasi.quipu.auth.adapter.out.mail.ResendMailSender.<init>(com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties, java.lang.String)> has parameter of type <com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties> in (ResendMailSender.java)
+    - Constructor <com.tarimatwasi.quipu.auth.adapter.out.mail.ResendMailSender.<init>(com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties, java.lang.String)> calls method <com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties.apiKey()> in (ResendMailSender.java)
+    - Constructor <com.tarimatwasi.quipu.auth.adapter.out.mail.ResendMailSender.<init>(com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties, java.lang.String)> calls method <com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties.fromEmail()> in (ResendMailSender.java)
     - Constructor <com.tarimatwasi.quipu.auth.adapter.out.persistence.UserJpaEntity.<init>()> calls constructor <com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity.<init>()> in (UserJpaEntity.java)
   2. Dependencies of Slice shared
     - Method <com.tarimatwasi.quipu.shared.config.SecurityConfig.securityFilterChain(org.springframework.security.config.annotation.web.builders.HttpSecurity, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.shared.config.RateLimitProperties)> has parameter of type <com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider> in (SecurityConfig.java)
@@ -46,30 +49,6 @@ Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.ta
 ----
 Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.auth.domain.Role within module 'auth'!
 Method <com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController.login(com.tarimatwasi.quipu.bff.adapter.in.rest.AuthBffController$LoginRequest, jakarta.servlet.http.HttpServletResponse)> calls method <com.tarimatwasi.quipu.auth.domain.Role.name()> in (AuthBffController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService within module 'shared'!
-Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.DiagnosticsController.<init>(com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService, com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService)> has parameter of type <com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService> in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService within module 'shared'!
-DiagnosticsController declares constructor DiagnosticsController(R2PingService, ResendPingService) in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService within module 'shared'!
-Field <com.tarimatwasi.quipu.bff.adapter.in.rest.DiagnosticsController.resendPingService> has type <com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService> in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService within module 'shared'!
-Method <com.tarimatwasi.quipu.bff.adapter.in.rest.DiagnosticsController.pingServices()> calls method <com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService.ping()> in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService within module 'shared'!
-Constructor <com.tarimatwasi.quipu.bff.adapter.in.rest.DiagnosticsController.<init>(com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService, com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService)> has parameter of type <com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService> in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService within module 'shared'!
-DiagnosticsController declares constructor DiagnosticsController(R2PingService, ResendPingService) in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService within module 'shared'!
-Field <com.tarimatwasi.quipu.bff.adapter.in.rest.DiagnosticsController.r2PingService> has type <com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService> in (DiagnosticsController.java)
-----
-Module 'bff' depends on non-exposed type com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService within module 'shared'!
-Method <com.tarimatwasi.quipu.bff.adapter.in.rest.DiagnosticsController.pingServices()> calls method <com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService.ping()> in (DiagnosticsController.java)
 ----
 Module 'shared' depends on non-exposed type com.tarimatwasi.quipu.auth.adapter.out.security.JwtAuthenticationFilter within module 'auth'!
 Method <com.tarimatwasi.quipu.shared.config.SecurityConfig.securityFilterChain(org.springframework.security.config.annotation.web.builders.HttpSecurity, com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider, com.tarimatwasi.quipu.shared.config.RateLimitProperties)> calls constructor <com.tarimatwasi.quipu.auth.adapter.out.security.JwtAuthenticationFilter.<init>(com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider)> in (SecurityConfig.java)

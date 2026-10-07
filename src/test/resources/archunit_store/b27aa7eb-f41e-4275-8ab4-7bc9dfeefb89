@@ -1,3 +1,0 @@
-com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider declares 2 @Value
-com.tarimatwasi.quipu.shared.adapter.out.email.ResendPingService declares 2 @Value
-com.tarimatwasi.quipu.shared.adapter.out.storage.R2PingService declares 4 @Value

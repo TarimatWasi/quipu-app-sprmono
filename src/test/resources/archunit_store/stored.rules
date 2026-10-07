@@ -1,6 +1,4 @@
 #
 #Wed Sep 30 20:18:37 GMT-05:00 2026
-classes\ should\ declare\ at\ most\ one\ @Value=b27aa7eb-f41e-4275-8ab4-7bc9dfeefb89
 classes\ that\ are\ assignable\ to\ org.springframework.data.repository.Repository\ should\ be\ package\ private\ and\ should\ reside\ in\ a\ package\ '..adapter.out.persistence..'=57fa4cc4-ce51-471d-8450-17db9b628e8f
-no\ classes\ should\ call\ method\ Instant.now()\ or\ should\ call\ method\ LocalDate.now()\ or\ should\ call\ method\ LocalDateTime.now()\ or\ should\ call\ method\ ZonedDateTime.now()\ or\ should\ call\ method\ System.currentTimeMillis(),\ because\ a\ Clock\ is\ injected\ instead\ (the\ clock\ zone\ is\ fixed\ by\ the\ profile)=5493dff4-97f0-4209-a1cf-e4bdfd029e7a
 no\ classes\ that\ reside\ in\ a\ package\ '..adapter.in.rest..'\ should\ depend\ on\ classes\ that\ are\ annotated\ with\ @Entity\ or\ should\ depend\ on\ classes\ that\ reside\ in\ a\ package\ '..domain..'=81368c0a-389f-440c-b895-2f2b98edad71
