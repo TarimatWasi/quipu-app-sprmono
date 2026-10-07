@@ -1,7 +1,7 @@
 # Imagen de despliegue (Render no tiene runtime nativo de Java). Etapa 1 compila con Maven; etapa 2
 # corre el jar con un JRE mínimo. Tags fijados por digest: Dependabot (ecosistema docker) los
 # actualiza. La calidad (Spotless, Checkstyle, JaCoCo, pruebas) la verifica el CI, no esta imagen.
-FROM maven:3.9-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 AS build
+FROM maven:3.9-eclipse-temurin-26@sha256:b2c1ad85954592f9928e84327c65201f308ad9b5d8ed7d5b823717c97bf23fbb AS build
 WORKDIR /build
 COPY .mvn .mvn
 COPY pom.xml ./
