@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -292,6 +293,22 @@ class AuthApplicationServiceTest {
 
     assertThatThrownBy(() -> service.login(loginOf("Correcta-123")))
         .isInstanceOf(AccountLockedException.class);
+  }
+
+  /** TAR-131: the refusal says when the lock ends, so the login can count down to it. */
+  @Test
+  void theLockedRefusalTellsWhenTheLockEndsAndHowMuchIsLeft() {
+    savedUser("Correcta-123", false, "ACTIVE");
+    var lockStart = clock.instant();
+    failLogins(5);
+    clock.advance(Duration.ofMinutes(10));
+
+    var thrown =
+        catchThrowableOfType(
+            AccountLockedException.class, () -> service.login(loginOf("Correcta-123")));
+
+    assertThat(thrown.lockedUntil()).isEqualTo(lockStart.plus(Duration.ofMinutes(15)));
+    assertThat(thrown.retryAfterSeconds()).isEqualTo(Duration.ofMinutes(5).toSeconds());
   }
 
   @Test
