@@ -87,6 +87,8 @@ jobs:
             -e R2_ACCOUNT_ID=ci -e R2_ACCESS_KEY_ID=ci -e R2_SECRET_ACCESS_KEY=ci-dummy \
             -e R2_ENDPOINT=https://example.invalid -e R2_BUCKET_NAME=ci \
             -e RESEND_API_KEY=ci-dummy -e RESEND_FROM_EMAIL=ci@example.test \
+            -e OTEL_EXPORTER_OTLP_ENDPOINT=https://example.invalid/otlp \
+            -e MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false \
             quipu-api:ci >/dev/null
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:10000/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then

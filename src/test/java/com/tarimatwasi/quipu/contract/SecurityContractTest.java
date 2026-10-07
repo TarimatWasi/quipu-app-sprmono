@@ -32,6 +32,12 @@ class SecurityContractTest {
     mvc.perform(get("/actuator/health")).andExpect(status().isOk());
   }
 
+  /** QP-SPRMONO-OBS-02 (ADR-F5): metrics leave by push; no scrape endpoint is served. */
+  @Test
+  void prometheus_endpoint_is_not_served() throws Exception {
+    mvc.perform(get("/actuator/prometheus")).andExpect(status().is4xxClientError());
+  }
+
   @Test
   void any_other_path_requires_authentication() throws Exception {
     mvc.perform(get("/api/v1/anything")).andExpect(status().isUnauthorized());

@@ -42,6 +42,16 @@ app:
     api-key: ${RESEND_API_KEY}
     from-email: ${RESEND_FROM_EMAIL}
 
+# Métricas por push a Grafana Cloud (ADR-F5, TAR-139). Spring Boot lee OTEL_EXPORTER_OTLP_HEADERS
+# solo (spring-boot-opentelemetry); la del endpoint es obligatoria como el resto. Los logs van en
+# otro PR.
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: true
+        url: ${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/metrics
+
 springdoc:
   api-docs:
     enabled: true
