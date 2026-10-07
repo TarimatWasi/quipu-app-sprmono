@@ -119,6 +119,23 @@ class AuthBffControllerTest {
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
 
+  /**
+   * TAR-69: an unknown document type is a validation error in the BFF shape, not a ProblemDetail.
+   */
+  @Test
+  void loginWithAnUnknownDocumentTypeReturns400ValidationError() throws Exception {
+    var body =
+        """
+        {"documentType":"LICENSE","documentNumber":"00000000","password":"whatever"}
+        """;
+
+    mockMvc
+        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.type").doesNotExist());
+  }
+
   @Test
   void loginWithUnknownDocumentReturnsSame401AsWrongPassword() throws Exception {
     var body =
