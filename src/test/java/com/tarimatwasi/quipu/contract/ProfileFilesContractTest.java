@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.env.RandomValuePropertySource;
@@ -79,6 +80,32 @@ class ProfileFilesContractTest {
   void base_sendsNoMetrics() throws IOException {
     assertThat(load("application.yml").get("management.otlp.metrics.export.enabled"))
         .isEqualTo(false);
+  }
+
+  /** Same for the logs (TAR-139): off in the base, on in dev and prod with the same endpoint. */
+  @Test
+  void base_sendsNoLogs() throws IOException {
+    assertThat(load("application.yml").get("management.logging.export.otlp.enabled"))
+        .isEqualTo(false);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
+  void strictProfiles_pushLogsToTheConfiguredEndpoint(String file) throws IOException {
+    var profile = load(file);
+
+    assertThat(profile.get("management.logging.export.otlp.enabled")).isEqualTo(true);
+    assertThat(profile.get("management.opentelemetry.logging.export.otlp.endpoint"))
+        .isEqualTo("${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/logs");
+  }
+
+  @ParameterizedTest
+  @CsvSource({"application-dev.yml,dev", "application-prod.yml,prod"})
+  void strictProfiles_tagTheTelemetryWithTheirEnvironment(String file, String environment)
+      throws IOException {
+    assertThat(
+            load(file).get("management.opentelemetry.resource-attributes.deployment.environment"))
+        .isEqualTo(environment);
   }
 
   @ParameterizedTest

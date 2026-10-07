@@ -66,10 +66,14 @@ management:
     web:
       exposure:
         include: health
-  # Métricas por push (ADR-F5, QP-SPRMONO-OBS-02): apagada salvo en dev y prod.
+  # Métricas y logs por push (ADR-F5, QP-SPRMONO-OBS-02): apagados salvo en dev y prod.
   otlp:
     metrics:
       export:
+        enabled: false
+  logging:
+    export:
+      otlp:
         enabled: false
 
 # Documentación de la API (QP-SPRMONO-CTR-01): apagada salvo en local y dev.

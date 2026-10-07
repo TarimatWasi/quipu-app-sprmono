@@ -81,7 +81,7 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
-    <!-- ADR-F5 (TAR-139): metrics by push over OTLP to Grafana Cloud; spring-boot-opentelemetry
+    <!-- ADR-F5 (TAR-139): metrics and logs by push over OTLP to Grafana Cloud; spring-boot-opentelemetry
          maps the standard OTEL_* variables. Not the starter: it would also bring tracing, which
          QP-SPRMONO-OBS-01 keeps out. -->
     <dependency>
@@ -91,6 +91,18 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-opentelemetry</artifactId>
+    </dependency>
+    <!-- Logs by OTLP (TAR-139): the exporter that Boot builds the log pipeline with, and the
+         appender. The appender is not in the Boot BOM and published only as alpha; 2.28.0-alpha is
+         the instrumentation release that builds on the SDK 1.62.0 that Boot 4.1.1 brings. -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry.instrumentation</groupId>
+      <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+      <version>2.28.0-alpha</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
