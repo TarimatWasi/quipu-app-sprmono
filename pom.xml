@@ -81,6 +81,17 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- ADR-F5 (TAR-139): metrics by push over OTLP to Grafana Cloud; spring-boot-opentelemetry
+         maps the standard OTEL_* variables. Not the starter: it would also bring tracing, which
+         QP-SPRMONO-OBS-01 keeps out. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-otlp</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-opentelemetry</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>

@@ -70,6 +70,27 @@ class ProfileFilesContractTest {
     assertThat(base.get("spring.task.execution.shutdown.await-termination-period")).isEqualTo("8s");
   }
 
+  /**
+   * ADR-F5 (TAR-139): metrics leave by push over OTLP to Grafana Cloud only in dev and prod. The
+   * base (and so local and the tests) sends nothing; the strict profiles require the endpoint
+   * variable, which Spring Boot extends with /v1/metrics.
+   */
+  @Test
+  void base_sendsNoMetrics() throws IOException {
+    assertThat(load("application.yml").get("management.otlp.metrics.export.enabled"))
+        .isEqualTo(false);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
+  void strictProfiles_pushMetricsToTheConfiguredEndpoint(String file) throws IOException {
+    var profile = load(file);
+
+    assertThat(profile.get("management.otlp.metrics.export.enabled")).isEqualTo(true);
+    assertThat(profile.get("management.otlp.metrics.export.url"))
+        .isEqualTo("${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/metrics");
+  }
+
   @Test
   void base_hasNoDefaultsAndApiDocsOff() throws IOException {
     var base = load("application.yml");
