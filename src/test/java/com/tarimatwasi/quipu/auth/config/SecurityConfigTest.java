@@ -205,6 +205,15 @@ class SecurityConfigTest {
     assertThat(config.getAllowedMethods()).containsExactly("GET", "POST", "PUT", "PATCH", "DELETE");
   }
 
+  /**
+   * TAR-131: the 423 and the 429 carry Retry-After; a cross-origin page can only read it if
+   * exposed.
+   */
+  @Test
+  void cors_exposesRetryAfterToTheBrowser() {
+    assertThat(vercelDev().getExposedHeaders()).containsExactly("Retry-After");
+  }
+
   @Test
   void cors_withoutExtrasBehavesAsBefore() {
     var config = cors("http://localhost:4200", List.of(), List.of(), "local");
