@@ -10,6 +10,8 @@ import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
+import com.tarimatwasi.quipu.auth.port.out.LoginAttemptLimiterPort;
 import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Clock;
@@ -38,16 +40,19 @@ public class AuthApplicationService
   private final UserRepositoryPort userRepository;
   private final PasswordEncoder passwordEncoder;
   private final SessionTokenPort sessionTokens;
+  private final LoginAttemptLimiterPort loginAttempts;
   private final Clock clock;
 
   public AuthApplicationService(
       UserRepositoryPort userRepository,
       PasswordEncoder passwordEncoder,
       SessionTokenPort sessionTokens,
+      LoginAttemptLimiterPort loginAttempts,
       Clock clock) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.sessionTokens = sessionTokens;
+    this.loginAttempts = loginAttempts;
     this.clock = clock;
   }
 
@@ -63,6 +68,12 @@ public class AuthApplicationService
         AccountDisabledException.class
       })
   public LoginResult login(LoginCommand command) {
+    // SEC-01 (TAR-124): the attempts on one account are capped whatever the address they come from,
+    // and before the account is read or any password is hashed.
+    long wait = loginAttempts.tryAcquire(command.documentType().name(), command.documentNumber());
+    if (wait > 0) {
+      throw new TooManyLoginAttemptsException(wait);
+    }
     // The account is read under its row lock: simultaneous logins of one account (a burst of
     // guesses) are decided one by one, so none can slip past the lock with a stale reading.
     var userOpt =

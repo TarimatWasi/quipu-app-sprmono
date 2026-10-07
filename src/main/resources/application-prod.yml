@@ -10,6 +10,8 @@ spring:
     url: ${DATABASE_URL}
 
 app:
+  rate-limit:
+    client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
   # Primer ADMIN (AdminBootstrap): solo se crea si no existe ninguno. Son las únicas variables

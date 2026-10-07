@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
@@ -25,6 +26,7 @@ import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -52,6 +54,7 @@ class AuthApplicationServiceTest {
             repository,
             encoder,
             (userId, role, mustChange) -> userId + ":" + role + ":" + mustChange,
+            (type, number) -> 0L,
             clock);
   }
 
@@ -311,6 +314,42 @@ class AuthApplicationServiceTest {
     assertThat(thrown.retryAfterSeconds()).isEqualTo(Duration.ofMinutes(5).toSeconds());
   }
 
+  /** TAR-124: an account that is over its allowance is refused before anything else happens. */
+  @Test
+  void anAccountOverItsAllowanceIsRefusedBeforeTheDatabaseIsTouched() {
+    UserRepositoryPort untouched = mock(UserRepositoryPort.class);
+    var limited =
+        new AuthApplicationService(
+            untouched, encoder, (u, r, m) -> "t", (type, number) -> 7L, clock);
+
+    var thrown =
+        catchThrowableOfType(
+            TooManyLoginAttemptsException.class, () -> limited.login(loginOf("Correcta-123")));
+
+    assertThat(thrown.retryAfterSeconds()).isEqualTo(7L);
+    verifyNoInteractions(untouched);
+  }
+
+  @Test
+  void theAllowanceIsAskedForTheDocumentTheLoginNamed() {
+    var asked = new java.util.ArrayList<String>();
+    var counting =
+        new AuthApplicationService(
+            repository,
+            encoder,
+            (u, r, m) -> "t",
+            (type, number) -> {
+              asked.add(type + ":" + number);
+              return 0L;
+            },
+            clock);
+
+    assertThatThrownBy(() -> counting.login(loginOf("Mala-clave-1")))
+        .isInstanceOf(InvalidCredentialsException.class);
+
+    assertThat(asked).containsExactly("DNI:11111111");
+  }
+
   @Test
   void fourFailuresDoNotLockAndASuccessfulLoginRestartsTheCount() {
     savedUser("Correcta-123", false, "ACTIVE");
@@ -370,7 +409,8 @@ class AuthApplicationServiceTest {
     when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
         .thenReturn(Optional.of(unlocked));
     when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
-    var racing = new AuthApplicationService(stale, encoder, (u, r, m) -> "t", clock);
+    var racing =
+        new AuthApplicationService(stale, encoder, (u, r, m) -> "t", (type, number) -> 0L, clock);
 
     assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
         .isInstanceOf(AccountLockedException.class);
@@ -381,7 +421,8 @@ class AuthApplicationServiceTest {
   void theLoginReadsTheAccountUnderTheRowLock() {
     UserRepositoryPort repo = mock(UserRepositoryPort.class);
     when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
-    var locking = new AuthApplicationService(repo, encoder, (u, r, m) -> "t", clock);
+    var locking =
+        new AuthApplicationService(repo, encoder, (u, r, m) -> "t", (type, number) -> 0L, clock);
 
     assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -395,7 +436,8 @@ class AuthApplicationServiceTest {
   void changingThePasswordReadsTheAccountUnderTheRowLock() {
     UserAccount user = savedUser("Actual12345", false, "ACTIVE");
     UserRepositoryPort spied = org.mockito.Mockito.spy(repository);
-    var locking = new AuthApplicationService(spied, encoder, (u, r, m) -> "t", clock);
+    var locking =
+        new AuthApplicationService(spied, encoder, (u, r, m) -> "t", (type, number) -> 0L, clock);
 
     locking.changePassword(change(user, "Actual12345", "Nueva12345"));
 

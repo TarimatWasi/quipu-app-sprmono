@@ -43,10 +43,15 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     expiration: 30d
-  # Límite de peticiones en login y recuperación de contraseña (SEC-01, TAR-31). client-ip-header:
-  # solo si la capa de delante sobrescribe ese encabezado con la IP real del cliente.
+  # Límite de peticiones en login y recuperación de contraseña (SEC-01, TAR-31 y TAR-124).
+  # per-minute es por dirección y es holgado a propósito: detrás de Vercel todos los navegadores
+  # comparten una sola dirección. per-account-per-minute cuenta los intentos de login por documento,
+  # venga de donde venga. client-ip-header: solo si la capa de delante sobrescribe ese encabezado con
+  # la IP real del cliente (dev y prod: CF-Connecting-IP, que Cloudflare escribe y el cliente no puede
+  # enviar).
   rate-limit:
-    per-minute: 10
+    per-minute: 60
+    per-account-per-minute: 10
   # Cookie de sesión (TAR-75): el navegador habla con el origen del frontend y el alojamiento
   # reescribe /bff hacia este backend, así que la cookie es del mismo sitio: SameSite=Lax. Max-Age
   # coincide con la vigencia del token. Con el frontend en otro dominio: same-site: none.

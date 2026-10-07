@@ -10,6 +10,8 @@ spring:
     url: ${DATABASE_URL}
 
 app:
+  rate-limit:
+    client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
     # La reescritura de Vercel (/bff) conserva el Origin del host de Vercel (TAR-75): se listan el

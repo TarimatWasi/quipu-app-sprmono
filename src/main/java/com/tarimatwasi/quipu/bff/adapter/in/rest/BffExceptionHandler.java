@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
@@ -59,6 +60,18 @@ public class BffExceptionHandler {
                 "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo de nuevo más"
                     + " tarde o restablece tu contraseña",
                 e.lockedUntil()));
+  }
+
+  /** SEC-01 (TAR-124): the same answer as the address limit of {@code RateLimitFilter}. */
+  @ExceptionHandler(TooManyLoginAttemptsException.class)
+  public ResponseEntity<BffErrorResponse> handleTooManyLoginAttempts(
+      TooManyLoginAttemptsException e) {
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.retryAfterSeconds()))
+        .body(
+            new BffErrorResponse(
+                "RATE_LIMITED",
+                "Demasiados intentos, espera un momento antes de volver a intentar"));
   }
 
   /** Same body as the security entry point: the session is gone, whatever the reason. */

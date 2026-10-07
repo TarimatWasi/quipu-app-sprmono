@@ -8,5 +8,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 public interface PostgresContainers {
 
   @Container @ServiceConnection
-  PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
+  // Every distinct Spring context the suite caches keeps its own connection pool against this one
+  // database; the default 100 connections ran out with about ten contexts (TAR-124).
+  PostgreSQLContainer POSTGRES =
+      new PostgreSQLContainer("postgres:17-alpine")
+          .withCommand("postgres", "-c", "max_connections=300");
 }
