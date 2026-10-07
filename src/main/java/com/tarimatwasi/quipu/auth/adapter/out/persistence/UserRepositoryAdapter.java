@@ -5,6 +5,8 @@ import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,6 +54,11 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
             .orElseThrow(() -> new IllegalStateException("No user with id " + id));
     user.changePassword(newPasswordHash, changedAt);
     jpaRepository.save(user);
+  }
+
+  @Override
+  public List<UserAccount> findAllByGuestIds(Collection<UUID> guestIds) {
+    return jpaRepository.findByGuestIdIn(guestIds).stream().map(UserJpaEntity::toDomain).toList();
   }
 
   @Override

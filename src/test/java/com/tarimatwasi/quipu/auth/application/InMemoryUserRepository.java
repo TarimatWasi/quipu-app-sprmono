@@ -5,7 +5,9 @@ import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,6 +35,13 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   /** The stored hash of the account's reset code, if it has one. */
   Optional<String> storedResetHash(UUID id) {
     return Optional.ofNullable(resetTokens.get(id)).map(ResetToken::hash);
+  }
+
+  @Override
+  public List<UserAccount> findAllByGuestIds(Collection<UUID> guestIds) {
+    return byId.values().stream()
+        .filter(user -> user.guestId() != null && guestIds.contains(user.guestId()))
+        .toList();
   }
 
   @Override

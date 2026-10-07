@@ -14,6 +14,12 @@ import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException
 import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
+import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
+import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -132,6 +138,60 @@ public class BffExceptionHandler {
   public ResponseEntity<BffErrorResponse> handleUnreadableBody() {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos"));
+  }
+
+  @ExceptionHandler(GuestNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("GUEST_NOT_FOUND", "El huésped no existe"));
+  }
+
+  /** RN-36: the document is corrected only while the guest has not activated its access. */
+  @ExceptionHandler(GuestDocumentLockedException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestDocumentLocked() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "GUEST_DOCUMENT_LOCKED",
+                "El documento solo se corrige antes de que el huésped active su acceso",
+                "documentNumber"));
+  }
+
+  /** RN-18: the document is the key of a person; two guests cannot share it. */
+  @ExceptionHandler(GuestDocumentTakenException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestDocumentTaken() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "GUEST_DOCUMENT_TAKEN",
+                "Ese documento ya pertenece a otro huésped",
+                "documentNumber"));
+  }
+
+  /** A number the schema let through that does not fit its type (a DNI has 8 digits). */
+  @ExceptionHandler(InvalidGuestDocumentException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidGuestDocument() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR",
+                "El número de documento no corresponde a su tipo",
+                "documentNumber"));
+  }
+
+  /** Stay data on a contract guest, dates out of order or an amount outside the allowed range. */
+  @ExceptionHandler(InvalidGuestStayException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidGuestStay(InvalidGuestStayException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR", "Los datos de la estadía no son válidos", e.field()));
+  }
+
+  @ExceptionHandler(EmptyGuestUpdateException.class)
+  public ResponseEntity<BffErrorResponse> handleEmptyGuestUpdate() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Indica al menos un dato para cambiar"));
   }
 
   @ExceptionHandler(ExpenseNotFoundException.class)
