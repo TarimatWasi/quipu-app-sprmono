@@ -40,7 +40,7 @@
     <checkstyle.version>14.3.0</checkstyle.version>
     <jacoco.version>0.8.15</jacoco.version>
     <jjwt.version>0.13.0</jjwt.version>
-    <awssdk.version>2.55.6</awssdk.version>
+    <awssdk.version>2.55.11</awssdk.version>
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
     <download-maven-plugin.version>2.1.0</download-maven-plugin.version>
     <bucket4j.version>8.21.0</bucket4j.version>
