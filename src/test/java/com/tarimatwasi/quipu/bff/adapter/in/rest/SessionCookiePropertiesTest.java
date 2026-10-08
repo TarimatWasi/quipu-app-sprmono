@@ -86,7 +86,7 @@ class SessionCookiePropertiesTest {
   }
 
   // The Binder can hand a record a null for a property that is absent: the check must reject it.
-  @SuppressWarnings("NullAway")
+  @SuppressWarnings("NullAway") // BE-SPR-NUL-02 TAR-148: intentional null from the Binder
   @Test
   void aMissingMaxAgeIsRejectedInsteadOfFallingBackToADivergentDefault() {
     assertThatThrownBy(
