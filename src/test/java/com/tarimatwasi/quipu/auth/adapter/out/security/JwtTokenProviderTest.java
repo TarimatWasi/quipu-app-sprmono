@@ -131,13 +131,15 @@ class JwtTokenProviderTest {
   }
 
   @Test
-  @SuppressWarnings("NullAway") // intentional null: a signed token without that claim
+  @SuppressWarnings(
+      "NullAway") // BE-SPR-NUL-02 TAR-148: intentional null, a signed token without that claim
   void rejectsSignedTokenWithoutRole() {
     assertThat(provider.parse(provider.issue(id.toString(), null))).isEmpty();
   }
 
   @Test
-  @SuppressWarnings("NullAway") // intentional null: a signed token without that claim
+  @SuppressWarnings(
+      "NullAway") // BE-SPR-NUL-02 TAR-148: intentional null, a signed token without that claim
   void rejectsSignedTokenWithoutSubject() {
     assertThat(provider.parse(provider.issue(null, "ADMIN"))).isEmpty();
   }
