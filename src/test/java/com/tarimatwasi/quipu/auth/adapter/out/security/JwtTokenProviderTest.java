@@ -8,7 +8,11 @@ import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.TestIds;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -28,12 +32,14 @@ class JwtTokenProviderTest {
   private static final Instant NOW = Instant.parse("2026-10-05T10:00:00Z");
 
   private final UserRepositoryPort users = mock(UserRepositoryPort.class);
+  private final IdMasker masker =
+      new IdMasker(new IdMaskProperties("a-test-key-with-more-than-thirty-two-characters"));
   private final MutableClock clock = new MutableClock(NOW);
   private final JwtTokenProvider provider = providerFor(SECRET, Duration.ofMinutes(60), clock);
-  private final UUID id = UUID.randomUUID();
+  private final Long id = TestIds.next();
 
   private JwtTokenProvider providerFor(String secret, Duration expiration, Clock clock) {
-    return new JwtTokenProvider(new JwtProperties(secret, expiration), clock, users);
+    return new JwtTokenProvider(new JwtProperties(secret, expiration), clock, users, masker);
   }
 
   @Test
@@ -66,12 +72,12 @@ class JwtTokenProviderTest {
     when(users.findById(id)).thenReturn(Optional.empty());
     assertThat(provider.parse(provider.issue(id.toString(), "ADMIN"))).isEmpty();
 
-    UUID disabled = UUID.randomUUID();
+    Long disabled = TestIds.next();
     when(users.findById(disabled))
         .thenReturn(Optional.of(account(disabled, Role.ADMIN, "INACTIVE", false, null)));
     assertThat(provider.parse(provider.issue(disabled.toString(), "ADMIN"))).isEmpty();
 
-    assertThat(provider.parse(provider.issue("not-a-uuid", "ADMIN"))).isEmpty();
+    assertThat(provider.parse(signedWithSubject("not-a-uuid"))).isEmpty();
   }
 
   @Test
@@ -141,7 +147,18 @@ class JwtTokenProviderTest {
   @SuppressWarnings(
       "NullAway") // BE-SPR-NUL-02 TAR-148: intentional null, a signed token without that claim
   void rejectsSignedTokenWithoutSubject() {
-    assertThat(provider.parse(provider.issue(null, "ADMIN"))).isEmpty();
+    assertThat(provider.parse(signedWithSubject(null))).isEmpty();
+  }
+
+  /** A token signed with the real key whose subject is whatever the test says. */
+  private static String signedWithSubject(@Nullable String subject) {
+    return Jwts.builder()
+        .subject(subject)
+        .claim("role", "ADMIN")
+        .issuedAt(Date.from(NOW))
+        .expiration(Date.from(NOW.plusSeconds(600)))
+        .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)), Jwts.SIG.HS256)
+        .compact();
   }
 
   @Test
@@ -156,7 +173,7 @@ class JwtTokenProviderTest {
 
     String unmarked =
         Jwts.builder()
-            .subject(id.toString())
+            .subject(masker.mask(IdKind.USER, id).toString())
             .claim("role", "ADMIN")
             .issuedAt(Date.from(NOW))
             .expiration(Date.from(NOW.plusSeconds(600)))
@@ -167,13 +184,63 @@ class JwtTokenProviderTest {
         .hasValueSatisfying(s -> assertThat(s.mustChangePassword()).isTrue());
   }
 
+  /** The browser can read the token: it must not carry the sequential id of the account. */
+  @Test
+  void theSubjectOfTheTokenIsAMaskedIdAndNotTheNumericOne() {
+    String token = provider.issue(id.toString(), "ADMIN");
+
+    String subject =
+        Jwts.parser()
+            .verifyWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+            .clock(() -> Date.from(NOW))
+            .build()
+            .parseSignedClaims(token)
+            .getPayload()
+            .getSubject();
+
+    assertThat(subject).isNotEqualTo(id.toString());
+    assertThat(UUID.fromString(subject)).isEqualTo(masker.mask(IdKind.USER, id));
+  }
+
+  /** A token from before the masking carried the numeric id: it no longer opens a session. */
+  @Test
+  void aTokenWhoseSubjectIsTheNumericIdIsRefused() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String numeric =
+        Jwts.builder()
+            .subject(id.toString())
+            .claim("role", "ADMIN")
+            .issuedAt(Date.from(NOW))
+            .expiration(Date.from(NOW.plusSeconds(600)))
+            .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)), Jwts.SIG.HS256)
+            .compact();
+
+    assertThat(provider.parse(numeric)).isEmpty();
+  }
+
+  /** A masked id issued for another kind of resource is not a user. */
+  @Test
+  void aTokenWhoseSubjectIsAnotherKindOfIdIsRefused() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String foreign =
+        Jwts.builder()
+            .subject(masker.mask(IdKind.GUEST, id).toString())
+            .claim("role", "ADMIN")
+            .issuedAt(Date.from(NOW))
+            .expiration(Date.from(NOW.plusSeconds(600)))
+            .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)), Jwts.SIG.HS256)
+            .compact();
+
+    assertThat(provider.parse(foreign)).isEmpty();
+  }
+
   private UserAccount account(
       Role role, String status, boolean mustChange, @Nullable Instant passwordChangedAt) {
     return account(id, role, status, mustChange, passwordChangedAt);
   }
 
   private static UserAccount account(
-      UUID id, Role role, String status, boolean mustChange, @Nullable Instant passwordChangedAt) {
+      Long id, Role role, String status, boolean mustChange, @Nullable Instant passwordChangedAt) {
     return new UserAccount(
         id,
         "a@example.test",

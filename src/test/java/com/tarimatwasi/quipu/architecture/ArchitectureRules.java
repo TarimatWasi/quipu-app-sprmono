@@ -388,6 +388,8 @@ final class ArchitectureRules {
       classes()
           .that()
           .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .and()
+          .doNotHaveFullyQualifiedName(ROOT + ".shared.adapter.out.persistence.AuditorJpaEntity")
           .should()
-          .beAssignableTo(ROOT + ".shared.adapter.out.persistence.AuditableEntity");
+          .beAssignableTo(org.springframework.data.jpa.domain.AbstractAuditable.class);
 }

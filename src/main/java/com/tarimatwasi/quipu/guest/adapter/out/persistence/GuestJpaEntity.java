@@ -5,25 +5,26 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
-import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.UUID;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.jpa.domain.AbstractAuditable;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Table(name = "guests")
-public class GuestJpaEntity extends AuditableEntity {
-
-  @Id private UUID id;
+public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   @Column(name = "document_type")
   @Enumerated(EnumType.STRING)
@@ -105,7 +106,7 @@ public class GuestJpaEntity extends AuditableEntity {
             || emergencyContactRelationship != null
             || emergencyContactPhone != null;
     return new Guest(
-        id,
+        Objects.requireNonNull(getId()),
         documentType,
         documentNumber,
         fullName,

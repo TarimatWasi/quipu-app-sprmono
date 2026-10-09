@@ -27,6 +27,7 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -34,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +45,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class GuestServiceTest {
 
-  private static final UUID ID = UUID.randomUUID();
+  private static final Long ID = TestIds.next();
   private static final Instant NOW = Instant.parse("2026-10-06T15:00:00Z");
 
   @Mock GuestRepositoryPort repository;

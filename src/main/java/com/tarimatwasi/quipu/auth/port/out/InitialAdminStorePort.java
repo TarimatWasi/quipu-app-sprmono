@@ -1,18 +1,13 @@
 package com.tarimatwasi.quipu.auth.port.out;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
-import java.util.UUID;
 
 /** Storage of the first ADMIN. */
 public interface InitialAdminStorePort {
 
   /** The account to create: it must change its password before anything else (RF-12). */
   record NewAdmin(
-      UUID id,
-      String email,
-      DocumentType documentType,
-      String documentNumber,
-      String passwordHash) {}
+      String email, DocumentType documentType, String documentNumber, String passwordHash) {}
 
   /** Number of ADMIN accounts that can still log in. */
   int countActiveAdmins();

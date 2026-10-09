@@ -21,6 +21,9 @@ app:
     # Aleatorio en cada arranque: ningún secreto entra al repositorio público y las sesiones
     # locales se reinician con la aplicación.
     secret: ${random.uuid}${random.uuid}
+  # Igual que el secreto de sesión: aleatoria en cada arranque, los ids enmascarados cambian al reiniciar.
+  id-mask:
+    key: ${random.uuid}${random.uuid}
   # Sin ADMIN en local: no hay contraseña inicial que versionar (ver la prueba del perfil).
   admin:
     document-number: "00000000" # el enlace para elegir la contraseña sale en la consola del arranque

@@ -43,6 +43,10 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     expiration: 30d
+  # Clave que enmascara los ids que muestra el BFF (TAR-163). Siempre del entorno, sin valor por
+  # defecto: cambiarla cambia todos los ids que ven los clientes.
+  id-mask:
+    key: ${ID_MASK_KEY}
   # Límite de peticiones en login y recuperación de contraseña (SEC-01, TAR-31 y TAR-124).
   # per-minute es por dirección y es holgado a propósito: detrás de Vercel todos los navegadores
   # comparten una sola dirección. per-account-per-minute cuenta los intentos de login por documento,

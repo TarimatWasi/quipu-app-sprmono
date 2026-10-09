@@ -8,7 +8,6 @@ import com.tarimatwasi.quipu.auth.port.out.InitialAdminStorePort;
 import com.tarimatwasi.quipu.auth.port.out.InitialAdminStorePort.NewAdmin;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -53,11 +52,7 @@ public class InitialAdminService implements ProvisionInitialAdminUseCase {
     try {
       store.insert(
           new NewAdmin(
-              UUID.randomUUID(),
-              command.email(),
-              DocumentType.DNI,
-              command.documentNumber(),
-              unusablePasswordHash()));
+              command.email(), DocumentType.DNI, command.documentNumber(), unusablePasswordHash()));
     } catch (AccountAlreadyExistsException e) {
       if (!hasActiveAdmin()) {
         throw new IllegalStateException(

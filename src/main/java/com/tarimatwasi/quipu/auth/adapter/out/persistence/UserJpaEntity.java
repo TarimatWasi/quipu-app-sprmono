@@ -1,17 +1,18 @@
 package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditableEntity;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
 import jakarta.persistence.*;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.UUID;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.jpa.domain.AbstractAuditable;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Table(name = "users")
-public class UserJpaEntity extends AuditableEntity {
-
-  @Id private UUID id;
+public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   private String email;
 
@@ -29,7 +30,7 @@ public class UserJpaEntity extends AuditableEntity {
   private com.tarimatwasi.quipu.auth.domain.Role role;
 
   @Column(name = "guest_id")
-  private UUID guestId;
+  private Long guestId;
 
   @Column(name = "must_change_password")
   private boolean mustChangePassword;
@@ -97,7 +98,7 @@ public class UserJpaEntity extends AuditableEntity {
 
   public com.tarimatwasi.quipu.auth.domain.UserAccount toDomain() {
     return new com.tarimatwasi.quipu.auth.domain.UserAccount(
-        id,
+        Objects.requireNonNull(getId()),
         email,
         documentType,
         documentNumber,

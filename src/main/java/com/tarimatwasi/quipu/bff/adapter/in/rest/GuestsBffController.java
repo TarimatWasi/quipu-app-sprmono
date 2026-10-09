@@ -9,6 +9,8 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.IdDocumentKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.UpdateCommand;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -29,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class GuestsBffController {
 
   private final ManageGuestsUseCase guests;
+  private final IdMasker ids;
 
-  public GuestsBffController(ManageGuestsUseCase guests) {
+  public GuestsBffController(ManageGuestsUseCase guests, IdMasker ids) {
     this.guests = guests;
+    this.ids = ids;
   }
 
   /** The contract requires {@code name} even when it is still null (RN-31). */
@@ -43,9 +47,9 @@ public class GuestsBffController {
       String type,
       String status,
       boolean hasLoginAccess) {
-    static GuestSummaryResponse of(GuestSummaryView guest) {
+    static GuestSummaryResponse of(GuestSummaryView guest, IdMasker ids) {
       return new GuestSummaryResponse(
-          guest.id(),
+          ids.mask(IdKind.GUEST, guest.id()),
           guest.documentType().name(),
           guest.documentNumber(),
           guest.name(),
@@ -87,10 +91,10 @@ public class GuestsBffController {
       @JsonInclude(JsonInclude.Include.ALWAYS) @Nullable Instant accessExpiresAt,
       String onboardingProgress,
       List<Object> paymentHistory) {
-    static GuestDetailResponse of(GuestDetailView detail) {
+    static GuestDetailResponse of(GuestDetailView detail, IdMasker ids) {
       GuestSummaryView guest = detail.summary();
       return new GuestDetailResponse(
-          guest.id(),
+          ids.mask(IdKind.GUEST, guest.id()),
           guest.documentType().name(),
           guest.documentNumber(),
           guest.name(),
@@ -123,12 +127,14 @@ public class GuestsBffController {
   public List<GuestSummaryResponse> list(
       @RequestParam(name = "status", defaultValue = "CURRENT") StatusFilter status,
       @RequestParam(name = "type", required = false) @Nullable GuestKind type) {
-    return guests.list(status, type).stream().map(GuestSummaryResponse::of).toList();
+    return guests.list(status, type).stream()
+        .map(guest -> GuestSummaryResponse.of(guest, ids))
+        .toList();
   }
 
   @GetMapping("/bff/admin/guests/{id}")
   public GuestDetailResponse get(@PathVariable UUID id) {
-    return GuestDetailResponse.of(guests.get(id));
+    return GuestDetailResponse.of(guests.get(ids.unmask(IdKind.GUEST, id)), ids);
   }
 
   /** RN-17, RN-36: only the document (while pending activation) and the stay data change here. */
@@ -137,12 +143,13 @@ public class GuestsBffController {
       @PathVariable UUID id, @Valid @RequestBody UpdateGuestRequest request) {
     return GuestSummaryResponse.of(
         guests.update(
-            id,
+            ids.unmask(IdKind.GUEST, id),
             new UpdateCommand(
                 request.documentType(),
                 request.documentNumber(),
                 request.stayStartDate(),
                 request.stayEndDate(),
-                request.agreedAmount())));
+                request.agreedAmount())),
+        ids);
   }
 }

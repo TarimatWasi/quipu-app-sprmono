@@ -21,6 +21,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
@@ -259,6 +260,22 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "VALIDATION_ERROR", "Datos de entrada inválidos", e.getParameterName()));
+  }
+
+  /**
+   * A well-formed masked id that was never issued for that kind answers as the resource that does
+   * not exist, with the same body, so that a client cannot tell a forged id from a missing one. A
+   * value that is not a UUID at all is still a 400.
+   */
+  @ExceptionHandler(UnknownMaskedIdException.class)
+  public ResponseEntity<BffErrorResponse> handleUnknownMaskedId(UnknownMaskedIdException e) {
+    return switch (e.kind()) {
+      case ENVIRONMENT -> handleEnvironmentNotFound();
+      case EXPENSE -> handleExpenseNotFound();
+      case GUEST -> handleGuestNotFound();
+      // The session reads the user id itself and refuses the token: no BFF path carries one.
+      case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
+    };
   }
 
   /** A path or query value of the wrong shape, such as an id that is not a UUID. */

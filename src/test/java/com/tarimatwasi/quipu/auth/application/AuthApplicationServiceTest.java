@@ -30,10 +30,10 @@ import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,7 +62,7 @@ class AuthApplicationServiceTest {
   void logsInWithCorrectDocumentAndPassword() {
     UserAccount admin =
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             "admin@tarimatwasi.local",
             DocumentType.DNI,
             "00000000",
@@ -87,7 +87,7 @@ class AuthApplicationServiceTest {
   void rejectsWrongPasswordWithGenericError() {
     UserAccount admin =
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             "admin@tarimatwasi.local",
             DocumentType.DNI,
             "00000000",
@@ -115,7 +115,7 @@ class AuthApplicationServiceTest {
   private UserAccount savedUser(String rawPassword, boolean mustChangePassword, String status) {
     UserAccount user =
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             "user@tarimatwasi.local",
             DocumentType.DNI,
             "11111111",
@@ -227,7 +227,7 @@ class AuthApplicationServiceTest {
 
   @Test
   void rejectsAnUnknownAccount() {
-    var command = new ChangePasswordCommand(UUID.randomUUID().toString(), null, "Nueva12345");
+    var command = new ChangePasswordCommand(TestIds.next().toString(), null, "Nueva12345");
 
     assertThatThrownBy(() -> service.changePassword(command))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -266,7 +266,7 @@ class AuthApplicationServiceTest {
   @Test
   void currentSessionOfADisabledUnknownOrMalformedAccountIsNoSession() {
     String disabled = savedUser("Temporal123!", false, "INACTIVE").id().toString();
-    String unknown = UUID.randomUUID().toString();
+    String unknown = TestIds.next().toString();
 
     assertThatThrownBy(() -> service.currentSession(disabled))
         .isInstanceOf(NoActiveSessionException.class);
@@ -393,7 +393,7 @@ class AuthApplicationServiceTest {
   void aFailureThatFindsTheAccountAlreadyLockedAnswersLocked() {
     UserAccount unlocked =
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             "user@tarimatwasi.local",
             DocumentType.DNI,
             "11111111",

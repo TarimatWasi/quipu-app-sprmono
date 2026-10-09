@@ -73,7 +73,8 @@ jobs:
           docker network create quipu-ci
           pgpass=$(openssl rand -hex 8)
           jwt=$(openssl rand -base64 48 | tr -d '\n=')
-          echo "::add-mask::$pgpass"; echo "::add-mask::$jwt"
+          idmask=$(openssl rand -base64 48 | tr -d '\n=')
+          echo "::add-mask::$pgpass"; echo "::add-mask::$jwt"; echo "::add-mask::$idmask"
           docker run -d --name pg --network quipu-ci \
             -e "POSTGRES_PASSWORD=$pgpass" -e POSTGRES_USER=quipu -e POSTGRES_DB=quipu \
             postgres:17 >/dev/null
@@ -82,7 +83,8 @@ jobs:
           docker run -d --name api --network quipu-ci --memory 512m -p 10000:10000 \
             -e SPRING_PROFILES_ACTIVE=dev -e PORT=10000 \
             -e "DATABASE_URL=jdbc:postgresql://pg:5432/quipu?user=quipu&password=$pgpass" \
-            -e "JWT_SECRET=$jwt" -e CORS_ALLOWED_ORIGIN=https://example.vercel.app \
+            -e "JWT_SECRET=$jwt" -e "ID_MASK_KEY=$idmask" \
+            -e CORS_ALLOWED_ORIGIN=https://example.vercel.app \
             -e ADMIN_DOCUMENT_NUMBER=12345678 -e ADMIN_EMAIL=ci@example.test \
             -e R2_ACCOUNT_ID=ci -e R2_ACCESS_KEY_ID=ci -e R2_SECRET_ACCESS_KEY=ci-dummy \
             -e R2_ENDPOINT=https://example.invalid -e R2_BUCKET_NAME=ci \

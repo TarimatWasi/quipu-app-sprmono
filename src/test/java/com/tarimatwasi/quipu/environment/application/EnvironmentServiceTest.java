@@ -23,9 +23,9 @@ import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.Statu
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.UpdateCommand;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
+import com.tarimatwasi.quipu.support.TestIds;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -34,7 +34,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class EnvironmentServiceTest {
 
-  private static final UUID ID = UUID.randomUUID();
+  private static final Long ID = TestIds.next();
   private static final Environment ROOM_201 =
       new Environment(ID, "201", EnvironmentType.ROOM, EnvironmentStatus.ACTIVE);
   private static final EnvironmentView VIEW_201 =
@@ -163,12 +163,10 @@ class EnvironmentServiceTest {
   @Test
   void getsAnExistingEnvironmentAndFailsOnAnUnknownOne() {
     when(repository.findById(ID)).thenReturn(Optional.of(ROOM_201));
-    when(repository.findById(UUID.fromString("00000000-0000-0000-0000-000000000000")))
-        .thenReturn(Optional.empty());
+    when(repository.findById(-1L)).thenReturn(Optional.empty());
 
     assertThat(service().get(ID)).isEqualTo(VIEW_201);
-    assertThatThrownBy(() -> service().get(UUID.fromString("00000000-0000-0000-0000-000000000000")))
-        .isInstanceOf(EnvironmentNotFoundException.class);
+    assertThatThrownBy(() -> service().get(-1L)).isInstanceOf(EnvironmentNotFoundException.class);
   }
 
   @Test

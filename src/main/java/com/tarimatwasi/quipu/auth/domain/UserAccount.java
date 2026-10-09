@@ -2,17 +2,16 @@ package com.tarimatwasi.quipu.auth.domain;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 public record UserAccount(
-    UUID id,
+    Long id,
     String email,
     DocumentType documentType,
     String documentNumber,
     String passwordHash,
     Role role,
-    @Nullable UUID guestId,
+    @Nullable Long guestId,
     boolean mustChangePassword,
     String status,
     int failedLoginAttempts,

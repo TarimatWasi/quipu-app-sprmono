@@ -7,7 +7,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.util.ArrayList;
 import java.util.UUID;
@@ -34,18 +38,18 @@ class EnvironmentsBffControllerTest {
 
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
+  @Autowired IdMasker masker;
   @Autowired JwtTokenProvider jwtTokenProvider;
 
-  private final UUID adminId = UUID.randomUUID();
-  private final UUID guestId = UUID.randomUUID();
+  private final Long adminId = TestIds.next();
+  private final Long guestId = TestIds.next();
 
   /**
    * The container is shared by all integration tests: this test owns the users and environments.
    */
   @BeforeEach
   void setUp() {
-    jdbc.update("DELETE FROM environments");
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
     insertUser(adminId, "ADMIN", "00000001");
     insertUser(guestId, "GUEST", "00000002");
   }
@@ -236,7 +240,8 @@ class EnvironmentsBffControllerTest {
     createdId("201", "ROOM");
     var inactive = createdId("100", "CABIN");
     jdbc.update(
-        "UPDATE environments SET status = 'INACTIVE' WHERE id = ?", UUID.fromString(inactive));
+        "UPDATE environments SET status = 'INACTIVE' WHERE id = ?",
+        masker.unmask(IdKind.ENVIRONMENT, UUID.fromString(inactive)));
 
     mockMvc
         .perform(get(URL).cookie(admin()))
@@ -415,7 +420,7 @@ class EnvironmentsBffControllerTest {
             .content(json));
   }
 
-  private void insertUser(UUID id, String role, String document) {
+  private void insertUser(Long id, String role, String document) {
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status) VALUES (?, ?, 'DNI', ?, 'hash', ?, FALSE, 'ACTIVE')",

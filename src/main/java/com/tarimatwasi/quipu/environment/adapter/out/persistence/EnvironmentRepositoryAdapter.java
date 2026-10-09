@@ -7,7 +7,6 @@ import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsEx
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
@@ -23,11 +22,11 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
 
   @Override
   public Environment insert(String code, EnvironmentType type) {
-    return saveAndFlush(new EnvironmentJpaEntity(UUID.randomUUID(), code, type)).toDomain();
+    return saveAndFlush(new EnvironmentJpaEntity(code, type)).toDomain();
   }
 
   @Override
-  public Optional<Environment> findById(UUID id) {
+  public Optional<Environment> findById(Long id) {
     return jpaRepository.findById(id).map(EnvironmentJpaEntity::toDomain);
   }
 
@@ -42,7 +41,7 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
 
   @Override
   public Optional<Environment> update(
-      UUID id, @Nullable String code, @Nullable EnvironmentType type) {
+      Long id, @Nullable String code, @Nullable EnvironmentType type) {
     return jpaRepository
         .findWithLockById(id)
         .map(
@@ -58,7 +57,7 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
   }
 
   @Override
-  public boolean updateStatus(UUID id, EnvironmentStatus status) {
+  public boolean updateStatus(Long id, EnvironmentStatus status) {
     var entity = jpaRepository.findWithLockById(id);
     entity.ifPresent(found -> found.changeStatus(status));
     return entity.isPresent();

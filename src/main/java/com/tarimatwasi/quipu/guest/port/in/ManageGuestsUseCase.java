@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /** RF-02: list, read and edit the guests the administrator registered. */
@@ -59,7 +58,7 @@ public interface ManageGuestsUseCase {
 
   /** A guest as the listings show it. {@code name} is null until the onboarding fills it. */
   record GuestSummaryView(
-      UUID id,
+      Long id,
       IdDocumentKind documentType,
       String documentNumber,
       @Nullable String name,
@@ -101,7 +100,7 @@ public interface ManageGuestsUseCase {
    *
    * @throws GuestNotFoundException if there is no guest with that id
    */
-  GuestDetailView get(UUID id);
+  GuestDetailView get(Long id);
 
   /**
    * Edits the present fields.
@@ -113,5 +112,5 @@ public interface ManageGuestsUseCase {
    * @throws GuestDocumentTakenException if another guest has the new document
    * @throws InvalidGuestStayException if a stay field is not valid for this guest
    */
-  GuestSummaryView update(UUID id, UpdateCommand command);
+  GuestSummaryView update(Long id, UpdateCommand command);
 }

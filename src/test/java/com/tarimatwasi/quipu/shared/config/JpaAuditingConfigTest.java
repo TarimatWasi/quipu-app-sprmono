@@ -1,7 +1,12 @@
 package com.tarimatwasi.quipu.shared.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
+import jakarta.persistence.EntityManager;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -13,9 +18,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 class JpaAuditingConfigTest {
 
-  private static final String USER_ID = "3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f";
+  private static final long USER_ID = 42L;
 
-  private final AuditorAware<String> auditor = new JpaAuditingConfig().auditorAware();
+  private final EntityManager entityManager = mock(EntityManager.class);
+  private final AuditorAware<AuditorJpaEntity> auditor =
+      new JpaAuditingConfig().auditorAware(entityManager);
 
   @AfterEach
   void clearContext() {
@@ -23,25 +30,40 @@ class JpaAuditingConfigTest {
   }
 
   @Test
-  void auditsTheIdOfTheAuthenticatedUser() {
+  void auditsTheAuthenticatedUserByReference() {
+    var reference = mock(AuditorJpaEntity.class);
+    when(entityManager.getReference(AuditorJpaEntity.class, USER_ID)).thenReturn(reference);
     SecurityContextHolder.getContext()
-        .setAuthentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()));
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken(String.valueOf(USER_ID), null, List.of()));
 
-    assertThat(auditor.getCurrentAuditor()).contains(USER_ID);
+    assertThat(auditor.getCurrentAuditor()).containsSame(reference);
   }
 
   @Test
-  void auditsSystemWhenThereIsNoSession() {
-    assertThat(auditor.getCurrentAuditor()).contains("system");
+  void hasNoAuditorWhenThereIsNoSession() {
+    assertThat(auditor.getCurrentAuditor()).isEmpty();
+    verifyNoInteractions(entityManager);
   }
 
   @Test
-  void auditsSystemForAnAnonymousRequest() {
+  void hasNoAuditorForAnAnonymousRequest() {
     SecurityContextHolder.getContext()
         .setAuthentication(
             new AnonymousAuthenticationToken(
                 "key", "anonymousUser", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
 
-    assertThat(auditor.getCurrentAuditor()).contains("system");
+    assertThat(auditor.getCurrentAuditor()).isEmpty();
+    verifyNoInteractions(entityManager);
+  }
+
+  @Test
+  void hasNoAuditorWhenTheSessionNameIsNotAUserId() {
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken("not-a-number", null, List.of()));
+
+    assertThat(auditor.getCurrentAuditor()).isEmpty();
+    verifyNoInteractions(entityManager);
   }
 }

@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.auth.adapter.in.bootstrap.AdminBootstrap;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestTables;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,7 +38,7 @@ class UsersMigrationTest {
 
   @BeforeEach
   void emptyUsers() {
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
   }
 
   @Test

@@ -29,9 +29,12 @@ public class InitialAdminStoreAdapter implements InitialAdminStorePort {
   public void insert(NewAdmin admin) {
     try {
       jdbc.update(
+          // Users are only ever created here, by JDBC, so users_seq is not shared with Hibernate's
+          // block allocation. If a user is ever persisted through JPA, give this insert its own id
+          // source: both would draw from the same sequence.
           "INSERT INTO users (id, email, document_type, document_number, password_hash, role, "
-              + "must_change_password, status) VALUES (?, ?, ?, ?, ?, 'ADMIN', TRUE, 'ACTIVE')",
-          admin.id(),
+              + "must_change_password, status) "
+              + "VALUES (nextval('users_seq'), ?, ?, ?, ?, 'ADMIN', TRUE, 'ACTIVE')",
           admin.email(),
           admin.documentType().name(),
           admin.documentNumber(),

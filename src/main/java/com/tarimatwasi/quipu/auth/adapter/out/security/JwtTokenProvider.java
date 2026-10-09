@@ -3,6 +3,9 @@ package com.tarimatwasi.quipu.auth.adapter.out.security;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -15,6 +18,7 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 import javax.crypto.SecretKey;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -30,12 +34,15 @@ public class JwtTokenProvider implements SessionTokenPort {
   private final Duration expiration;
   private final Clock clock;
   private final UserRepositoryPort users;
+  private final IdMasker masker;
 
-  public JwtTokenProvider(JwtProperties properties, Clock clock, UserRepositoryPort users) {
+  public JwtTokenProvider(
+      JwtProperties properties, Clock clock, UserRepositoryPort users, IdMasker masker) {
     this.key = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
     this.expiration = properties.expiration();
     this.clock = clock;
     this.users = users;
+    this.masker = masker;
   }
 
   public String issue(String userId, String role) {
@@ -46,7 +53,7 @@ public class JwtTokenProvider implements SessionTokenPort {
   public String issue(String userId, String role, boolean mustChangePassword) {
     Instant now = clock.instant();
     return Jwts.builder()
-        .subject(userId)
+        .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
         .claim("role", role)
         .claim(PASSWORD_CHANGE_PENDING_CLAIM, mustChangePassword)
         .issuedAt(Date.from(now))
@@ -76,7 +83,7 @@ public class JwtTokenProvider implements SessionTokenPort {
     } catch (JwtException | IllegalArgumentException e) {
       return Optional.empty();
     }
-    String userId = claims.getSubject();
+    String userId = unmaskedSubject(claims.getSubject());
     String role = claims.get("role", String.class);
     Date issuedAt = claims.getIssuedAt();
     if (userId == null || userId.isBlank() || role == null || role.isBlank() || issuedAt == null) {
@@ -87,10 +94,26 @@ public class JwtTokenProvider implements SessionTokenPort {
         .map(account -> new Session(userId, account.role().name(), account.mustChangePassword()));
   }
 
-  private Optional<UserAccount> activeAccount(String userId) {
-    UUID id;
+  /**
+   * The browser can read the token, so its subject is the masked id, not the sequential one. Empty
+   * text (never a valid id) if the subject is not a masked user id: a token from before the masking
+   * is refused.
+   */
+  private String unmaskedSubject(@Nullable String subject) {
+    if (subject == null) {
+      return "";
+    }
     try {
-      id = UUID.fromString(userId);
+      return Long.toString(masker.unmask(IdKind.USER, UUID.fromString(subject)));
+    } catch (IllegalArgumentException | UnknownMaskedIdException notAMaskedUserId) {
+      return "";
+    }
+  }
+
+  private Optional<UserAccount> activeAccount(String userId) {
+    long id;
+    try {
+      id = Long.parseLong(userId);
     } catch (IllegalArgumentException notAnId) {
       return Optional.empty();
     }

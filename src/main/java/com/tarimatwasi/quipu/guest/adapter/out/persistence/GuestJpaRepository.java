@@ -6,15 +6,14 @@ import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 
-interface GuestJpaRepository extends JpaRepository<GuestJpaEntity, UUID> {
+interface GuestJpaRepository extends JpaRepository<GuestJpaEntity, Long> {
 
   /** Locked until the commit: two simultaneous edits of one guest are applied one by one. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  Optional<GuestJpaEntity> findWithLockById(UUID id);
+  Optional<GuestJpaEntity> findWithLockById(Long id);
 
   List<GuestJpaEntity> findAllByOrderByDocumentTypeAscDocumentNumberAsc();
 
