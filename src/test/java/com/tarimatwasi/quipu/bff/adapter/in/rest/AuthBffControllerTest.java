@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.tarimatwasi.quipu.auth.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
@@ -16,12 +17,9 @@ import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
-import io.jsonwebtoken.Jwts;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
-import java.util.Date;
 import java.util.Objects;
-import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,8 +30,14 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -66,6 +70,9 @@ class AuthBffControllerTest {
   @Autowired PasswordEncoder passwordEncoder;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+  @Autowired JwtDecoder jwtDecoder;
+  @Autowired JwtEncoder jwtEncoder;
+  @Autowired AccountJwtAuthenticationConverter sessionConverter;
   @Autowired UserRepositoryPort users;
   @Autowired PlatformTransactionManager transactionManager;
 
@@ -259,8 +266,9 @@ class AuthBffControllerTest {
             .getResponse();
 
     Cookie fresh = Objects.requireNonNull(response.getCookie("sessionToken"));
-    assertThat(jwtTokenProvider.parse(fresh.getValue()))
-        .hasValueSatisfying(s -> assertThat(s.mustChangePassword()).isFalse());
+    assertThat(sessionOf(fresh.getValue()).getAuthorities())
+        .extracting("authority")
+        .doesNotContain(AccountJwtAuthenticationConverter.PASSWORD_CHANGE_PENDING);
     assertThat(mustChangePasswordInTheDatabase()).isFalse();
     Long userId =
         jdbc.queryForObject("SELECT id FROM users WHERE document_number = '00000000'", Long.class);
@@ -297,19 +305,14 @@ class AuthBffControllerTest {
   /** Rolling deployment: a token without the mark of an account that must change is not free. */
   @Test
   void aTokenFromBeforeTheMarkIsStillForcedWhenTheAccountMustChangeItsPassword() throws Exception {
-    String id = jdbc.queryForObject("SELECT id::text FROM users", String.class);
-    SecretKey signingKey =
-        (SecretKey) Objects.requireNonNull(ReflectionTestUtils.getField(jwtTokenProvider, "key"));
-    String legacy =
-        Jwts.builder()
-            .subject(masker.mask(IdKind.USER, Long.parseLong(id)).toString())
-            .claim("role", "ADMIN")
-            .issuedAt(Date.from(Instant.now()))
-            .expiration(Date.from(Instant.now().plusSeconds(600)))
-            .signWith(signingKey, Jwts.SIG.HS256)
-            .compact();
+    String id =
+        Objects.requireNonNull(jdbc.queryForObject("SELECT id::text FROM users", String.class));
+    String legacy = craftedToken(id, Instant.now());
 
-    assertThat(jwtTokenProvider.parse(legacy)).as("legacy token parses").isPresent();
+    assertThat(sessionOf(legacy).getAuthorities())
+        .as("the account, not the token, says the password must change")
+        .extracting("authority")
+        .contains(AccountJwtAuthenticationConverter.PASSWORD_CHANGE_PENDING);
     mockMvc
         .perform(get("/bff/admin/environments").cookie(new Cookie("sessionToken", legacy)))
         .andExpect(status().isForbidden())
@@ -525,19 +528,9 @@ class AuthBffControllerTest {
   @Test
   void aSessionOpenedBeforeThePasswordChangeStopsWorkingAfterIt() throws Exception {
     // The token's issue time has second precision: the old session is one from ten seconds ago.
-    String id = jdbc.queryForObject("SELECT id::text FROM users", String.class);
-    SecretKey signingKey =
-        (SecretKey) Objects.requireNonNull(ReflectionTestUtils.getField(jwtTokenProvider, "key"));
-    Cookie old =
-        new Cookie(
-            "sessionToken",
-            Jwts.builder()
-                .subject(masker.mask(IdKind.USER, Long.parseLong(id)).toString())
-                .claim("role", "ADMIN")
-                .issuedAt(Date.from(Instant.now().minusSeconds(10)))
-                .expiration(Date.from(Instant.now().plusSeconds(600)))
-                .signWith(signingKey, Jwts.SIG.HS256)
-                .compact());
+    String id =
+        Objects.requireNonNull(jdbc.queryForObject("SELECT id::text FROM users", String.class));
+    Cookie old = new Cookie("sessionToken", craftedToken(id, Instant.now().minusSeconds(10)));
     mockMvc.perform(get(ME).cookie(old)).andExpect(status().isOk());
 
     Cookie fresh =
@@ -592,5 +585,68 @@ class AuthBffControllerTest {
         .andExpect(status().isUnauthorized());
     changePassword(fresh, "{\"currentPassword\":\"Nueva12345\",\"newPassword\":\"Otra123456\"}")
         .andExpect(status().isNoContent());
+  }
+
+  /**
+   * A token signed with the real key, for a user id, issued at the given time and valid 10 minutes.
+   */
+  private String craftedToken(String userId, Instant issuedAt) {
+    JwtClaimsSet claims =
+        JwtClaimsSet.builder()
+            .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
+            .claim("role", "ADMIN")
+            .issuedAt(issuedAt)
+            .expiresAt(issuedAt.plusSeconds(600))
+            .build();
+    return jwtEncoder
+        .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+        .getTokenValue();
+  }
+
+  /** What the security chain makes of a session cookie: the authentication of its account. */
+  private Authentication sessionOf(String token) {
+    return sessionConverter.convert(jwtDecoder.decode(token));
+  }
+
+  /**
+   * TAR-164: a stale or invalid cookie is not read on the public endpoints, so it cannot stop a
+   * login.
+   */
+  @Test
+  void aGarbageSessionCookieDoesNotStopALogin() throws Exception {
+    mockMvc
+        .perform(
+            post(LOGIN)
+                .cookie(new Cookie("sessionToken", "not-a-jwt"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ADMIN_LOGIN_BODY))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void aGarbageSessionCookieOnAProtectedEndpointIsNoSession() throws Exception {
+    mockMvc
+        .perform(get(ME).cookie(new Cookie("sessionToken", "not-a-jwt")))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
+  }
+
+  @Test
+  void anExpiredSessionCookieIsNoSessionButStillLetsALoginIn() throws Exception {
+    String id =
+        Objects.requireNonNull(jdbc.queryForObject("SELECT id::text FROM users", String.class));
+    Cookie expired = new Cookie("sessionToken", craftedToken(id, Instant.now().minusSeconds(3600)));
+
+    mockMvc
+        .perform(get(ME).cookie(expired))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
+    mockMvc
+        .perform(
+            post(LOGIN)
+                .cookie(expired)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ADMIN_LOGIN_BODY))
+        .andExpect(status().isOk());
   }
 }
