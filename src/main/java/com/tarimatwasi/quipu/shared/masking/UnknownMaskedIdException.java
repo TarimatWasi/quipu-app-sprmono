@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.bff.adapter.in.rest;
+package com.tarimatwasi.quipu.shared.masking;
 
 /** A masked id that this service never issued for the kind asked, or that was altered. */
 public class UnknownMaskedIdException extends RuntimeException {

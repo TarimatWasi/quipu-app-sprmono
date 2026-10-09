@@ -21,6 +21,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
@@ -272,6 +273,8 @@ public class BffExceptionHandler {
       case ENVIRONMENT -> handleEnvironmentNotFound();
       case EXPENSE -> handleExpenseNotFound();
       case GUEST -> handleGuestNotFound();
+      // The session reads the user id itself and refuses the token: no BFF path carries one.
+      case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
     };
   }
 

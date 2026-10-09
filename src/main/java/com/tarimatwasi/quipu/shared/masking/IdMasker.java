@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.bff.adapter.in.rest;
+package com.tarimatwasi.quipu.shared.masking;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

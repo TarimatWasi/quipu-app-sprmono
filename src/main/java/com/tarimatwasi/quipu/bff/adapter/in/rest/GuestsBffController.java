@@ -9,6 +9,8 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.IdDocumentKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.UpdateCommand;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;

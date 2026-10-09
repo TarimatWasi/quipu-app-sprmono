@@ -6,6 +6,8 @@ import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.Envir
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.EnvironmentView;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.UpdateCommand;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

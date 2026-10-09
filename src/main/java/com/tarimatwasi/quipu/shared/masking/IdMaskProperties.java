@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.bff.adapter.in.rest;
+package com.tarimatwasi.quipu.shared.masking;
 
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;

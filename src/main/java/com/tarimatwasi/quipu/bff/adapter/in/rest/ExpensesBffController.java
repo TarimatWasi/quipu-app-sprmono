@@ -5,6 +5,8 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseCommand;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseKind;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseView;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;

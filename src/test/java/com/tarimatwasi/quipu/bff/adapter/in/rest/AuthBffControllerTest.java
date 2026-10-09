@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -63,6 +65,7 @@ class AuthBffControllerTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired PasswordEncoder passwordEncoder;
   @Autowired JwtTokenProvider jwtTokenProvider;
+  @Autowired IdMasker masker;
   @Autowired UserRepositoryPort users;
   @Autowired PlatformTransactionManager transactionManager;
 
@@ -299,7 +302,7 @@ class AuthBffControllerTest {
         (SecretKey) Objects.requireNonNull(ReflectionTestUtils.getField(jwtTokenProvider, "key"));
     String legacy =
         Jwts.builder()
-            .subject(id)
+            .subject(masker.mask(IdKind.USER, Long.parseLong(id)).toString())
             .claim("role", "ADMIN")
             .issuedAt(Date.from(Instant.now()))
             .expiration(Date.from(Instant.now().plusSeconds(600)))
@@ -529,7 +532,7 @@ class AuthBffControllerTest {
         new Cookie(
             "sessionToken",
             Jwts.builder()
-                .subject(id)
+                .subject(masker.mask(IdKind.USER, Long.parseLong(id)).toString())
                 .claim("role", "ADMIN")
                 .issuedAt(Date.from(Instant.now().minusSeconds(10)))
                 .expiration(Date.from(Instant.now().plusSeconds(600)))

@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.bff.adapter.in.rest;
+package com.tarimatwasi.quipu.shared.masking;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
