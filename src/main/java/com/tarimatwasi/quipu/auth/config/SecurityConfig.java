@@ -1,7 +1,8 @@
 package com.tarimatwasi.quipu.auth.config;
 
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtAuthenticationFilter;
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.auth.adapter.out.security.AccountJwtAuthenticationConverter;
+import com.tarimatwasi.quipu.auth.adapter.out.security.CookieBearerTokenResolver;
+import java.util.Arrays;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,8 +11,12 @@ import org.springframework.core.env.Profiles;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -19,9 +24,22 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration(proxyBeanMethods = false)
 class SecurityConfig {
 
+  /** Endpoints that need no session; a stale session cookie is not even read there. */
+  private static final String[] PUBLIC_PATHS = {
+    "/actuator/health",
+    "/actuator/health/**",
+    "/bff/auth/login",
+    "/bff/auth/forgot-password",
+    "/bff/auth/reset-password",
+    "/error"
+  };
+
   @Bean
   SecurityFilterChain securityFilterChain(
-      HttpSecurity http, JwtTokenProvider jwtTokenProvider, RateLimitProperties rateLimit)
+      HttpSecurity http,
+      JwtDecoder jwtDecoder,
+      AccountJwtAuthenticationConverter sessionConverter,
+      RateLimitProperties rateLimit)
       throws Exception {
     // CSRF is disabled on purpose (ADR-006). Mitigation, in layers: the session cookie is
     // SameSite=Lax (the browser talks to the frontend origin and the hosting layer rewrites
@@ -39,24 +57,36 @@ class SecurityConfig {
             e ->
                 e.authenticationEntryPoint(new NoSessionEntryPoint())
                     .accessDeniedHandler(new ForbiddenHandler()))
+        // The session is Spring Security's resource server (TAR-164): the token comes from the
+        // cookie, the decoder checks signature and dates, and the converter applies the rules of
+        // the account (TAR-125). An invalid token answers AUTH_NO_SESSION like a missing one.
+        .oauth2ResourceServer(
+            o ->
+                o.bearerTokenResolver(new CookieBearerTokenResolver(publicRequests()))
+                    .authenticationEntryPoint(new NoSessionEntryPoint())
+                    .jwt(j -> j.decoder(jwtDecoder).jwtAuthenticationConverter(sessionConverter)))
         .authorizeHttpRequests(
             a ->
-                a.requestMatchers(
-                        "/actuator/health",
-                        "/actuator/health/**",
-                        "/bff/auth/login",
-                        "/bff/auth/forgot-password",
-                        "/bff/auth/reset-password",
-                        "/error")
+                a
+                    // RF-12: a session pending a password change can only change it.
+                    .requestMatchers(new PasswordChangePendingMatcher())
+                    .denyAll()
+                    .requestMatchers(PUBLIC_PATHS)
                     .permitAll()
                     .requestMatchers("/bff/admin/**")
                     .hasRole("ADMIN")
                     .anyRequest()
                     .authenticated())
-        .addFilterBefore(new RateLimitFilter(rateLimit), AuthorizationFilter.class)
-        .addFilterBefore(new JsonOnlyFilter(), AuthorizationFilter.class)
-        .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), AuthorizationFilter.class);
+        // Both run before the session is read, so a flood of bad requests costs no account lookup.
+        .addFilterBefore(new RateLimitFilter(rateLimit), BearerTokenAuthenticationFilter.class)
+        .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class);
     return http.build();
+  }
+
+  private static RequestMatcher publicRequests() {
+    var paths = PathPatternRequestMatcher.withDefaults();
+    return new OrRequestMatcher(
+        Arrays.stream(PUBLIC_PATHS).map(paths::matcher).toArray(RequestMatcher[]::new));
   }
 
   /**
