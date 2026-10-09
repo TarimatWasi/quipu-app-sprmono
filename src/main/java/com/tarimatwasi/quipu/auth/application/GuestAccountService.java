@@ -6,7 +6,6 @@ import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,13 +20,13 @@ public class GuestAccountService implements GuestAccountUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public Map<UUID, GuestAccountState> stateOf(Collection<UUID> guestIds) {
-    Map<UUID, GuestAccountState> states = new HashMap<>();
+  public Map<Long, GuestAccountState> stateOf(Collection<Long> guestIds) {
+    Map<Long, GuestAccountState> states = new HashMap<>();
     if (guestIds.isEmpty()) {
       return states;
     }
     for (UserAccount account : users.findAllByGuestIds(guestIds)) {
-      UUID guestId = account.guestId();
+      Long guestId = account.guestId();
       if (guestId != null) {
         states.put(
             guestId, new GuestAccountState(!account.isDisabled(), !account.mustChangePassword()));

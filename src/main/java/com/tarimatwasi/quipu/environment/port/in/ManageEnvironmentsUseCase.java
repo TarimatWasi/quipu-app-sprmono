@@ -1,7 +1,6 @@
 package com.tarimatwasi.quipu.environment.port.in;
 
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /** RF-01: create, read, edit and list the rentable environments. */
@@ -27,7 +26,7 @@ public interface ManageEnvironmentsUseCase {
   }
 
   /** An environment as the callers see it. */
-  record EnvironmentView(UUID id, String code, EnvironmentKind type, EnvironmentState status) {}
+  record EnvironmentView(Long id, String code, EnvironmentKind type, EnvironmentState status) {}
 
   /** {@code code} is trimmed before it is stored and compared. */
   record CreateCommand(String code, EnvironmentKind type) {}
@@ -49,14 +48,14 @@ public interface ManageEnvironmentsUseCase {
    * @throws EnvironmentCodeTakenException if another environment has the new code
    * @throws EmptyEnvironmentUpdateException if no field is present
    */
-  EnvironmentView update(UUID id, UpdateCommand command);
+  EnvironmentView update(Long id, UpdateCommand command);
 
   /**
    * Reads one environment, active or not.
    *
    * @throws EnvironmentNotFoundException if there is no environment with that id
    */
-  EnvironmentView get(UUID id);
+  EnvironmentView get(Long id);
 
   /**
    * Takes the environment out of the operational listings, keeping its history (RN-12). Doing it to
@@ -64,7 +63,7 @@ public interface ManageEnvironmentsUseCase {
    *
    * @throws EnvironmentNotFoundException if there is no environment with that id
    */
-  void deactivate(UUID id);
+  void deactivate(Long id);
 
   /**
    * Brings an inactive environment back to the operational listings. Doing it to an active
@@ -72,7 +71,7 @@ public interface ManageEnvironmentsUseCase {
    *
    * @throws EnvironmentNotFoundException if there is no environment with that id
    */
-  void reactivate(UUID id);
+  void reactivate(Long id);
 
   /** Lists the environments of the filter, ordered by code. */
   List<EnvironmentView> list(StatusFilter filter);

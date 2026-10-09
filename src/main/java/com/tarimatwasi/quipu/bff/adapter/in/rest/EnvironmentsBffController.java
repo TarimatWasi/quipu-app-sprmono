@@ -32,9 +32,11 @@ public class EnvironmentsBffController {
   private static final String NOT_BLANK = "(?U).*\\S.*";
 
   private final ManageEnvironmentsUseCase environments;
+  private final IdMasker ids;
 
-  public EnvironmentsBffController(ManageEnvironmentsUseCase environments) {
+  public EnvironmentsBffController(ManageEnvironmentsUseCase environments, IdMasker ids) {
     this.environments = environments;
+    this.ids = ids;
   }
 
   public record CreateEnvironmentRequest(
@@ -46,9 +48,9 @@ public class EnvironmentsBffController {
       @Nullable EnvironmentKind type) {}
 
   public record EnvironmentResponse(UUID id, String code, String type, String status) {
-    static EnvironmentResponse of(EnvironmentView environment) {
+    static EnvironmentResponse of(EnvironmentView environment, IdMasker ids) {
       return new EnvironmentResponse(
-          environment.id(),
+          ids.mask(IdKind.ENVIRONMENT, environment.id()),
           environment.code(),
           environment.type().name(),
           environment.status().name());
@@ -58,38 +60,42 @@ public class EnvironmentsBffController {
   @GetMapping("/bff/admin/environments")
   public List<EnvironmentResponse> list(
       @RequestParam(name = "status", defaultValue = "ACTIVE") StatusFilter status) {
-    return environments.list(status).stream().map(EnvironmentResponse::of).toList();
+    return environments.list(status).stream()
+        .map(environment -> EnvironmentResponse.of(environment, ids))
+        .toList();
   }
 
   @PostMapping("/bff/admin/environments")
   @ResponseStatus(HttpStatus.CREATED)
   public EnvironmentResponse create(@Valid @RequestBody CreateEnvironmentRequest request) {
     return EnvironmentResponse.of(
-        environments.create(new CreateCommand(request.code(), request.type())));
+        environments.create(new CreateCommand(request.code(), request.type())), ids);
   }
 
   @GetMapping("/bff/admin/environments/{id}")
   public EnvironmentResponse get(@PathVariable UUID id) {
-    return EnvironmentResponse.of(environments.get(id));
+    return EnvironmentResponse.of(environments.get(ids.unmask(IdKind.ENVIRONMENT, id)), ids);
   }
 
   @PatchMapping("/bff/admin/environments/{id}")
   public EnvironmentResponse update(
       @PathVariable UUID id, @Valid @RequestBody UpdateEnvironmentRequest request) {
     return EnvironmentResponse.of(
-        environments.update(id, new UpdateCommand(request.code(), request.type())));
+        environments.update(
+            ids.unmask(IdKind.ENVIRONMENT, id), new UpdateCommand(request.code(), request.type())),
+        ids);
   }
 
   /** RF-13: the environment leaves the operational listings but keeps its history (RN-12). */
   @PostMapping("/bff/admin/environments/{id}/deactivate")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deactivate(@PathVariable UUID id) {
-    environments.deactivate(id);
+    environments.deactivate(ids.unmask(IdKind.ENVIRONMENT, id));
   }
 
   @PostMapping("/bff/admin/environments/{id}/reactivate")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void reactivate(@PathVariable UUID id) {
-    environments.reactivate(id);
+    environments.reactivate(ids.unmask(IdKind.ENVIRONMENT, id));
   }
 }

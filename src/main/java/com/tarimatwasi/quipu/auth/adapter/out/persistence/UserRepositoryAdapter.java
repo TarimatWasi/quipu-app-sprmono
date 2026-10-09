@@ -9,7 +9,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -37,17 +36,17 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public Optional<UserAccount> findById(UUID id) {
+  public Optional<UserAccount> findById(Long id) {
     return jpaRepository.findById(id).map(UserJpaEntity::toDomain);
   }
 
   @Override
-  public Optional<UserAccount> findByIdForUpdate(UUID id) {
+  public Optional<UserAccount> findByIdForUpdate(Long id) {
     return jpaRepository.findWithLockById(id).map(UserJpaEntity::toDomain);
   }
 
   @Override
-  public void changePassword(UUID id, String newPasswordHash, Instant changedAt) {
+  public void changePassword(Long id, String newPasswordHash, Instant changedAt) {
     UserJpaEntity user =
         jpaRepository
             .findById(id)
@@ -57,7 +56,7 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public List<UserAccount> findAllByGuestIds(Collection<UUID> guestIds) {
+  public List<UserAccount> findAllByGuestIds(Collection<Long> guestIds) {
     return jpaRepository.findByGuestIdIn(guestIds).stream().map(UserJpaEntity::toDomain).toList();
   }
 
@@ -67,12 +66,12 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public Optional<Instant> findResetTokenExpiry(UUID id) {
+  public Optional<Instant> findResetTokenExpiry(Long id) {
     return jpaRepository.findById(id).flatMap(u -> Optional.ofNullable(u.resetTokenExpiresAt()));
   }
 
   @Override
-  public void saveResetToken(UUID id, String tokenHash, Instant expiresAt) {
+  public void saveResetToken(Long id, String tokenHash, Instant expiresAt) {
     UserJpaEntity user = load(id);
     user.replaceResetToken(tokenHash, expiresAt);
     jpaRepository.save(user);
@@ -89,14 +88,14 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void resetPassword(UUID id, String newPasswordHash, Instant changedAt) {
+  public void resetPassword(Long id, String newPasswordHash, Instant changedAt) {
     UserJpaEntity user = load(id);
     user.changePassword(newPasswordHash, changedAt);
     jpaRepository.save(user);
   }
 
   @Override
-  public boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+  public boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration) {
     UserJpaEntity user = loadLocked(id);
     boolean alreadyLocked = user.registerFailedLogin(now, maxAttempts, lockDuration);
     jpaRepository.save(user);
@@ -104,20 +103,20 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void clearFailedLogins(UUID id) {
+  public void clearFailedLogins(Long id) {
     UserJpaEntity user = loadLocked(id);
     user.clearFailedLogins();
     jpaRepository.save(user);
   }
 
   /** The row stays locked until the commit, so concurrent updates of the counter queue up. */
-  private UserJpaEntity loadLocked(UUID id) {
+  private UserJpaEntity loadLocked(Long id) {
     return jpaRepository
         .findWithLockById(id)
         .orElseThrow(() -> new IllegalStateException("No user with id " + id));
   }
 
-  private UserJpaEntity load(UUID id) {
+  private UserJpaEntity load(Long id) {
     return jpaRepository
         .findById(id)
         .orElseThrow(() -> new IllegalStateException("No user with id " + id));

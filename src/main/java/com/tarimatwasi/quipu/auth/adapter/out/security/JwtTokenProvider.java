@@ -13,7 +13,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Optional;
-import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.stereotype.Component;
 
@@ -88,9 +87,9 @@ public class JwtTokenProvider implements SessionTokenPort {
   }
 
   private Optional<UserAccount> activeAccount(String userId) {
-    UUID id;
+    long id;
     try {
-      id = UUID.fromString(userId);
+      id = Long.parseLong(userId);
     } catch (IllegalArgumentException notAnId) {
       return Optional.empty();
     }

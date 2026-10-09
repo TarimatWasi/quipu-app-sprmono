@@ -15,11 +15,11 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseComman
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseKind;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseView;
 import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
+import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ExpenseServiceTest {
 
-  private static final UUID ID = UUID.randomUUID();
+  private static final Long ID = TestIds.next();
   private static final YearMonth SEPTEMBER = YearMonth.of(2026, 9);
   private static final BigDecimal AMOUNT = new BigDecimal("120.50");
   private static final Expense WATER =
@@ -91,7 +91,7 @@ class ExpenseServiceTest {
 
   @Test
   void updatesAnExistingExpenseAndFailsOnAnUnknownOne() {
-    var other = UUID.randomUUID();
+    var other = TestIds.next();
     when(repository.update(ID, ExpenseCategory.WATER, AMOUNT, SEPTEMBER, null))
         .thenReturn(Optional.of(WATER));
     when(repository.update(other, ExpenseCategory.WATER, AMOUNT, SEPTEMBER, null))
@@ -104,7 +104,7 @@ class ExpenseServiceTest {
 
   @Test
   void deletesAnExistingExpenseAndFailsOnAnUnknownOne() {
-    var other = UUID.randomUUID();
+    var other = TestIds.next();
     when(repository.delete(ID)).thenReturn(true);
     when(repository.delete(other)).thenReturn(false);
 

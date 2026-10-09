@@ -12,12 +12,13 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import io.jsonwebtoken.Jwts;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Objects;
-import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,12 +69,12 @@ class AuthBffControllerTest {
   /** The PostgreSQL container is shared by all integration tests: this test owns its ADMIN. */
   @BeforeEach
   void adminExists() {
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status)"
             + " VALUES (?, 'admin@example.test', 'DNI', '00000000', ?, 'ADMIN', TRUE, 'ACTIVE')",
-        UUID.randomUUID(),
+        TestIds.next(),
         passwordEncoder.encode("Temporal123!"));
   }
 
@@ -258,13 +259,12 @@ class AuthBffControllerTest {
     assertThat(jwtTokenProvider.parse(fresh.getValue()))
         .hasValueSatisfying(s -> assertThat(s.mustChangePassword()).isFalse());
     assertThat(mustChangePasswordInTheDatabase()).isFalse();
-    String userId =
-        jdbc.queryForObject(
-            "SELECT id::text FROM users WHERE document_number = '00000000'", String.class);
+    Long userId =
+        jdbc.queryForObject("SELECT id FROM users WHERE document_number = '00000000'", Long.class);
     assertThat(
             jdbc.queryForObject(
-                "SELECT last_modified_by FROM users WHERE document_number = '00000000'",
-                String.class))
+                "SELECT last_modified_by_id FROM users WHERE document_number = '00000000'",
+                Long.class))
         .isEqualTo(userId);
     mockMvc
         .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
@@ -475,7 +475,7 @@ class AuthBffControllerTest {
 
   @Test
   void failuresThatArriveWhileLockedDoNotExtendTheLock() {
-    UUID id = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM users", UUID.class));
+    Long id = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM users", Long.class));
     java.time.Instant start = java.time.Instant.now();
     java.time.Duration fifteen = java.time.Duration.ofMinutes(15);
     // The application layer owns the transaction; the row lock needs one.
@@ -502,7 +502,7 @@ class AuthBffControllerTest {
   void changingThePasswordLiftsTheLock() throws Exception {
     jdbc.update(
         "UPDATE users SET failed_login_attempts = 5, locked_until = now() + interval '10 minutes'");
-    UUID id = jdbc.queryForObject("SELECT id FROM users", UUID.class);
+    Long id = jdbc.queryForObject("SELECT id FROM users", Long.class);
 
     users.changePassword(
         Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"), java.time.Instant.now());

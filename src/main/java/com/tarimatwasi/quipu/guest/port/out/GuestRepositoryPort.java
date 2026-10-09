@@ -6,18 +6,17 @@ import com.tarimatwasi.quipu.guest.domain.GuestType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 public interface GuestRepositoryPort {
 
-  Optional<Guest> findById(UUID id);
+  Optional<Guest> findById(Long id);
 
   /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so two simultaneous
    * edits of one guest are applied one by one. Needs a transaction.
    */
-  Optional<Guest> findByIdForUpdate(UUID id);
+  Optional<Guest> findByIdForUpdate(Long id);
 
   /** Ordered by document; {@code null} filters do not restrict. */
   List<Guest> findAll(@Nullable Collection<GuestStatus> statuses, @Nullable GuestType type);

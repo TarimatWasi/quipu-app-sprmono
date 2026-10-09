@@ -6,8 +6,8 @@ import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase.GuestAccountState;
+import com.tarimatwasi.quipu.support.TestIds;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class GuestAccountServiceTest {
@@ -15,10 +15,10 @@ class GuestAccountServiceTest {
   private final InMemoryUserRepository users = new InMemoryUserRepository();
   private final GuestAccountService service = new GuestAccountService(users);
 
-  private UserAccount account(UUID guestId, String document, boolean mustChange, String status) {
+  private UserAccount account(Long guestId, String document, boolean mustChange, String status) {
     var account =
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             document + "@example.test",
             DocumentType.DNI,
             document,
@@ -36,7 +36,7 @@ class GuestAccountServiceTest {
 
   @Test
   void aGuestWhoChoseItsPasswordCanLogInAndHasChosenIt() {
-    var guest = UUID.randomUUID();
+    var guest = TestIds.next();
     account(guest, "11111111", false, "ACTIVE");
 
     assertThat(service.stateOf(List.of(guest)).get(guest))
@@ -45,7 +45,7 @@ class GuestAccountServiceTest {
 
   @Test
   void aTemporaryPasswordIsNotAChosenOne() {
-    var guest = UUID.randomUUID();
+    var guest = TestIds.next();
     account(guest, "22222222", true, "ACTIVE");
 
     assertThat(service.stateOf(List.of(guest)).get(guest))
@@ -54,7 +54,7 @@ class GuestAccountServiceTest {
 
   @Test
   void aDisabledAccountCannotLogIn() {
-    var guest = UUID.randomUUID();
+    var guest = TestIds.next();
     account(guest, "33333333", false, "INACTIVE");
 
     assertThat(service.stateOf(List.of(guest)))
@@ -63,12 +63,12 @@ class GuestAccountServiceTest {
 
   @Test
   void aGuestWithoutAccountAndTheAdminsAreNotInTheMap() {
-    var withoutAccount = UUID.randomUUID();
-    var other = UUID.randomUUID();
+    var withoutAccount = TestIds.next();
+    var other = TestIds.next();
     account(other, "44444444", false, "ACTIVE");
     users.save(
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             "admin@example.test",
             DocumentType.DNI,
             "55555555",

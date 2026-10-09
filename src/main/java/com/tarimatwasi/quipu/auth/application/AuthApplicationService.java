@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -153,7 +152,7 @@ public class AuthApplicationService
   private UserAccount findAccountForUpdate(String userId) {
     try {
       return userRepository
-          .findByIdForUpdate(UUID.fromString(userId))
+          .findByIdForUpdate(Long.parseLong(userId))
           .orElseThrow(InvalidCredentialsException::new);
     } catch (IllegalArgumentException e) {
       throw new InvalidCredentialsException();
@@ -162,7 +161,7 @@ public class AuthApplicationService
 
   private Optional<UserAccount> lookup(String userId) {
     try {
-      return userRepository.findById(UUID.fromString(userId));
+      return userRepository.findById(Long.parseLong(userId));
     } catch (IllegalArgumentException e) {
       return Optional.empty();
     }

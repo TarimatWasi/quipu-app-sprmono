@@ -3,7 +3,6 @@ package com.tarimatwasi.quipu.guest.domain;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -11,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  * and the rest are the guest's own, completed in the onboarding (RN-33), so they can be missing.
  */
 public record Guest(
-    UUID id,
+    Long id,
     DocumentType documentType,
     String documentNumber,
     @Nullable String fullName,

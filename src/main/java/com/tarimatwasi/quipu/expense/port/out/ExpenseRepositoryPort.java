@@ -6,7 +6,6 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 public interface ExpenseRepositoryPort {
@@ -17,14 +16,14 @@ public interface ExpenseRepositoryPort {
 
   /** Replaces the data of the expense; empty if there is none with that id. */
   Optional<Expense> update(
-      UUID id,
+      Long id,
       ExpenseCategory category,
       BigDecimal amount,
       YearMonth month,
       @Nullable String description);
 
   /** Deletes the expense; false if there is none with that id. */
-  boolean delete(UUID id);
+  boolean delete(Long id);
 
   /** The expenses of the month, oldest first. */
   List<Expense> findByMonth(YearMonth month);

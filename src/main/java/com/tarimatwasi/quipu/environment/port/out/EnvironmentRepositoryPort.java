@@ -5,7 +5,6 @@ import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 public interface EnvironmentRepositoryPort {
@@ -17,7 +16,7 @@ public interface EnvironmentRepositoryPort {
    */
   Environment insert(String code, EnvironmentType type);
 
-  Optional<Environment> findById(UUID id);
+  Optional<Environment> findById(Long id);
 
   /** Ordered by code; {@code status == null} returns every environment. */
   List<Environment> findAll(@Nullable EnvironmentStatus status);
@@ -27,8 +26,8 @@ public interface EnvironmentRepositoryPort {
    *
    * @throws EnvironmentCodeAlreadyExistsException if another environment has the new code
    */
-  Optional<Environment> update(UUID id, @Nullable String code, @Nullable EnvironmentType type);
+  Optional<Environment> update(Long id, @Nullable String code, @Nullable EnvironmentType type);
 
   /** Sets the status of the environment; false if there is none with that id. */
-  boolean updateStatus(UUID id, EnvironmentStatus status);
+  boolean updateStatus(Long id, EnvironmentStatus status);
 }

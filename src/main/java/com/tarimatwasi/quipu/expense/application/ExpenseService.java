@@ -10,7 +10,6 @@ import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,7 +43,7 @@ public class ExpenseService implements ManageExpensesUseCase {
 
   @Override
   @Transactional
-  public ExpenseView update(UUID id, ExpenseCommand command) {
+  public ExpenseView update(Long id, ExpenseCommand command) {
     validate(command.amount());
     return expenses
         .update(
@@ -59,7 +58,7 @@ public class ExpenseService implements ManageExpensesUseCase {
 
   @Override
   @Transactional
-  public void delete(UUID id) {
+  public void delete(Long id) {
     if (!expenses.delete(id)) {
       throw new ExpenseNotFoundException();
     }

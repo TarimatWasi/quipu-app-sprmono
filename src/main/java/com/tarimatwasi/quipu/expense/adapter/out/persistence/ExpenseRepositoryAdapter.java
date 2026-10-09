@@ -7,7 +7,6 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -24,13 +23,13 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
   public Expense insert(
       ExpenseCategory category, BigDecimal amount, YearMonth month, @Nullable String description) {
     return jpaRepository
-        .save(new ExpenseJpaEntity(UUID.randomUUID(), category, amount, month, description))
+        .save(new ExpenseJpaEntity(category, amount, month, description))
         .toDomain();
   }
 
   @Override
   public Optional<Expense> update(
-      UUID id,
+      Long id,
       ExpenseCategory category,
       BigDecimal amount,
       YearMonth month,
@@ -45,7 +44,7 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
   }
 
   @Override
-  public boolean delete(UUID id) {
+  public boolean delete(Long id) {
     if (!jpaRepository.existsById(id)) {
       return false;
     }

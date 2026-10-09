@@ -37,9 +37,11 @@ public class ExpensesBffController {
       java.util.regex.Pattern.compile(MONTH);
 
   private final ManageExpensesUseCase expenses;
+  private final IdMasker ids;
 
-  public ExpensesBffController(ManageExpensesUseCase expenses) {
+  public ExpensesBffController(ManageExpensesUseCase expenses, IdMasker ids) {
     this.expenses = expenses;
+    this.ids = ids;
   }
 
   /** The use case checks the amount: greater than 0, at most two decimals and the column limit. */
@@ -53,9 +55,9 @@ public class ExpensesBffController {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record ExpenseResponse(
       UUID id, String category, BigDecimal amount, String month, @Nullable String description) {
-    static ExpenseResponse of(ExpenseView expense) {
+    static ExpenseResponse of(ExpenseView expense, IdMasker ids) {
       return new ExpenseResponse(
-          expense.id(),
+          ids.mask(IdKind.EXPENSE, expense.id()),
           expense.category().name(),
           expense.amount(),
           expense.month().toString(),
@@ -68,24 +70,27 @@ public class ExpensesBffController {
     if (!MONTH_PATTERN.matcher(month).matches()) {
       throw new InvalidQueryParameterException("month");
     }
-    return expenses.list(YearMonth.parse(month)).stream().map(ExpenseResponse::of).toList();
+    return expenses.list(YearMonth.parse(month)).stream()
+        .map(expense -> ExpenseResponse.of(expense, ids))
+        .toList();
   }
 
   @PostMapping("/bff/admin/expenses")
   @ResponseStatus(HttpStatus.CREATED)
   public ExpenseResponse create(@Valid @RequestBody ExpenseRequest request) {
-    return ExpenseResponse.of(expenses.create(command(request)));
+    return ExpenseResponse.of(expenses.create(command(request)), ids);
   }
 
   @PatchMapping("/bff/admin/expenses/{id}")
   public ExpenseResponse update(@PathVariable UUID id, @Valid @RequestBody ExpenseRequest request) {
-    return ExpenseResponse.of(expenses.update(id, command(request)));
+    return ExpenseResponse.of(
+        expenses.update(ids.unmask(IdKind.EXPENSE, id), command(request)), ids);
   }
 
   @DeleteMapping("/bff/admin/expenses/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void delete(@PathVariable UUID id) {
-    expenses.delete(id);
+    expenses.delete(ids.unmask(IdKind.EXPENSE, id));
   }
 
   private static ExpenseCommand command(ExpenseRequest request) {

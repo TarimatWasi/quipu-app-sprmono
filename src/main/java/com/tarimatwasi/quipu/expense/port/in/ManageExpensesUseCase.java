@@ -3,7 +3,6 @@ package com.tarimatwasi.quipu.expense.port.in;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /** RF-07: register, edit, delete and list the operating expenses of a month. */
@@ -19,7 +18,7 @@ public interface ManageExpensesUseCase {
 
   /** An expense as the callers see it. */
   record ExpenseView(
-      UUID id,
+      Long id,
       ExpenseKind category,
       BigDecimal amount,
       YearMonth month,
@@ -45,14 +44,14 @@ public interface ManageExpensesUseCase {
    * @throws ExpenseNotFoundException if there is no expense with that id
    * @throws InvalidExpenseException if the amount is not valid
    */
-  ExpenseView update(UUID id, ExpenseCommand command);
+  ExpenseView update(Long id, ExpenseCommand command);
 
   /**
    * Deletes an expense for good (RN-24).
    *
    * @throws ExpenseNotFoundException if there is no expense with that id
    */
-  void delete(UUID id);
+  void delete(Long id);
 
   /** Lists the expenses of the month, oldest first. */
   List<ExpenseView> list(YearMonth month);

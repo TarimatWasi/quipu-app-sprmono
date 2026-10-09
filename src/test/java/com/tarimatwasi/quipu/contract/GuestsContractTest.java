@@ -10,7 +10,11 @@ import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.bff.adapter.in.rest.IdKind;
+import com.tarimatwasi.quipu.bff.adapter.in.rest.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,14 +46,15 @@ class GuestsContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
 
-  private final UUID adminId = UUID.randomUUID();
-  private final UUID guestAccountId = UUID.randomUUID();
+  @Autowired IdMasker masker;
+
+  private final Long adminId = TestIds.next();
+  private final Long guestAccountId = TestIds.next();
 
   /** The container is shared by all integration tests: this test owns users and guests. */
   @BeforeEach
   void setUp() {
-    jdbc.update("DELETE FROM users");
-    jdbc.update("DELETE FROM guests");
+    TestTables.clear(jdbc);
     insertAccount(adminId, "ADMIN", "00000001", null);
     insertAccount(guestAccountId, "GUEST", "00000002", null);
   }
@@ -102,7 +107,7 @@ class GuestsContractTest {
   @Test
   void aGuestWithAnAccountThatChoseItsPasswordHasLoginAccess() throws Exception {
     var id = insertGuest("12345678", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
-    insertAccount(UUID.randomUUID(), "GUEST", "12345678", id);
+    insertAccount(TestIds.next(), "GUEST", "12345678", id);
 
     mockMvc
         .perform(get(URL).cookie(admin()))
@@ -131,27 +136,27 @@ class GuestsContractTest {
         "UPDATE guests SET phone = '999777888', status_before_inactive = 'ACTIVE' WHERE id = ?",
         inactive);
 
-    for (var id : new UUID[] {pending, onboarding, saved, active, inactive}) {
+    for (var id : new Long[] {pending, onboarding, saved, active, inactive}) {
       mockMvc
-          .perform(get(URL + "/" + id).cookie(admin()))
+          .perform(get(URL + "/" + masked(id)).cookie(admin()))
           .andExpect(status().isOk())
           .andExpect(satisfiesTheContract());
     }
     mockMvc
-        .perform(get(URL + "/" + pending).cookie(admin()))
+        .perform(get(URL + "/" + masked(pending)).cookie(admin()))
         .andExpect(jsonPath("$.onboardingProgress").value("NOT_STARTED"))
         .andExpect(jsonPath("$.documentCount").value(0))
         .andExpect(jsonPath("$.paymentHistory.length()").value(0));
     mockMvc
-        .perform(get(URL + "/" + saved).cookie(admin()))
+        .perform(get(URL + "/" + masked(saved)).cookie(admin()))
         .andExpect(jsonPath("$.onboardingProgress").value("PERSONAL_DATA_SAVED"));
     mockMvc
-        .perform(get(URL + "/" + active).cookie(admin()))
+        .perform(get(URL + "/" + masked(active)).cookie(admin()))
         .andExpect(jsonPath("$.onboardingProgress").value("COMPLETED"))
         .andExpect(jsonPath("$.emergencyContact.name").value("Rosa"))
         .andExpect(jsonPath("$.agreedAmount").value(150.50));
     mockMvc
-        .perform(get(URL + "/" + inactive).cookie(admin()))
+        .perform(get(URL + "/" + masked(inactive)).cookie(admin()))
         .andExpect(jsonPath("$.onboardingProgress").value("COMPLETED"));
   }
 
@@ -204,7 +209,7 @@ class GuestsContractTest {
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(get(URL + "/" + id).cookie(admin()))
+        .perform(get(URL + "/" + masked(id)).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.stayEndDate").value("2026-10-20"))
@@ -240,7 +245,7 @@ class GuestsContractTest {
         .perform(get(URL + "/" + UUID.randomUUID()).cookie(admin()))
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
-    patchGuest(UUID.randomUUID(), "{\"documentNumber\":\"87654321\"}")
+    patchGuest(999_999L, "{\"documentNumber\":\"87654321\"}")
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
   }
@@ -262,21 +267,25 @@ class GuestsContractTest {
         .andExpect(satisfiesTheContract());
   }
 
+  private UUID masked(Long id) {
+    return masker.mask(IdKind.GUEST, id);
+  }
+
   private Cookie admin() {
     return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString(), "ADMIN"));
   }
 
-  private ResultActions patchGuest(UUID id, String body) throws Exception {
+  private ResultActions patchGuest(Long id, String body) throws Exception {
     return mockMvc.perform(
-        patch(URL + "/" + id)
+        patch(URL + "/" + masked(id))
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
   }
 
-  private UUID insertGuest(
+  private Long insertGuest(
       String number, String documentType, String type, String status, String name) {
-    var id = UUID.randomUUID();
+    Long id = TestIds.next();
     jdbc.update(
         "INSERT INTO guests (id, full_name, document_type, document_number, guest_type, status)"
             + " VALUES (?, ?, ?, ?, ?, ?)",
@@ -289,7 +298,7 @@ class GuestsContractTest {
     return id;
   }
 
-  private void insertAccount(UUID id, String role, String document, UUID guestId) {
+  private void insertAccount(Long id, String role, String document, Long guestId) {
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " guest_id, must_change_password, status) VALUES (?, ?, 'DNI', ?, 'hash', ?, ?,"

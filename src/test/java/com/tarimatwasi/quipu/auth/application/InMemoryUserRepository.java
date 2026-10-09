@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /** The user store of the application tests: same behavior as the port, without a database. */
@@ -20,25 +19,25 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   private record ResetToken(String hash, Instant expiresAt) {}
 
   private final Map<String, UserAccount> byDocument = new HashMap<>();
-  private final Map<UUID, UserAccount> byId = new HashMap<>();
-  private final Map<UUID, ResetToken> resetTokens = new HashMap<>();
+  private final Map<Long, UserAccount> byId = new HashMap<>();
+  private final Map<Long, ResetToken> resetTokens = new HashMap<>();
 
   void save(UserAccount user) {
     byDocument.put(user.documentType() + ":" + user.documentNumber(), user);
     byId.put(user.id(), user);
   }
 
-  UserAccount find(UUID id) {
+  UserAccount find(Long id) {
     return Objects.requireNonNull(byId.get(id));
   }
 
   /** The stored hash of the account's reset code, if it has one. */
-  Optional<String> storedResetHash(UUID id) {
+  Optional<String> storedResetHash(Long id) {
     return Optional.ofNullable(resetTokens.get(id)).map(ResetToken::hash);
   }
 
   @Override
-  public List<UserAccount> findAllByGuestIds(Collection<UUID> guestIds) {
+  public List<UserAccount> findAllByGuestIds(Collection<Long> guestIds) {
     return byId.values().stream()
         .filter(user -> user.guestId() != null && guestIds.contains(user.guestId()))
         .toList();
@@ -56,17 +55,17 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public Optional<UserAccount> findByIdForUpdate(UUID id) {
+  public Optional<UserAccount> findByIdForUpdate(Long id) {
     return Optional.ofNullable(byId.get(id));
   }
 
   @Override
-  public Optional<UserAccount> findById(UUID id) {
+  public Optional<UserAccount> findById(Long id) {
     return Optional.ofNullable(byId.get(id));
   }
 
   @Override
-  public void changePassword(UUID id, String newPasswordHash, Instant changedAt) {
+  public void changePassword(Long id, String newPasswordHash, Instant changedAt) {
     UserAccount user = find(id);
     save(withPassword(user, newPasswordHash, changedAt));
     resetTokens.remove(id);
@@ -78,12 +77,12 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public Optional<Instant> findResetTokenExpiry(UUID id) {
+  public Optional<Instant> findResetTokenExpiry(Long id) {
     return Optional.ofNullable(resetTokens.get(id)).map(ResetToken::expiresAt);
   }
 
   @Override
-  public void saveResetToken(UUID id, String tokenHash, Instant expiresAt) {
+  public void saveResetToken(Long id, String tokenHash, Instant expiresAt) {
     resetTokens.put(id, new ResetToken(tokenHash, expiresAt));
   }
 
@@ -96,13 +95,13 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void resetPassword(UUID id, String newPasswordHash, Instant changedAt) {
+  public void resetPassword(Long id, String newPasswordHash, Instant changedAt) {
     changePassword(id, newPasswordHash, changedAt);
     resetTokens.remove(id);
   }
 
   @Override
-  public boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration) {
+  public boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration) {
     UserAccount user = find(id);
     int attempts = user.failedLoginAttempts();
     Instant lockedUntil = user.lockedUntil();
@@ -122,7 +121,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void clearFailedLogins(UUID id) {
+  public void clearFailedLogins(Long id) {
     save(withLock(find(id), 0, null));
   }
 

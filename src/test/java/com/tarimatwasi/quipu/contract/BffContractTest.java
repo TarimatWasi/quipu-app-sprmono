@@ -15,10 +15,11 @@ import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.nio.file.Path;
 import java.util.Objects;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -65,7 +66,7 @@ class BffContractTest {
     assertThat(SPEC_FILE)
         .as("the build downloads the contract (pom.xml, contract.version)")
         .exists();
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
     insertUser("00000000", "ADMIN", "ACTIVE", true);
   }
 
@@ -96,7 +97,7 @@ class BffContractTest {
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status) VALUES (?, ?, 'DNI', ?, ?, ?, ?, ?)",
-        UUID.randomUUID(),
+        TestIds.next(),
         document + "@example.com",
         document,
         passwordEncoder.encode(TEMPORARY),

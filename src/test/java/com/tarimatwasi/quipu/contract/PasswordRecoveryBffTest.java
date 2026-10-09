@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -20,7 +22,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -61,7 +62,7 @@ class PasswordRecoveryBffTest {
   @BeforeEach
   void oneGuestWithAPendingPasswordChange() {
     org.mockito.Mockito.reset(mail);
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
     insertUser(EMAIL, "11111111", "ACTIVE", true);
   }
 
@@ -69,7 +70,7 @@ class PasswordRecoveryBffTest {
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status) VALUES (?, ?, 'DNI', ?, ?, 'GUEST', ?, ?)",
-        UUID.randomUUID(),
+        TestIds.next(),
         email,
         document,
         passwordEncoder.encode(OLD_PASSWORD),

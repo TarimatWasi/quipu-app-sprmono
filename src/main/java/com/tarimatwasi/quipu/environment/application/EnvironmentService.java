@@ -11,7 +11,6 @@ import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import java.util.List;
-import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -50,7 +49,7 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
 
   @Override
   @Transactional
-  public EnvironmentView update(UUID id, UpdateCommand command) {
+  public EnvironmentView update(Long id, UpdateCommand command) {
     if (command.code() == null && command.type() == null) {
       throw new EmptyEnvironmentUpdateException();
     }
@@ -67,17 +66,17 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
 
   @Override
   @Transactional
-  public void deactivate(UUID id) {
+  public void deactivate(Long id) {
     setStatus(id, EnvironmentStatus.INACTIVE);
   }
 
   @Override
   @Transactional
-  public void reactivate(UUID id) {
+  public void reactivate(Long id) {
     setStatus(id, EnvironmentStatus.ACTIVE);
   }
 
-  private void setStatus(UUID id, EnvironmentStatus status) {
+  private void setStatus(Long id, EnvironmentStatus status) {
     if (!environments.updateStatus(id, status)) {
       throw new EnvironmentNotFoundException();
     }
@@ -85,7 +84,7 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public EnvironmentView get(UUID id) {
+  public EnvironmentView get(Long id) {
     return environments
         .findById(id)
         .map(EnvironmentService::view)

@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,14 +39,13 @@ class ExpensesBffControllerTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
 
-  private final UUID adminId = UUID.randomUUID();
-  private final UUID guestId = UUID.randomUUID();
+  private final Long adminId = TestIds.next();
+  private final Long guestId = TestIds.next();
 
   /** The container is shared by all integration tests: this test owns users and expenses. */
   @BeforeEach
   void setUp() {
-    jdbc.update("DELETE FROM expenses");
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
     insertUser(adminId, "ADMIN", "00000001");
     insertUser(guestId, "GUEST", "00000002");
   }
@@ -283,7 +284,7 @@ class ExpensesBffControllerTest {
     return JsonPath.read(created.andReturn().getResponse().getContentAsString(), "$.id");
   }
 
-  private void insertUser(UUID id, String role, String document) {
+  private void insertUser(Long id, String role, String document) {
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status) VALUES (?, ?, 'DNI', ?, 'hash', ?, FALSE, 'ACTIVE')",

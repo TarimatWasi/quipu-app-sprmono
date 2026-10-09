@@ -2,7 +2,6 @@ package com.tarimatwasi.quipu.auth.port.in;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.UUID;
 
 /** What the other modules may ask the access accounts about the guests they own (RF-11). */
 public interface GuestAccountUseCase {
@@ -16,5 +15,5 @@ public interface GuestAccountUseCase {
   record GuestAccountState(boolean canLogIn, boolean passwordChosen) {}
 
   /** The state of the account of each guest; a guest without an account is not in the map. */
-  Map<UUID, GuestAccountState> stateOf(Collection<UUID> guestIds);
+  Map<Long, GuestAccountState> stateOf(Collection<Long> guestIds);
 }

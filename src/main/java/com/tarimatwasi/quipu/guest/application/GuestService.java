@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -49,9 +48,9 @@ public class GuestService implements ManageGuestsUseCase {
   @Transactional(readOnly = true)
   public List<GuestSummaryView> list(StatusFilter filter, @Nullable GuestKind type) {
     List<Guest> found = guests.findAll(statuses(filter), type == null ? null : toType(type));
-    Set<UUID> ids = new LinkedHashSet<>();
+    Set<Long> ids = new LinkedHashSet<>();
     found.forEach(guest -> ids.add(guest.id()));
-    Map<UUID, AccountState> states = ids.isEmpty() ? Map.of() : accounts.stateOf(ids);
+    Map<Long, AccountState> states = ids.isEmpty() ? Map.of() : accounts.stateOf(ids);
     return found.stream()
         .map(guest -> summary(guest, states.getOrDefault(guest.id(), NO_ACCOUNT)))
         .toList();
@@ -59,7 +58,7 @@ public class GuestService implements ManageGuestsUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public GuestDetailView get(UUID id) {
+  public GuestDetailView get(Long id) {
     Guest guest = guests.findById(id).orElseThrow(GuestNotFoundException::new);
     AccountState account = stateOf(guest);
     return new GuestDetailView(
@@ -78,7 +77,7 @@ public class GuestService implements ManageGuestsUseCase {
 
   @Override
   @Transactional
-  public GuestSummaryView update(UUID id, UpdateCommand command) {
+  public GuestSummaryView update(Long id, UpdateCommand command) {
     if (command.documentType() == null
         && command.documentNumber() == null
         && command.stayStartDate() == null

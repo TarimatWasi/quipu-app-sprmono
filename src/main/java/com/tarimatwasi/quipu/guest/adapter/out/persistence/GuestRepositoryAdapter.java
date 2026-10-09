@@ -9,7 +9,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
@@ -24,12 +23,12 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
   }
 
   @Override
-  public Optional<Guest> findById(UUID id) {
+  public Optional<Guest> findById(Long id) {
     return jpaRepository.findById(id).map(GuestJpaEntity::toDomain);
   }
 
   @Override
-  public Optional<Guest> findByIdForUpdate(UUID id) {
+  public Optional<Guest> findByIdForUpdate(Long id) {
     return jpaRepository.findWithLockById(id).map(GuestJpaEntity::toDomain);
   }
 

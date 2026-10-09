@@ -5,7 +5,6 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /** The guest module asks the auth module, through its exposed port, about the guests' accounts. */
@@ -19,8 +18,8 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
   }
 
   @Override
-  public Map<UUID, AccountState> stateOf(Collection<UUID> guestIds) {
-    Map<UUID, AccountState> states = new HashMap<>();
+  public Map<Long, AccountState> stateOf(Collection<Long> guestIds) {
+    Map<Long, AccountState> states = new HashMap<>();
     accounts
         .stateOf(guestIds)
         .forEach(

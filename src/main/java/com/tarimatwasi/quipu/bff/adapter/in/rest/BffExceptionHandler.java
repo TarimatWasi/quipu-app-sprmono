@@ -261,6 +261,20 @@ public class BffExceptionHandler {
                 "VALIDATION_ERROR", "Datos de entrada inválidos", e.getParameterName()));
   }
 
+  /**
+   * A well-formed masked id that was never issued for that kind answers as the resource that does
+   * not exist, with the same body, so that a client cannot tell a forged id from a missing one. A
+   * value that is not a UUID at all is still a 400.
+   */
+  @ExceptionHandler(UnknownMaskedIdException.class)
+  public ResponseEntity<BffErrorResponse> handleUnknownMaskedId(UnknownMaskedIdException e) {
+    return switch (e.kind()) {
+      case ENVIRONMENT -> handleEnvironmentNotFound();
+      case EXPENSE -> handleExpenseNotFound();
+      case GUEST -> handleGuestNotFound();
+    };
+  }
+
   /** A path or query value of the wrong shape, such as an id that is not a UUID. */
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   public ResponseEntity<BffErrorResponse> handleBadParameter(

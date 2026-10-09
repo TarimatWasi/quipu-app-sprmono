@@ -6,8 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Duration;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,12 +38,12 @@ class SessionCookiePropertiesTest {
 
   @BeforeEach
   void adminExists() {
-    jdbc.update("DELETE FROM users");
+    TestTables.clear(jdbc);
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status)"
             + " VALUES (?, 'admin@example.test', 'DNI', '00000000', ?, 'ADMIN', FALSE, 'ACTIVE')",
-        UUID.randomUUID(),
+        TestIds.next(),
         passwordEncoder.encode("Temporal123!"));
   }
 

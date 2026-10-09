@@ -12,11 +12,11 @@ import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ class PasswordRecoveryServiceTest {
   private UserAccount savedUser(String status) {
     var user =
         new UserAccount(
-            UUID.randomUUID(),
+            TestIds.next(),
             EMAIL,
             DocumentType.DNI,
             "11111111",

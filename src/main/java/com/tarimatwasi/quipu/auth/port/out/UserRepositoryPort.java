@@ -7,23 +7,22 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 public interface UserRepositoryPort {
   Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber);
 
-  Optional<UserAccount> findById(UUID id);
+  Optional<UserAccount> findById(Long id);
 
   /**
    * The accounts that belong to the guests with those ids; the ids without an account add nothing.
    */
-  List<UserAccount> findAllByGuestIds(Collection<UUID> guestIds);
+  List<UserAccount> findAllByGuestIds(Collection<Long> guestIds);
 
   /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so a change of
    * password and a login of the same account are decided one by one (TAR-125). Needs a transaction.
    */
-  Optional<UserAccount> findByIdForUpdate(UUID id);
+  Optional<UserAccount> findByIdForUpdate(Long id);
 
   /**
    * Like {@link #findByDocument} but the account's row stays locked until the transaction ends, so
@@ -35,16 +34,16 @@ public interface UserRepositoryPort {
    * Stores the new hash and clears the pending-change flag of the account. {@code changedAt} is
    * when the password changed: tokens issued before it stop being valid (TAR-125).
    */
-  void changePassword(UUID id, String newPasswordHash, Instant changedAt);
+  void changePassword(Long id, String newPasswordHash, Instant changedAt);
 
   /** Emails are unique ignoring case. */
   Optional<UserAccount> findByEmail(String email);
 
   /** When the account's current recovery code expires; empty if it has none. */
-  Optional<Instant> findResetTokenExpiry(UUID id);
+  Optional<Instant> findResetTokenExpiry(Long id);
 
   /** Replaces the account's recovery code by the hash of a new one (only one is valid). */
-  void saveResetToken(UUID id, String tokenHash, Instant expiresAt);
+  void saveResetToken(Long id, String tokenHash, Instant expiresAt);
 
   Optional<PendingReset> findPendingReset(String tokenHash);
 
@@ -52,7 +51,7 @@ public interface UserRepositoryPort {
    * Stores the new hash, clears the pending-change flag and removes the recovery code, so the code
    * cannot be used again.
    */
-  void resetPassword(UUID id, String newPasswordHash, Instant changedAt);
+  void resetPassword(Long id, String newPasswordHash, Instant changedAt);
 
   /**
    * SEG-06. Counts a failed login of the account and, when it reaches {@code maxAttempts}, locks it
@@ -62,10 +61,10 @@ public interface UserRepositoryPort {
    * @return true if the account was already locked when its row was locked: the attempt is not
    *     counted and the lock is not extended
    */
-  boolean registerFailedLogin(UUID id, Instant now, int maxAttempts, Duration lockDuration);
+  boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration);
 
   /** Forgets the failed logins and the lock of the account (a successful login). */
-  void clearFailedLogins(UUID id);
+  void clearFailedLogins(Long id);
 
   /** The account a recovery code belongs to and when the code expires. */
   record PendingReset(UserAccount account, Instant expiresAt) {}

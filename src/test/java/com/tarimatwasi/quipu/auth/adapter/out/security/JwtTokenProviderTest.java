@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.TestIds;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -17,7 +18,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +30,7 @@ class JwtTokenProviderTest {
   private final UserRepositoryPort users = mock(UserRepositoryPort.class);
   private final MutableClock clock = new MutableClock(NOW);
   private final JwtTokenProvider provider = providerFor(SECRET, Duration.ofMinutes(60), clock);
-  private final UUID id = UUID.randomUUID();
+  private final Long id = TestIds.next();
 
   private JwtTokenProvider providerFor(String secret, Duration expiration, Clock clock) {
     return new JwtTokenProvider(new JwtProperties(secret, expiration), clock, users);
@@ -66,7 +66,7 @@ class JwtTokenProviderTest {
     when(users.findById(id)).thenReturn(Optional.empty());
     assertThat(provider.parse(provider.issue(id.toString(), "ADMIN"))).isEmpty();
 
-    UUID disabled = UUID.randomUUID();
+    Long disabled = TestIds.next();
     when(users.findById(disabled))
         .thenReturn(Optional.of(account(disabled, Role.ADMIN, "INACTIVE", false, null)));
     assertThat(provider.parse(provider.issue(disabled.toString(), "ADMIN"))).isEmpty();
@@ -173,7 +173,7 @@ class JwtTokenProviderTest {
   }
 
   private static UserAccount account(
-      UUID id, Role role, String status, boolean mustChange, @Nullable Instant passwordChangedAt) {
+      Long id, Role role, String status, boolean mustChange, @Nullable Instant passwordChangedAt) {
     return new UserAccount(
         id,
         "a@example.test",
