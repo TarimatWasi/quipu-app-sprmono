@@ -18,6 +18,11 @@ public record UserAccount(
     @Nullable Instant lockedUntil,
     @Nullable Instant passwordChangedAt) {
 
+  /** Who this account is for the person who logs in: the type and number of the document. */
+  public DocumentIdentity identity() {
+    return new DocumentIdentity(documentType, documentNumber);
+  }
+
   public boolean isDisabled() {
     return "INACTIVE".equals(status);
   }
