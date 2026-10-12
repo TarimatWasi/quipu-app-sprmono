@@ -40,6 +40,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -221,6 +222,83 @@ class AuthBffControllerTest {
         .andExpect(jsonPath("$.field").value(field))
         .andExpect(jsonPath("$.message").isNotEmpty())
         .andExpect(cookie().doesNotExist("sessionToken"));
+  }
+
+  /**
+   * TAR-179 (SEC-01): documentNumber keys the per-account limiter and password feeds bcrypt, so
+   * both are capped; the value at the cap passes validation (here: wrong credentials, 401, even
+   * when it is longer than bcrypt's 72 bytes) and one more is a 400 naming the field.
+   */
+  @Test
+  void loginAcceptsFieldsAtTheCapAndRejectsOneMoreWith400() throws Exception {
+    String atCap = "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}";
+    mockMvc
+        .perform(
+            post(LOGIN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(atCap.formatted("9".repeat(20), "a".repeat(128))))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+    assertTooLong(post(LOGIN).content(atCap.formatted("9".repeat(21), "a")), "documentNumber");
+    assertTooLong(post(LOGIN).content(atCap.formatted("9".repeat(8), "a".repeat(129))), "password");
+  }
+
+  /** TAR-179: a password beyond bcrypt's 72 bytes against a stored hash is just a wrong one. */
+  @Test
+  void loginWithAPasswordLongerThan72BytesOfAnExistingAccountReturns401() throws Exception {
+    var body =
+        "{\"documentType\":\"DNI\",\"documentNumber\":\"00000000\",\"password\":\"%s\"}"
+            .formatted("a".repeat(100));
+    mockMvc
+        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+  }
+
+  @Test
+  void changePasswordCapsCurrentAndNewPasswordAt128() throws Exception {
+    Cookie session = loginCookie("Temporal123!");
+    String body = "{\"currentPassword\":\"%s\",\"newPassword\":\"%s\"}";
+    changePassword(session, body.formatted("a".repeat(128), "b".repeat(9)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+    changePassword(session, body.formatted("Temporal123!", "b".repeat(128)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"));
+    assertTooLong(
+        post(CHANGE_PASSWORD)
+            .cookie(session)
+            .content(body.formatted("a".repeat(129), "b".repeat(9))),
+        "currentPassword");
+    assertTooLong(
+        post(CHANGE_PASSWORD).cookie(session).content(body.formatted("a", "b".repeat(129))),
+        "newPassword");
+  }
+
+  @Test
+  void resetPasswordCapsCodeAt100AndNewPasswordAt128() throws Exception {
+    String body = "{\"code\":\"%s\",\"newPassword\":\"%s\"}";
+    mockMvc
+        .perform(
+            post("/bff/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body.formatted("c".repeat(100), "b".repeat(128))))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_OR_EXPIRED_CODE"));
+    assertTooLong(
+        post("/bff/auth/reset-password").content(body.formatted("c".repeat(101), "b".repeat(9))),
+        "code");
+    assertTooLong(
+        post("/bff/auth/reset-password").content(body.formatted("c", "b".repeat(129))),
+        "newPassword");
+  }
+
+  private void assertTooLong(MockHttpServletRequestBuilder request, String field) throws Exception {
+    mockMvc
+        .perform(request.contentType(MediaType.APPLICATION_JSON))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value(field));
   }
 
   private Cookie loginCookie(String password) throws Exception {
