@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -105,42 +106,86 @@ class PasswordRecoveryServiceTest {
   }
 
   @Test
-  void aSecondRequestWithinAMinuteDoesNotSendAnotherEmail() {
-    savedUser("ACTIVE");
+  void withinFiveMinutesOfIssuingASecondRequestKeepsTheCodeAndSendsNothing() {
+    UserAccount user = savedUser("ACTIVE");
     service.requestReset(EMAIL);
+    String hash = repository.storedResetHash(user.id()).orElseThrow();
+    Instant expiry = repository.findResetTokenExpiry(user.id()).orElseThrow();
 
-    clock.advance(Duration.ofSeconds(59));
+    clock.advance(Duration.ofSeconds(61));
+    service.requestReset(EMAIL);
+    clock.advance(Duration.ofSeconds(3 * 60 + 58));
     service.requestReset(EMAIL);
 
     assertThat(mail.sent).hasSize(1);
+    assertThat(repository.storedResetHash(user.id())).contains(hash);
+    assertThat(repository.findResetTokenExpiry(user.id())).contains(expiry);
+    assertThatCode(() -> service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD))
+        .doesNotThrowAnyException();
   }
 
   @Test
-  void aRequestExactlyAMinuteLaterSendsANewEmail() {
-    savedUser("ACTIVE");
-    service.requestReset(EMAIL);
-
-    clock.advance(Duration.ofSeconds(60));
-    service.requestReset(EMAIL);
-
-    assertThat(mail.sent).hasSize(2);
-  }
-
-  @Test
-  void aLaterRequestSendsANewCodeAndTheOldOneStopsWorking() {
-    savedUser("ACTIVE");
+  void fiveMinutesAfterIssuingALiveCodeIsReplacedAndEmailedAgain() {
+    UserAccount user = savedUser("ACTIVE");
     service.requestReset(EMAIL);
     String oldCode = mail.sent.getFirst().code();
+    String oldHash = repository.storedResetHash(user.id()).orElseThrow();
 
-    clock.advance(Duration.ofSeconds(61));
+    clock.advance(Duration.ofMinutes(5));
     service.requestReset(EMAIL);
     String newCode = mail.sent.getLast().code();
 
     assertThat(mail.sent).hasSize(2);
     assertThat(newCode).isNotEqualTo(oldCode);
+    assertThat(repository.storedResetHash(user.id()))
+        .isPresent()
+        .isNotEqualTo(Optional.of(oldHash));
     assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD))
         .isInstanceOf(InvalidResetCodeException.class);
     assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void anExpiredCodeIsReplacedByANewOneThatIsEmailed() {
+    UserAccount user = savedUser("ACTIVE");
+    service.requestReset(EMAIL);
+    String oldCode = mail.sent.getFirst().code();
+    String oldHash = repository.storedResetHash(user.id()).orElseThrow();
+
+    clock.advance(Duration.ofMinutes(30));
+    service.requestReset(EMAIL);
+    String newCode = mail.sent.getLast().code();
+
+    assertThat(mail.sent).hasSize(2);
+    assertThat(newCode).isNotEqualTo(oldCode);
+    assertThat(repository.storedResetHash(user.id()))
+        .isPresent()
+        .isNotEqualTo(Optional.of(oldHash));
+    assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD))
+        .isInstanceOf(InvalidResetCodeException.class);
+    assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void aUsedCodeLetsANewRequestIssueAnotherOne() {
+    savedUser("ACTIVE");
+    service.requestReset(EMAIL);
+    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD);
+
+    service.requestReset(EMAIL);
+
+    assertThat(mail.sent).hasSize(2);
+  }
+
+  @Test
+  void changingThePasswordClearsTheCodeSoANewRequestIssuesAnother() {
+    UserAccount user = savedUser("ACTIVE");
+    service.requestReset(EMAIL);
+    repository.changePassword(user.id(), encoder.encode(NEW_PASSWORD), clock.instant());
+
+    service.requestReset(EMAIL);
+
+    assertThat(mail.sent).hasSize(2);
   }
 
   @Test
