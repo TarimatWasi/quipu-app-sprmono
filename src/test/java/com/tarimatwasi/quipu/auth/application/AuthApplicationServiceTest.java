@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -37,6 +38,7 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class AuthApplicationServiceTest {
@@ -106,6 +108,23 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () -> service.login(new LoginCommand(DocumentKind.DNI, "99999999", "whatever")))
         .isInstanceOf(InvalidCredentialsException.class);
+  }
+
+  /** BE-SPR-CFG-06, BE-SPR-SEC-06: the timing-defence hash is generated at startup, not literal. */
+  @Test
+  void unknownDocumentIsComparedAgainstAHashGeneratedAtStartup() {
+    BCryptPasswordEncoder spied = spy(new BCryptPasswordEncoder());
+    AuthApplicationService spiedService =
+        new AuthApplicationService(repository, spied, u -> "t", (type, number) -> 0L, clock);
+    verify(spied).encode(any());
+
+    assertThatThrownBy(
+            () -> spiedService.login(new LoginCommand(DocumentKind.DNI, "99999999", "whatever")))
+        .isInstanceOf(InvalidCredentialsException.class);
+
+    ArgumentCaptor<String> hash = ArgumentCaptor.forClass(String.class);
+    verify(spied).matches(eq("whatever"), hash.capture());
+    assertThat(hash.getValue()).startsWith("$2");
   }
 
   private UserAccount savedUser(String rawPassword, boolean mustChangePassword, String status) {
@@ -428,7 +447,7 @@ class AuthApplicationServiceTest {
   @Test
   void changingThePasswordReadsTheAccountUnderTheRowLock() {
     UserAccount user = savedUser("Actual12345", false, "ACTIVE");
-    UserRepositoryPort spied = org.mockito.Mockito.spy(repository);
+    UserRepositoryPort spied = spy(repository);
     var locking = new AuthApplicationService(spied, encoder, u -> "t", (type, number) -> 0L, clock);
 
     locking.changePassword(change(user, "Actual12345", "Nueva12345"));
