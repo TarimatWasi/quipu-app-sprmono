@@ -85,7 +85,6 @@ jobs:
             -e "DATABASE_URL=jdbc:postgresql://pg:5432/quipu?user=quipu&password=$pgpass" \
             -e "JWT_SECRET=$jwt" -e "ID_MASK_KEY=$idmask" \
             -e CORS_ALLOWED_ORIGIN=https://example.vercel.app \
-            -e ORIGIN_SECRET=ci-dummy \
             -e ADMIN_DOCUMENT_NUMBER=12345678 -e ADMIN_EMAIL=ci@example.test \
             -e R2_ACCOUNT_ID=ci -e R2_ACCESS_KEY_ID=ci -e R2_SECRET_ACCESS_KEY=ci-dummy \
             -e R2_ENDPOINT=https://example.invalid -e R2_BUCKET_NAME=ci \
