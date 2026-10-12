@@ -15,6 +15,8 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseComman
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseKind;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseView;
 import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.YearMonth;
@@ -115,8 +117,13 @@ class ExpenseServiceTest {
 
   @Test
   void listsTheExpensesOfTheMonth() {
-    when(repository.findByMonth(SEPTEMBER)).thenReturn(List.of(WATER));
+    PageQuery page = PageQuery.first();
+    when(repository.findByMonth(SEPTEMBER, page))
+        .thenReturn(new CursorPage<>(List.of(WATER), "next"));
 
-    assertThat(service().list(SEPTEMBER)).containsExactly(WATER_VIEW);
+    var result = service().list(SEPTEMBER, page);
+
+    assertThat(result.content()).containsExactly(WATER_VIEW);
+    assertThat(result.nextCursor()).isEqualTo("next");
   }
 }

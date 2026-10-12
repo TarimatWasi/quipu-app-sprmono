@@ -10,7 +10,8 @@ import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
-import java.util.List;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -95,8 +96,8 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public List<EnvironmentView> list(StatusFilter filter) {
-    return environments.findAll(toStatus(filter)).stream().map(EnvironmentService::view).toList();
+  public CursorPage<EnvironmentView> list(StatusFilter filter, PageQuery page) {
+    return environments.findAll(toStatus(filter), page).map(EnvironmentService::view);
   }
 
   private static @Nullable EnvironmentStatus toStatus(StatusFilter filter) {

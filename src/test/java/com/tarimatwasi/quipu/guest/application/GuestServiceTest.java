@@ -27,6 +27,8 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -128,15 +130,21 @@ class GuestServiceTest {
 
   // --- list ---
 
+  private static CursorPage<Guest> pageOf(Guest... guests) {
+    return new CursorPage<>(List.of(guests), null);
+  }
+
   @Test
   void currentHidesOnlyTheInactiveGuests() {
+    PageQuery page = PageQuery.first();
     when(repository.findAll(
             List.of(GuestStatus.PENDING_ACTIVATION, GuestStatus.ONBOARDING, GuestStatus.ACTIVE),
-            null))
-        .thenReturn(List.of(guest(GuestStatus.PENDING_ACTIVATION)));
+            null,
+            page))
+        .thenReturn(pageOf(guest(GuestStatus.PENDING_ACTIVATION)));
     noAccount();
 
-    var list = service().list(StatusFilter.CURRENT, null);
+    var list = service().list(StatusFilter.CURRENT, null, page).content();
 
     assertThat(list).hasSize(1);
     assertThat(list.get(0).status()).isEqualTo(GuestState.PENDING_ACTIVATION);
@@ -146,24 +154,38 @@ class GuestServiceTest {
 
   @Test
   void allDoesNotFilterByStatusAndTheTypeIsPassedOn() {
-    when(repository.findAll(null, GuestType.TEMPORARY)).thenReturn(List.of());
+    PageQuery page = PageQuery.first();
+    when(repository.findAll(null, GuestType.TEMPORARY, page)).thenReturn(pageOf());
 
-    assertThat(service().list(StatusFilter.ALL, GuestKind.TEMPORARY)).isEmpty();
+    assertThat(service().list(StatusFilter.ALL, GuestKind.TEMPORARY, page).content()).isEmpty();
   }
 
   @Test
   void aSingleStatusFilterAsksForThatStatus() {
-    when(repository.findAll(List.of(GuestStatus.INACTIVE), null)).thenReturn(List.of());
+    PageQuery page = PageQuery.first();
+    when(repository.findAll(List.of(GuestStatus.INACTIVE), null, page)).thenReturn(pageOf());
 
-    assertThat(service().list(StatusFilter.INACTIVE, null)).isEmpty();
+    assertThat(service().list(StatusFilter.INACTIVE, null, page).content()).isEmpty();
   }
 
   @Test
   void aGuestWhoseAccountCanLogInHasLoginAccess() {
-    when(repository.findAll(null, null)).thenReturn(List.of(guest(GuestStatus.ACTIVE)));
+    PageQuery page = PageQuery.first();
+    when(repository.findAll(null, null, page)).thenReturn(pageOf(guest(GuestStatus.ACTIVE)));
     accountIs(true, true);
 
-    assertThat(service().list(StatusFilter.ALL, null).get(0).hasLoginAccess()).isTrue();
+    assertThat(service().list(StatusFilter.ALL, null, page).content().get(0).hasLoginAccess())
+        .isTrue();
+  }
+
+  @Test
+  void theListingKeepsTheCursorOfTheNextPage() {
+    PageQuery page = new PageQuery("b64", 1);
+    when(repository.findAll(null, null, page))
+        .thenReturn(new CursorPage<>(List.of(guest(GuestStatus.ACTIVE)), "next"));
+    accountIs(true, true);
+
+    assertThat(service().list(StatusFilter.ALL, null, page).nextCursor()).isEqualTo("next");
   }
 
   // --- get / onboarding progress ---
