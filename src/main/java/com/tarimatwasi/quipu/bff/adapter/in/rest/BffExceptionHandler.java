@@ -24,6 +24,7 @@ import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -129,6 +130,19 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "ENVIRONMENT_CODE_TAKEN", "Ya existe un ambiente con ese código", "code"));
+  }
+
+  /**
+   * BE-SPR-DAT-13: a row was changed by someone else after it was read. It surfaces when the
+   * transaction commits, so it is mapped here, once for every versioned entity.
+   */
+  @ExceptionHandler(OptimisticLockingFailureException.class)
+  public ResponseEntity<BffErrorResponse> handleConcurrentModification() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "CONCURRENT_MODIFICATION",
+                "El registro cambió mientras lo editabas; vuelve a cargarlo e inténtalo de nuevo"));
   }
 
   @ExceptionHandler(EnvironmentNotFoundException.class)
