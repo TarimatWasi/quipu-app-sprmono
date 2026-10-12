@@ -45,11 +45,7 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
 
   @Override
   public boolean delete(Long id) {
-    if (!jpaRepository.existsById(id)) {
-      return false;
-    }
-    jpaRepository.deleteById(id);
-    return true;
+    return jpaRepository.deleteByIdIgnoringVersion(id) > 0;
   }
 
   @Override
