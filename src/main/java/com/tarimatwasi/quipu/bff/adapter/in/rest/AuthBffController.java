@@ -46,21 +46,31 @@ public class AuthBffController {
     this.sessionCookies = sessionCookies;
   }
 
+  // TAR-179 (SEC-01): every free-text field is capped. The contract declares no maxLength
+  // here; documents are at most 20 characters (as in the guest endpoints), the password cap is
+  // above PasswordPolicy's 72 bytes, and the recovery code is 256 bits in Base64Url (~43).
+  private static final int MAX_DOCUMENT = 20;
+  private static final int MAX_PASSWORD = 128;
+  private static final int MAX_CODE = 100;
+
   public record LoginRequest(
       @NotNull DocumentKind documentType,
-      @NotBlank String documentNumber,
-      @NotBlank String password) {}
+      @NotBlank @Size(max = MAX_DOCUMENT) String documentNumber,
+      @NotBlank @Size(max = MAX_PASSWORD) String password) {}
 
   public record LoginResponse(String role, String name, boolean mustChangePassword) {}
 
   public record CurrentSessionResponse(String role, String name, boolean mustChangePassword) {}
 
   public record ChangePasswordRequest(
-      @Nullable String currentPassword, @NotNull String newPassword) {}
+      @Nullable @Size(max = MAX_PASSWORD) String currentPassword,
+      @NotNull @Size(max = MAX_PASSWORD) String newPassword) {}
 
   public record ForgotPasswordRequest(@NotBlank @Email @Size(max = 200) String email) {}
 
-  public record ResetPasswordRequest(@NotBlank String code, @NotNull String newPassword) {}
+  public record ResetPasswordRequest(
+      @NotBlank @Size(max = MAX_CODE) String code,
+      @NotNull @Size(max = MAX_PASSWORD) String newPassword) {}
 
   @PostMapping("/bff/auth/login")
   public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
