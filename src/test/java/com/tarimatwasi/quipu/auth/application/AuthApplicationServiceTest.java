@@ -115,8 +115,7 @@ class AuthApplicationServiceTest {
   void unknownDocumentIsComparedAgainstAHashGeneratedAtStartup() {
     BCryptPasswordEncoder spied = spy(new BCryptPasswordEncoder());
     AuthApplicationService spiedService =
-        new AuthApplicationService(
-            repository, spied, (u, r, m) -> "t", (type, number) -> 0L, clock);
+        new AuthApplicationService(repository, spied, u -> "t", (type, number) -> 0L, clock);
     verify(spied).encode(any());
 
     assertThatThrownBy(
