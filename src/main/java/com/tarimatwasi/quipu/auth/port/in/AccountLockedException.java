@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.port.in;
 
+import java.io.Serial;
 import java.time.Instant;
 
 /**
@@ -7,7 +8,7 @@ import java.time.Instant;
  * when the lock ends and the whole seconds left, so the login can count down to it (TAR-131).
  */
 public class AccountLockedException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final Instant lockedUntil;
   private final long retryAfterSeconds;
