@@ -29,6 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 class ResetCodeIssuer {
 
   static final Duration CODE_VALIDITY = Duration.ofMinutes(30);
+
+  /** A live code issued less than this ago is kept: the next request does not replace it. */
+  static final Duration KEEP_WINDOW = Duration.ofMinutes(5);
+
   private static final int CODE_BYTES = 32;
 
   /** A code that was issued and still has to be emailed. */
@@ -44,12 +48,12 @@ class ResetCodeIssuer {
   }
 
   /**
-   * Issues a code for an active account that has no live one (never had one, it expired, or it was
-   * used or cleared by a password change). While a code is live nothing is issued or sent: only its
-   * hash is stored, so it cannot be resent, and replacing it would let anyone who knows the email
-   * invalidate the link the person just received (TAR-181). This also bounds the emails to one per
-   * validity period. The account row is locked until the commit, so two simultaneous requests
-   * cannot both issue a code.
+   * Issues a code for an active account unless its current code was issued less than {@link
+   * #KEEP_WINDOW} ago. Inside the window nothing is issued or sent (only the hash is stored, so the
+   * code cannot be resent); after it a request replaces the code, so a person whose email never
+   * arrived can retry, while anyone who knows the email can invalidate the link at most once per
+   * window (TAR-181). Expired, used or cleared codes have no live issue time and are replaced. The
+   * account row is locked until the commit, so two simultaneous requests cannot both issue a code.
    */
   @Transactional
   Optional<IssuedCode> issueFor(String email) {
@@ -59,7 +63,7 @@ class ResetCodeIssuer {
     }
     UserAccount user = account.get();
     Instant now = clock.instant();
-    if (hasLiveCode(user, now)) {
+    if (issuedRecently(user, now)) {
       return Optional.empty();
     }
     String code = newCode();
@@ -67,9 +71,15 @@ class ResetCodeIssuer {
     return Optional.of(new IssuedCode(user, code));
   }
 
-  /** A code is live while it has not expired; used codes are removed, so they have no expiry. */
-  private boolean hasLiveCode(UserAccount user, Instant now) {
-    return userRepository.findResetTokenExpiry(user.id()).map(now::isBefore).orElse(false);
+  /**
+   * The issue time is the expiry minus the validity, so no column is needed. ponytail: breaks if
+   * CODE_VALIDITY changes while codes are in flight; store the issue time then.
+   */
+  private boolean issuedRecently(UserAccount user, Instant now) {
+    return userRepository
+        .findResetTokenExpiry(user.id())
+        .map(expiry -> now.isBefore(expiry.minus(CODE_VALIDITY).plus(KEEP_WINDOW)))
+        .orElse(false);
   }
 
   private String newCode() {

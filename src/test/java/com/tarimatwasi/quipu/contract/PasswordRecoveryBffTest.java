@@ -272,10 +272,10 @@ class PasswordRecoveryBffTest {
   }
 
   @Test
-  void aSecondRequestWhileACodeIsLiveGets202KeepsTheCodeAndSendsNothing() throws Exception {
+  void aSecondRequestWithinFiveMinutesGets202KeepsTheCodeAndSendsNothing() throws Exception {
     String code = requestCode();
     String hash = jdbc.queryForObject("SELECT reset_token_hash FROM users", String.class);
-    jdbc.update("UPDATE users SET reset_token_expires_at = now() + interval '10 minutes'");
+    jdbc.update("UPDATE users SET reset_token_expires_at = now() + interval '26 minutes'");
 
     postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}")
         .andExpect(status().isAccepted())
@@ -285,6 +285,16 @@ class PasswordRecoveryBffTest {
     assertThat(jdbc.queryForObject("SELECT reset_token_hash FROM users", String.class))
         .isEqualTo(hash);
     resetWith(code, NEW_PASSWORD).andExpect(status().isNoContent());
+  }
+
+  @Test
+  void aLiveCodeOfFiveMinutesOrMoreIsReplacedAndEmailedAgainWith202() throws Exception {
+    requestCode();
+    jdbc.update("UPDATE users SET reset_token_expires_at = now() + interval '24 minutes'");
+
+    postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}").andExpect(status().isAccepted());
+
+    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any());
   }
 
   @Test

@@ -106,23 +106,43 @@ class PasswordRecoveryServiceTest {
   }
 
   @Test
-  void whileACodeIsLiveASecondRequestKeepsItAndSendsNothing() {
+  void withinFiveMinutesOfIssuingASecondRequestKeepsTheCodeAndSendsNothing() {
     UserAccount user = savedUser("ACTIVE");
     service.requestReset(EMAIL);
     String hash = repository.storedResetHash(user.id()).orElseThrow();
     Instant expiry = repository.findResetTokenExpiry(user.id()).orElseThrow();
 
-    for (Duration step :
-        List.of(Duration.ofSeconds(61), Duration.ofMinutes(15), Duration.ofSeconds(13 * 60 + 58))) {
-      clock.advance(step);
-      service.requestReset(EMAIL);
-    }
+    clock.advance(Duration.ofSeconds(61));
+    service.requestReset(EMAIL);
+    clock.advance(Duration.ofSeconds(3 * 60 + 58));
+    service.requestReset(EMAIL);
 
     assertThat(mail.sent).hasSize(1);
     assertThat(repository.storedResetHash(user.id())).contains(hash);
     assertThat(repository.findResetTokenExpiry(user.id())).contains(expiry);
     assertThatCode(() -> service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD))
         .doesNotThrowAnyException();
+  }
+
+  @Test
+  void fiveMinutesAfterIssuingALiveCodeIsReplacedAndEmailedAgain() {
+    UserAccount user = savedUser("ACTIVE");
+    service.requestReset(EMAIL);
+    String oldCode = mail.sent.getFirst().code();
+    String oldHash = repository.storedResetHash(user.id()).orElseThrow();
+
+    clock.advance(Duration.ofMinutes(5));
+    service.requestReset(EMAIL);
+    String newCode = mail.sent.getLast().code();
+
+    assertThat(mail.sent).hasSize(2);
+    assertThat(newCode).isNotEqualTo(oldCode);
+    assertThat(repository.storedResetHash(user.id()))
+        .isPresent()
+        .isNotEqualTo(Optional.of(oldHash));
+    assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD))
+        .isInstanceOf(InvalidResetCodeException.class);
+    assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD)).doesNotThrowAnyException();
   }
 
   @Test
