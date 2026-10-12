@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -62,10 +63,10 @@ class ExpensesBffControllerTest {
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.length()").value(1));
+        .andExpect(jsonPath("$.content.length()").value(1));
     mockMvc
         .perform(get(URL).param("month", "2026-10").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(0));
+        .andExpect(jsonPath("$.content.length()").value(0));
   }
 
   @Test
@@ -86,9 +87,9 @@ class ExpensesBffControllerTest {
 
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
-        .andExpect(jsonPath("$[0].category").value("WATER"))
-        .andExpect(jsonPath("$[1].category").value("INTERNET"))
-        .andExpect(jsonPath("$[2].category").value("OTHER"));
+        .andExpect(jsonPath("$.content[0].category").value("WATER"))
+        .andExpect(jsonPath("$.content[1].category").value("INTERNET"))
+        .andExpect(jsonPath("$.content[2].category").value("OTHER"));
   }
 
   @Test
@@ -204,10 +205,10 @@ class ExpensesBffControllerTest {
         .andExpect(jsonPath("$.description").doesNotExist());
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(0));
+        .andExpect(jsonPath("$.content.length()").value(0));
     mockMvc
         .perform(get(URL).param("month", "2026-10").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(1));
+        .andExpect(jsonPath("$.content.length()").value(1));
   }
 
   @Test
@@ -218,7 +219,7 @@ class ExpensesBffControllerTest {
 
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(0));
+        .andExpect(jsonPath("$.content.length()").value(0));
     mockMvc
         .perform(delete(URL + "/" + id).cookie(admin()))
         .andExpect(status().isNotFound())
@@ -268,11 +269,15 @@ class ExpensesBffControllerTest {
 
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(1));
+        .andExpect(jsonPath("$.content.length()").value(1));
   }
 
   private Cookie admin() {
     return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+  }
+
+  private static String expenseOf(int amount) {
+    return "{\"category\":\"WATER\",\"amount\":" + amount + ",\"month\":\"2026-09\"}";
   }
 
   private ResultActions create(String body) throws Exception {
@@ -292,5 +297,63 @@ class ExpensesBffControllerTest {
         document + "@example.test",
         document,
         role);
+  }
+
+  /** BE-SPR-WEB-08 (TAR-176): read by last index, oldest first, with no offset. */
+  @Test
+  void theListingIsPagedByLastIndex() throws Exception {
+    for (int amount = 1; amount <= 3; amount++) {
+      create(expenseOf(amount)).andExpect(status().isCreated());
+    }
+
+    var first =
+        mockMvc
+            .perform(get(URL).param("month", "2026-09").param("limit", "2").cookie(admin()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content.length()").value(2))
+            .andExpect(jsonPath("$.content[0].amount").value(1))
+            .andExpect(jsonPath("$.content[1].amount").value(2))
+            .andExpect(jsonPath("$.nextCursor").isString())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String cursor = JsonPath.read(first, "$.nextCursor");
+
+    mockMvc
+        .perform(
+            get(URL)
+                .param("month", "2026-09")
+                .param("limit", "2")
+                .param("after", cursor)
+                .cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].amount").value(3))
+        .andExpect(jsonPath("$.nextCursor").value((Object) null));
+  }
+
+  @Test
+  void anInvalidLimitOrCursorIs400NamingTheParameter() throws Exception {
+    for (String limit : new String[] {"0", "101", "abc"}) {
+      mockMvc
+          .perform(get(URL).param("month", "2026-09").param("limit", limit).cookie(admin()))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.field").value("limit"));
+    }
+    for (String after : new String[] {"", "garbage!"}) {
+      mockMvc
+          .perform(get(URL).param("month", "2026-09").param("after", after).cookie(admin()))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.field").value("after"));
+    }
+  }
+
+  /** BE-SPR-WEB-06 (TAR-176): 201 with the Location of the new resource, its masked id. */
+  @Test
+  void creatingAnExpenseAnswersItsLocation() throws Exception {
+    var response = create(WATER).andExpect(status().isCreated()).andReturn().getResponse();
+    String id = JsonPath.read(response.getContentAsString(), "$.id");
+
+    assertThat(response.getHeader("Location")).isEqualTo(URL + "/" + id);
   }
 }

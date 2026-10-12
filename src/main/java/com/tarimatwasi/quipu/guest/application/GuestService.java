@@ -16,6 +16,8 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
@@ -48,14 +50,14 @@ public class GuestService implements ManageGuestsUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public List<GuestSummaryView> list(StatusFilter filter, @Nullable GuestKind type) {
-    List<Guest> found = guests.findAll(statuses(filter), type == null ? null : toType(type));
+  public CursorPage<GuestSummaryView> list(
+      StatusFilter filter, @Nullable GuestKind type, PageQuery page) {
+    CursorPage<Guest> found =
+        guests.findAll(statuses(filter), type == null ? null : toType(type), page);
     Set<Long> ids = new LinkedHashSet<>();
-    found.forEach(guest -> ids.add(guest.id()));
+    found.content().forEach(guest -> ids.add(guest.id()));
     Map<Long, AccountState> states = ids.isEmpty() ? Map.of() : accounts.stateOf(ids);
-    return found.stream()
-        .map(guest -> summary(guest, states.getOrDefault(guest.id(), NO_ACCOUNT)))
-        .toList();
+    return found.map(guest -> summary(guest, states.getOrDefault(guest.id(), NO_ACCOUNT)));
   }
 
   @Override

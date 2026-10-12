@@ -246,18 +246,18 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(get(URL).cookie(admin()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.length()").value(2))
-        .andExpect(jsonPath("$[0].code").value("201"))
-        .andExpect(jsonPath("$[1].code").value("202"));
+        .andExpect(jsonPath("$.content.length()").value(2))
+        .andExpect(jsonPath("$.content[0].code").value("201"))
+        .andExpect(jsonPath("$.content[1].code").value("202"));
     mockMvc
         .perform(get(URL).param("status", "INACTIVE").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(1))
-        .andExpect(jsonPath("$[0].code").value("100"))
-        .andExpect(jsonPath("$[0].status").value("INACTIVE"));
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].code").value("100"))
+        .andExpect(jsonPath("$.content[0].status").value("INACTIVE"));
     mockMvc
         .perform(get(URL).param("status", "ALL").cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(3))
-        .andExpect(jsonPath("$[0].code").value("100"));
+        .andExpect(jsonPath("$.content.length()").value(3))
+        .andExpect(jsonPath("$.content[0].code").value("100"));
   }
 
   /** RN-12: a deactivated environment leaves the active listing but is still readable. */
@@ -267,10 +267,10 @@ class EnvironmentsBffControllerTest {
 
     post204(id, "deactivate");
 
-    mockMvc.perform(get(URL).cookie(admin())).andExpect(jsonPath("$.length()").value(0));
+    mockMvc.perform(get(URL).cookie(admin())).andExpect(jsonPath("$.content.length()").value(0));
     mockMvc
         .perform(get(URL).param("status", "INACTIVE").cookie(admin()))
-        .andExpect(jsonPath("$[0].code").value("201"));
+        .andExpect(jsonPath("$.content[0].code").value("201"));
     mockMvc
         .perform(get(URL + "/" + id).cookie(admin()))
         .andExpect(status().isOk())
@@ -289,8 +289,8 @@ class EnvironmentsBffControllerTest {
 
     mockMvc
         .perform(get(URL).cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(1))
-        .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].status").value("ACTIVE"));
   }
 
   @Test
@@ -380,8 +380,8 @@ class EnvironmentsBffControllerTest {
 
     mockMvc
         .perform(get(URL).cookie(admin()))
-        .andExpect(jsonPath("$.length()").value(1))
-        .andExpect(jsonPath("$[0].code").value("201"));
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].code").value("201"));
   }
 
   private Cookie admin() {
@@ -428,5 +428,61 @@ class EnvironmentsBffControllerTest {
         document + "@example.test",
         document,
         role);
+  }
+
+  /** BE-SPR-WEB-08 (TAR-176): read by last index, in the order of the code, with no offset. */
+  @Test
+  void theListingIsPagedByLastIndex() throws Exception {
+    createdId("203", "ROOM");
+    createdId("201", "ROOM");
+    createdId("202", "ROOM");
+
+    var first =
+        mockMvc
+            .perform(get(URL).param("limit", "2").cookie(admin()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content.length()").value(2))
+            .andExpect(jsonPath("$.content[0].code").value("201"))
+            .andExpect(jsonPath("$.content[1].code").value("202"))
+            .andExpect(jsonPath("$.nextCursor").isString())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String cursor = com.jayway.jsonpath.JsonPath.read(first, "$.nextCursor");
+
+    mockMvc
+        .perform(get(URL).param("limit", "2").param("after", cursor).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].code").value("203"))
+        .andExpect(jsonPath("$.nextCursor").value((Object) null));
+  }
+
+  @Test
+  void anInvalidLimitOrCursorIs400NamingTheParameter() throws Exception {
+    for (String limit : new String[] {"0", "101", "-1", "abc"}) {
+      mockMvc
+          .perform(get(URL).param("limit", limit).cookie(admin()))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.field").value("limit"));
+    }
+    for (String after : new String[] {"", "garbage!", "AAAA.BBBB"}) {
+      mockMvc
+          .perform(get(URL).param("after", after).cookie(admin()))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.field").value("after"));
+    }
+  }
+
+  /** BE-SPR-WEB-06 (TAR-176): 201 with the Location of the new resource, its masked id. */
+  @Test
+  void creatingAnEnvironmentAnswersItsLocation() throws Exception {
+    var body = create("301", "ROOM").andExpect(status().isCreated()).andReturn().getResponse();
+    String id = com.jayway.jsonpath.JsonPath.read(body.getContentAsString(), "$.id");
+
+    org.assertj.core.api.Assertions.assertThat(body.getHeader("Location"))
+        .isEqualTo(URL + "/" + id);
   }
 }
