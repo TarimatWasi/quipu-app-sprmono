@@ -182,9 +182,19 @@ class RateLimitFilterTest {
         .isEqualTo(429);
   }
 
+  /** A blank secret would silently turn the per-address limit into one shared bucket (TAR-180). */
   @Test
-  void withoutAConfiguredSecretTheHeaderIsNeverTrusted() throws Exception {
-    var filter = new RateLimitFilter(new RateLimitProperties(1, "CF-Connecting-IP", ""));
+  void aBlankSecretWithTheClientIpHeaderIsRefused() {
+    for (String blank : new String[] {"", " ", "   "}) {
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () -> new RateLimitProperties(60, "CF-Connecting-IP", blank))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+  }
+
+  @Test
+  void withoutTheHeaderNorTheSecretTheConnectionAddressIsUsed() throws Exception {
+    var filter = new RateLimitFilter(new RateLimitProperties(1, "", ""));
 
     assertThat(run(filter, viaCloudflare("", "203.0.113.1")).getStatus()).isEqualTo(200);
     assertThat(run(filter, viaCloudflare("", "203.0.113.2")).getStatus()).isEqualTo(429);

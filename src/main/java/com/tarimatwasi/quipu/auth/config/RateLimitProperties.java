@@ -34,5 +34,12 @@ public record RateLimitProperties(
     if (originSecret.startsWith("${")) {
       throw new IllegalArgumentException("app.rate-limit.origin-secret is not resolved");
     }
+    // An empty value (ORIGIN_SECRET defined but blank) resolves fine too, and then no request
+    // could ever present it: the address header would never be trusted and every client would
+    // share the connection address. Local sets neither value and is not affected.
+    if (!clientIpHeader.isBlank() && originSecret.isBlank()) {
+      throw new IllegalArgumentException(
+          "app.rate-limit.origin-secret is required when app.rate-limit.client-ip-header is set");
+    }
   }
 }
