@@ -29,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 class ResetCodeIssuer {
 
   static final Duration CODE_VALIDITY = Duration.ofMinutes(30);
-  private static final Duration RESEND_COOLDOWN = Duration.ofMinutes(1);
   private static final int CODE_BYTES = 32;
 
   /** A code that was issued and still has to be emailed. */
@@ -45,9 +44,12 @@ class ResetCodeIssuer {
   }
 
   /**
-   * Issues a code for an active account that has not been sent one in the last minute, replacing
-   * any code it had. The account row is locked until the commit, so two simultaneous requests
-   * cannot both pass the cooldown.
+   * Issues a code for an active account that has no live one (never had one, it expired, or it was
+   * used or cleared by a password change). While a code is live nothing is issued or sent: only its
+   * hash is stored, so it cannot be resent, and replacing it would let anyone who knows the email
+   * invalidate the link the person just received (TAR-181). This also bounds the emails to one per
+   * validity period. The account row is locked until the commit, so two simultaneous requests
+   * cannot both issue a code.
    */
   @Transactional
   Optional<IssuedCode> issueFor(String email) {
@@ -57,7 +59,7 @@ class ResetCodeIssuer {
     }
     UserAccount user = account.get();
     Instant now = clock.instant();
-    if (sentRecently(user, now)) {
+    if (hasLiveCode(user, now)) {
       return Optional.empty();
     }
     String code = newCode();
@@ -65,12 +67,9 @@ class ResetCodeIssuer {
     return Optional.of(new IssuedCode(user, code));
   }
 
-  /** The previous code was issued less than a minute ago: its expiry minus the validity. */
-  private boolean sentRecently(UserAccount user, Instant now) {
-    return userRepository
-        .findResetTokenExpiry(user.id())
-        .map(expiry -> now.isBefore(expiry.minus(CODE_VALIDITY).plus(RESEND_COOLDOWN)))
-        .orElse(false);
+  /** A code is live while it has not expired; used codes are removed, so they have no expiry. */
+  private boolean hasLiveCode(UserAccount user, Instant now) {
+    return userRepository.findResetTokenExpiry(user.id()).map(now::isBefore).orElse(false);
   }
 
   private String newCode() {
