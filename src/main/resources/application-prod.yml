@@ -12,7 +12,6 @@ spring:
 app:
   rate-limit:
     client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
-    origin-secret: ${ORIGIN_SECRET} # TAR-180: Cloudflare lo agrega en X-Origin-Secret; sin él se ignora CF-Connecting-IP
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
   # Primer ADMIN (AdminBootstrap): solo se crea si no existe ninguno. Son las únicas variables

@@ -12,7 +12,6 @@ spring:
 app:
   rate-limit:
     client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
-    origin-secret: ${ORIGIN_SECRET} # TAR-180: Cloudflare lo agrega en X-Origin-Secret; sin él se ignora CF-Connecting-IP
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
     # La reescritura de Vercel (/bff) conserva el Origin del host de Vercel (TAR-75): se listan el

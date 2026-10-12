@@ -129,13 +129,6 @@ class ProfileFilesContractTest {
     assertThat(load(file).get("app.rate-limit.client-ip-header")).isEqualTo("CF-Connecting-IP");
   }
 
-  /** TAR-180, BE-SPR-CFG-05: the secret that Cloudflare adds has no default in dev and prod. */
-  @ParameterizedTest
-  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
-  void strictProfiles_requireTheOriginSecretWithoutDefault(String file) throws IOException {
-    assertThat(load(file).get("app.rate-limit.origin-secret")).isEqualTo("${ORIGIN_SECRET}");
-  }
-
   @Test
   void base_limitsPerAddressGenerouslyAndPerAccountTightly() throws IOException {
     var base = load("application.yml");

@@ -52,7 +52,7 @@ app:
   # comparten una sola dirección. per-account-per-minute cuenta los intentos de login por documento,
   # venga de donde venga. client-ip-header: solo si la capa de delante sobrescribe ese encabezado con
   # la IP real del cliente (dev y prod: CF-Connecting-IP, que Cloudflare escribe y el cliente no puede
-  # enviar). origin-secret (TAR-180): solo si la petición trae ese valor en X-Origin-Secret se confía en client-ip-header; vacío (local) nunca.
+  # enviar).
   rate-limit:
     per-minute: 60
     per-account-per-minute: 10
