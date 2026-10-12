@@ -124,12 +124,14 @@ public class GuestsBffController {
       @Nullable BigDecimal agreedAmount) {}
 
   @GetMapping("/bff/admin/guests")
-  public List<GuestSummaryResponse> list(
+  public PagedResponse<GuestSummaryResponse> list(
       @RequestParam(name = "status", defaultValue = "CURRENT") StatusFilter status,
-      @RequestParam(name = "type", required = false) @Nullable GuestKind type) {
-    return guests.list(status, type).stream()
-        .map(guest -> GuestSummaryResponse.of(guest, ids))
-        .toList();
+      @RequestParam(name = "type", required = false) @Nullable GuestKind type,
+      @RequestParam(name = "limit", defaultValue = "20") int limit,
+      @RequestParam(name = "after", required = false) @Nullable String after) {
+    return PagedResponse.of(
+        guests.list(status, type, PageParams.query(after, limit)),
+        guest -> GuestSummaryResponse.of(guest, ids));
   }
 
   @GetMapping("/bff/admin/guests/{id}")

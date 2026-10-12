@@ -1,8 +1,10 @@
 package com.tarimatwasi.quipu.expense.port.in;
 
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.YearMonth;
-import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** RF-07: register, edit, delete and list the operating expenses of a month. */
@@ -53,6 +55,11 @@ public interface ManageExpensesUseCase {
    */
   void delete(Long id);
 
-  /** Lists the expenses of the month, oldest first. */
-  List<ExpenseView> list(YearMonth month);
+  /**
+   * Lists one page of the expenses of the month, oldest first and read by last index
+   * (BE-SPR-WEB-08).
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   */
+  CursorPage<ExpenseView> list(YearMonth month, PageQuery page);
 }

@@ -88,20 +88,20 @@ class GuestsContractTest {
         .perform(get(URL).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.length()").value(2))
-        .andExpect(jsonPath("$[0].documentNumber").value("12345678"))
-        .andExpect(jsonPath("$[0].name").doesNotExist())
-        .andExpect(jsonPath("$[0].hasLoginAccess").value(false));
+        .andExpect(jsonPath("$.content.length()").value(2))
+        .andExpect(jsonPath("$.content[0].documentNumber").value("12345678"))
+        .andExpect(jsonPath("$.content[0].name").doesNotExist())
+        .andExpect(jsonPath("$.content[0].hasLoginAccess").value(false));
     mockMvc
         .perform(get(URL).param("status", "ALL").cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.length()").value(3));
+        .andExpect(jsonPath("$.content.length()").value(3));
     mockMvc
         .perform(get(URL).param("status", "INACTIVE").param("type", "CONTRACT").cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.length()").value(1));
+        .andExpect(jsonPath("$.content.length()").value(1));
   }
 
   @Test
@@ -113,7 +113,7 @@ class GuestsContractTest {
         .perform(get(URL).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$[0].hasLoginAccess").value(true));
+        .andExpect(jsonPath("$.content[0].hasLoginAccess").value(true));
   }
 
   @Test

@@ -13,10 +13,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import java.util.List;
+import java.net.URI;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -60,18 +61,23 @@ public class EnvironmentsBffController {
   }
 
   @GetMapping("/bff/admin/environments")
-  public List<EnvironmentResponse> list(
-      @RequestParam(name = "status", defaultValue = "ACTIVE") StatusFilter status) {
-    return environments.list(status).stream()
-        .map(environment -> EnvironmentResponse.of(environment, ids))
-        .toList();
+  public PagedResponse<EnvironmentResponse> list(
+      @RequestParam(name = "status", defaultValue = "ACTIVE") StatusFilter status,
+      @RequestParam(name = "limit", defaultValue = "20") int limit,
+      @RequestParam(name = "after", required = false) @Nullable String after) {
+    return PagedResponse.of(
+        environments.list(status, PageParams.query(after, limit)),
+        environment -> EnvironmentResponse.of(environment, ids));
   }
 
   @PostMapping("/bff/admin/environments")
-  @ResponseStatus(HttpStatus.CREATED)
-  public EnvironmentResponse create(@Valid @RequestBody CreateEnvironmentRequest request) {
-    return EnvironmentResponse.of(
-        environments.create(new CreateCommand(request.code(), request.type())), ids);
+  public ResponseEntity<EnvironmentResponse> create(
+      @Valid @RequestBody CreateEnvironmentRequest request) {
+    EnvironmentResponse created =
+        EnvironmentResponse.of(
+            environments.create(new CreateCommand(request.code(), request.type())), ids);
+    return ResponseEntity.created(URI.create("/bff/admin/environments/" + created.id()))
+        .body(created);
   }
 
   @GetMapping("/bff/admin/environments/{id}")

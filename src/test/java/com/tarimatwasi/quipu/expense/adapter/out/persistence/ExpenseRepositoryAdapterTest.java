@@ -1,13 +1,20 @@
 package com.tarimatwasi.quipu.expense.adapter.out.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.CursorToken;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,5 +69,54 @@ class ExpenseRepositoryAdapterTest {
     Boolean deleted = transaction.execute(status -> adapter.delete(987_654L));
 
     assertThat(deleted).isFalse();
+  }
+
+  private void insertInMonth(int amount, YearMonth month) {
+    adapter.insert(ExpenseCategory.OTHER, new BigDecimal(amount), month, null);
+  }
+
+  /** BE-SPR-WEB-08 (TAR-176): read by last index, oldest first, with no offset. */
+  @Test
+  void findByMonth_walksTheMonthOldestFirstWithoutRepeatingOrSkipping() {
+    for (int amount = 1; amount <= 5; amount++) {
+      insertInMonth(amount, YearMonth.of(2026, 9));
+    }
+    insertInMonth(99, YearMonth.of(2026, 10));
+
+    List<Integer> amounts = new ArrayList<>();
+    PageQuery query = new PageQuery(null, 2);
+    int pages = 0;
+    do {
+      CursorPage<Expense> page = adapter.findByMonth(YearMonth.of(2026, 9), query);
+      page.content().forEach(expense -> amounts.add(expense.amount().intValue()));
+      query = new PageQuery(page.nextCursor(), 2);
+      pages++;
+    } while (query.after() != null);
+
+    assertThat(amounts).containsExactly(1, 2, 3, 4, 5);
+    assertThat(pages).isEqualTo(3);
+  }
+
+  @Test
+  void findByMonth_ofAnEmptyMonth_isAnEmptyLastPage() {
+    CursorPage<Expense> page = adapter.findByMonth(YearMonth.of(2026, 1), PageQuery.first());
+
+    assertThat(page.content()).isEmpty();
+    assertThat(page.nextCursor()).isNull();
+  }
+
+  @Test
+  void findByMonth_withAnInvalidCursor_isRefused() {
+    YearMonth month = YearMonth.of(2026, 9);
+    for (String cursor :
+        new String[] {
+          "garbage!",
+          CursorToken.encode("not-a-date", "1"),
+          CursorToken.encode("2026-09-01T10:00:00", "not-a-number"),
+          CursorToken.encode("2026-09-01T10:00:00")
+        }) {
+      assertThatThrownBy(() -> adapter.findByMonth(month, new PageQuery(cursor, 5)))
+          .isInstanceOf(InvalidCursorException.class);
+    }
   }
 }

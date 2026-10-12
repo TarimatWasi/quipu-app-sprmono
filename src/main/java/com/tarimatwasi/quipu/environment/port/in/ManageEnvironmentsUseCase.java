@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.environment.port.in;
 
-import java.util.List;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import org.jspecify.annotations.Nullable;
 
 /** RF-01: create, read, edit and list the rentable environments. */
@@ -73,6 +75,11 @@ public interface ManageEnvironmentsUseCase {
    */
   void reactivate(Long id);
 
-  /** Lists the environments of the filter, ordered by code. */
-  List<EnvironmentView> list(StatusFilter filter);
+  /**
+   * Lists one page of the environments of the filter, ordered by code and read by last index
+   * (BE-SPR-WEB-08).
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   */
+  CursorPage<EnvironmentView> list(StatusFilter filter, PageQuery page);
 }

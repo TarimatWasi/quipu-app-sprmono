@@ -3,7 +3,9 @@ package com.tarimatwasi.quipu.environment.port.out;
 import com.tarimatwasi.quipu.environment.domain.Environment;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
-import java.util.List;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -18,8 +20,12 @@ public interface EnvironmentRepositoryPort {
 
   Optional<Environment> findById(Long id);
 
-  /** Ordered by code; {@code status == null} returns every environment. */
-  List<Environment> findAll(@Nullable EnvironmentStatus status);
+  /**
+   * One page ordered by code; {@code status == null} reads every environment.
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   */
+  CursorPage<Environment> findAll(@Nullable EnvironmentStatus status, PageQuery page);
 
   /**
    * Changes the present fields of the environment; empty if there is none with that id.

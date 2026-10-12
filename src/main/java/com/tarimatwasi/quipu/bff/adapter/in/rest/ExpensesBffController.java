@@ -11,11 +11,12 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.YearMonth;
-import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -68,19 +69,22 @@ public class ExpensesBffController {
   }
 
   @GetMapping("/bff/admin/expenses")
-  public List<ExpenseResponse> list(@RequestParam("month") String month) {
+  public PagedResponse<ExpenseResponse> list(
+      @RequestParam("month") String month,
+      @RequestParam(name = "limit", defaultValue = "20") int limit,
+      @RequestParam(name = "after", required = false) @Nullable String after) {
     if (!MONTH_PATTERN.matcher(month).matches()) {
       throw new InvalidQueryParameterException("month");
     }
-    return expenses.list(YearMonth.parse(month)).stream()
-        .map(expense -> ExpenseResponse.of(expense, ids))
-        .toList();
+    return PagedResponse.of(
+        expenses.list(YearMonth.parse(month), PageParams.query(after, limit)),
+        expense -> ExpenseResponse.of(expense, ids));
   }
 
   @PostMapping("/bff/admin/expenses")
-  @ResponseStatus(HttpStatus.CREATED)
-  public ExpenseResponse create(@Valid @RequestBody ExpenseRequest request) {
-    return ExpenseResponse.of(expenses.create(command(request)), ids);
+  public ResponseEntity<ExpenseResponse> create(@Valid @RequestBody ExpenseRequest request) {
+    ExpenseResponse created = ExpenseResponse.of(expenses.create(command(request)), ids);
+    return ResponseEntity.created(URI.create("/bff/admin/expenses/" + created.id())).body(created);
   }
 
   @PatchMapping("/bff/admin/expenses/{id}")

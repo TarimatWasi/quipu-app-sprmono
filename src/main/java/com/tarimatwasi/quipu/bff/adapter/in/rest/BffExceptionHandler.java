@@ -22,6 +22,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -264,6 +265,13 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
             new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.parameter()));
+  }
+
+  /** A page cursor that this service did not issue, or that was altered (BE-SPR-WEB-08). */
+  @ExceptionHandler(InvalidCursorException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidCursor() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", "after"));
   }
 
   /** A required query parameter that is not there. */
