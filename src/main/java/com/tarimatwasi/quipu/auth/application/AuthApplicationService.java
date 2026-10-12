@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,9 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthApplicationService
     implements LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase {
-
-  private static final String DUMMY_PASSWORD_HASH =
-      "$2b$10$izcb2KSDHR.LLCnLSqUYZ.2cp1yucRUSMDq0Eo9HEg4LQaSzNfmEC";
 
   /** SEG-06: consecutive failed logins that lock the account, and for how long. */
   private static final int MAX_FAILED_LOGINS = 5;
@@ -42,6 +40,9 @@ public class AuthApplicationService
   private final LoginAttemptLimiterPort loginAttempts;
   private final Clock clock;
 
+  /** Hashed once at startup (CFG-06, SEC-06) so an unknown document costs one bcrypt check too. */
+  private final String dummyPasswordHash;
+
   public AuthApplicationService(
       UserRepositoryPort userRepository,
       PasswordEncoder passwordEncoder,
@@ -53,6 +54,7 @@ public class AuthApplicationService
     this.sessionTokens = sessionTokens;
     this.loginAttempts = loginAttempts;
     this.clock = clock;
+    this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
   }
 
   /**
@@ -79,7 +81,7 @@ public class AuthApplicationService
         userRepository.findByDocumentForUpdate(
             DocumentType.valueOf(command.documentType().name()), command.documentNumber());
     UserAccount user = userOpt.orElse(null);
-    String passwordHashToCheck = user != null ? user.passwordHash() : DUMMY_PASSWORD_HASH;
+    String passwordHashToCheck = user != null ? user.passwordHash() : dummyPasswordHash;
 
     // Always perform password check to prevent timing attacks
     boolean passwordMatches = passwordEncoder.matches(command.rawPassword(), passwordHashToCheck);
