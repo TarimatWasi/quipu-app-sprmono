@@ -21,12 +21,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtTokenProvider implements SessionTokenPort {
 
-  /**
-   * Still written for the clients that read it, but the account decides: the claim is no longer
-   * trusted (TAR-125).
-   */
-  private static final String PASSWORD_CHANGE_PENDING_CLAIM = "mcp";
-
   private final JwtEncoder encoder;
   private final Duration expiration;
   private final Clock clock;
@@ -40,18 +34,12 @@ public class JwtTokenProvider implements SessionTokenPort {
     this.masker = masker;
   }
 
-  public String issue(String userId, String role) {
-    return issue(userId, role, false);
-  }
-
   @Override
-  public String issue(String userId, String role, boolean mustChangePassword) {
+  public String issue(String userId) {
     Instant now = clock.instant();
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
-            .claim("role", role)
-            .claim(PASSWORD_CHANGE_PENDING_CLAIM, mustChangePassword)
             .issuedAt(now)
             .expiresAt(now.plus(expiration))
             .build();

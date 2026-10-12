@@ -247,7 +247,7 @@ class ExpensesBffControllerTest {
   @Test
   void withoutSessionIs401AndAGuestIs403AndNothingIsWritten() throws Exception {
     var id = idOf(create(WATER));
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
 
     mockMvc.perform(get(URL).param("month", "2026-09")).andExpect(status().isUnauthorized());
     mockMvc
@@ -272,7 +272,7 @@ class ExpensesBffControllerTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString(), "ADMIN"));
+    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
   }
 
   private ResultActions create(String body) throws Exception {

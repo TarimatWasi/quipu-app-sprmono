@@ -75,7 +75,7 @@ class AccountJwtAuthenticationConverterTest {
   void anActiveAccountOpensASessionAndTheAccountDecidesTheRole() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
 
-    String token = provider.issue(id.toString(), "GUEST", true);
+    String token = provider.issue(id.toString());
 
     assertThat(authenticate(token))
         .hasValueSatisfying(
@@ -93,7 +93,7 @@ class AccountJwtAuthenticationConverterTest {
   void theSessionMustChangePasswordWhileTheAccountDoes() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.GUEST, "ACTIVE", true, null)));
 
-    assertThat(authenticate(provider.issue(id.toString(), "GUEST", false)))
+    assertThat(authenticate(provider.issue(id.toString())))
         .hasValueSatisfying(
             auth ->
                 assertThat(auth.getAuthorities())
@@ -105,19 +105,19 @@ class AccountJwtAuthenticationConverterTest {
   @Test
   void anUnknownDisabledOrMalformedAccountOpensNoSession() {
     when(users.findById(id)).thenReturn(Optional.empty());
-    assertThat(authenticate(provider.issue(id.toString(), "ADMIN"))).isEmpty();
+    assertThat(authenticate(provider.issue(id.toString()))).isEmpty();
 
     Long disabled = TestIds.next();
     when(users.findById(disabled))
         .thenReturn(Optional.of(account(disabled, Role.ADMIN, "INACTIVE", false, null)));
-    assertThat(authenticate(provider.issue(disabled.toString(), "ADMIN"))).isEmpty();
+    assertThat(authenticate(provider.issue(disabled.toString()))).isEmpty();
 
     assertThat(authenticate(signed(Map.of("sub", "not-a-uuid", "role", "ADMIN")))).isEmpty();
   }
 
   @Test
   void aTokenIssuedBeforeThePasswordWasChangedOpensNoSession() {
-    String old = provider.issue(id.toString(), "ADMIN");
+    String old = provider.issue(id.toString());
     clock.advance(Duration.ofSeconds(5));
     Instant changedAt = clock.instant();
     when(users.findById(id))
@@ -134,24 +134,23 @@ class AccountJwtAuthenticationConverterTest {
 
     // The change replaces the session cookie in the same request: the new token carries the
     // second of the change itself.
-    assertThat(authenticate(provider.issue(id.toString(), "ADMIN"))).isPresent();
+    assertThat(authenticate(provider.issue(id.toString()))).isPresent();
     clock.advance(Duration.ofSeconds(30));
-    assertThat(authenticate(provider.issue(id.toString(), "ADMIN"))).isPresent();
+    assertThat(authenticate(provider.issue(id.toString()))).isPresent();
   }
 
   @Test
   void anAccountThatNeverChangedItsPasswordAcceptsAnyValidToken() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
 
-    assertThat(authenticate(provider.issue(id.toString(), "ADMIN"))).isPresent();
+    assertThat(authenticate(provider.issue(id.toString()))).isPresent();
   }
 
   @Test
   void aTokenSignedWithAnotherKeyIsRefused() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
     String forged =
-        providerFor(SessionJwt.key(OTHER_SECRET), Duration.ofMinutes(60))
-            .issue(id.toString(), "ADMIN");
+        providerFor(SessionJwt.key(OTHER_SECRET), Duration.ofMinutes(60)).issue(id.toString());
 
     assertThat(authenticate(forged)).isEmpty();
   }
@@ -159,7 +158,7 @@ class AccountJwtAuthenticationConverterTest {
   @Test
   void anExpiredTokenIsRefusedWithNoMarginAfterTheExpirationInstant() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
-    String token = providerFor(key, Duration.ofMinutes(1)).issue(id.toString(), "ADMIN");
+    String token = providerFor(key, Duration.ofMinutes(1)).issue(id.toString());
 
     clock.advance(Duration.ofSeconds(59));
     assertThat(authenticate(token)).isPresent();
@@ -178,13 +177,30 @@ class AccountJwtAuthenticationConverterTest {
         .isEmpty();
   }
 
+  /** BE-SPR-SEC-07 (TAR-172): the token carries no role; the account decides. */
   @Test
-  void aSignedTokenWithoutRoleOrSubjectIsRefused() {
+  void aSignedTokenWithoutRoleOpensTheSessionOfItsAccount() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
-    String masked = masker.mask(IdKind.USER, id).toString();
 
-    assertThat(authenticate(signed(Map.of("sub", masked)))).isEmpty();
+    assertThat(authenticate(signed(Map.of("sub", masker.mask(IdKind.USER, id).toString()))))
+        .hasValueSatisfying(
+            auth ->
+                assertThat(auth.getAuthorities())
+                    .extracting("authority")
+                    .containsExactly("ROLE_ADMIN"));
+  }
+
+  @Test
+  void aSignedTokenWithoutSubjectIsRefused() {
     assertThat(authenticate(signed(Map.of("role", "ADMIN")))).isEmpty();
+  }
+
+  /** BE-SPR-SEC-07 (TAR-172): neither the role nor the pending-change mark travel in the token. */
+  @Test
+  void theIssuedTokenCarriesNoRoleOrPendingChangeClaim() {
+    var claims = decoder.decode(provider.issue(id.toString())).getClaims();
+
+    assertThat(claims).doesNotContainKeys("role", "mcp");
   }
 
   /**
@@ -195,16 +211,15 @@ class AccountJwtAuthenticationConverterTest {
   void eachKindOfRefusalFailsWhereItShould() {
     when(users.findById(id)).thenReturn(Optional.empty());
     String forged =
-        providerFor(SessionJwt.key(OTHER_SECRET), Duration.ofMinutes(60))
-            .issue(id.toString(), "ADMIN");
-    String expired = providerFor(key, Duration.ofMinutes(1)).issue(id.toString(), "ADMIN");
+        providerFor(SessionJwt.key(OTHER_SECRET), Duration.ofMinutes(60)).issue(id.toString());
+    String expired = providerFor(key, Duration.ofMinutes(1)).issue(id.toString());
     clock.advance(Duration.ofMinutes(2));
 
     // The decoder refuses what is not a valid token: signature and dates.
     assertThatThrownBy(() -> decoder.decode(forged)).isInstanceOf(BadJwtException.class);
     assertThatThrownBy(() -> decoder.decode(expired)).isInstanceOf(BadJwtException.class);
     // The converter refuses what is a valid token of an account that cannot have a session.
-    String valid = provider.issue(id.toString(), "ADMIN");
+    String valid = provider.issue(id.toString());
     assertThatThrownBy(() -> converter.convert(decoder.decode(valid)))
         .isInstanceOf(InvalidBearerTokenException.class);
   }
@@ -232,7 +247,7 @@ class AccountJwtAuthenticationConverterTest {
   /** The browser can read the token: it must not carry the sequential id of the account. */
   @Test
   void theSubjectOfTheTokenIsAMaskedIdAndNotTheNumericOne() {
-    String subject = decoder.decode(provider.issue(id.toString(), "ADMIN")).getSubject();
+    String subject = decoder.decode(provider.issue(id.toString())).getSubject();
 
     assertThat(subject).isNotEqualTo(id.toString());
     assertThat(UUID.fromString(subject)).isEqualTo(masker.mask(IdKind.USER, id));

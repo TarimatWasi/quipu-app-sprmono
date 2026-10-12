@@ -166,9 +166,7 @@ class EnvironmentsContractTest {
       mockMvc
           .perform(
               post(URL + "/" + id + "/" + action)
-                  .cookie(
-                      new Cookie(
-                          "sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"))))
+                  .cookie(new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()))))
           .andExpect(status().isForbidden())
           .andExpect(satisfiesTheContract());
     }
@@ -176,7 +174,7 @@ class EnvironmentsContractTest {
 
   @Test
   void aGuestSessionIs403() throws Exception {
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
 
     mockMvc
         .perform(get(URL).cookie(guest))
@@ -185,7 +183,7 @@ class EnvironmentsContractTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString(), "ADMIN"));
+    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
   }
 
   private ResultActions create(String body) throws Exception {

@@ -594,7 +594,6 @@ class AuthBffControllerTest {
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
-            .claim("role", "ADMIN")
             .issuedAt(issuedAt)
             .expiresAt(issuedAt.plusSeconds(600))
             .build();

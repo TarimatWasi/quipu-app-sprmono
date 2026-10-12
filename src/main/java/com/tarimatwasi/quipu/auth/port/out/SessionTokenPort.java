@@ -4,10 +4,8 @@ package com.tarimatwasi.quipu.auth.port.out;
 public interface SessionTokenPort {
 
   /**
-   * Issues a session token for the account.
-   *
-   * @param mustChangePassword true while the account must change its password (RF-12): such a
-   *     session can only reach the password change
+   * Issues a session token for the account. The token carries only who the account is: the role and
+   * the pending password change are read from the account on every request (BE-SPR-SEC-07).
    */
-  String issue(String userId, String role, boolean mustChangePassword);
+  String issue(String userId);
 }

@@ -51,11 +51,7 @@ class AuthApplicationServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new AuthApplicationService(
-            repository,
-            encoder,
-            (userId, role, mustChange) -> userId + ":" + role + ":" + mustChange,
-            (type, number) -> 0L,
-            clock);
+            repository, encoder, userId -> userId, (type, number) -> 0L, clock);
   }
 
   @Test
@@ -141,7 +137,7 @@ class AuthApplicationServiceTest {
 
     ChangePasswordResult result = service.changePassword(change(user, null, "Nueva12345"));
 
-    assertThat(result.sessionToken()).isEqualTo(user.id() + ":GUEST:false");
+    assertThat(result.sessionToken()).isEqualTo(user.id().toString());
     UserAccount stored = repository.find(user.id());
     assertThat(encoder.matches("Nueva12345", stored.passwordHash())).isTrue();
     assertThat(stored.mustChangePassword()).isFalse();
@@ -319,8 +315,7 @@ class AuthApplicationServiceTest {
   void anAccountOverItsAllowanceIsRefusedBeforeTheDatabaseIsTouched() {
     UserRepositoryPort untouched = mock(UserRepositoryPort.class);
     var limited =
-        new AuthApplicationService(
-            untouched, encoder, (u, r, m) -> "t", (type, number) -> 7L, clock);
+        new AuthApplicationService(untouched, encoder, u -> "t", (type, number) -> 7L, clock);
 
     var thrown =
         catchThrowableOfType(
@@ -337,7 +332,7 @@ class AuthApplicationServiceTest {
         new AuthApplicationService(
             repository,
             encoder,
-            (u, r, m) -> "t",
+            u -> "t",
             (type, number) -> {
               asked.add(type + ":" + number);
               return 0L;
@@ -409,8 +404,7 @@ class AuthApplicationServiceTest {
     when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
         .thenReturn(Optional.of(unlocked));
     when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
-    var racing =
-        new AuthApplicationService(stale, encoder, (u, r, m) -> "t", (type, number) -> 0L, clock);
+    var racing = new AuthApplicationService(stale, encoder, u -> "t", (type, number) -> 0L, clock);
 
     assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
         .isInstanceOf(AccountLockedException.class);
@@ -421,8 +415,7 @@ class AuthApplicationServiceTest {
   void theLoginReadsTheAccountUnderTheRowLock() {
     UserRepositoryPort repo = mock(UserRepositoryPort.class);
     when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
-    var locking =
-        new AuthApplicationService(repo, encoder, (u, r, m) -> "t", (type, number) -> 0L, clock);
+    var locking = new AuthApplicationService(repo, encoder, u -> "t", (type, number) -> 0L, clock);
 
     assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -436,8 +429,7 @@ class AuthApplicationServiceTest {
   void changingThePasswordReadsTheAccountUnderTheRowLock() {
     UserAccount user = savedUser("Actual12345", false, "ACTIVE");
     UserRepositoryPort spied = org.mockito.Mockito.spy(repository);
-    var locking =
-        new AuthApplicationService(spied, encoder, (u, r, m) -> "t", (type, number) -> 0L, clock);
+    var locking = new AuthApplicationService(spied, encoder, u -> "t", (type, number) -> 0L, clock);
 
     locking.changePassword(change(user, "Actual12345", "Nueva12345"));
 

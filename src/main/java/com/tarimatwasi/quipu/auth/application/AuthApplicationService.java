@@ -113,7 +113,7 @@ public class AuthApplicationService
         role,
         user.email(),
         user.mustChangePassword(),
-        sessionTokens.issue(user.id().toString(), role, user.mustChangePassword()));
+        sessionTokens.issue(user.id().toString()));
   }
 
   @Override
@@ -131,8 +131,7 @@ public class AuthApplicationService
     // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
     String newHash = passwordEncoder.encode(command.newPassword());
     userRepository.changePassword(user.id(), newHash, clock.instant());
-    return new ChangePasswordResult(
-        sessionTokens.issue(command.userId(), user.role().name(), false));
+    return new ChangePasswordResult(sessionTokens.issue(command.userId()));
   }
 
   @Override

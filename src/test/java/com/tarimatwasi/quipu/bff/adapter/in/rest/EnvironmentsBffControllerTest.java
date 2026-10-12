@@ -307,7 +307,7 @@ class EnvironmentsBffControllerTest {
   @Test
   void changingTheStatusOfAnUnknownEnvironmentIs404AndOfAGuestIs403() throws Exception {
     var unknown = UUID.randomUUID();
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
     var id = createdId("201", "ROOM");
 
     for (var action : new String[] {"deactivate", "reactivate"}) {
@@ -355,7 +355,7 @@ class EnvironmentsBffControllerTest {
   /** RN-08: a guest session is valid but never reaches the administration. */
   @Test
   void aGuestIs403OnEveryOperationAndNothingIsWritten() throws Exception {
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString(), "GUEST"));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
     var id = createdId("201", "ROOM");
 
     mockMvc
@@ -385,7 +385,7 @@ class EnvironmentsBffControllerTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString(), "ADMIN"));
+    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
   }
 
   private ResultActions create(String code, String type) throws Exception {
