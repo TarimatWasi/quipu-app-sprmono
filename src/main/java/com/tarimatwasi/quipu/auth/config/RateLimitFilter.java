@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,6 +34,7 @@ final class RateLimitFilter extends OncePerRequestFilter {
 
   private static final Set<String> LIMITED =
       Set.of("/bff/auth/login", "/bff/auth/forgot-password", "/bff/auth/reset-password");
+  private static final String ORIGIN_SECRET_HEADER = "X-Origin-Secret";
   private static final int MAX_TRACKED_CLIENTS = 10_000;
   private static final Pattern ADDRESS = Pattern.compile("[0-9a-fA-F:.]{1,45}");
   private static final String BODY =
@@ -41,6 +43,7 @@ final class RateLimitFilter extends OncePerRequestFilter {
 
   private final int perMinute;
   private final String clientIpHeader;
+  private final byte[] originSecret;
   private final Map<String, Bucket> buckets =
       Collections.synchronizedMap(
           new LinkedHashMap<>(16, 0.75f, true) {
@@ -55,6 +58,7 @@ final class RateLimitFilter extends OncePerRequestFilter {
   RateLimitFilter(RateLimitProperties properties) {
     this.perMinute = properties.perMinute();
     this.clientIpHeader = properties.clientIpHeader();
+    this.originSecret = properties.originSecret().getBytes(StandardCharsets.UTF_8);
   }
 
   @Override
@@ -96,9 +100,20 @@ final class RateLimitFilter extends OncePerRequestFilter {
         .build();
   }
 
-  /** The configured header (first address of a list) or, without it, the connection's address. */
+  /**
+   * TAR-180: the configured header is trusted only when the request carries the origin secret that
+   * Cloudflare adds; otherwise (Render reached directly) the client picks it, so it is ignored.
+   */
+  private boolean fromCloudflare(HttpServletRequest request) {
+    String sent = request.getHeader(ORIGIN_SECRET_HEADER);
+    return originSecret.length > 0
+        && sent != null
+        && MessageDigest.isEqual(sent.getBytes(StandardCharsets.UTF_8), originSecret);
+  }
+
+  /** The trusted header (first address of a list) or, without it, the connection's address. */
   private String clientOf(HttpServletRequest request) {
-    if (!clientIpHeader.isEmpty()) {
+    if (!clientIpHeader.isEmpty() && fromCloudflare(request)) {
       String value = request.getHeader(clientIpHeader);
       if (value != null && !value.isBlank()) {
         int comma = value.indexOf(',');

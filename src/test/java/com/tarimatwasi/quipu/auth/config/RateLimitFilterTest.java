@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class RateLimitFilterTest {
 
   private static final String LOGIN = "/bff/auth/login";
+  private static final String SECRET = "origin-secret-for-tests";
 
   private static MockHttpServletRequest post(String uri, String address) {
     var request = new MockHttpServletRequest("POST", uri);
@@ -27,7 +28,16 @@ class RateLimitFilterTest {
   }
 
   private static RateLimitFilter limitedTo(int perMinute, String header) {
-    return new RateLimitFilter(new RateLimitProperties(perMinute, header));
+    return new RateLimitFilter(new RateLimitProperties(perMinute, header, SECRET));
+  }
+
+  private static MockHttpServletRequest viaCloudflare(String secret, String clientIp) {
+    var request = post(LOGIN, "10.9.9.9");
+    request.addHeader("CF-Connecting-IP", clientIp);
+    if (!secret.isEmpty()) {
+      request.addHeader("X-Origin-Secret", secret);
+    }
+    return request;
   }
 
   @Test
@@ -88,13 +98,16 @@ class RateLimitFilterTest {
 
   @Test
   void tellsClientsApartByTheConfiguredHeader() throws Exception {
-    var filter = limitedTo(1, "X-Real-Client");
+    var filter = limitedTo(1, "CF-Connecting-IP");
     var first = post(LOGIN, "10.9.9.9");
-    first.addHeader("X-Real-Client", "203.0.113.5, 10.1.1.1");
+    first.addHeader("CF-Connecting-IP", "203.0.113.5, 10.1.1.1");
+    first.addHeader("X-Origin-Secret", SECRET);
     var second = post(LOGIN, "10.9.9.9");
-    second.addHeader("X-Real-Client", "203.0.113.6");
+    second.addHeader("CF-Connecting-IP", "203.0.113.6");
+    second.addHeader("X-Origin-Secret", SECRET);
     var again = post(LOGIN, "10.9.9.9");
-    again.addHeader("X-Real-Client", "203.0.113.5");
+    again.addHeader("CF-Connecting-IP", "203.0.113.5");
+    again.addHeader("X-Origin-Secret", SECRET);
 
     assertThat(run(filter, first).getStatus()).isEqualTo(200);
     assertThat(run(filter, second).getStatus()).isEqualTo(200);
@@ -114,11 +127,14 @@ class RateLimitFilterTest {
 
   @Test
   void aHeaderThatIsNotAnAddressDoesNotChooseTheBucket() throws Exception {
-    var filter = limitedTo(1, "X-Real-Client");
+    var filter = limitedTo(1, "CF-Connecting-IP");
     var first = post(LOGIN, "10.9.9.9");
-    first.addHeader("X-Real-Client", "not-an-address-" + "x".repeat(500));
+    first.addHeader("CF-Connecting-IP", "not-an-address-" + "x".repeat(500));
+    first.addHeader("X-Origin-Secret", SECRET);
     var second = post(LOGIN, "10.9.9.9");
-    second.addHeader("X-Real-Client", "another-free-text");
+    second.addHeader("CF-Connecting-IP", "another-free-text");
+    second.addHeader("X-Origin-Secret", SECRET);
+    second.addHeader("X-Origin-Secret", SECRET);
 
     assertThat(run(filter, first).getStatus()).isEqualTo(200);
     assertThat(run(filter, second).getStatus()).isEqualTo(429);
@@ -126,9 +142,58 @@ class RateLimitFilterTest {
 
   @Test
   void fallsBackToTheConnectionAddressWhenTheHeaderIsMissing() throws Exception {
-    var filter = limitedTo(1, "X-Real-Client");
+    var filter = limitedTo(1, "CF-Connecting-IP");
     run(filter, post(LOGIN, "10.9.9.9"));
 
     assertThat(run(filter, post(LOGIN, "10.9.9.9")).getStatus()).isEqualTo(429);
+  }
+
+  @Test
+  void withTheOriginSecretEachCloudflareAddressHasItsOwnCounter() throws Exception {
+    var filter = limitedTo(1, "CF-Connecting-IP");
+
+    assertThat(run(filter, viaCloudflare(SECRET, "203.0.113.1")).getStatus()).isEqualTo(200);
+    assertThat(run(filter, viaCloudflare(SECRET, "203.0.113.2")).getStatus()).isEqualTo(200);
+    assertThat(run(filter, viaCloudflare(SECRET, "203.0.113.1")).getStatus()).isEqualTo(429);
+  }
+
+  @Test
+  void withoutTheOriginSecretARotatingHeaderCountsAsTheRemoteAddress() throws Exception {
+    var filter = limitedTo(1, "CF-Connecting-IP");
+
+    assertThat(run(filter, viaCloudflare("", "203.0.113.1")).getStatus()).isEqualTo(200);
+    assertThat(run(filter, viaCloudflare("", "203.0.113.2")).getStatus()).isEqualTo(429);
+  }
+
+  @Test
+  void aWrongOriginSecretCountsAsTheRemoteAddress() throws Exception {
+    var filter = limitedTo(1, "CF-Connecting-IP");
+
+    assertThat(run(filter, viaCloudflare("wrong", "203.0.113.1")).getStatus()).isEqualTo(200);
+    assertThat(run(filter, viaCloudflare("wrong-again", "203.0.113.2")).getStatus()).isEqualTo(429);
+  }
+
+  @Test
+  void aSecretOfAnotherLengthOrAPrefixOfTheRealOneDoesNotMatch() throws Exception {
+    var filter = limitedTo(1, "CF-Connecting-IP");
+
+    assertThat(run(filter, viaCloudflare(SECRET + "x", "203.0.113.1")).getStatus()).isEqualTo(200);
+    assertThat(run(filter, viaCloudflare(SECRET.substring(1), "203.0.113.2")).getStatus())
+        .isEqualTo(429);
+  }
+
+  @Test
+  void withoutAConfiguredSecretTheHeaderIsNeverTrusted() throws Exception {
+    var filter = new RateLimitFilter(new RateLimitProperties(1, "CF-Connecting-IP", ""));
+
+    assertThat(run(filter, viaCloudflare("", "203.0.113.1")).getStatus()).isEqualTo(200);
+    assertThat(run(filter, viaCloudflare("", "203.0.113.2")).getStatus()).isEqualTo(429);
+  }
+
+  @Test
+  void anUnresolvedPlaceholderIsNotAcceptedAsTheSecret() {
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> new RateLimitProperties(60, "CF-Connecting-IP", "${ORIGIN_SECRET}"))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }
