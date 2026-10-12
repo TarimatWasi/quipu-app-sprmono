@@ -41,9 +41,8 @@ public class AccountJwtAuthenticationConverter
 
   @Override
   public AbstractOAuth2TokenAuthenticationToken<Jwt> convert(Jwt jwt) {
-    String role = jwt.getClaimAsString("role");
-    if (role == null || role.isBlank() || jwt.getIssuedAt() == null) {
-      throw invalid("The token has no role or issue time");
+    if (jwt.getIssuedAt() == null) {
+      throw invalid("The token has no issue time");
     }
     String subject = jwt.getSubject();
     if (subject == null) {

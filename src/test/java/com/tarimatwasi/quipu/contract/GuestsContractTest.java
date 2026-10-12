@@ -260,9 +260,7 @@ class GuestsContractTest {
         .perform(
             get(URL)
                 .cookie(
-                    new Cookie(
-                        "sessionToken",
-                        jwtTokenProvider.issue(guestAccountId.toString(), "GUEST"))))
+                    new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()))))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
   }
@@ -272,7 +270,7 @@ class GuestsContractTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString(), "ADMIN"));
+    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
   }
 
   private ResultActions patchGuest(Long id, String body) throws Exception {
