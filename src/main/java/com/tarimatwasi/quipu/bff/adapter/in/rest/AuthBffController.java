@@ -10,15 +10,13 @@ import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.time.Duration;
 import org.jspecify.annotations.Nullable;
-import org.springframework.http.ResponseCookie;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,19 +31,19 @@ public class AuthBffController {
   private final ChangePasswordUseCase changePasswordUseCase;
   private final CurrentSessionUseCase currentSessionUseCase;
   private final PasswordRecoveryUseCase passwordRecoveryUseCase;
-  private final SessionCookieProperties sessionCookie;
+  private final SessionCookies sessionCookies;
 
   public AuthBffController(
       LoginUseCase loginUseCase,
       ChangePasswordUseCase changePasswordUseCase,
       CurrentSessionUseCase currentSessionUseCase,
       PasswordRecoveryUseCase passwordRecoveryUseCase,
-      SessionCookieProperties sessionCookie) {
+      SessionCookies sessionCookies) {
     this.loginUseCase = loginUseCase;
     this.changePasswordUseCase = changePasswordUseCase;
     this.currentSessionUseCase = currentSessionUseCase;
     this.passwordRecoveryUseCase = passwordRecoveryUseCase;
-    this.sessionCookie = sessionCookie;
+    this.sessionCookies = sessionCookies;
   }
 
   public record LoginRequest(
@@ -65,14 +63,13 @@ public class AuthBffController {
   public record ResetPasswordRequest(@NotBlank String code, @NotNull String newPassword) {}
 
   @PostMapping("/bff/auth/login")
-  public ResponseEntity<LoginResponse> login(
-      @Valid @RequestBody LoginRequest request, HttpServletResponse response) {
+  public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
     LoginResult result =
         loginUseCase.login(
             new LoginCommand(request.documentType(), request.documentNumber(), request.password()));
-    response.addHeader("Set-Cookie", sessionCookie(result.sessionToken()).toString());
-    return ResponseEntity.ok(
-        new LoginResponse(result.role(), result.displayEmail(), result.mustChangePassword()));
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
+        .body(new LoginResponse(result.role(), result.displayEmail(), result.mustChangePassword()));
   }
 
   /** TAR-74: restores the session after a reload; answers the account as it is now. */
@@ -88,23 +85,23 @@ public class AuthBffController {
    * flags as the login). Needs a session, as the contract says.
    */
   @PostMapping("/bff/auth/logout")
-  public ResponseEntity<Void> logout(HttpServletResponse response) {
-    response.addHeader("Set-Cookie", sessionCookie("", Duration.ZERO).toString());
-    return ResponseEntity.noContent().build();
+  public ResponseEntity<Void> logout() {
+    return ResponseEntity.noContent()
+        .header(HttpHeaders.SET_COOKIE, sessionCookies.expired().toString())
+        .build();
   }
 
   /** RF-12: the change replaces the session cookie with one that no longer forces the change. */
   @PostMapping("/bff/auth/change-password")
   public ResponseEntity<Void> changePassword(
-      @Valid @RequestBody ChangePasswordRequest request,
-      Authentication authentication,
-      HttpServletResponse response) {
+      @Valid @RequestBody ChangePasswordRequest request, Authentication authentication) {
     ChangePasswordResult result =
         changePasswordUseCase.changePassword(
             new ChangePasswordCommand(
                 authentication.getName(), request.currentPassword(), request.newPassword()));
-    response.addHeader("Set-Cookie", sessionCookie(result.sessionToken()).toString());
-    return ResponseEntity.noContent().build();
+    return ResponseEntity.noContent()
+        .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
+        .build();
   }
 
   /** RF-16: always 202, whether the email belongs to an account or not. */
@@ -119,19 +116,5 @@ public class AuthBffController {
   public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
     passwordRecoveryUseCase.resetPassword(request.code(), request.newPassword());
     return ResponseEntity.noContent().build();
-  }
-
-  private ResponseCookie sessionCookie(String token) {
-    return sessionCookie(token, sessionCookie.maxAge());
-  }
-
-  private ResponseCookie sessionCookie(String token, Duration maxAge) {
-    return ResponseCookie.from("sessionToken", token)
-        .httpOnly(true)
-        .secure(true)
-        .sameSite(sessionCookie.sameSite().attribute())
-        .maxAge(maxAge)
-        .path("/")
-        .build();
   }
 }
