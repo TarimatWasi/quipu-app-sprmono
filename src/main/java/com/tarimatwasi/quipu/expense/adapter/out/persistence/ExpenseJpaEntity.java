@@ -9,6 +9,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -17,7 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.AbstractAuditable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/** No version column: an expense is edited and deleted freely (RN-24). */
+/** Edits are guarded by a version (BE-SPR-DAT-13); deleting stays free (RN-24). */
 @Entity
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "expenses")
@@ -33,6 +34,8 @@ public class ExpenseJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> 
   private LocalDate month;
 
   private @Nullable String description;
+
+  @Version private long version;
 
   protected ExpenseJpaEntity() {}
 
