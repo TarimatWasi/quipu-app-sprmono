@@ -10,6 +10,11 @@ import java.util.regex.Pattern;
  * Packs the sort key of the last item of a page into the opaque cursor. Every part is Base64Url
  * encoded on its own and the parts are joined with a dot, which Base64Url never produces, so any
  * text is safe as a part.
+ *
+ * <p>The cursor is a position, not a permission, so it is not signed: anyone may build one, and the
+ * worst it does is start the list further on. The paged lists are ADMIN only and an ADMIN can read
+ * every row of them anyway. Only a cursor that is malformed (not Base64Url, wrong number of parts,
+ * a key that does not parse) is refused.
  */
 public final class CursorToken {
 
