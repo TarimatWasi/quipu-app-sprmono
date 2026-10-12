@@ -23,6 +23,8 @@ import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.Statu
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.UpdateCommand;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.util.List;
 import java.util.Optional;
@@ -193,12 +195,24 @@ class EnvironmentServiceTest {
 
   @Test
   void theListingFilterBecomesTheStatusOfTheQuery() {
-    when(repository.findAll(EnvironmentStatus.ACTIVE)).thenReturn(List.of(ROOM_201));
-    when(repository.findAll(EnvironmentStatus.INACTIVE)).thenReturn(List.of());
-    when(repository.findAll(null)).thenReturn(List.of(ROOM_201));
+    PageQuery page = PageQuery.first();
+    when(repository.findAll(EnvironmentStatus.ACTIVE, page))
+        .thenReturn(new CursorPage<>(List.of(ROOM_201), null));
+    when(repository.findAll(EnvironmentStatus.INACTIVE, page))
+        .thenReturn(new CursorPage<>(List.of(), null));
+    when(repository.findAll(null, page)).thenReturn(new CursorPage<>(List.of(ROOM_201), null));
 
-    assertThat(service().list(StatusFilter.ACTIVE)).containsExactly(VIEW_201);
-    assertThat(service().list(StatusFilter.INACTIVE)).isEmpty();
-    assertThat(service().list(StatusFilter.ALL)).containsExactly(VIEW_201);
+    assertThat(service().list(StatusFilter.ACTIVE, page).content()).containsExactly(VIEW_201);
+    assertThat(service().list(StatusFilter.INACTIVE, page).content()).isEmpty();
+    assertThat(service().list(StatusFilter.ALL, page).content()).containsExactly(VIEW_201);
+  }
+
+  @Test
+  void theListingKeepsTheCursorOfTheNextPage() {
+    PageQuery page = new PageQuery("b64", 1);
+    when(repository.findAll(EnvironmentStatus.ACTIVE, page))
+        .thenReturn(new CursorPage<>(List.of(ROOM_201), "next"));
+
+    assertThat(service().list(StatusFilter.ACTIVE, page).nextCursor()).isEqualTo("next");
   }
 }

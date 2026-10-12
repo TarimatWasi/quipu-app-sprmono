@@ -7,9 +7,10 @@ import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.YearMonth;
-import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -68,8 +69,8 @@ public class ExpenseService implements ManageExpensesUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public List<ExpenseView> list(YearMonth month) {
-    return expenses.findByMonth(month).stream().map(ExpenseService::view).toList();
+  public CursorPage<ExpenseView> list(YearMonth month, PageQuery page) {
+    return expenses.findByMonth(month, page).map(ExpenseService::view);
   }
 
   private static void validate(BigDecimal amount) {

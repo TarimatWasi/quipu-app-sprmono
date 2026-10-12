@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.port.in;
 
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** RF-02: list, read and edit the guests the administrator registered. */
@@ -91,9 +93,12 @@ public interface ManageGuestsUseCase {
       @Nullable BigDecimal agreedAmount) {}
 
   /**
-   * Lists the guests of the filter, ordered by document; {@code type == null} returns both kinds.
+   * Lists one page of the guests of the filter, ordered by document type and number and read by
+   * last index (BE-SPR-WEB-08); {@code type == null} returns both kinds.
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
-  List<GuestSummaryView> list(StatusFilter filter, @Nullable GuestKind type);
+  CursorPage<GuestSummaryView> list(StatusFilter filter, @Nullable GuestKind type, PageQuery page);
 
   /**
    * Reads one guest, whatever its state.
