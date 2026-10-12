@@ -1,5 +1,8 @@
 package com.tarimatwasi.quipu.shared.paging;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -45,12 +48,30 @@ public final class CursorToken {
     }
     List<String> parts = new ArrayList<>(expectedParts);
     for (String piece : pieces) {
-      try {
-        parts.add(new String(DECODER.decode(piece), StandardCharsets.UTF_8));
-      } catch (IllegalArgumentException notBase64) {
-        throw new InvalidCursorException();
-      }
+      parts.add(text(piece));
     }
     return parts;
+  }
+
+  /**
+   * One part as text. It must be valid UTF-8 and have no NUL: PostgreSQL cannot store a NUL in
+   * text, so such a value would reach the query and fail there as a 500 instead of a 400.
+   */
+  private static String text(String piece) {
+    try {
+      String text =
+          StandardCharsets.UTF_8
+              .newDecoder()
+              .onMalformedInput(CodingErrorAction.REPORT)
+              .onUnmappableCharacter(CodingErrorAction.REPORT)
+              .decode(ByteBuffer.wrap(DECODER.decode(piece)))
+              .toString();
+      if (text.indexOf('\u0000') >= 0) {
+        throw new InvalidCursorException();
+      }
+      return text;
+    } catch (IllegalArgumentException | CharacterCodingException notText) {
+      throw new InvalidCursorException();
+    }
   }
 }

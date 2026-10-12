@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.shared.paging;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +36,24 @@ class CursorTokenTest {
         .isInstanceOf(InvalidCursorException.class);
     assertThatThrownBy(() -> CursorToken.decode("", 1)).isInstanceOf(InvalidCursorException.class);
     assertThatThrownBy(() -> CursorToken.decode("%%%.@@@", 2))
+        .isInstanceOf(InvalidCursorException.class);
+  }
+
+  /** PostgreSQL cannot store NUL in text: such a "cursor" must be a 400, never reach the query. */
+  @Test
+  void decode_ofAPartWithNul_isRefused() {
+    String token = CursorToken.encode("A" + (char) 0 + "B");
+
+    assertThatThrownBy(() -> CursorToken.decode(token, 1))
+        .isInstanceOf(InvalidCursorException.class);
+  }
+
+  @Test
+  void decode_ofBytesThatAreNotUtf8_isRefused() {
+    String token =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[] {(byte) 0xC3, 0x28});
+
+    assertThatThrownBy(() -> CursorToken.decode(token, 1))
         .isInstanceOf(InvalidCursorException.class);
   }
 }

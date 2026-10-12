@@ -276,6 +276,10 @@ class ExpensesBffControllerTest {
     return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
   }
 
+  private static String expenseOf(int amount) {
+    return "{\"category\":\"WATER\",\"amount\":" + amount + ",\"month\":\"2026-09\"}";
+  }
+
   private ResultActions create(String body) throws Exception {
     return mockMvc.perform(
         post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
@@ -299,7 +303,7 @@ class ExpensesBffControllerTest {
   @Test
   void theListingIsPagedByLastIndex() throws Exception {
     for (int amount = 1; amount <= 3; amount++) {
-      create(WATER.replace("120.50", String.valueOf(amount))).andExpect(status().isCreated());
+      create(expenseOf(amount)).andExpect(status().isCreated());
     }
 
     var first =

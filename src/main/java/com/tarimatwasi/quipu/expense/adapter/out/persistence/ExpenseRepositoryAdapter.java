@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -88,17 +89,26 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
 
   private static String cursorOf(ExpenseJpaEntity expense) {
     return CursorToken.encode(
-        expense.getCreatedDate().orElseThrow().toString(),
+        // PostgreSQL keeps microseconds: a finer value would sort after the row it came from.
+        expense.getCreatedDate().orElseThrow().truncatedTo(ChronoUnit.MICROS).toString(),
         Objects.requireNonNull(expense.getId()).toString());
   }
 
   /** The sort key of an expense, as the cursor carries it. */
   private record CreationKey(LocalDateTime createdDate, Long id) {
 
+    private static final int MIN_YEAR = 1900;
+    private static final int MAX_YEAR = 9999;
+
     static CreationKey decode(String cursor) {
       List<String> parts = CursorToken.decode(cursor, 2);
       try {
-        return new CreationKey(LocalDateTime.parse(parts.get(0)), Long.valueOf(parts.get(1)));
+        LocalDateTime createdDate = LocalDateTime.parse(parts.get(0));
+        // Java parses years far outside what a PostgreSQL timestamp holds; that would be a 500.
+        if (createdDate.getYear() < MIN_YEAR || createdDate.getYear() > MAX_YEAR) {
+          throw new InvalidCursorException();
+        }
+        return new CreationKey(createdDate, Long.valueOf(parts.get(1)));
       } catch (DateTimeParseException | NumberFormatException notAKey) {
         throw new InvalidCursorException();
       }

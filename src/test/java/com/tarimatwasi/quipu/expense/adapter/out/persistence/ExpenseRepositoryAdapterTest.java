@@ -113,10 +113,35 @@ class ExpenseRepositoryAdapterTest {
           "garbage!",
           CursorToken.encode("not-a-date", "1"),
           CursorToken.encode("2026-09-01T10:00:00", "not-a-number"),
+          // Valid for Java, outside the range of a PostgreSQL timestamp: it would be a 500.
+          CursorToken.encode("+999999999-12-31T23:59:59", "1"),
           CursorToken.encode("2026-09-01T10:00:00")
         }) {
       assertThatThrownBy(() -> adapter.findByMonth(month, new PageQuery(cursor, 5)))
           .isInstanceOf(InvalidCursorException.class);
     }
+  }
+
+  /** Same creation instant: the id breaks the tie, and no row is repeated or skipped. */
+  @Test
+  void findByMonth_withTheSameCreationInstant_ordersAndPagesById() {
+    for (int amount = 1; amount <= 3; amount++) {
+      jdbc.update(
+          "INSERT INTO expenses (id, type, amount, month, created_date, last_modified_date)"
+              + " VALUES (?, 'OTHER', ?, DATE '2026-09-01', TIMESTAMPTZ '2026-09-02 10:00:00+00',"
+              + " TIMESTAMPTZ '2026-09-02 10:00:00+00')",
+          10_000L + amount,
+          amount);
+    }
+
+    List<Integer> amounts = new ArrayList<>();
+    PageQuery query = new PageQuery(null, 1);
+    do {
+      CursorPage<Expense> page = adapter.findByMonth(YearMonth.of(2026, 9), query);
+      page.content().forEach(expense -> amounts.add(expense.amount().intValue()));
+      query = new PageQuery(page.nextCursor(), 1);
+    } while (query.after() != null);
+
+    assertThat(amounts).containsExactly(1, 2, 3);
   }
 }
