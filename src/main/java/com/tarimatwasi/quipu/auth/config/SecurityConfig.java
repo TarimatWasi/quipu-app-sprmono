@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -20,8 +21,9 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-/** HTTP security baseline (BE-SPR-SEC-01, SEC-04, SEC-05, SEC-09). */
+/** HTTP security baseline (BE-SPR-SEC-01, SEC-02, SEC-04, SEC-05, SEC-09). */
 @Configuration(proxyBeanMethods = false)
+@EnableMethodSecurity
 class SecurityConfig {
 
   /** Endpoints that need no session; a stale session cookie is not even read there. */

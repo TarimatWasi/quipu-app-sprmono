@@ -11,10 +11,12 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
 public class ExpenseService implements ManageExpensesUseCase {
 
   /** NUMERIC(10,2): eight digits before the point. */
