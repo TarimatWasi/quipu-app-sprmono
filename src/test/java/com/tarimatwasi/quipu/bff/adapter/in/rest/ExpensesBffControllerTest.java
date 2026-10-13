@@ -33,8 +33,8 @@ import org.springframework.test.web.servlet.ResultActions;
 class ExpensesBffControllerTest {
 
   private static final String URL = "/bff/admin/expenses";
-  private static final String WATER =
-      "{\"category\":\"WATER\",\"amount\":120.50,\"month\":\"2026-09\",\"description\":\"Recibo\"}";
+  private static final String UTILITIES =
+      "{\"category\":\"UTILITIES\",\"amount\":120.50,\"month\":\"2026-09\",\"description\":\"Recibo\"}";
 
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
@@ -53,9 +53,9 @@ class ExpensesBffControllerTest {
 
   @Test
   void anAdminRegistersAnExpenseAndSeesItInItsMonth() throws Exception {
-    create(WATER)
+    create(UTILITIES)
         .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.category").value("WATER"))
+        .andExpect(jsonPath("$.category").value("UTILITIES"))
         .andExpect(jsonPath("$.amount").value(120.5))
         .andExpect(jsonPath("$.month").value("2026-09"))
         .andExpect(jsonPath("$.description").value("Recibo"));
@@ -71,39 +71,40 @@ class ExpensesBffControllerTest {
 
   @Test
   void theDescriptionIsOptionalAndLeftOutOfTheAnswer() throws Exception {
-    create("{\"category\":\"OTHER\",\"amount\":10,\"month\":\"2026-09\"}")
+    create("{\"category\":\"TAXES_FEES\",\"amount\":10,\"month\":\"2026-09\"}")
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.description").doesNotExist());
-    create("{\"category\":\"OTHER\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"  \"}")
+    create(
+            "{\"category\":\"TAXES_FEES\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"  \"}")
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.description").doesNotExist());
   }
 
   @Test
   void theListingOfAMonthIsOldestFirst() throws Exception {
-    create("{\"category\":\"WATER\",\"amount\":1,\"month\":\"2026-09\"}");
-    create("{\"category\":\"INTERNET\",\"amount\":2,\"month\":\"2026-09\"}");
-    create("{\"category\":\"OTHER\",\"amount\":3,\"month\":\"2026-09\"}");
+    create("{\"category\":\"UTILITIES\",\"amount\":1,\"month\":\"2026-09\"}");
+    create("{\"category\":\"MAINTENANCE\",\"amount\":2,\"month\":\"2026-09\"}");
+    create("{\"category\":\"TAXES_FEES\",\"amount\":3,\"month\":\"2026-09\"}");
 
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
-        .andExpect(jsonPath("$.content[0].category").value("WATER"))
-        .andExpect(jsonPath("$.content[1].category").value("INTERNET"))
-        .andExpect(jsonPath("$.content[2].category").value("OTHER"));
+        .andExpect(jsonPath("$.content[0].category").value("UTILITIES"))
+        .andExpect(jsonPath("$.content[1].category").value("MAINTENANCE"))
+        .andExpect(jsonPath("$.content[2].category").value("TAXES_FEES"));
   }
 
   @Test
   void invalidDataIs400WithTheField() throws Exception {
     var cases =
         new String[][] {
-          {"{\"category\":\"WATER\",\"amount\":0,\"month\":\"2026-09\"}", "amount"},
-          {"{\"category\":\"WATER\",\"amount\":-5,\"month\":\"2026-09\"}", "amount"},
-          {"{\"category\":\"WATER\",\"amount\":10.123,\"month\":\"2026-09\"}", "amount"},
-          {"{\"category\":\"WATER\",\"amount\":100000000,\"month\":\"2026-09\"}", "amount"},
-          {"{\"category\":\"WATER\",\"month\":\"2026-09\"}", "amount"},
-          {"{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-13\"}", "month"},
-          {"{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-9\"}", "month"},
-          {"{\"category\":\"WATER\",\"amount\":10}", "month"},
+          {"{\"category\":\"UTILITIES\",\"amount\":0,\"month\":\"2026-09\"}", "amount"},
+          {"{\"category\":\"UTILITIES\",\"amount\":-5,\"month\":\"2026-09\"}", "amount"},
+          {"{\"category\":\"UTILITIES\",\"amount\":10.123,\"month\":\"2026-09\"}", "amount"},
+          {"{\"category\":\"UTILITIES\",\"amount\":100000000,\"month\":\"2026-09\"}", "amount"},
+          {"{\"category\":\"UTILITIES\",\"month\":\"2026-09\"}", "amount"},
+          {"{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"2026-13\"}", "month"},
+          {"{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"2026-9\"}", "month"},
+          {"{\"category\":\"UTILITIES\",\"amount\":10}", "month"},
           {"{\"amount\":10,\"month\":\"2026-09\"}", "category"},
         };
     for (var c : cases) {
@@ -116,7 +117,7 @@ class ExpensesBffControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     create(
-            "{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-09\",\"description\":\""
+            "{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"2026-09\",\"description\":\""
                 + "x".repeat(501)
                 + "\"}")
         .andExpect(status().isBadRequest())
@@ -126,14 +127,14 @@ class ExpensesBffControllerTest {
   /** The contract asks for a JSON number: a quoted amount is not converted. */
   @Test
   void aQuotedAmountIs400() throws Exception {
-    create("{\"category\":\"WATER\",\"amount\":\"10\",\"month\":\"2026-09\"}")
+    create("{\"category\":\"UTILITIES\",\"amount\":\"10\",\"month\":\"2026-09\"}")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
   }
 
   @Test
   void anAmountWithTrailingZerosIsAccepted() throws Exception {
-    create("{\"category\":\"WATER\",\"amount\":10.500,\"month\":\"2026-09\"}")
+    create("{\"category\":\"UTILITIES\",\"amount\":10.500,\"month\":\"2026-09\"}")
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.amount").value(10.5));
   }
@@ -141,7 +142,7 @@ class ExpensesBffControllerTest {
   @Test
   void theDescriptionLimitCountsCharactersNotUtf16Units() throws Exception {
     var emoji = "😀";
-    var json = "{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"";
+    var json = "{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"";
 
     create(json + emoji.repeat(500) + "\"}").andExpect(status().isCreated());
     create(json + emoji.repeat(501) + "\"}")
@@ -154,9 +155,9 @@ class ExpensesBffControllerTest {
 
   @Test
   void aDescriptionWithANulCharacterIs400OnCreateAndEdit() throws Exception {
-    var id = idOf(create(WATER));
+    var id = idOf(create(UTILITIES));
     var body =
-        "{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"x\\u0000y\"}";
+        "{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"2026-09\",\"description\":\"x\\u0000y\"}";
 
     create(body)
         .andExpect(status().isBadRequest())
@@ -191,16 +192,16 @@ class ExpensesBffControllerTest {
 
   @Test
   void anExpenseIsEditedFreelyAndMovesToAnotherMonth() throws Exception {
-    var id = idOf(create(WATER));
+    var id = idOf(create(UTILITIES));
 
     mockMvc
         .perform(
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"category\":\"INTERNET\",\"amount\":99.9,\"month\":\"2026-10\"}"))
+                .content("{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\"}"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.category").value("INTERNET"))
+        .andExpect(jsonPath("$.category").value("MAINTENANCE"))
         .andExpect(jsonPath("$.month").value("2026-10"))
         .andExpect(jsonPath("$.description").doesNotExist());
     mockMvc
@@ -213,7 +214,7 @@ class ExpensesBffControllerTest {
 
   @Test
   void anExpenseIsDeletedForGood() throws Exception {
-    var id = idOf(create(WATER));
+    var id = idOf(create(UTILITIES));
 
     mockMvc.perform(delete(URL + "/" + id).cookie(admin())).andExpect(status().isNoContent());
 
@@ -233,21 +234,21 @@ class ExpensesBffControllerTest {
             patch(URL + "/" + UUID.randomUUID())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(WATER))
+                .content(UTILITIES))
         .andExpect(status().isNotFound());
     mockMvc
         .perform(
             patch(URL + "/not-a-uuid")
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(WATER))
+                .content(UTILITIES))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("id"));
   }
 
   @Test
   void withoutSessionIs401AndAGuestIs403AndNothingIsWritten() throws Exception {
-    var id = idOf(create(WATER));
+    var id = idOf(create(UTILITIES));
     var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
 
     mockMvc.perform(get(URL).param("month", "2026-09")).andExpect(status().isUnauthorized());
@@ -256,14 +257,14 @@ class ExpensesBffControllerTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
-        .perform(post(URL).cookie(guest).contentType(MediaType.APPLICATION_JSON).content(WATER))
+        .perform(post(URL).cookie(guest).contentType(MediaType.APPLICATION_JSON).content(UTILITIES))
         .andExpect(status().isForbidden());
     mockMvc
         .perform(
             patch(URL + "/" + id)
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(WATER))
+                .content(UTILITIES))
         .andExpect(status().isForbidden());
     mockMvc.perform(delete(URL + "/" + id).cookie(guest)).andExpect(status().isForbidden());
 
@@ -277,7 +278,7 @@ class ExpensesBffControllerTest {
   }
 
   private static String expenseOf(int amount) {
-    return "{\"category\":\"WATER\",\"amount\":" + amount + ",\"month\":\"2026-09\"}";
+    return "{\"category\":\"UTILITIES\",\"amount\":" + amount + ",\"month\":\"2026-09\"}";
   }
 
   private ResultActions create(String body) throws Exception {
@@ -351,7 +352,7 @@ class ExpensesBffControllerTest {
   /** BE-SPR-WEB-06 (TAR-176): 201 with the Location of the new resource, its masked id. */
   @Test
   void creatingAnExpenseAnswersItsLocation() throws Exception {
-    var response = create(WATER).andExpect(status().isCreated()).andReturn().getResponse();
+    var response = create(UTILITIES).andExpect(status().isCreated()).andReturn().getResponse();
     String id = JsonPath.read(response.getContentAsString(), "$.id");
 
     assertThat(response.getHeader("Location")).isEqualTo(URL + "/" + id);

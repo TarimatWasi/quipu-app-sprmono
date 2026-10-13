@@ -12,10 +12,10 @@ public interface ManageExpensesUseCase {
 
   /** What an expense paid for. */
   enum ExpenseKind {
-    WATER,
-    ELECTRICITY,
-    INTERNET,
-    OTHER
+    UTILITIES,
+    MAINTENANCE,
+    CLEANING_SUPPLIES,
+    TAXES_FEES
   }
 
   /** An expense as the callers see it. */

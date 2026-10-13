@@ -34,10 +34,10 @@ class ExpenseServiceTest {
   private static final Long ID = TestIds.next();
   private static final YearMonth SEPTEMBER = YearMonth.of(2026, 9);
   private static final BigDecimal AMOUNT = new BigDecimal("120.50");
-  private static final Expense WATER =
-      new Expense(ID, ExpenseCategory.WATER, AMOUNT, SEPTEMBER, "Recibo");
-  private static final ExpenseView WATER_VIEW =
-      new ExpenseView(ID, ExpenseKind.WATER, AMOUNT, SEPTEMBER, "Recibo");
+  private static final Expense UTILITIES =
+      new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, "Recibo");
+  private static final ExpenseView UTILITIES_VIEW =
+      new ExpenseView(ID, ExpenseKind.UTILITIES, AMOUNT, SEPTEMBER, "Recibo");
 
   @Mock ExpenseRepositoryPort repository;
 
@@ -46,20 +46,21 @@ class ExpenseServiceTest {
   }
 
   private static ExpenseCommand command(BigDecimal amount, @Nullable String description) {
-    return new ExpenseCommand(ExpenseKind.WATER, amount, SEPTEMBER, description);
+    return new ExpenseCommand(ExpenseKind.UTILITIES, amount, SEPTEMBER, description);
   }
 
   @Test
   void createsAndReturnsTheView() {
-    when(repository.insert(ExpenseCategory.WATER, AMOUNT, SEPTEMBER, "Recibo")).thenReturn(WATER);
+    when(repository.insert(ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, "Recibo"))
+        .thenReturn(UTILITIES);
 
-    assertThat(service().create(command(AMOUNT, " Recibo "))).isEqualTo(WATER_VIEW);
+    assertThat(service().create(command(AMOUNT, " Recibo "))).isEqualTo(UTILITIES_VIEW);
   }
 
   @Test
   void aBlankDescriptionMeansNone() {
-    when(repository.insert(ExpenseCategory.WATER, AMOUNT, SEPTEMBER, null))
-        .thenReturn(new Expense(ID, ExpenseCategory.WATER, AMOUNT, SEPTEMBER, null));
+    when(repository.insert(ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
+        .thenReturn(new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null));
 
     assertThat(service().create(command(AMOUNT, "   ")).description()).isNull();
   }
@@ -81,25 +82,25 @@ class ExpenseServiceTest {
 
   @Test
   void theLargestAmountAndTrailingZerosAreAccepted() {
-    when(repository.insert(any(), any(), any(), any())).thenReturn(WATER);
+    when(repository.insert(any(), any(), any(), any())).thenReturn(UTILITIES);
 
     service().create(command(new BigDecimal("99999999.99"), null));
     service().create(command(new BigDecimal("10.500"), null));
 
     verify(repository)
-        .insert(ExpenseCategory.WATER, new BigDecimal("99999999.99"), SEPTEMBER, null);
-    verify(repository).insert(ExpenseCategory.WATER, new BigDecimal("10.500"), SEPTEMBER, null);
+        .insert(ExpenseCategory.UTILITIES, new BigDecimal("99999999.99"), SEPTEMBER, null);
+    verify(repository).insert(ExpenseCategory.UTILITIES, new BigDecimal("10.500"), SEPTEMBER, null);
   }
 
   @Test
   void updatesAnExistingExpenseAndFailsOnAnUnknownOne() {
     var other = TestIds.next();
-    when(repository.update(ID, ExpenseCategory.WATER, AMOUNT, SEPTEMBER, null))
-        .thenReturn(Optional.of(WATER));
-    when(repository.update(other, ExpenseCategory.WATER, AMOUNT, SEPTEMBER, null))
+    when(repository.update(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
+        .thenReturn(Optional.of(UTILITIES));
+    when(repository.update(other, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
         .thenReturn(Optional.empty());
 
-    assertThat(service().update(ID, command(AMOUNT, null))).isEqualTo(WATER_VIEW);
+    assertThat(service().update(ID, command(AMOUNT, null))).isEqualTo(UTILITIES_VIEW);
     assertThatThrownBy(() -> service().update(other, command(AMOUNT, null)))
         .isInstanceOf(ExpenseNotFoundException.class);
   }
@@ -119,11 +120,11 @@ class ExpenseServiceTest {
   void listsTheExpensesOfTheMonth() {
     PageQuery page = PageQuery.first();
     when(repository.findByMonth(SEPTEMBER, page))
-        .thenReturn(new CursorPage<>(List.of(WATER), "next"));
+        .thenReturn(new CursorPage<>(List.of(UTILITIES), "next"));
 
     var result = service().list(SEPTEMBER, page);
 
-    assertThat(result.content()).containsExactly(WATER_VIEW);
+    assertThat(result.content()).containsExactly(UTILITIES_VIEW);
     assertThat(result.nextCursor()).isEqualTo("next");
   }
 }

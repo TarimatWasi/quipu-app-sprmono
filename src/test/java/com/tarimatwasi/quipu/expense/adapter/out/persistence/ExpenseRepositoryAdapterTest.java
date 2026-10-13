@@ -40,7 +40,7 @@ class ExpenseRepositoryAdapterTest {
 
   private Expense inserted() {
     return adapter.insert(
-        ExpenseCategory.WATER, new BigDecimal("10.00"), YearMonth.of(2026, 9), null);
+        ExpenseCategory.UTILITIES, new BigDecimal("10.00"), YearMonth.of(2026, 9), null);
   }
 
   @Test
@@ -72,7 +72,7 @@ class ExpenseRepositoryAdapterTest {
   }
 
   private void insertInMonth(int amount, YearMonth month) {
-    adapter.insert(ExpenseCategory.OTHER, new BigDecimal(amount), month, null);
+    adapter.insert(ExpenseCategory.TAXES_FEES, new BigDecimal(amount), month, null);
   }
 
   /** BE-SPR-WEB-08 (TAR-176): read by last index, oldest first, with no offset. */
@@ -128,7 +128,7 @@ class ExpenseRepositoryAdapterTest {
     for (int amount = 1; amount <= 3; amount++) {
       jdbc.update(
           "INSERT INTO expenses (id, type, amount, month, created_date, last_modified_date)"
-              + " VALUES (?, 'OTHER', ?, DATE '2026-09-01', TIMESTAMPTZ '2026-09-02 10:00:00+00',"
+              + " VALUES (?, 'TAXES_FEES', ?, DATE '2026-09-01', TIMESTAMPTZ '2026-09-02 10:00:00+00',"
               + " TIMESTAMPTZ '2026-09-02 10:00:00+00')",
           10_000L + amount,
           amount);
