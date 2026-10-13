@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.SmartLifecycle;
 
 /** The work runs in another thread and what it throws never reaches the caller. */
 class AsyncBackgroundTasksTest {
@@ -98,6 +99,14 @@ class AsyncBackgroundTasksTest {
 
     assertThat(finished).isTrue();
     assertThat(tasks.isRunning()).isFalse();
+  }
+
+  @Test
+  void stopsAfterTheWebServerGracefulShutdown() {
+    try (var tasks = new AsyncBackgroundTasks()) {
+      // Higher phases stop first; the web server drains at DEFAULT_PHASE - 1024.
+      assertThat(tasks.getPhase()).isLessThan(SmartLifecycle.DEFAULT_PHASE - 1024);
+    }
   }
 
   private static void await(CountDownLatch latch) {

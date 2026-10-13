@@ -19,10 +19,10 @@ import org.springframework.stereotype.Component;
  * dropped with a warning; the person asks again once the cooldown passes.
  *
  * <p>The component is a {@link SmartLifecycle} so that, on shutdown, it waits for the accepted
- * tasks in the stop phase, before Spring destroys the beans the tasks use (database, mail
- * executor). The wait is on the permits, not on {@code SimpleAsyncTaskExecutor.close()}, because
- * that one interrupts the running tasks. It gives up after {@value #TERMINATION_TIMEOUT_SECONDS}
- * seconds.
+ * tasks in a stop phase after the web server stops taking requests and before Spring destroys the
+ * beans the tasks use (database, mail executor). The wait is on the permits, not on {@code
+ * SimpleAsyncTaskExecutor.close()}, because that one interrupts the running tasks. It gives up
+ * after {@value #TERMINATION_TIMEOUT_SECONDS} seconds.
  */
 @Component
 public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle, AutoCloseable {
@@ -31,6 +31,9 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
 
   private static final int CONCURRENCY_LIMIT = 10;
   private static final long TERMINATION_TIMEOUT_SECONDS = 8;
+  // The web server stops taking requests at DEFAULT_PHASE - 1024 (graceful shutdown); this stops
+  // after.
+  private static final int PHASE = DEFAULT_PHASE - 2048;
 
   private final SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor();
   private final Semaphore permits = new Semaphore(CONCURRENCY_LIMIT);
@@ -89,6 +92,11 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
+  }
+
+  @Override
+  public int getPhase() {
+    return PHASE;
   }
 
   @Override
