@@ -62,7 +62,15 @@ class AsyncBackgroundTasksTest {
   @Test
   void aFailureIsLoggedWithTheClassAndNeverTheMessage() throws Exception {
     var logger = (Logger) LoggerFactory.getLogger(AsyncBackgroundTasks.class);
-    var appender = new ListAppender<ILoggingEvent>();
+    var logged = new CountDownLatch(1);
+    var appender =
+        new ListAppender<ILoggingEvent>() {
+          @Override
+          protected void append(ILoggingEvent event) {
+            super.append(event);
+            logged.countDown();
+          }
+        };
     appender.start();
     logger.addAppender(appender);
     try (var tasks = new AsyncBackgroundTasks()) {
@@ -70,7 +78,9 @@ class AsyncBackgroundTasksTest {
           () -> {
             throw new IllegalStateException("guest@example.test");
           });
-      tasks.stop();
+      // The permit is given back before the thread logs the failure: wait for the line, not for
+      // stop().
+      assertThat(logged.await(5, TimeUnit.SECONDS)).isTrue();
       assertThat(appender.list)
           .extracting(ILoggingEvent::getFormattedMessage)
           .containsExactly("A background task failed: java.lang.IllegalStateException");
