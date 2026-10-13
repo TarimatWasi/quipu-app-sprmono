@@ -1,6 +1,10 @@
 -- TAR-183 (RF-07, D-26): las categorias de egreso pasan de WATER, ELECTRICITY, INTERNET y OTHER a las
 -- cuatro aprobadas. Los valores viejos se llevan a UTILITIES (OTHER tambien, decision de la persona
 -- responsable del 2026-10-13). V5 no se edita: una migracion aplicada es inmutable.
+--
+-- Cambio incompatible aplicado en un solo paso porque hoy solo existe development, sin produccion ni
+-- datos reales: durante el despliegue la instancia vieja no entiende los valores nuevos. Con
+-- produccion, un cambio asi se hace en fases (expandir, migrar, contraer).
 
 ALTER TABLE expenses DROP CONSTRAINT ck_expenses_type;
 
