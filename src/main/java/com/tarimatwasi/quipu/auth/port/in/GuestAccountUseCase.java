@@ -16,4 +16,10 @@ public interface GuestAccountUseCase {
 
   /** The state of the account of each guest; a guest without an account is not in the map. */
   Map<Long, GuestAccountState> stateOf(Collection<Long> guestIds);
+
+  /**
+   * Whether an administrator account, active or not, owns that document: one person, one account
+   * (D-34e), so a guest cannot be registered under it. An unknown document type is nobody's.
+   */
+  boolean documentBelongsToAdministrator(String documentType, String documentNumber);
 }

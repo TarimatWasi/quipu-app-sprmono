@@ -13,6 +13,11 @@ public interface GuestAccountPort {
   Map<Long, AccountState> stateOf(Collection<Long> guestIds);
 
   /**
+   * Whether an administrator account owns that document, so no guest can be registered under it.
+   */
+  boolean documentBelongsToAdministrator(String documentType, String documentNumber);
+
+  /**
    * The state of one guest's account.
    *
    * @param canLogIn the account exists, has a password and is not disabled
