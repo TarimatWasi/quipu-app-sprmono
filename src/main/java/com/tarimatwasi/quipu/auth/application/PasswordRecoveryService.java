@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.application;
 
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
+import com.tarimatwasi.quipu.auth.port.out.BackgroundTaskPort;
 import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
@@ -22,6 +23,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
   private final UserRepositoryPort userRepository;
   private final PasswordEncoder passwordEncoder;
   private final PasswordResetMailPort mail;
+  private final BackgroundTaskPort background;
   private final Clock clock;
 
   PasswordRecoveryService(
@@ -29,17 +31,27 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
       UserRepositoryPort userRepository,
       PasswordEncoder passwordEncoder,
       PasswordResetMailPort mail,
+      BackgroundTaskPort background,
       Clock clock) {
     this.issuer = issuer;
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.mail = mail;
+    this.background = background;
     this.clock = clock;
   }
 
-  /** Not transactional on purpose: the code is committed before the email is attempted. */
+  /**
+   * Answers at once and does the work in the background, so how long the caller waits does not tell
+   * whether the account exists (ADR-F4).
+   */
   @Override
   public void requestReset(String email) {
+    background.run(() -> issueAndSend(email));
+  }
+
+  /** Not transactional on purpose: the code is committed before the email is attempted. */
+  private void issueAndSend(String email) {
     issuer
         .issueFor(email)
         .ifPresent(

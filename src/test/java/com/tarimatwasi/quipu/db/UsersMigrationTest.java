@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.auth.adapter.in.bootstrap.AdminBootstrap;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestTables;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -28,6 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(
     properties = {"app.admin.document-number=12345678", "app.admin.email=admin@example.com"})
 @ImportTestcontainers(PostgresContainers.class)
+@Import(SynchronousBackgroundTasksConfig.class)
 class UsersMigrationTest {
 
   @Autowired JdbcTemplate jdbc;
