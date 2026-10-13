@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestTables;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -26,6 +29,16 @@ class ExpensesMigrationTest {
 
   @Autowired JdbcTemplate jdbc;
   @Autowired DataSource dataSource;
+
+  @BeforeEach
+  void clearTheSharedTables() {
+    TestTables.clear(jdbc);
+  }
+
+  @AfterEach
+  void leaveTheSharedTablesClean() {
+    TestTables.clear(jdbc);
+  }
 
   @Test
   void expenses_haveAnIndexInTheOrderOfTheListing() {
@@ -50,7 +63,8 @@ class ExpensesMigrationTest {
   @ValueSource(strings = {"WATER", "ELECTRICITY", "INTERNET", "OTHER", "utilities"})
   void expenses_rejectTheOldCategories(String category) {
     assertThatThrownBy(() -> insertExpense("public", category))
-        .isInstanceOf(DataIntegrityViolationException.class);
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("ck_expenses_type");
   }
 
   /** TAR-183: V10 carries the rows of V9 to UTILITIES, OTHER included, and keeps the rest. */
