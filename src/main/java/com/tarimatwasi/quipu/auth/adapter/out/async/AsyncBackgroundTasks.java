@@ -106,7 +106,10 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
 
   @Override
   public void close() {
-    stop();
+    // After the lifecycle stop the wait is done; waiting again would double the bound.
+    if (!stopping.get()) {
+      stop();
+    }
     executor.close();
   }
 }
