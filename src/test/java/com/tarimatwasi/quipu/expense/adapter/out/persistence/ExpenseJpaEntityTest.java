@@ -35,13 +35,16 @@ class ExpenseJpaEntityTest {
         repository
             .save(
                 new ExpenseJpaEntity(
-                    ExpenseCategory.WATER, new BigDecimal("10.00"), YearMonth.of(2026, 9), null))
+                    ExpenseCategory.UTILITIES,
+                    new BigDecimal("10.00"),
+                    YearMonth.of(2026, 9),
+                    null))
             .getId();
     // Outside a transaction each read is a detached copy, as with two simultaneous requests.
     ExpenseJpaEntity first = repository.findById(id).orElseThrow();
     ExpenseJpaEntity second = repository.findById(id).orElseThrow();
-    first.replace(ExpenseCategory.WATER, new BigDecimal("20.00"), YearMonth.of(2026, 9), null);
-    second.replace(ExpenseCategory.WATER, new BigDecimal("30.00"), YearMonth.of(2026, 9), null);
+    first.replace(ExpenseCategory.UTILITIES, new BigDecimal("20.00"), YearMonth.of(2026, 9), null);
+    second.replace(ExpenseCategory.UTILITIES, new BigDecimal("30.00"), YearMonth.of(2026, 9), null);
 
     repository.save(first);
 

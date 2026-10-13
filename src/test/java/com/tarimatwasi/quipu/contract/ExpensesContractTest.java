@@ -41,8 +41,8 @@ class ExpensesContractTest {
   private static final String SPEC =
       Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
   private static final String URL = "/bff/admin/expenses";
-  private static final String WATER =
-      "{\"category\":\"WATER\",\"amount\":120.50,\"month\":\"2026-09\",\"description\":\"Recibo\"}";
+  private static final String UTILITIES =
+      "{\"category\":\"UTILITIES\",\"amount\":120.50,\"month\":\"2026-09\",\"description\":\"Recibo\"}";
 
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
@@ -80,7 +80,8 @@ class ExpensesContractTest {
 
   @Test
   void createListEditAndDeleteAnExpense() throws Exception {
-    var created = create(WATER).andExpect(status().isCreated()).andExpect(satisfiesTheContract());
+    var created =
+        create(UTILITIES).andExpect(status().isCreated()).andExpect(satisfiesTheContract());
     var id = JsonPath.<String>read(created.andReturn().getResponse().getContentAsString(), "$.id");
 
     mockMvc
@@ -92,7 +93,7 @@ class ExpensesContractTest {
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"category\":\"INTERNET\",\"amount\":99.9,\"month\":\"2026-10\"}"))
+                .content("{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\"}"))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract());
     mockMvc
@@ -107,14 +108,14 @@ class ExpensesContractTest {
 
   @Test
   void anAmountOfZeroIsAValidationError() throws Exception {
-    create("{\"category\":\"WATER\",\"amount\":0,\"month\":\"2026-09\"}")
+    create("{\"category\":\"UTILITIES\",\"amount\":0,\"month\":\"2026-09\"}")
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContractToARequestWith("validation.request.body.schema.minimum"));
   }
 
   @Test
   void aMonthOutOfRangeIsAValidationError() throws Exception {
-    create("{\"category\":\"WATER\",\"amount\":10,\"month\":\"2026-13\"}")
+    create("{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"2026-13\"}")
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContractToARequestWith("validation.request.body.schema.pattern"));
     mockMvc
