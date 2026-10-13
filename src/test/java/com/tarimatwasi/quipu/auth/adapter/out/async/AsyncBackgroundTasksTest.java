@@ -3,44 +3,17 @@ package com.tarimatwasi.quipu.auth.adapter.out.async;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-import com.tarimatwasi.quipu.auth.port.out.BackgroundTaskPort;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.core.task.SimpleAsyncTaskExecutor;
-import org.springframework.core.task.TaskExecutor;
-import org.springframework.scheduling.annotation.EnableAsync;
 
 /** The work runs in another thread and what it throws never reaches the caller. */
 class AsyncBackgroundTasksTest {
 
-  @Configuration(proxyBeanMethods = false)
-  @EnableAsync
-  static class Config {
-    @Bean
-    TaskExecutor taskExecutor() {
-      return new SimpleAsyncTaskExecutor("test-");
-    }
-
-    @Bean
-    AsyncBackgroundTasks tasks(AsyncBackgroundTasks.Executor executor) {
-      return new AsyncBackgroundTasks(executor);
-    }
-
-    @Bean
-    AsyncBackgroundTasks.Executor executor() {
-      return new AsyncBackgroundTasks.Executor();
-    }
-  }
-
   @Test
   void runsTheTaskInAnotherThreadAndReturnsAtOnce() throws Exception {
-    try (var context = new AnnotationConfigApplicationContext(Config.class)) {
-      BackgroundTaskPort tasks = context.getBean(BackgroundTaskPort.class);
+    try (var tasks = new AsyncBackgroundTasks()) {
       var release = new CountDownLatch(1);
       var ran = new CountDownLatch(1);
       var thread = new AtomicReference<String>();
@@ -56,14 +29,15 @@ class AsyncBackgroundTasksTest {
       assertThat(ran.getCount()).isEqualTo(1);
       release.countDown();
       assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
-      assertThat(thread.get()).startsWith("test-").isNotEqualTo(Thread.currentThread().getName());
+      assertThat(thread.get())
+          .startsWith("background-")
+          .isNotEqualTo(Thread.currentThread().getName());
     }
   }
 
   @Test
   void aFailingTaskNeverReachesTheCaller() throws Exception {
-    try (var context = new AnnotationConfigApplicationContext(Config.class)) {
-      BackgroundTaskPort tasks = context.getBean(BackgroundTaskPort.class);
+    try (var tasks = new AsyncBackgroundTasks()) {
       var failed = new CountDownLatch(1);
 
       assertThatCode(
