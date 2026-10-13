@@ -40,7 +40,12 @@ class PasswordRecoveryServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new PasswordRecoveryService(
-            new ResetCodeIssuer(repository, clock), repository, encoder, mail, clock);
+            new ResetCodeIssuer(repository, clock),
+            repository,
+            encoder,
+            mail,
+            Runnable::run,
+            clock);
   }
 
   private UserAccount savedUser(String status) {

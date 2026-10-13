@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -33,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,6 +46,7 @@ import org.springframework.test.web.servlet.ResultActions;
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)
+@Import(SynchronousBackgroundTasksConfig.class)
 class PasswordRecoveryBffTest {
 
   private static final String FORGOT = "/bff/auth/forgot-password";
