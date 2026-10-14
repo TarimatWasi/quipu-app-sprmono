@@ -67,6 +67,20 @@ class IdMaskerTest {
   }
 
   @Test
+  void aMaskedIdOfAnyKindIsNotAcceptedAsAnyOtherKind() {
+    for (IdKind issued : IdKind.values()) {
+      UUID masked = masker.mask(issued, 77);
+      for (IdKind asked : IdKind.values()) {
+        if (asked != issued) {
+          assertThatThrownBy(() -> masker.unmask(asked, masked))
+              .as("%s asked as %s", issued, asked)
+              .isInstanceOf(UnknownMaskedIdException.class);
+        }
+      }
+    }
+  }
+
+  @Test
   void aUuidThatWasNeverIssuedIsNotAccepted() {
     for (int i = 0; i < 200; i++) {
       UUID random = UUID.randomUUID();

@@ -96,50 +96,38 @@ class ContractsMigrationTest {
     long guest = insertGuest("public", "20000009");
     long environment = insertEnvironment("public", "399");
     try {
-      assertThatThrownBy(
-              () ->
-                  insertContract(
-                      guest,
-                      environment,
-                      new Terms("2026-10-01", "2026-10-01", "800", 5, 3, "ACTIVE")))
-          .as("end date not after the start date")
-          .isInstanceOf(DataIntegrityViolationException.class);
-      assertThatThrownBy(
-              () ->
-                  insertContract(
-                      guest, environment, new Terms("2026-10-01", null, "0", 5, 3, "ACTIVE")))
-          .as("amount")
-          .isInstanceOf(DataIntegrityViolationException.class);
-      assertThatThrownBy(
-              () ->
-                  insertContract(
-                      guest, environment, new Terms("2026-10-01", null, "800", 0, 3, "ACTIVE")))
-          .as("payment day")
-          .isInstanceOf(DataIntegrityViolationException.class);
-      assertThatThrownBy(
-              () ->
-                  insertContract(
-                      guest, environment, new Terms("2026-10-01", null, "800", 32, 3, "ACTIVE")))
-          .as("payment day")
-          .isInstanceOf(DataIntegrityViolationException.class);
-      assertThatThrownBy(
-              () ->
-                  insertContract(
-                      guest, environment, new Terms("2026-10-01", null, "800", 5, 32, "ACTIVE")))
-          .as("grace days")
-          .isInstanceOf(DataIntegrityViolationException.class);
-      assertThatThrownBy(
-              () ->
-                  insertContract(
-                      guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "EXPIRED")))
-          .as("EXPIRED is derived, never stored")
-          .isInstanceOf(DataIntegrityViolationException.class);
-      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "TERMINATED"));
-      // Two rows for one environment are allowed by the schema: the application decides (RN-20).
+      refused(
+          guest, environment, new Terms("2026-10-01", "2026-10-01", "800", 5, 3, "ACTIVE"), "end");
+      refused(guest, environment, new Terms("2026-10-01", null, "0", 5, 3, "ACTIVE"), "amount");
+      refused(guest, environment, new Terms("2026-10-01", null, "800", 0, 3, "ACTIVE"), "day 0");
+      refused(guest, environment, new Terms("2026-10-01", null, "800", 32, 3, "ACTIVE"), "day 32");
+      refused(guest, environment, new Terms("2026-10-01", null, "800", 5, 32, "ACTIVE"), "grace");
+      refused(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "EXPIRED"), "EXPIRED");
+    } finally {
+      jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
+    }
+  }
+
+  @Test
+  void contracts_allowTwoRowsForOneEnvironmentBecauseTheApplicationDecidesRn20() {
+    long guest = insertGuest("public", "20000009");
+    long environment = insertEnvironment("public", "399");
+    try {
+      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+      // From V13 a finished contract also says when (terminated_at).
+      jdbc.update(
+          "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id ="
+              + " (SELECT max(id) FROM contracts)");
       insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
     } finally {
       jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
     }
+  }
+
+  private void refused(long guest, long environment, Terms terms, String why) {
+    assertThatThrownBy(() -> insertContract(guest, environment, terms))
+        .as(why)
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   /** The columns the checks vary; the file columns are always the same. */

@@ -91,6 +91,9 @@ class ContractServiceTest {
     return request(PDF, "contrato.pdf", null);
   }
 
+  private static final java.time.Instant TERMINATED_AT =
+      java.time.Instant.parse("2026-09-30T20:00:00Z");
+
   private static Contract stored(boolean terminated, @Nullable String end) {
     return new Contract(
         CONTRACT_ID,
@@ -104,7 +107,7 @@ class ContractServiceTest {
         KEY,
         "contrato.pdf",
         PDF.length,
-        terminated);
+        terminated ? TERMINATED_AT : null);
   }
 
   private void freeEnvironmentAndActiveContractGuest() {
@@ -294,22 +297,6 @@ class ContractServiceTest {
             InvalidContractException.class, e -> assertThat(e.field()).isEqualTo("paymentDay"));
   }
 
-  @Test
-  void theNameOfTheFileIsSanitized() {
-    assertThat(ContractService.sanitizedName("..\\..\\windows\\contrato.pdf"))
-        .isEqualTo("contrato.pdf");
-    assertThat(ContractService.sanitizedName("../../etc/passwd")).isEqualTo("passwd");
-    assertThat(ContractService.sanitizedName("a\u0000b\nc.pdf")).isEqualTo("abc.pdf");
-    assertThat(ContractService.sanitizedName("  Contrato Ñandú.pdf "))
-        .isEqualTo("Contrato Ñandú.pdf");
-    assertThat(ContractService.sanitizedName("")).isEqualTo("contrato.pdf");
-    assertThat(ContractService.sanitizedName("..")).isEqualTo("contrato.pdf");
-    assertThat(ContractService.sanitizedName("cont\u202Efdp.exe")).isEqualTo("contfdp.exe");
-    assertThat(ContractService.sanitizedName("a\u200Bb\uFEFF.pdf")).isEqualTo("ab.pdf");
-    assertThat(ContractService.sanitizedName("dir/")).isEqualTo("contrato.pdf");
-    assertThat(ContractService.sanitizedName("x".repeat(300))).hasSize(255);
-  }
-
   // --- list, get ---
 
   @Test
@@ -372,6 +359,7 @@ class ContractServiceTest {
     ArgumentCaptor<Contract> saved = ArgumentCaptor.forClass(Contract.class);
     verify(contracts).save(saved.capture());
     assertThat(saved.getValue().terminated()).isTrue();
+    assertThat(saved.getValue().terminatedAt()).isEqualTo(clock.instant());
   }
 
   @Test

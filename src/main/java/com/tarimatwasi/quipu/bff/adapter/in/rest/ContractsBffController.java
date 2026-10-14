@@ -21,6 +21,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.format.annotation.DateTimeFormat.ISO;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -172,8 +173,11 @@ public class ContractsBffController {
   }
 
   @GetMapping("/bff/admin/contracts/{id}")
-  public ContractResponse get(@PathVariable UUID id) {
-    return ContractResponse.of(contracts.get(ids.unmask(IdKind.CONTRACT, id)), ids);
+  public ResponseEntity<ContractResponse> get(@PathVariable UUID id) {
+    // The body carries a freshly signed URL: no cache may keep it (contract v0.7.0).
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(ContractResponse.of(contracts.get(ids.unmask(IdKind.CONTRACT, id)), ids));
   }
 
   @PostMapping("/bff/admin/contracts/{id}/terminate")

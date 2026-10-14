@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.contract.domain.Contract.Violation;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,9 @@ class ContractTest {
 
   private static final LocalDate TODAY = LocalDate.parse("2026-10-14");
   private static final BigDecimal AMOUNT = new BigDecimal("800.00");
+
+  private static final java.time.Instant TERMINATED_AT =
+      java.time.Instant.parse("2026-09-30T20:00:00Z");
 
   private static Contract contract(String start, @Nullable String end, boolean terminated) {
     return new Contract(
@@ -30,7 +34,7 @@ class ContractTest {
         "contracts/a.pdf",
         "a.pdf",
         100,
-        terminated);
+        terminated ? TERMINATED_AT : null);
   }
 
   @Test
@@ -86,9 +90,10 @@ class ContractTest {
   void terminatingGivesATerminatedCopy() {
     Contract active = contract("2026-01-01", null, false);
 
-    Contract finished = active.terminate();
+    Contract finished = active.terminate(java.time.Instant.parse("2026-10-14T15:00:00Z"));
 
     assertThat(finished.terminated()).isTrue();
+    assertThat(finished.terminatedAt()).isEqualTo(java.time.Instant.parse("2026-10-14T15:00:00Z"));
     assertThat(finished.id()).isEqualTo(active.id());
     assertThat(active.terminated()).isFalse();
   }
@@ -145,5 +150,17 @@ class ContractTest {
     assertThat(Violation.GRACE_DAYS.field()).isEqualTo("graceDays");
     assertThat(Violation.MONTHLY_AMOUNT.field()).isEqualTo("monthlyAmount");
     assertThat(Violation.START_DATE.field()).isEqualTo("startDate");
+  }
+
+  @Test
+  void terminatingAnAlreadyTerminatedContractKeepsTheFirstInstant() {
+    Instant first = Instant.parse("2026-10-01T15:00:00Z");
+
+    Contract again =
+        contract("2026-01-01", null, false)
+            .terminate(first)
+            .terminate(Instant.parse("2026-10-14T15:00:00Z"));
+
+    assertThat(again.terminatedAt()).isEqualTo(first);
   }
 }

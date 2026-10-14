@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.bff.adapter.in.rest.ContractsBffController.Contract
 import com.tarimatwasi.quipu.contract.port.in.ContractNotFoundException;
 import com.tarimatwasi.quipu.contract.port.in.OwnContractUseCase;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,7 +34,10 @@ public class GuestContractBffController {
           accounts
               .guestOf(Long.valueOf(authentication.getName()))
               .orElseThrow(ContractNotFoundException::new);
-      return ResponseEntity.ok(ContractResponse.of(ownContract.ownContract(guestId), ids));
+      // The body carries a freshly signed URL: no cache may keep it (contract v0.7.0).
+      return ResponseEntity.ok()
+          .cacheControl(CacheControl.noStore())
+          .body(ContractResponse.of(ownContract.ownContract(guestId), ids));
     } catch (ContractNotFoundException never) {
       // The contract answers this 404 without a body: "no contract was ever associated".
       return ResponseEntity.notFound().build();

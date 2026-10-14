@@ -34,6 +34,9 @@ class OwnContractServiceTest {
         contracts, files, new MutableClock(Instant.parse("2026-10-14T14:00:00Z")));
   }
 
+  private static final java.time.Instant TERMINATED_AT =
+      java.time.Instant.parse("2026-09-30T20:00:00Z");
+
   private static Contract contract(boolean terminated, String end) {
     return new Contract(
         7L,
@@ -47,7 +50,7 @@ class OwnContractServiceTest {
         "contracts/a.pdf",
         "a.pdf",
         10,
-        terminated);
+        terminated ? TERMINATED_AT : null);
   }
 
   @Test

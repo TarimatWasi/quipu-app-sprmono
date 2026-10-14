@@ -37,6 +37,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class ContractRepositoryAdapterTest {
 
   private static final LocalDate TODAY = LocalDate.parse("2026-10-14");
+  private static final java.time.Instant NOW = java.time.Instant.parse("2026-10-14T15:00:00Z");
 
   @Autowired ContractRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
@@ -128,7 +129,7 @@ class ContractRepositoryAdapterTest {
   void save_storesTheTermination() {
     Contract contract = insert(guestId, roomId, "2026-10-01", null);
 
-    Contract saved = adapter.save(contract.terminate());
+    Contract saved = adapter.save(contract.terminate(NOW));
 
     assertThat(saved.terminated()).isTrue();
     assertThat(adapter.findById(contract.id()).orElseThrow().terminated()).isTrue();
@@ -136,6 +137,13 @@ class ContractRepositoryAdapterTest {
             jdbc.queryForObject(
                 "SELECT status FROM contracts WHERE id = ?", String.class, contract.id()))
         .isEqualTo("TERMINATED");
+    assertThat(saved.terminatedAt()).isEqualTo(NOW);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT terminated_at FROM contracts WHERE id = ?",
+                java.sql.Timestamp.class,
+                contract.id()))
+        .isEqualTo(java.sql.Timestamp.from(NOW));
   }
 
   @Test
@@ -168,7 +176,7 @@ class ContractRepositoryAdapterTest {
 
     Contract endingToday = insert(guestId, roomId, "2026-01-01", "2026-10-14");
     assertThat(adapter.existsInForce(roomId, TODAY)).as("ends today").isTrue();
-    adapter.save(endingToday.terminate());
+    adapter.save(endingToday.terminate(NOW));
     assertThat(adapter.existsInForce(roomId, TODAY)).as("terminated").isFalse();
 
     insert(otherGuestId, roomId, "2026-12-01", "2027-12-01");
@@ -194,7 +202,7 @@ class ContractRepositoryAdapterTest {
     Contract first = insert(guestId, roomId, "2026-01-01", "2026-02-01");
     Contract second = insert(guestId, otherRoomId, "2026-03-01", null);
     insert(otherGuestId, roomId, "2026-04-01", null);
-    adapter.save(second.terminate());
+    adapter.save(second.terminate(NOW));
 
     assertThat(adapter.findLatestByGuest(guestId).orElseThrow().id()).isEqualTo(second.id());
     assertThat(first.id()).isNotEqualTo(second.id());
@@ -205,11 +213,11 @@ class ContractRepositoryAdapterTest {
     Contract active = insert(guestId, roomId, "2026-01-01", null);
     Contract expired = insert(otherGuestId, otherRoomId, "2026-01-01", "2026-09-01");
     Contract terminated = insert(guestId, insertEnvironment("103"), "2026-01-01", null);
-    adapter.save(terminated.terminate());
+    adapter.save(terminated.terminate(NOW));
     // a terminated one whose end date has also passed is TERMINATED, not EXPIRED
     Contract terminatedAndPast =
         insert(guestId, insertEnvironment("104"), "2026-01-01", "2026-02-01");
-    adapter.save(terminatedAndPast.terminate());
+    adapter.save(terminatedAndPast.terminate(NOW));
 
     assertThat(ids(adapter.findAll(ContractStatus.ACTIVE, TODAY, PageQuery.first())))
         .containsExactly(active.id());

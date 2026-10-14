@@ -77,7 +77,7 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/bff/admin/**")
                     .hasRole("ADMIN")
-                    .requestMatchers("/bff/guest/**")
+                    .requestMatchers("/bff/guest/**", "/bff/temporary-guest/**")
                     .hasRole("GUEST")
                     .anyRequest()
                     .authenticated())

@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract.domain;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.jspecify.annotations.Nullable;
@@ -9,7 +10,8 @@ import org.jspecify.annotations.Nullable;
  * The contract of a guest over an environment (RF-03). The dates are inclusive on both ends.
  *
  * @param endDate {@code null} for an open-ended contract (RN-07)
- * @param terminated finished by hand before its end (RN-21)
+ * @param terminatedAt when it was finished by hand before its end (RN-21); {@code null} if it was
+ *     not
  * @param fileKey the key of the PDF in the bucket, never a URL
  */
 public record Contract(
@@ -24,7 +26,7 @@ public record Contract(
     String fileKey,
     String originalName,
     long sizeBytes,
-    boolean terminated) {
+    @Nullable Instant terminatedAt) {
 
   /** The days left to the end date at which a contract is about to expire (RN-07). */
   public static final int EXPIRING_SOON_DAYS = 30;
@@ -88,9 +90,14 @@ public record Contract(
     return null;
   }
 
+  /** Whether it was finished by hand (RN-21). */
+  public boolean terminated() {
+    return terminatedAt != null;
+  }
+
   /** Terminated by hand, else expired once the end date has passed, else active (RN-07). */
   public ContractStatus statusAt(LocalDate today) {
-    if (terminated) {
+    if (terminated()) {
       return ContractStatus.TERMINATED;
     }
     return endDate != null && endDate.isBefore(today)
@@ -113,8 +120,14 @@ public record Contract(
         && ChronoUnit.DAYS.between(today, endDate) <= EXPIRING_SOON_DAYS;
   }
 
-  /** The same contract, finished by hand. */
-  public Contract terminate() {
+  /**
+   * The same contract, finished by hand at that instant. One that is already finished stays as it
+   * is, with the instant it was first finished.
+   */
+  public Contract terminate(Instant at) {
+    if (terminated()) {
+      return this;
+    }
     return new Contract(
         id,
         environmentId,
@@ -127,7 +140,7 @@ public record Contract(
         fileKey,
         originalName,
         sizeBytes,
-        true);
+        at);
   }
 
   private static boolean outOfRange(LocalDate date) {
