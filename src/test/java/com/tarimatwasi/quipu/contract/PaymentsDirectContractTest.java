@@ -322,6 +322,11 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
                 .param("paymentMethod", "Yape\u202E"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("paymentMethod"));
+    for (String written : new String[] {"8E+2", "8.00E+2", "8.000e+2", "800E0"}) {
+      post(contractGuest, "period", "2026-10", written, PDF, "v.pdf")
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.field").value("amount"));
+    }
     post(contractGuest, "period", "2026-10", "8E+2", PDF, "v.pdf")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("amount"));

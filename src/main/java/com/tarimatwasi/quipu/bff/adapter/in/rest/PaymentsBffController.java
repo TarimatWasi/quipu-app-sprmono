@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -230,6 +231,11 @@ public class PaymentsBffController {
         Stream.concat(
                 request.getParameterMap().keySet().stream(), request.getFileMap().keySet().stream())
             .toList());
+    // BigDecimal drops the exponent (8.00E+2 reads as 800): the text is what tells it apart.
+    String written = request.getParameter("amount");
+    if (written != null && written.toLowerCase(Locale.ROOT).indexOf('e') >= 0) {
+      throw new InvalidPaymentException("amount");
+    }
     String name = form.file().getOriginalFilename();
     PaymentResponse created =
         PaymentResponse.of(
