@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.port.in;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 
 /** What the other modules may ask the access accounts about the guests they own (RF-11). */
 public interface GuestAccountUseCase {
@@ -16,6 +17,9 @@ public interface GuestAccountUseCase {
 
   /** The state of the account of each guest; a guest without an account is not in the map. */
   Map<Long, GuestAccountState> stateOf(Collection<Long> guestIds);
+
+  /** The guest that the account with that id belongs to; empty for an account of no guest. */
+  Optional<Long> guestOf(Long accountId);
 
   /**
    * Whether an administrator account, active or not, owns that document: one person, one account

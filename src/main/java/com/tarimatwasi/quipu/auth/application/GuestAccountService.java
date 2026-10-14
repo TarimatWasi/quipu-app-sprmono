@@ -8,6 +8,7 @@ import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,12 @@ public class GuestAccountService implements GuestAccountUseCase {
       }
     }
     return states;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<Long> guestOf(Long accountId) {
+    return users.findById(accountId).map(UserAccount::guestId);
   }
 
   @Override

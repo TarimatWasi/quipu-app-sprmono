@@ -33,6 +33,13 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
 
   private static final Set<String> STATE_CHANGING = Set.of("POST", "PUT", "PATCH", "DELETE");
 
+  /**
+   * The one route that takes a file (RF-03, RF-15): the contract says multipart/form-data. The
+   * defense of ADR-006 holds for it as for the rest: a foreign {@code Origin} is refused by CORS
+   * before this filter, the session cookie is SameSite, and the route is ADMIN only.
+   */
+  private static final String CONTRACT_UPLOAD = "/bff/admin/contracts";
+
   /** BFF error shape (QP-SPRMONO-BFF-01): stable English code, Spanish message. */
   private static final String BODY =
       "{\"code\":\"UNSUPPORTED_MEDIA_TYPE\",\"message\":\"El contenido debe ser application/json.\"}";
@@ -43,7 +50,8 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     if (STATE_CHANGING.contains(request.getMethod())
         && (hasBody(request) || request.getContentType() != null)
-        && !isJson(request.getContentType())) {
+        && !isJson(request.getContentType())
+        && !isContractUpload(request)) {
       // Write the response directly: sendError triggers an ERROR dispatch to /error, which the
       // security chain would answer with 401 for an unauthenticated client.
       response.setStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value());
@@ -53,6 +61,21 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       return;
     }
     chain.doFilter(request, response);
+  }
+
+  private static boolean isContractUpload(HttpServletRequest request) {
+    String contentType = request.getContentType();
+    if (!"POST".equals(request.getMethod())
+        || !CONTRACT_UPLOAD.equals(request.getRequestURI())
+        || contentType == null) {
+      return false;
+    }
+    try {
+      return MediaType.MULTIPART_FORM_DATA.equalsTypeAndSubtype(
+          MediaType.parseMediaType(contentType));
+    } catch (InvalidMediaTypeException e) {
+      return false;
+    }
   }
 
   private static boolean hasBody(HttpServletRequest request) {

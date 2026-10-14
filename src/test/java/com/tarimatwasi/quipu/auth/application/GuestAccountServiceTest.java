@@ -128,4 +128,34 @@ class GuestAccountServiceTest {
 
     assertThat(service.documentBelongsToAdministrator("VISA", "55555555")).isFalse();
   }
+
+  @Test
+  void theAccountOfAGuestSaysWhichGuestItIs() {
+    var guest = TestIds.next();
+    var account = account(guest, "44444444", false, "ACTIVE");
+
+    assertThat(service.guestOf(account.id())).contains(guest);
+    assertThat(service.guestOf(TestIds.next())).isEmpty();
+  }
+
+  @Test
+  void anAccountOfNoGuestHasNoGuest() {
+    var admin =
+        new UserAccount(
+            TestIds.next(),
+            "admin@example.test",
+            DocumentType.DNI,
+            "55555555",
+            "hash",
+            Role.ADMIN,
+            null,
+            false,
+            "ACTIVE",
+            0,
+            null,
+            null);
+    users.save(admin);
+
+    assertThat(service.guestOf(admin.id())).isEmpty();
+  }
 }

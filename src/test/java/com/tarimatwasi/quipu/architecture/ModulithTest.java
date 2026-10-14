@@ -17,6 +17,7 @@ class ModulithTest {
         .as("violations of the module boundaries, the exposed APIs and the cycles")
         .isEmpty();
     assertThat(modules.stream().map(m -> m.getIdentifier().toString()))
-        .containsExactlyInAnyOrder("auth", "bff", "environment", "expense", "guest", "shared");
+        .containsExactlyInAnyOrder(
+            "auth", "bff", "contract", "environment", "expense", "guest", "shared");
   }
 }

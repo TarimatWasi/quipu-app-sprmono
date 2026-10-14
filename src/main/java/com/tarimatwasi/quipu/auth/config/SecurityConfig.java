@@ -77,6 +77,8 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/bff/admin/**")
                     .hasRole("ADMIN")
+                    .requestMatchers("/bff/guest/**")
+                    .hasRole("GUEST")
                     .anyRequest()
                     .authenticated())
         // Both run before the session is read, so a flood of bad requests costs no account lookup.

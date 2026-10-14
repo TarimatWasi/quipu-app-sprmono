@@ -1,0 +1,198 @@
+package com.tarimatwasi.quipu.db;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.tarimatwasi.quipu.support.PostgresContainers;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+/** TAR-40 (V12): the contracts table is added over a database that already has data. */
+@SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
+@ImportTestcontainers(PostgresContainers.class)
+class ContractsMigrationTest {
+
+  private static final AtomicLong NEXT_ID = new AtomicLong(70_000);
+
+  @Autowired JdbcTemplate jdbc;
+  @Autowired DataSource dataSource;
+
+  /** Guests, environments and stays that exist before V12 are untouched by it. */
+  @Test
+  void v12_addsAnEmptyTableOverExistingData() {
+    String schema = "tar40_migration";
+    jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    try {
+      migrateTo(schema, "11");
+      long guest = insertGuest(schema, "20000001");
+      long environment = insertEnvironment(schema, "301");
+
+      migrateTo(schema, "12");
+
+      assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".guests", Integer.class))
+          .isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT count(*) FROM " + schema + ".environments", Integer.class))
+          .isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject("SELECT count(*) FROM " + schema + ".contracts", Integer.class))
+          .isZero();
+      // The new table takes rows for the old guest and environment, and its sequence works.
+      jdbc.update(
+          "INSERT INTO "
+              + schema
+              + ".contracts (id, guest_id, environment_id, start_date, monthly_amount, payment_day,"
+              + " grace_days, file_key, original_name, size_bytes)"
+              + " VALUES (nextval('"
+              + schema
+              + ".contracts_seq'), ?, ?, '2026-10-01', 800, 5, 3, 'contracts/a.pdf', 'a.pdf', 10)",
+          guest,
+          environment);
+      assertThat(jdbc.queryForObject("SELECT status FROM " + schema + ".contracts", String.class))
+          .isEqualTo("ACTIVE");
+    } finally {
+      jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    }
+  }
+
+  @Test
+  void contracts_haveTheIndexesOfTheLookupsAndTheListing() {
+    List<String> definitions =
+        jdbc.queryForList(
+            "SELECT pg_get_indexdef(indexrelid) FROM pg_index WHERE indrelid = 'contracts'::regclass",
+            String.class);
+
+    assertThat(definitions)
+        .anyMatch(definition -> definition.contains("(guest_id)"))
+        .anyMatch(definition -> definition.contains("(environment_id)"))
+        .anyMatch(definition -> definition.contains("(created_date DESC, id DESC)"));
+    // No partial unique index by status: it would keep an environment busy after its contract
+    // expired.
+    assertThat(definitions)
+        .noneMatch(definition -> definition.contains("UNIQUE") && !definition.contains("_pkey"));
+  }
+
+  @Test
+  void contracts_idComesFromASequenceThatGrowsBy50() {
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT increment_by FROM pg_sequences WHERE sequencename = 'contracts_seq'",
+                Long.class))
+        .isEqualTo(50L);
+  }
+
+  @Test
+  void contracts_refuseTheValuesTheDomainRefuses() {
+    long guest = insertGuest("public", "20000009");
+    long environment = insertEnvironment("public", "399");
+    try {
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest,
+                      environment,
+                      new Terms("2026-10-01", "2026-10-01", "800", 5, 3, "ACTIVE")))
+          .as("end date not after the start date")
+          .isInstanceOf(DataIntegrityViolationException.class);
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "0", 5, 3, "ACTIVE")))
+          .as("amount")
+          .isInstanceOf(DataIntegrityViolationException.class);
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "800", 0, 3, "ACTIVE")))
+          .as("payment day")
+          .isInstanceOf(DataIntegrityViolationException.class);
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "800", 32, 3, "ACTIVE")))
+          .as("payment day")
+          .isInstanceOf(DataIntegrityViolationException.class);
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "800", 5, 32, "ACTIVE")))
+          .as("grace days")
+          .isInstanceOf(DataIntegrityViolationException.class);
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "EXPIRED")))
+          .as("EXPIRED is derived, never stored")
+          .isInstanceOf(DataIntegrityViolationException.class);
+      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "TERMINATED"));
+      // Two rows for one environment are allowed by the schema: the application decides (RN-20).
+      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+    } finally {
+      jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
+    }
+  }
+
+  /** The columns the checks vary; the file columns are always the same. */
+  private record Terms(
+      String start,
+      @Nullable String end,
+      String amount,
+      int paymentDay,
+      int graceDays,
+      String status) {}
+
+  private void insertContract(long guest, long environment, Terms terms) {
+    jdbc.update(
+        "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
+            + " payment_day, grace_days, file_key, original_name, size_bytes, status)"
+            + " VALUES (nextval('contracts_seq'), ?, ?, ?::date, ?::date, ?::numeric, ?, ?,"
+            + " 'contracts/a.pdf', 'a.pdf', 10, ?)",
+        guest,
+        environment,
+        terms.start(),
+        terms.end(),
+        terms.amount(),
+        terms.paymentDay(),
+        terms.graceDays(),
+        terms.status());
+  }
+
+  private void migrateTo(String schema, String version) {
+    Flyway.configure()
+        .dataSource(dataSource)
+        .schemas(schema)
+        .createSchemas(true)
+        .target(version)
+        .load()
+        .migrate();
+  }
+
+  private long insertGuest(String schema, String number) {
+    long id = NEXT_ID.incrementAndGet();
+    jdbc.update(
+        "INSERT INTO "
+            + schema
+            + ".guests (id, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'DNI', ?, 'CONTRACT', 'ACTIVE')",
+        id,
+        number);
+    return id;
+  }
+
+  private long insertEnvironment(String schema, String code) {
+    long id = NEXT_ID.incrementAndGet();
+    jdbc.update(
+        "INSERT INTO " + schema + ".environments (id, code, type) VALUES (?, ?, 'ROOM')", id, code);
+    return id;
+  }
+}

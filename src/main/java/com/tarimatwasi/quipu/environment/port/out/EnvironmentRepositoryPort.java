@@ -21,6 +21,12 @@ public interface EnvironmentRepositoryPort {
   Optional<Environment> findById(Long id);
 
   /**
+   * Like {@link #findById} but the row stays locked until the transaction ends, so a deactivation
+   * and a new contract on it are decided one by one. Needs a transaction.
+   */
+  Optional<Environment> findByIdForUpdate(Long id);
+
+  /**
    * One page ordered by code; {@code status == null} reads every environment.
    *
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
