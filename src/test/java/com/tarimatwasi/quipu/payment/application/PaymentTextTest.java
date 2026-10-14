@@ -48,15 +48,6 @@ class PaymentTextTest {
   }
 
   @Test
-  void isBlank_isOnlyWhiteSpaceAndSeparators() {
-    for (String text : new String[] {"", " ", "   ", "\t", "\n", "\u00A0", "\u2003"}) {
-      assertThat(PaymentText.isBlank(text)).as("[" + text + "]").isTrue();
-    }
-    assertThat(PaymentText.isBlank("a")).isFalse();
-    assertThat(PaymentText.isBlank(" a ")).isFalse();
-  }
-
-  @Test
   void characters_countsCodePointsAndNotUtf16Units() {
     assertThat(PaymentText.characters("abc")).isEqualTo(3);
     assertThat(PaymentText.characters(chars(0x1F600).repeat(50))).isEqualTo(50);

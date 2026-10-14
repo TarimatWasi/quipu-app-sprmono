@@ -23,11 +23,6 @@ final class PaymentText {
             });
   }
 
-  /** Only white space and separators: a reason that is missing, not one with hidden characters. */
-  static boolean isBlank(String text) {
-    return text.codePoints().allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c));
-  }
-
   /** The characters of a text as the column counts them: code points, not UTF-16 units. */
   static int characters(String text) {
     return text.codePointCount(0, text.length());

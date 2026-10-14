@@ -174,13 +174,13 @@ public class PaymentService implements ManagePaymentsUseCase {
   }
 
   /**
-   * A rejection needs a reason of 1 to 500 characters (RN-05) without control characters. Without a
-   * reason, or with a blank one, it is a missing reason; one that is too long is a field out of
-   * range.
+   * A rejection needs a reason of 1 to 500 characters (RN-05) without control characters (a tab or
+   * a line break alone is one of them, not a blank). Without a reason, or with a blank one, it is a
+   * missing reason; one that is too long is a field out of range.
    */
   private static Payment reject(Payment payment, Resolution resolution, Instant now) {
     String reason = resolution.reason();
-    if (reason != null && !PaymentText.isBlank(reason) && PaymentText.hasUnsafeCharacter(reason)) {
+    if (reason != null && PaymentText.hasUnsafeCharacter(reason)) {
       throw new InvalidPaymentException("reason");
     }
     try {

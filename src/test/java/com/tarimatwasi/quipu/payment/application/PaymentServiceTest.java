@@ -293,7 +293,7 @@ class PaymentServiceTest {
 
   @Test
   void resolve_aRejectionWithoutAReasonIsRefusedWhateverBlankMeans() {
-    for (String blank : new String[] {null, "", "   ", "\t", " ", " "}) {
+    for (String blank : new String[] {null, "", "   ", " ", " "}) {
       pendingPayment();
       assertThatThrownBy(
               () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, blank)))
@@ -301,6 +301,17 @@ class PaymentServiceTest {
           .isInstanceOf(PaymentReasonRequiredException.class);
     }
     verify(payments, never()).save(any());
+  }
+
+  @Test
+  void resolve_aReasonOfOnlyATabOrALineBreakIsInvalidNotMissing() {
+    for (String reason : new String[] {"\t", "\n", "  \n ", "\u2028"}) {
+      pendingPayment();
+      assertThatThrownBy(
+              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, reason)))
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
+    }
   }
 
   @Test
@@ -742,10 +753,6 @@ class PaymentServiceTest {
                     PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "mal\u202Emotivo")))
         .isInstanceOfSatisfying(
             InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
-    assertThatThrownBy(
-            () ->
-                service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "linea\nnueva")))
-        .isInstanceOf(InvalidPaymentException.class);
     var method =
         new DirectPayment(
             ADMIN,
