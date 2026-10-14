@@ -116,6 +116,33 @@ class ContractTermsTest {
         .containsExactly(ym("2026-09"), ym("2026-10"), ym("2026-11"));
   }
 
+  @Test
+  void theTerminationMonthIsTheOneOfTheInstantInLimaAndNotInUtc() {
+    // 2026-11-01 03:00 UTC is 2026-10-31 22:00 in Lima: the contract was finished in October
+    Instant finishedAt = Instant.parse("2026-11-01T03:00:00Z");
+    LocalDate today = LocalDate.parse("2026-12-10");
+
+    var inLima =
+        ContractTerms.of(
+            LocalDate.parse("2026-09-01"), null, finishedAt, ZoneId.of("America/Lima"), 5, 3);
+    var inUtc =
+        ContractTerms.of(LocalDate.parse("2026-09-01"), null, finishedAt, ZoneOffset.UTC, 5, 3);
+
+    assertThat(inLima.terminatedIn()).isEqualTo(ym("2026-10"));
+    assertThat(inLima.periods(today)).containsExactly(ym("2026-09"), ym("2026-10"));
+    assertThat(inUtc.periods(today)).containsExactly(ym("2026-09"), ym("2026-10"), ym("2026-11"));
+  }
+
+  @Test
+  void aContractThatWasNeverFinishedHasNoTerminationMonth() {
+    var open =
+        ContractTerms.of(
+            LocalDate.parse("2026-09-01"), null, null, ZoneId.of("America/Lima"), 5, 3);
+
+    assertThat(open.terminatedIn()).isNull();
+    assertThat(open.periods(TODAY)).containsExactly(ym("2026-09"), ym("2026-10"));
+  }
+
   // --- the due date ---
 
   @ParameterizedTest

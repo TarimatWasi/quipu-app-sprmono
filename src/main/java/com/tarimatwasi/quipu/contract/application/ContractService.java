@@ -163,7 +163,7 @@ public class ContractService implements ManageContractsUseCase {
     // sees it terminated and answers the same 204 instead of a version conflict.
     Contract contract = contracts.findByIdForUpdate(id).orElseThrow(ContractNotFoundException::new);
     if (contract.occupies(ContractViews.today(clock))) {
-      contracts.save(contract.terminate());
+      contracts.save(contract.terminate(clock.instant()));
     }
   }
 

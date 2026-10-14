@@ -1,7 +1,9 @@
 package com.tarimatwasi.quipu.payment.domain;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -21,6 +23,24 @@ public record ContractTerms(
     @Nullable YearMonth terminatedIn,
     int paymentDay,
     int graceDays) {
+
+  /**
+   * The terms of a contract as the contract module keeps them: the month of the termination is the
+   * one of that instant in the zone of the business (America/Lima), so a contract finished at 22:00
+   * of the last day of a month in Lima, already the next month in UTC, still charges that month and
+   * not the next.
+   */
+  public static ContractTerms of(
+      LocalDate startDate,
+      @Nullable LocalDate endDate,
+      @Nullable Instant terminatedAt,
+      ZoneId zone,
+      int paymentDay,
+      int graceDays) {
+    YearMonth terminatedIn =
+        terminatedAt == null ? null : YearMonth.from(terminatedAt.atZone(zone));
+    return new ContractTerms(startDate, endDate, terminatedIn, paymentDay, graceDays);
+  }
 
   /**
    * The months that charge, from the one of the start date up to the earliest of the current month,

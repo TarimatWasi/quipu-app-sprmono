@@ -9,6 +9,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -59,6 +60,9 @@ public class ContractJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long>
 
   private String status;
 
+  @Column(name = "terminated_at")
+  private @Nullable Instant terminatedAt;
+
   @Version private long version;
 
   protected ContractJpaEntity() {}
@@ -80,6 +84,7 @@ public class ContractJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long>
   /** Copies the only thing that changes after the load: the contract is finished by hand. */
   void apply(Contract contract) {
     this.status = contract.terminated() ? TERMINATED : ACTIVE;
+    this.terminatedAt = contract.terminatedAt();
   }
 
   Contract toDomain() {
@@ -95,6 +100,7 @@ public class ContractJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long>
         fileKey,
         originalName,
         sizeBytes,
-        TERMINATED.equals(status));
+        // The status and the instant agree by a CHECK of the table; the status decides.
+        TERMINATED.equals(status) ? terminatedAt : null);
   }
 }

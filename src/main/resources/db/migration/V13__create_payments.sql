@@ -11,6 +11,14 @@
 --  * Los estados por período (pagado, en revisión, atrasado, sin pagar) y la deuda NO se guardan: se calculan al
 --    consultar, con el Clock (America/Lima), igual que el vencimiento de un contrato.
 
+-- Los períodos que cobra un contrato llegan hasta el mes en que se finalizó a mano (RN-21). Hasta ahora el
+-- contrato guardaba que se finalizó pero no cuándo: terminated_at lo guarda. Para los ya finalizados se toma la
+-- última modificación de la fila, que es cuando se finalizaron (lo único que se modifica después de cargarlo).
+ALTER TABLE contracts ADD COLUMN terminated_at TIMESTAMPTZ NULL;
+UPDATE contracts SET terminated_at = last_modified_date WHERE status = 'TERMINATED';
+ALTER TABLE contracts ADD CONSTRAINT ck_contracts_terminated_at CHECK ((status = 'TERMINATED') = (terminated_at IS NOT NULL));
+COMMENT ON COLUMN contracts.terminated_at IS 'Instante en que el administrador finalizó el contrato a mano (RN-21); NULL mientras no se finalizó. El último mes que cobra es el de esta fecha en America/Lima.';
+
 CREATE SEQUENCE payments_seq START WITH 1 INCREMENT BY 50;
 
 CREATE TABLE payments (

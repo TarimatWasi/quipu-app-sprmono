@@ -97,6 +97,58 @@ class PaymentsMigrationTest {
     }
   }
 
+  /** The contracts that were finished before V13 get the instant of their last modification. */
+  @Test
+  void v13_backfillsWhenAFinishedContractWasFinished() {
+    String schema = "tar43_backfill";
+    jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    try {
+      migrateTo(schema, "12");
+      long g = insertGuest(schema, "CONTRACT", "60000020");
+      long e1 = insertEnvironment(schema, "621");
+      long e2 = insertEnvironment(schema, "622");
+      long active = insertContract(schema, g, e1);
+      long finished = insertContract(schema, g, e2);
+      jdbc.update(
+          "UPDATE "
+              + schema
+              + ".contracts SET status = 'TERMINATED', last_modified_date = '2026-09-15T10:00:00Z'"
+              + " WHERE id = ?",
+          finished);
+
+      migrateTo(schema, "13");
+
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT terminated_at IS NULL FROM " + schema + ".contracts WHERE id = ?",
+                  Boolean.class,
+                  active))
+          .isTrue();
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT terminated_at = last_modified_date FROM "
+                      + schema
+                      + ".contracts WHERE id = ?",
+                  Boolean.class,
+                  finished))
+          .isTrue();
+    } finally {
+      jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    }
+  }
+
+  @Test
+  void aContractIsFinishedExactlyWhenItHasTheInstantItWasFinished() {
+    assertThatThrownBy(
+            () -> jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", contract))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () -> jdbc.update("UPDATE contracts SET terminated_at = now() WHERE id = ?", contract))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    jdbc.update(
+        "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", contract);
+  }
+
   @Test
   void payments_idComesFromASequenceThatGrowsBy50() {
     assertThat(

@@ -83,6 +83,7 @@ class ContractsContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+  @Autowired Clock clock;
   @MockitoBean ContractFilePort files;
 
   private final Long adminId = TestIds.next();
@@ -448,6 +449,30 @@ class ContractsContractTest {
   }
 
   @Test
+  void terminatingStoresTheInstantOnceAndAnotherTerminateDoesNotChangeIt() throws Exception {
+    Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
+
+    terminate(id).andExpect(status().isNoContent());
+    Instant first = terminatedAt(id);
+    var fixedDay = (MutableClock) clock;
+    fixedDay.advance(java.time.Duration.ofDays(3));
+    try {
+      terminate(id).andExpect(status().isNoContent());
+    } finally {
+      fixedDay.advance(java.time.Duration.ofDays(-3));
+    }
+
+    assertThat(first).isEqualTo(Instant.parse("2026-10-14T14:00:00Z"));
+    assertThat(terminatedAt(id)).isEqualTo(first);
+  }
+
+  private Instant terminatedAt(Long id) {
+    return jdbc.queryForObject(
+            "SELECT terminated_at FROM contracts WHERE id = ?", java.sql.Timestamp.class, id)
+        .toInstant();
+  }
+
+  @Test
   void terminatingIsIdempotentAndAnExpiredContractStaysExpired() throws Exception {
     Long active = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
     Long guest2 = insertGuest("22222222", "CONTRACT", "ACTIVE");
@@ -501,7 +526,8 @@ class ContractsContractTest {
         .andExpect(jsonPath("$.status").value("EXPIRED"))
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.fileUrl").value(SIGNED));
-    jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", id);
+    jdbc.update(
+        "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", id);
     mockMvc
         .perform(get("/bff/guest/contract").cookie(guest()))
         .andExpect(status().isOk())
@@ -721,14 +747,16 @@ class ContractsContractTest {
     Long id = TestIds.next();
     jdbc.update(
         "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
-            + " payment_day, grace_days, file_key, original_name, size_bytes, status, created_date)"
-            + " VALUES (?, ?, ?, ?::date, ?::date, 800, 5, 3, 'contracts/seed.pdf', 'seed.pdf', 10, ?,"
+            + " payment_day, grace_days, file_key, original_name, size_bytes, status, terminated_at,"
+            + " created_date) VALUES (?, ?, ?, ?::date, ?::date, 800, 5, 3, 'contracts/seed.pdf',"
+            + " 'seed.pdf', 10, ?, CASE WHEN ? = 'TERMINATED' THEN now() END,"
             + " now() + (? * interval '1 millisecond'))",
         id,
         guest,
         environment,
         start,
         end,
+        status,
         status,
         id % 1_000_000);
     return id;

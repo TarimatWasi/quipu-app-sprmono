@@ -134,7 +134,11 @@ class ContractsMigrationTest {
                       guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "EXPIRED")))
           .as("EXPIRED is derived, never stored")
           .isInstanceOf(DataIntegrityViolationException.class);
-      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "TERMINATED"));
+      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+      // From V13 a finished contract also says when (terminated_at).
+      jdbc.update(
+          "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id ="
+              + " (SELECT max(id) FROM contracts)");
       // Two rows for one environment are allowed by the schema: the application decides (RN-20).
       insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
     } finally {

@@ -91,6 +91,9 @@ class ContractServiceTest {
     return request(PDF, "contrato.pdf", null);
   }
 
+  private static final java.time.Instant TERMINATED_AT =
+      java.time.Instant.parse("2026-09-30T20:00:00Z");
+
   private static Contract stored(boolean terminated, @Nullable String end) {
     return new Contract(
         CONTRACT_ID,
@@ -104,7 +107,7 @@ class ContractServiceTest {
         KEY,
         "contrato.pdf",
         PDF.length,
-        terminated);
+        terminated ? TERMINATED_AT : null);
   }
 
   private void freeEnvironmentAndActiveContractGuest() {
@@ -356,6 +359,7 @@ class ContractServiceTest {
     ArgumentCaptor<Contract> saved = ArgumentCaptor.forClass(Contract.class);
     verify(contracts).save(saved.capture());
     assertThat(saved.getValue().terminated()).isTrue();
+    assertThat(saved.getValue().terminatedAt()).isEqualTo(clock.instant());
   }
 
   @Test
