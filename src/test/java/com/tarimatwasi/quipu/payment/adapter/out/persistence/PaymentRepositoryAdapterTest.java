@@ -340,4 +340,13 @@ class PaymentRepositoryAdapterTest {
           .isInstanceOf(InvalidCursorException.class);
     }
   }
+
+  @Test
+  void theQueueWithoutAStatusHasAnIndexForItsOrder() {
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_payments_created'",
+                String.class))
+        .contains("(created_date, id)");
+  }
 }
