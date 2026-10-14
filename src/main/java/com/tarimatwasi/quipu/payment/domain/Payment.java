@@ -37,9 +37,13 @@ public record Payment(
   /** NUMERIC(10,2): eight digits before the point. */
   private static final BigDecimal MAX_AMOUNT = new BigDecimal("99999999.99");
 
-  /** Greater than 0, at most two decimals, and it fits NUMERIC(10,2) (RF-05). */
+  /**
+   * Greater than 0, at most two decimals, written without exponent, and it fits NUMERIC(10,2)
+   * (RF-05).
+   */
   public static boolean validAmount(BigDecimal amount) {
     return amount.signum() > 0
+        && amount.scale() >= 0
         && amount.stripTrailingZeros().scale() <= 2
         && amount.compareTo(MAX_AMOUNT) <= 0;
   }

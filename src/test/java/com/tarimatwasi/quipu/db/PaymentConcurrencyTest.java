@@ -54,6 +54,8 @@ class PaymentConcurrencyTest {
 
   @Autowired ManagePaymentsUseCase payments;
   @Autowired JdbcTemplate jdbc;
+  @Autowired javax.sql.DataSource dataSource;
+  @Autowired org.springframework.transaction.support.TransactionTemplate transaction;
   @MockitoBean PaymentFilePort files;
 
   private Long admin;
@@ -252,5 +254,47 @@ class PaymentConcurrencyTest {
         .isInstanceOf(VoucherAlreadyExistsException.class);
     assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
         .isEqualTo("PENDING");
+  }
+
+  /**
+   * The voucher goes to the bucket before the row is committed: if the transaction does not commit,
+   * whatever the reason, the object is removed.
+   */
+  @Test
+  void aTransactionThatDoesNotCommitRemovesTheStoredVoucher() {
+    var key = "vouchers/" + UUID.randomUUID();
+    when(files.store(any(), any())).thenReturn(key);
+    SecurityContextHolder.getContext()
+        .setAuthentication(new TestingAuthenticationToken(admin.toString(), "x", "ROLE_ADMIN"));
+
+    transaction.executeWithoutResult(
+        status -> {
+          payments.registerDirect(direct());
+          status.setRollbackOnly();
+        });
+
+    verify(files).delete(key);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isZero();
+  }
+
+  @Test
+  void aTransactionThatCommitsKeepsTheStoredVoucher() {
+    var key = "vouchers/" + UUID.randomUUID();
+    when(files.store(any(), any())).thenReturn(key);
+    SecurityContextHolder.getContext()
+        .setAuthentication(new TestingAuthenticationToken(admin.toString(), "x", "ROLE_ADMIN"));
+
+    payments.registerDirect(direct());
+
+    org.mockito.Mockito.verify(files, org.mockito.Mockito.never()).delete(any());
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isEqualTo(1);
+  }
+
+  /** The conflict of the unique index reads the live payment on a second connection. */
+  @Test
+  void thePoolHasMoreThanOneConnection() {
+    var pool = (com.zaxxer.hikari.HikariDataSource) dataSource;
+
+    assertThat(pool.getMaximumPoolSize()).isGreaterThan(1);
   }
 }

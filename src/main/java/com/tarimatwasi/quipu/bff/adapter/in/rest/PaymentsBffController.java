@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.Resolution;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.io.IOException;
@@ -52,6 +53,8 @@ public class PaymentsBffController {
   /** Every part the multipart form of a direct payment defines; any other one is refused. */
   private static final Set<String> FORM_FIELDS =
       Set.of("file", "guestId", "period", "stayId", "amount", "paymentMethod");
+
+  private static final long NO_SUCH_ID = -1L;
 
   private static final Pattern PERIOD = Pattern.compile("^\\d{4}-(0[1-9]|1[0-2])$");
 
@@ -168,13 +171,17 @@ public class PaymentsBffController {
       @Nullable String paymentMethod) {}
 
   @GetMapping("/bff/admin/payments")
-  public PagedResponse<QueueItemResponse> list(
+  public ResponseEntity<PagedResponse<QueueItemResponse>> list(
       @RequestParam(name = "status", required = false) @Nullable String status,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
       @RequestParam(name = "after", required = false) @Nullable String after) {
-    return PagedResponse.of(
-        payments.list(state(status), PageParams.query(after, limit)),
-        item -> QueueItemResponse.of(item, ids));
+    // The rows carry the document number of the guests: no cache keeps them.
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            PagedResponse.of(
+                payments.list(state(status), PageParams.query(after, limit)),
+                item -> QueueItemResponse.of(item, ids)));
   }
 
   /** The state filter is a closed list; any other value is a 400 that names the parameter. */
@@ -229,14 +236,27 @@ public class PaymentsBffController {
             payments.registerDirect(
                 new DirectPayment(
                     Long.valueOf(authentication.getName()),
-                    ids.unmask(IdKind.GUEST, form.guestId()),
+                    unmaskOrMissing(IdKind.GUEST, form.guestId()),
                     period(form.period()),
-                    form.stayId() == null ? null : ids.unmask(IdKind.STAY, form.stayId()),
+                    form.stayId() == null ? null : unmaskOrMissing(IdKind.STAY, form.stayId()),
                     form.amount(),
                     form.paymentMethod(),
                     new VoucherUpload(name == null ? "" : name, content(form.file())))),
             ids);
     return ResponseEntity.created(URI.create("/bff/admin/payments/" + created.id())).body(created);
+  }
+
+  /**
+   * An id that was never issued answers as the guest or the stay that does not exist, like any
+   * other, but only after the fields of the request are checked: a request with a bad amount and a
+   * forged id is a 400, not a 404. No payment, guest or stay has the id {@value #NO_SUCH_ID}.
+   */
+  private Long unmaskOrMissing(IdKind kind, UUID id) {
+    try {
+      return ids.unmask(kind, id);
+    } catch (UnknownMaskedIdException unknown) {
+      return NO_SUCH_ID;
+    }
   }
 
   private static @Nullable YearMonth period(@Nullable String period) {

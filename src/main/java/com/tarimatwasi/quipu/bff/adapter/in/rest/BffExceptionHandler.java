@@ -37,6 +37,7 @@ import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
@@ -384,6 +385,12 @@ public class BffExceptionHandler {
                 "PAYMENT_ALREADY_RESOLVED", "El pago ya fue resuelto; vuelve a cargarlo"));
   }
 
+  /** The payment that blocked a period was gone when it was looked for: try again. */
+  @ExceptionHandler(PaymentConcurrentChangeException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentConcurrentChange() {
+    return handleConcurrentModification();
+  }
+
   /** RN-02: an approved payment covers the period or the stay. */
   @ExceptionHandler(PaymentAlreadyExistsForPeriodException.class)
   public ResponseEntity<BffErrorResponse> handlePaymentAlreadyExistsForPeriod() {
@@ -446,7 +453,7 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "FILE_STORAGE_UNAVAILABLE",
-                "No se pudo acceder al archivo del contrato; inténtalo de nuevo más tarde"));
+                "No se pudo acceder al archivo; inténtalo de nuevo más tarde"));
   }
 
   @ExceptionHandler(ExpenseNotFoundException.class)

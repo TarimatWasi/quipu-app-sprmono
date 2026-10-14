@@ -116,7 +116,19 @@ class PaymentTest {
   }
 
   @org.junit.jupiter.params.ParameterizedTest
-  @ValueSource(strings = {"0", "0.00", "-1", "0.001", "800.123", "100000000", "99999999.991"})
+  @ValueSource(
+      strings = {
+        "0",
+        "0.00",
+        "-1",
+        "0.001",
+        "800.123",
+        "100000000",
+        "99999999.991",
+        "8E+2",
+        "1e2",
+        "0.8E+3"
+      })
   void validAmount_refusesTheRest(String amount) {
     assertThat(Payment.validAmount(new BigDecimal(amount))).isFalse();
   }

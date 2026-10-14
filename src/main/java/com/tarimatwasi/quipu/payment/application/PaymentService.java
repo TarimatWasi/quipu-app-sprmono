@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
@@ -35,6 +36,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
@@ -101,19 +105,25 @@ public class PaymentService implements ManagePaymentsUseCase {
                 .filter(id -> id != null)
                 .collect(Collectors.toSet()));
     Map<Long, String> codes = environments.codesOf(Set.copyOf(environmentOfContract.values()));
-    return found.map(stored -> queueItem(stored, profiles, environmentOfContract, codes));
+    List<QueueItemView> items = new ArrayList<>();
+    for (StoredPayment stored : found.content()) {
+      GuestProfile guest = profiles.get(stored.payment().guestId());
+      if (guest == null) {
+        // The table links every payment to a guest; if one is gone anyway, the queue keeps working.
+        LOGGER.warn("Payment {} has no guest and is left out of the queue", stored.payment().id());
+      } else {
+        items.add(queueItem(stored, guest, environmentOfContract, codes));
+      }
+    }
+    return new CursorPage<>(items, found.nextCursor());
   }
 
   private static QueueItemView queueItem(
       StoredPayment stored,
-      Map<Long, GuestProfile> profiles,
+      GuestProfile guest,
       Map<Long, Long> environmentOfContract,
       Map<Long, String> codes) {
     Payment payment = stored.payment();
-    GuestProfile guest = profiles.get(payment.guestId());
-    if (guest == null) {
-      throw new IllegalStateException("payment " + payment.id() + " has no guest");
-    }
     Long contractId = payment.contractId();
     Long environmentId = contractId == null ? null : environmentOfContract.get(contractId);
     return new QueueItemView(
@@ -170,7 +180,7 @@ public class PaymentService implements ManagePaymentsUseCase {
    */
   private static Payment reject(Payment payment, Resolution resolution, Instant now) {
     String reason = resolution.reason();
-    if (reason != null && hasControlCharacter(reason)) {
+    if (reason != null && !isBlank(reason) && hasUnsafeCharacter(reason)) {
       throw new InvalidPaymentException("reason");
     }
     try {
@@ -182,8 +192,25 @@ public class PaymentService implements ManagePaymentsUseCase {
     }
   }
 
-  private static boolean hasControlCharacter(String text) {
-    return text.chars().anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\t');
+  /** Only white space and separators: a reason that is missing, not one with hidden characters. */
+  private static boolean isBlank(String text) {
+    return text.codePoints().allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c));
+  }
+
+  /**
+   * Control characters (line breaks and tabs included), and the format and line-separator ones that
+   * disguise text: the bidi override U+202E, the zero-width space U+200B, U+2028 and U+2029.
+   */
+  private static boolean hasUnsafeCharacter(String text) {
+    return text.chars()
+        .anyMatch(
+            c -> {
+              int type = Character.getType(c);
+              return Character.isISOControl(c)
+                  || type == Character.FORMAT
+                  || type == Character.LINE_SEPARATOR
+                  || type == Character.PARAGRAPH_SEPARATOR;
+            });
   }
 
   // --- the payment registered by hand ---
@@ -217,7 +244,8 @@ public class PaymentService implements ManagePaymentsUseCase {
       throw new InvalidPaymentException("amount");
     }
     String method = direct.paymentMethod();
-    if (method != null && method.strip().length() > MAX_METHOD_LENGTH) {
+    if (method != null
+        && (method.strip().length() > MAX_METHOD_LENGTH || hasUnsafeCharacter(method))) {
       throw new InvalidPaymentException("paymentMethod");
     }
   }
@@ -277,7 +305,11 @@ public class PaymentService implements ManagePaymentsUseCase {
     return payments.findLiveByPeriod(contractId, period);
   }
 
-  private static RuntimeException conflictOf(PaymentStatus live) {
+  /** The conflict for the live payment that is there; if it is gone, a neutral one (try again). */
+  private static RuntimeException conflictOf(@Nullable PaymentStatus live) {
+    if (live == null) {
+      return new PaymentConcurrentChangeException();
+    }
     return live == PaymentStatus.PENDING
         ? new VoucherAlreadyExistsException()
         : new PaymentAlreadyExistsForPeriodException();
@@ -287,6 +319,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   private PaymentView store(DirectPayment direct, Target target, VoucherType type) {
     byte[] content = direct.voucher().content();
     String key = storeFile(content, type);
+    boolean removedIfNotCommitted = removeUnlessCommitted(key);
     PaymentView saved = null;
     try {
       saved =
@@ -297,7 +330,7 @@ public class PaymentService implements ManagePaymentsUseCase {
                       target.contractId(),
                       target.stayId(),
                       target.period(),
-                      direct.amount(),
+                      direct.amount().setScale(2),
                       blankToNull(direct.paymentMethod()),
                       key,
                       FileNames.sanitized(direct.voucher().originalName(), DEFAULT_NAME),
@@ -309,11 +342,32 @@ public class PaymentService implements ManagePaymentsUseCase {
       // Another request got the period or the stay between the check and the insert.
       throw conflictOf(raced.liveStatus());
     } finally {
-      if (saved == null) {
+      if (saved == null && !removedIfNotCommitted) {
         discard(key);
       }
     }
     return saved;
+  }
+
+  /**
+   * Inside a transaction the object is removed whenever the transaction does not commit: the insert
+   * failed, or something after it did, or the commit itself failed. Returns true if it will be;
+   * with no transaction the caller removes it.
+   */
+  private boolean removeUnlessCommitted(String key) {
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      return false;
+    }
+    TransactionSynchronizationManager.registerSynchronization(
+        new TransactionSynchronization() {
+          @Override
+          public void afterCompletion(int status) {
+            if (status != STATUS_COMMITTED) {
+              discard(key);
+            }
+          }
+        });
+    return true;
   }
 
   private String storeFile(byte[] content, VoucherType type) {

@@ -660,4 +660,117 @@ class PaymentServiceTest {
     verify(payments).insertApproved(draft.capture());
     assertThat(draft.getValue().paymentMethod()).isNull();
   }
+
+  @Test
+  void resolve_noControlFormatOrLineSeparatorCharacterIsAllowedInAReason() {
+    for (String reason :
+        new String[] {
+          "line\nbreak",
+          "tab\there",
+          "cr\rhere",
+          "bidi\u202Eevil",
+          "zero\u200Bwidth",
+          "ls\u2028x",
+          "ps\u2029x",
+          "bom\uFEFFx",
+          "nul\u0000x",
+          "esc\u001Bx",
+          "del\u007Fx"
+        }) {
+      pendingPayment();
+      assertThatThrownBy(
+              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, reason)))
+          .as(reason)
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
+    }
+    verify(payments, never()).save(any());
+  }
+
+  @Test
+  void registerDirect_thePaymentMethodIsOneLineWithoutHiddenCharacters() {
+    for (String method :
+        new String[] {"Ef\nectivo", "Yape\u202E", "a\u200Bb", "x\ty", "l\u2028s"}) {
+      var direct =
+          new DirectPayment(
+              ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, method, new VoucherUpload("v.pdf", PDF));
+      assertThatThrownBy(() -> service.registerDirect(direct))
+          .as(method)
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("paymentMethod"));
+    }
+    verifyNoInteractions(guests, files, payments);
+  }
+
+  @Test
+  void registerDirect_anAmountInScientificNotationIsRefused() {
+    for (String amount : new String[] {"8E+2", "1e2", "0.8E+3"}) {
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", amount, PDF)))
+          .as(amount)
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("amount"));
+    }
+    verifyNoInteractions(guests, files, payments);
+  }
+
+  @Test
+  void registerDirect_theAmountIsStoredWithTwoDecimals() {
+    contractGuestWithOpenContract();
+    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+    when(payments.insertApproved(any()))
+        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
+
+    service.registerDirect(forPeriod("2026-10", "800", PDF));
+    service.registerDirect(forPeriod("2026-10", "800.500", PDF));
+
+    ArgumentCaptor<DirectDraft> draft = ArgumentCaptor.forClass(DirectDraft.class);
+    verify(payments, org.mockito.Mockito.times(2)).insertApproved(draft.capture());
+    assertThat(draft.getAllValues()).allSatisfy(d -> assertThat(d.amount().scale()).isEqualTo(2));
+    assertThat(draft.getAllValues().get(1).amount()).isEqualByComparingTo("800.50");
+  }
+
+  @Test
+  void registerDirect_ifThePaymentThatBlockedTheInsertIsGoneTheConflictIsNeutral() {
+    contractGuestWithOpenContract();
+    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+    when(payments.insertApproved(any())).thenThrow(new LivePaymentExistsException(null));
+
+    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+        .isInstanceOf(com.tarimatwasi.quipu.payment.port.in.PaymentConcurrentChangeException.class);
+    verify(files).delete(KEY);
+  }
+
+  @Test
+  void list_aPaymentWhoseGuestIsGoneIsLeftOutAndTheRestOfTheQueueStays() {
+    Payment orphan =
+        new Payment(
+            TestIds.next(),
+            TestIds.next(),
+            CONTRACT,
+            null,
+            OCTOBER,
+            BigDecimal.TEN,
+            null,
+            PaymentStatus.PENDING,
+            null,
+            null,
+            null);
+    PageQuery page = PageQuery.first();
+    when(payments.findQueue(null, page))
+        .thenReturn(
+            new CursorPage<>(
+                List.of(stored(orphan), stored(payment(PaymentStatus.PENDING, OCTOBER, null))),
+                "next"));
+    when(guests.profilesOf(any())).thenReturn(Map.of(GUEST, guest(true, true)));
+    when(contracts.environmentsOf(any())).thenReturn(Map.of(CONTRACT, ENVIRONMENT));
+    when(environments.codesOf(any())).thenReturn(Map.of(ENVIRONMENT, "201"));
+
+    var queue = service.list(null, page);
+
+    assertThat(queue.content()).hasSize(1);
+    assertThat(queue.content().get(0).guestId()).isEqualTo(GUEST);
+    assertThat(queue.nextCursor()).isEqualTo("next");
+  }
 }

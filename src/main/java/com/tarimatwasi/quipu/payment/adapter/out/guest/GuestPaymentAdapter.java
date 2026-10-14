@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.payment.adapter.out.guest;
 
+import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
@@ -37,7 +38,11 @@ public class GuestPaymentAdapter implements PaymentGuestPort {
   public Map<Long, GuestProfile> profilesOf(Collection<Long> guestIds) {
     Map<Long, GuestProfile> profiles = new HashMap<>();
     for (Long id : guestIds) {
-      profiles.put(id, profileOf(id));
+      try {
+        profiles.put(id, profileOf(id));
+      } catch (GuestNotFoundException gone) {
+        // left out: the caller decides what a payment without a guest means
+      }
     }
     return profiles;
   }

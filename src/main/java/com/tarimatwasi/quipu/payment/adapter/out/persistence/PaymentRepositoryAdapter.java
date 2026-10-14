@@ -74,18 +74,16 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
    * in a transaction of its own: it was committed by the other request, or there would be no
    * violation.
    */
-  private PaymentStatus liveStatusOf(DirectDraft draft) {
-    PaymentStatus found =
-        separateTransaction.execute(
-            status ->
-                (draft.stayId() != null
-                        ? findLiveByStay(draft.stayId())
-                        : findLiveByPeriod(
-                            Objects.requireNonNull(draft.contractId()),
-                            Objects.requireNonNull(draft.period())))
-                    .map(Payment::status)
-                    .orElse(null));
-    return found == null ? PaymentStatus.APPROVED : found;
+  private @Nullable PaymentStatus liveStatusOf(DirectDraft draft) {
+    return separateTransaction.execute(
+        status ->
+            (draft.stayId() != null
+                    ? findLiveByStay(draft.stayId())
+                    : findLiveByPeriod(
+                        Objects.requireNonNull(draft.contractId()),
+                        Objects.requireNonNull(draft.period())))
+                .map(Payment::status)
+                .orElse(null));
   }
 
   @Override
