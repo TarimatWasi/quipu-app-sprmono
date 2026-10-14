@@ -11,7 +11,8 @@ public enum IdKind {
   ENVIRONMENT("environment"),
   EXPENSE("expense"),
   GUEST("guest"),
-  STAY("stay");
+  STAY("stay"),
+  CONTRACT("contract");
 
   private final long tag;
 

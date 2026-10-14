@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.CreateCommand;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.EnvironmentKind;
@@ -22,6 +23,7 @@ import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.Envir
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase.UpdateCommand;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
+import com.tarimatwasi.quipu.environment.port.out.EnvironmentOccupancyPort;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -43,9 +45,10 @@ class EnvironmentServiceTest {
       new EnvironmentView(ID, "201", EnvironmentKind.ROOM, EnvironmentState.ACTIVE);
 
   @Mock EnvironmentRepositoryPort repository;
+  @Mock EnvironmentOccupancyPort occupancy;
 
   private EnvironmentService service() {
-    return new EnvironmentService(repository);
+    return new EnvironmentService(repository, occupancy);
   }
 
   @Test
@@ -173,6 +176,7 @@ class EnvironmentServiceTest {
 
   @Test
   void deactivatingAndReactivatingSetTheStatus() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
     when(repository.updateStatus(ID, EnvironmentStatus.INACTIVE)).thenReturn(true);
     when(repository.updateStatus(ID, EnvironmentStatus.ACTIVE)).thenReturn(true);
 
@@ -185,12 +189,40 @@ class EnvironmentServiceTest {
 
   @Test
   void changingTheStatusOfAnUnknownEnvironmentIsNotFound() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
     when(repository.updateStatus(eq(ID), any())).thenReturn(false);
 
     assertThatThrownBy(() -> service().deactivate(ID))
         .isInstanceOf(EnvironmentNotFoundException.class);
     assertThatThrownBy(() -> service().reactivate(ID))
         .isInstanceOf(EnvironmentNotFoundException.class);
+  }
+
+  @Test
+  void anEnvironmentHeldByAContractCannotBeDeactivated() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
+    when(occupancy.isOccupied(ID)).thenReturn(true);
+
+    assertThatThrownBy(() -> service().deactivate(ID))
+        .isInstanceOf(EnvironmentOccupiedException.class);
+    verify(repository, never()).updateStatus(any(), any());
+  }
+
+  @Test
+  void deactivatingAnInactiveEnvironmentChangesNothingEvenIfAContractHoldsIt() {
+    var inactive = new Environment(ID, "201", EnvironmentType.ROOM, EnvironmentStatus.INACTIVE);
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(inactive));
+
+    service().deactivate(ID);
+
+    verify(repository, never()).updateStatus(any(), any());
+  }
+
+  @Test
+  void lockingAnUnknownEnvironmentIsNotFound() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service().lock(ID)).isInstanceOf(EnvironmentNotFoundException.class);
   }
 
   @Test

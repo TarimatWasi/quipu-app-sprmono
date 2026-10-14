@@ -6,9 +6,12 @@ import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
+import com.tarimatwasi.quipu.environment.port.in.LockEnvironmentUseCase;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentCodeAlreadyExistsException;
+import com.tarimatwasi.quipu.environment.port.out.EnvironmentOccupancyPort;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -20,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
-public class EnvironmentService implements ManageEnvironmentsUseCase {
+public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnvironmentUseCase {
 
   /**
    * An explicit visible alphabet, not a list of invisible characters to exclude: Latin letters
@@ -34,9 +37,11 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
   private static final Pattern EDGE_SPACE = Pattern.compile("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$");
 
   private final EnvironmentRepositoryPort environments;
+  private final EnvironmentOccupancyPort occupancy;
 
-  EnvironmentService(EnvironmentRepositoryPort environments) {
+  EnvironmentService(EnvironmentRepositoryPort environments, EnvironmentOccupancyPort occupancy) {
     this.environments = environments;
+    this.occupancy = occupancy;
   }
 
   @Override
@@ -70,7 +75,23 @@ public class EnvironmentService implements ManageEnvironmentsUseCase {
   @Override
   @Transactional
   public void deactivate(Long id) {
+    Environment environment =
+        environments.findByIdForUpdate(id).orElseThrow(EnvironmentNotFoundException::new);
+    if (environment.status() == EnvironmentStatus.INACTIVE) {
+      return;
+    }
+    if (occupancy.isOccupied(id)) {
+      throw new EnvironmentOccupiedException();
+    }
     setStatus(id, EnvironmentStatus.INACTIVE);
+  }
+
+  @Override
+  @Transactional
+  public void lock(Long id) {
+    if (environments.findByIdForUpdate(id).isEmpty()) {
+      throw new EnvironmentNotFoundException();
+    }
   }
 
   @Override

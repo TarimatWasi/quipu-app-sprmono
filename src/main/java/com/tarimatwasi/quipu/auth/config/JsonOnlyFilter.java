@@ -33,6 +33,17 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
 
   private static final Set<String> STATE_CHANGING = Set.of("POST", "PUT", "PATCH", "DELETE");
 
+  /**
+   * The one route that takes a file (RF-03, RF-15): the contract says multipart/form-data. The
+   * defense of ADR-006 holds for it as for the rest: a foreign {@code Origin} is refused by CORS
+   * before this filter, the session cookie is SameSite, and the route is ADMIN only.
+   */
+  private static final String CONTRACT_UPLOAD = "/bff/admin/contracts";
+
+  /** The same body the security layer writes for a refused request. */
+  private static final String FORBIDDEN_BODY =
+      "{\"code\":\"AUTH_FORBIDDEN\",\"message\":\"No tienes permiso para esta acción\"}";
+
   /** BFF error shape (QP-SPRMONO-BFF-01): stable English code, Spanish message. */
   private static final String BODY =
       "{\"code\":\"UNSUPPORTED_MEDIA_TYPE\",\"message\":\"El contenido debe ser application/json.\"}";
@@ -43,7 +54,8 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     if (STATE_CHANGING.contains(request.getMethod())
         && (hasBody(request) || request.getContentType() != null)
-        && !isJson(request.getContentType())) {
+        && !isJson(request.getContentType())
+        && !isContractUpload(request)) {
       // Write the response directly: sendError triggers an ERROR dispatch to /error, which the
       // security chain would answer with 401 for an unauthenticated client.
       response.setStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value());
@@ -52,7 +64,42 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       response.getWriter().write(BODY);
       return;
     }
+    if (isContractUpload(request) && !declaresItsOrigin(request)) {
+      response.setStatus(HttpStatus.FORBIDDEN.value());
+      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+      response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+      response.getWriter().write(FORBIDDEN_BODY);
+      return;
+    }
     chain.doFilter(request, response);
+  }
+
+  /**
+   * A multipart form is a "simple" cross-site request, so the upload must say where it comes from:
+   * a browser always sends {@code Origin} on a POST (CORS has already refused a foreign one) or
+   * {@code Sec-Fetch-Site: same-origin | same-site}. A request with neither is refused.
+   */
+  private static boolean declaresItsOrigin(HttpServletRequest request) {
+    if (request.getHeader(HttpHeaders.ORIGIN) != null) {
+      return true;
+    }
+    String fetchSite = request.getHeader("Sec-Fetch-Site");
+    return "same-origin".equals(fetchSite) || "same-site".equals(fetchSite);
+  }
+
+  private static boolean isContractUpload(HttpServletRequest request) {
+    String contentType = request.getContentType();
+    if (!"POST".equals(request.getMethod())
+        || !CONTRACT_UPLOAD.equals(request.getRequestURI())
+        || contentType == null) {
+      return false;
+    }
+    try {
+      return MediaType.MULTIPART_FORM_DATA.equalsTypeAndSubtype(
+          MediaType.parseMediaType(contentType));
+    } catch (InvalidMediaTypeException e) {
+      return false;
+    }
   }
 
   private static boolean hasBody(HttpServletRequest request) {

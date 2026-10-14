@@ -8,9 +8,15 @@ import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
+import com.tarimatwasi.quipu.contract.port.in.ContractFileUnavailableException;
+import com.tarimatwasi.quipu.contract.port.in.ContractNotFoundException;
+import com.tarimatwasi.quipu.contract.port.in.InvalidContractDatesException;
+import com.tarimatwasi.quipu.contract.port.in.InvalidContractException;
+import com.tarimatwasi.quipu.contract.port.in.InvalidContractFileException;
 import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
@@ -20,6 +26,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
+import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotTemporaryException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
@@ -293,6 +300,70 @@ public class BffExceptionHandler {
                 "STAY_OVERLAP", "Las fechas se cruzan con otra estadía del huésped"));
   }
 
+  /** RN-13: only guests with a contract take a contract. */
+  @ExceptionHandler(GuestNotContractException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestNotContract() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "GUEST_NOT_CONTRACT", "Solo los huéspedes con contrato pueden tener un contrato"));
+  }
+
+  /** RN-12, RN-20: a contract in force holds the environment. */
+  @ExceptionHandler(EnvironmentOccupiedException.class)
+  public ResponseEntity<BffErrorResponse> handleEnvironmentOccupied() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "ENVIRONMENT_OCCUPIED",
+                "El ambiente tiene un contrato vigente; primero finaliza el contrato"));
+  }
+
+  @ExceptionHandler(ContractNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handleContractNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("CONTRACT_NOT_FOUND", "El contrato no existe"));
+  }
+
+  /** A field of the contract outside its range. */
+  @ExceptionHandler(InvalidContractException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidContract(InvalidContractException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR", "Los datos del contrato no son válidos", e.field()));
+  }
+
+  /** RF-03: the contract ends after it starts. */
+  @ExceptionHandler(InvalidContractDatesException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidContractDates() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "CONTRACT_INVALID_DATES",
+                "La fecha de fin debe ser posterior a la de inicio",
+                "endDate"));
+  }
+
+  /** RF-15: a PDF by content, up to 10 MB (the multipart limit has its own advice). */
+  @ExceptionHandler(InvalidContractFileException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidContractFile() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "CONTRACT_INVALID_FILE", "El contrato debe ser un PDF de hasta 10 MB", "file"));
+  }
+
+  /** The bucket is not configured or did not answer; nothing was stored. */
+  @ExceptionHandler(ContractFileUnavailableException.class)
+  public ResponseEntity<BffErrorResponse> handleFileStorage() {
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .body(
+            new BffErrorResponse(
+                "FILE_STORAGE_UNAVAILABLE",
+                "No se pudo acceder al archivo del contrato; inténtalo de nuevo más tarde"));
+  }
+
   @ExceptionHandler(ExpenseNotFoundException.class)
   public ResponseEntity<BffErrorResponse> handleExpenseNotFound() {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -359,6 +430,7 @@ public class BffExceptionHandler {
       case EXPENSE -> handleExpenseNotFound();
       case GUEST -> handleGuestNotFound();
       case STAY -> handleStayNotFound();
+      case CONTRACT -> handleContractNotFound();
       // The session reads the user id itself and refuses the token: no BFF path carries one.
       case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
     };

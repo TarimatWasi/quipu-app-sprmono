@@ -38,6 +38,11 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
   }
 
   @Override
+  public Optional<Environment> findByIdForUpdate(Long id) {
+    return jpaRepository.findWithLockById(id).map(EnvironmentJpaEntity::toDomain);
+  }
+
+  @Override
   public CursorPage<Environment> findAll(@Nullable EnvironmentStatus status, PageQuery page) {
     String after = page.after() == null ? null : CursorToken.decode(page.after(), 1).get(0);
     Specification<EnvironmentJpaEntity> filter =
