@@ -319,6 +319,12 @@ public class BffExceptionHandler {
                 "El ambiente tiene un contrato vigente; primero finaliza el contrato"));
   }
 
+  /** An id of a payment that was never issued answers as a payment that does not exist. */
+  private ResponseEntity<BffErrorResponse> handlePaymentNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("PAYMENT_NOT_FOUND", "El pago no existe"));
+  }
+
   @ExceptionHandler(ContractNotFoundException.class)
   public ResponseEntity<BffErrorResponse> handleContractNotFound() {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -431,6 +437,7 @@ public class BffExceptionHandler {
       case GUEST -> handleGuestNotFound();
       case STAY -> handleStayNotFound();
       case CONTRACT -> handleContractNotFound();
+      case PAYMENT -> handlePaymentNotFound();
       // The session reads the user id itself and refuses the token: no BFF path carries one.
       case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
     };

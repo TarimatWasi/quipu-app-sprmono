@@ -52,4 +52,26 @@ class TestConventionsTest {
           .beDeclaredInClassesThat()
           .haveSimpleName("AuthBffControllerTest")
           .because("ADR-006: the login endpoint is covered end to end");
+
+  /** ADR-006: the upload routes are an exception to JSON only, and each rule of it has its test. */
+  @ArchTest
+  static final ArchRule ADR_006_UPLOAD_ROUTES_DEMAND_ORIGIN =
+      methods()
+          .that()
+          .haveName("an_upload_without_origin_is_refused_on_every_upload_route")
+          .should()
+          .beDeclaredInClassesThat()
+          .haveSimpleName("JsonOnlyFilterTest")
+          .because(
+              "ADR-006: a multipart form is a simple cross-site request and must say its Origin");
+
+  @ArchTest
+  static final ArchRule ADR_006_UPLOAD_ROUTES_ARE_EXACT =
+      methods()
+          .that()
+          .haveName("a_multipart_upload_is_refused_outside_the_upload_routes")
+          .should()
+          .beDeclaredInClassesThat()
+          .haveSimpleName("JsonOnlyFilterTest")
+          .because("ADR-006: multipart is allowed on the exact upload routes and nowhere else");
 }

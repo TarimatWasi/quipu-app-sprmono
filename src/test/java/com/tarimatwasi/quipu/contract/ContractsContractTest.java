@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -421,6 +422,7 @@ class ContractsContractTest {
         .perform(get(URL + "/" + masker.mask(IdKind.CONTRACT, id)).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
+        .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.fileUrl").value(SIGNED))
         .andExpect(jsonPath("$.status").value("ACTIVE"));
     verify(files).signedUrl("contracts/seed.pdf");
@@ -497,6 +499,7 @@ class ContractsContractTest {
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.id").value(masker.mask(IdKind.CONTRACT, id).toString()))
         .andExpect(jsonPath("$.status").value("EXPIRED"))
+        .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.fileUrl").value(SIGNED));
     jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", id);
     mockMvc

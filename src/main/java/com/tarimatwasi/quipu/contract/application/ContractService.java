@@ -19,6 +19,7 @@ import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort.Draft;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
+import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.nio.charset.StandardCharsets;
@@ -42,9 +43,6 @@ public class ContractService implements ManageContractsUseCase {
   private static final Logger LOGGER = LoggerFactory.getLogger(ContractService.class);
 
   private static final byte[] PDF_HEADER = "%PDF-".getBytes(StandardCharsets.US_ASCII);
-
-  /** VARCHAR(255) of original_name. */
-  private static final int MAX_NAME_LENGTH = 255;
 
   private static final String DEFAULT_NAME = "contrato.pdf";
 
@@ -110,7 +108,7 @@ public class ContractService implements ManageContractsUseCase {
                   contract.paymentDay(),
                   contract.graceDays(),
                   key,
-                  sanitizedName(contract.file().originalName()),
+                  FileNames.sanitized(contract.file().originalName(), DEFAULT_NAME),
                   contract.file().content().length));
       // Signing is inside the try: if it fails the transaction rolls back and the object goes too.
       view = ContractViews.of(saved, today, files);
@@ -192,19 +190,5 @@ public class ContractService implements ManageContractsUseCase {
   private static boolean startsWithPdfHeader(byte[] content) {
     return content.length >= PDF_HEADER.length
         && Arrays.equals(content, 0, PDF_HEADER.length, PDF_HEADER, 0, PDF_HEADER.length);
-  }
-
-  /**
-   * The name is only a label for the download: no directories (neither / nor \), no control
-   * characters, at most 255 characters, never empty.
-   */
-  static String sanitizedName(String name) {
-    String base = name.substring(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1);
-    // Control and format characters (such as the bidi override U+202E) can disguise an extension.
-    String clean = base.replaceAll("[\\p{Cntrl}\\p{Cf}]", "").strip();
-    if (clean.length() > MAX_NAME_LENGTH) {
-      clean = clean.substring(0, MAX_NAME_LENGTH);
-    }
-    return clean.isEmpty() || clean.chars().allMatch(c -> c == '.') ? DEFAULT_NAME : clean;
   }
 }
