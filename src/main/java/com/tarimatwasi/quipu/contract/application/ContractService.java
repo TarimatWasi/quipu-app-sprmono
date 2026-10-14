@@ -161,7 +161,9 @@ public class ContractService implements ManageContractsUseCase {
   @Override
   @Transactional
   public void terminate(Long id) {
-    Contract contract = contracts.findById(id).orElseThrow(ContractNotFoundException::new);
+    // The row stays locked until the commit: a second request for the same contract waits, then
+    // sees it terminated and answers the same 204 instead of a version conflict.
+    Contract contract = contracts.findByIdForUpdate(id).orElseThrow(ContractNotFoundException::new);
     if (contract.occupies(ContractViews.today(clock))) {
       contracts.save(contract.terminate());
     }

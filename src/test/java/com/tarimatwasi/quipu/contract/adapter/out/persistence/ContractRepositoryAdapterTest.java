@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +26,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** TAR-40: the contracts, their derived state and the listing read by last index. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
@@ -36,6 +40,7 @@ class ContractRepositoryAdapterTest {
 
   @Autowired ContractRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
+  @Autowired PlatformTransactionManager transactionManager;
 
   private Long guestId;
   private Long otherGuestId;
@@ -131,6 +136,27 @@ class ContractRepositoryAdapterTest {
             jdbc.queryForObject(
                 "SELECT status FROM contracts WHERE id = ?", String.class, contract.id()))
         .isEqualTo("TERMINATED");
+  }
+
+  @Test
+  void findByIdForUpdate_locksTheRowUntilTheTransactionEnds() {
+    Contract contract = insert(guestId, roomId, "2026-10-01", null);
+    String lockProbe = "SELECT id FROM contracts WHERE id = ? FOR UPDATE NOWAIT";
+
+    new TransactionTemplate(transactionManager)
+        .executeWithoutResult(
+            status -> {
+              assertThat(adapter.findByIdForUpdate(contract.id())).isPresent();
+              // Another connection cannot take the row while this transaction holds it.
+              assertThatThrownBy(
+                      () ->
+                          CompletableFuture.runAsync(
+                                  () -> jdbc.queryForList(lockProbe, contract.id()))
+                              .join())
+                  .hasCauseInstanceOf(UncategorizedSQLException.class);
+            });
+
+    assertThat(jdbc.queryForList(lockProbe, contract.id())).hasSize(1);
   }
 
   @Test

@@ -30,6 +30,12 @@ public interface ContractRepositoryPort {
 
   Optional<Contract> findById(Long id);
 
+  /**
+   * Like {@link #findById} but the row stays locked until the transaction ends, so two requests
+   * that finish the same contract are decided one after the other. Needs a transaction.
+   */
+  Optional<Contract> findByIdForUpdate(Long id);
+
   /** The most recently loaded contract of the guest, whatever its state. */
   Optional<Contract> findLatestByGuest(Long guestId);
 

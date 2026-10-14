@@ -365,7 +365,7 @@ class ContractServiceTest {
 
   @Test
   void terminatesAContractInForce() {
-    when(contracts.findById(CONTRACT_ID)).thenReturn(Optional.of(stored(false, null)));
+    when(contracts.findByIdForUpdate(CONTRACT_ID)).thenReturn(Optional.of(stored(false, null)));
 
     service.terminate(CONTRACT_ID);
 
@@ -376,7 +376,7 @@ class ContractServiceTest {
 
   @Test
   void terminatingATerminatedOrExpiredContractChangesNothing() {
-    when(contracts.findById(CONTRACT_ID))
+    when(contracts.findByIdForUpdate(CONTRACT_ID))
         .thenReturn(Optional.of(stored(true, null)))
         .thenReturn(Optional.of(stored(false, "2026-10-13")));
 
@@ -388,7 +388,7 @@ class ContractServiceTest {
 
   @Test
   void terminatingAnUnknownContractIsNotFound() {
-    when(contracts.findById(CONTRACT_ID)).thenReturn(Optional.empty());
+    when(contracts.findByIdForUpdate(CONTRACT_ID)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service.terminate(CONTRACT_ID))
         .isInstanceOf(ContractNotFoundException.class);
