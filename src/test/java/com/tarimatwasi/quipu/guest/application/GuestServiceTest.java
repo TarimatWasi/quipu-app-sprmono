@@ -11,12 +11,12 @@ import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.guest.domain.Stay;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
-import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.IdDocumentKind;
@@ -27,12 +27,15 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,12 +52,14 @@ class GuestServiceTest {
 
   private static final Long ID = TestIds.next();
   private static final Instant NOW = Instant.parse("2026-10-06T15:00:00Z");
+  private static final Clock CLOCK = Clock.fixed(NOW, ZoneId.of("America/Lima"));
 
   @Mock GuestRepositoryPort repository;
   @Mock GuestAccountPort accounts;
+  @Mock StayRepositoryPort stays;
 
   private GuestService service() {
-    return new GuestService(repository, accounts);
+    return new GuestService(repository, accounts, stays, CLOCK);
   }
 
   private static Guest guest(GuestStatus status) {
@@ -63,21 +68,7 @@ class GuestServiceTest {
 
   private static Guest guest(GuestStatus status, GuestType type, String number) {
     return new Guest(
-        ID,
-        DocumentType.DNI,
-        number,
-        null,
-        null,
-        null,
-        type,
-        status,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+        ID, DocumentType.DNI, number, null, null, null, type, status, null, null, null, null);
   }
 
   private static Guest with(
@@ -94,9 +85,6 @@ class GuestServiceTest {
         base.statusBeforeInactive(),
         personalData,
         documents,
-        base.stayStartDate(),
-        base.stayEndDate(),
-        base.agreedAmount(),
         base.emergencyContact());
   }
 
@@ -113,9 +101,6 @@ class GuestServiceTest {
         before,
         base.personalDataCompletedAt(),
         base.documentsStepCompletedAt(),
-        null,
-        null,
-        null,
         null);
   }
 
@@ -262,7 +247,7 @@ class GuestServiceTest {
 
   @Test
   void anUpdateWithNoFieldIsRejected() {
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, null, null, null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, null)))
         .isInstanceOf(EmptyGuestUpdateException.class);
     verify(repository, never()).findByIdForUpdate(any());
   }
@@ -271,8 +256,7 @@ class GuestServiceTest {
   void updatingAnUnknownGuestIsNotFound() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
 
-    assertThatThrownBy(
-            () -> service().update(ID, new UpdateCommand(null, "87654321", null, null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
         .isInstanceOf(GuestNotFoundException.class);
   }
 
@@ -283,7 +267,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     noAccount();
 
-    var summary = service().update(ID, new UpdateCommand(null, " 87654321 ", null, null, null));
+    var summary = service().update(ID, new UpdateCommand(null, " 87654321 "));
 
     assertThat(summary.documentNumber()).isEqualTo("87654321");
     var saved = ArgumentCaptor.forClass(Guest.class);
@@ -299,9 +283,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     noAccount();
 
-    var summary =
-        service()
-            .update(ID, new UpdateCommand(IdDocumentKind.PASSPORT, "ab123456", null, null, null));
+    var summary = service().update(ID, new UpdateCommand(IdDocumentKind.PASSPORT, "ab123456"));
 
     assertThat(summary.documentType()).isEqualTo(IdDocumentKind.PASSPORT);
     assertThat(summary.documentNumber()).isEqualTo("AB123456");
@@ -311,8 +293,7 @@ class GuestServiceTest {
   void theDocumentCannotChangeOnceTheGuestStartedTheOnboarding() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ONBOARDING)));
 
-    assertThatThrownBy(
-            () -> service().update(ID, new UpdateCommand(null, "87654321", null, null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
         .isInstanceOf(GuestDocumentLockedException.class);
     verify(repository, never()).save(any());
   }
@@ -324,16 +305,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     accountIs(true, true);
 
-    var summary =
-        service()
-            .update(
-                ID,
-                new UpdateCommand(
-                    IdDocumentKind.DNI,
-                    "12345678",
-                    LocalDate.parse("2026-10-10"),
-                    null,
-                    new BigDecimal("150.50")));
+    var summary = service().update(ID, new UpdateCommand(IdDocumentKind.DNI, "12345678"));
 
     assertThat(summary.documentNumber()).isEqualTo("12345678");
     assertThat(summary.hasLoginAccess()).isTrue();
@@ -345,7 +317,7 @@ class GuestServiceTest {
         .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
 
     for (var bad : List.of("1234567", "123456789", "1234567A", "", "   ")) {
-      assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, bad, null, null, null)))
+      assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, bad)))
           .as(bad)
           .isInstanceOf(InvalidGuestDocumentException.class);
     }
@@ -357,9 +329,7 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID))
         .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION, GuestType.CONTRACT, "123")));
 
-    assertThatThrownBy(
-            () ->
-                service().update(ID, new UpdateCommand(IdDocumentKind.DNI, null, null, null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(IdDocumentKind.DNI, null)))
         .isInstanceOf(InvalidGuestDocumentException.class);
   }
 
@@ -370,90 +340,45 @@ class GuestServiceTest {
     when(repository.save(any()))
         .thenThrow(new GuestDocumentAlreadyExistsException(new RuntimeException("unique")));
 
-    assertThatThrownBy(
-            () -> service().update(ID, new UpdateCommand(null, "87654321", null, null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
         .isInstanceOf(GuestDocumentTakenException.class);
   }
 
+  // --- the stay a guest shows (deprecated read-only fields of the detail) ---
+
+  private static Stay stay(String start, String end, String amount) {
+    return new Stay(
+        TestIds.next(), ID, LocalDate.parse(start), LocalDate.parse(end), new BigDecimal(amount));
+  }
+
   @Test
-  void theStayOfATemporaryGuestIsEdited() {
-    when(repository.findByIdForUpdate(ID))
+  void theDetailShowsTheStayInCourseToday() {
+    when(repository.findById(ID))
         .thenReturn(Optional.of(guest(GuestStatus.ACTIVE, GuestType.TEMPORARY, "12345678")));
-    when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+    when(stays.findAllByGuest(ID))
+        .thenReturn(
+            List.of(
+                stay("2026-09-01", "2026-09-10", "100"),
+                stay("2026-10-01", "2026-10-06", "200"),
+                stay("2026-11-01", "2026-11-10", "300")));
     accountIs(true, true);
 
-    service()
-        .update(
-            ID,
-            new UpdateCommand(
-                null,
-                null,
-                LocalDate.parse("2026-10-10"),
-                LocalDate.parse("2026-10-20"),
-                new BigDecimal("300")));
+    var detail = service().get(ID);
 
-    var saved = ArgumentCaptor.forClass(Guest.class);
-    verify(repository).save(saved.capture());
-    assertThat(saved.getValue().stayStartDate()).isEqualTo(LocalDate.parse("2026-10-10"));
-    assertThat(saved.getValue().stayEndDate()).isEqualTo(LocalDate.parse("2026-10-20"));
-    assertThat(saved.getValue().agreedAmount()).isEqualByComparingTo("300");
+    assertThat(detail.stayStartDate()).isEqualTo(LocalDate.parse("2026-10-01"));
+    assertThat(detail.stayEndDate()).isEqualTo(LocalDate.parse("2026-10-06"));
+    assertThat(detail.agreedAmount()).isEqualByComparingTo("200");
   }
 
   @Test
-  void stayDataIsOnlyForTemporaryGuests() {
-    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
+  void theDetailShowsNoStayForAGuestWithoutStays() {
+    when(repository.findById(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
+    accountIs(true, true);
 
-    assertThatThrownBy(
-            () ->
-                service()
-                    .update(
-                        ID,
-                        new UpdateCommand(null, null, LocalDate.parse("2026-10-10"), null, null)))
-        .isInstanceOfSatisfying(
-            InvalidGuestStayException.class, e -> assertThat(e.field()).isEqualTo("stayStartDate"));
-    assertThatThrownBy(
-            () -> service().update(ID, new UpdateCommand(null, null, null, null, BigDecimal.TEN)))
-        .isInstanceOfSatisfying(
-            InvalidGuestStayException.class, e -> assertThat(e.field()).isEqualTo("agreedAmount"));
-  }
+    var detail = service().get(ID);
 
-  @Test
-  void theEndOfTheStayCannotBeBeforeItsStart() {
-    var temporary = guest(GuestStatus.ACTIVE, GuestType.TEMPORARY, "12345678");
-    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(temporary));
-
-    assertThatThrownBy(
-            () ->
-                service()
-                    .update(
-                        ID,
-                        new UpdateCommand(
-                            null,
-                            null,
-                            LocalDate.parse("2026-10-20"),
-                            LocalDate.parse("2026-10-10"),
-                            null)))
-        .isInstanceOfSatisfying(
-            InvalidGuestStayException.class, e -> assertThat(e.field()).isEqualTo("stayEndDate"));
-  }
-
-  @Test
-  void theAgreedAmountIsPositiveWithTwoDecimalsAtMostAndFitsTheColumn() {
-    when(repository.findByIdForUpdate(ID))
-        .thenReturn(Optional.of(guest(GuestStatus.ACTIVE, GuestType.TEMPORARY, "12345678")));
-
-    for (var bad :
-        List.of(
-            BigDecimal.ZERO,
-            new BigDecimal("-1"),
-            new BigDecimal("10.001"),
-            new BigDecimal("100000000"))) {
-      assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, null, null, null, bad)))
-          .as(bad.toPlainString())
-          .isInstanceOfSatisfying(
-              InvalidGuestStayException.class,
-              e -> assertThat(e.field()).isEqualTo("agreedAmount"));
-    }
-    verify(repository, never()).save(any());
+    assertThat(detail.stayStartDate()).isNull();
+    assertThat(detail.stayEndDate()).isNull();
+    assertThat(detail.agreedAmount()).isNull();
   }
 }

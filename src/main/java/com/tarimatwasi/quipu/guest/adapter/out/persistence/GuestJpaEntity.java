@@ -13,9 +13,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.AbstractAuditable;
@@ -57,15 +55,6 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   @Column(name = "documents_step_completed_at")
   private @Nullable Instant documentsStepCompletedAt;
 
-  @Column(name = "stay_start_date")
-  private @Nullable LocalDate stayStartDate;
-
-  @Column(name = "stay_end_date")
-  private @Nullable LocalDate stayEndDate;
-
-  @Column(name = "agreed_amount")
-  private @Nullable BigDecimal agreedAmount;
-
   @Column(name = "emergency_contact_name")
   private @Nullable String emergencyContactName;
 
@@ -91,9 +80,6 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
     this.statusBeforeInactive = guest.statusBeforeInactive();
     this.personalDataCompletedAt = guest.personalDataCompletedAt();
     this.documentsStepCompletedAt = guest.documentsStepCompletedAt();
-    this.stayStartDate = guest.stayStartDate();
-    this.stayEndDate = guest.stayEndDate();
-    this.agreedAmount = guest.agreedAmount();
     EmergencyContact contact = guest.emergencyContact();
     this.emergencyContactName = contact == null ? null : contact.name();
     this.emergencyContactRelationship = contact == null ? null : contact.relationship();
@@ -117,9 +103,6 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
         statusBeforeInactive,
         personalDataCompletedAt,
         documentsStepCompletedAt,
-        stayStartDate,
-        stayEndDate,
-        agreedAmount,
         hasContact
             ? new EmergencyContact(
                 emergencyContactName, emergencyContactRelationship, emergencyContactPhone)

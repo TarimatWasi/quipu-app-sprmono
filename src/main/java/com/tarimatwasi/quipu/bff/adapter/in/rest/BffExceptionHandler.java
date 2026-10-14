@@ -18,9 +18,15 @@ import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.guest.port.in.GuestNotTemporaryException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
+import com.tarimatwasi.quipu.guest.port.in.StayNotFoundException;
+import com.tarimatwasi.quipu.guest.port.in.StayOverlapException;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import org.springframework.core.Ordered;
@@ -40,6 +46,12 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(basePackages = "com.tarimatwasi.quipu.bff")
 public class BffExceptionHandler {
+
+  private final IdMasker ids;
+
+  public BffExceptionHandler(IdMasker ids) {
+    this.ids = ids;
+  }
 
   @ExceptionHandler(InvalidCredentialsException.class)
   public ResponseEntity<BffErrorResponse> handleInvalidCredentials() {
@@ -176,6 +188,13 @@ public class BffExceptionHandler {
         .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos"));
   }
 
+  /** A field the closed schema of the body does not define. */
+  @ExceptionHandler(UnknownFieldException.class)
+  public ResponseEntity<BffErrorResponse> handleUnknownField(UnknownFieldException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.field()));
+  }
+
   @ExceptionHandler(GuestNotFoundException.class)
   public ResponseEntity<BffErrorResponse> handleGuestNotFound() {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -215,7 +234,7 @@ public class BffExceptionHandler {
                 "documentNumber"));
   }
 
-  /** Stay data on a contract guest, dates out of order or an amount outside the allowed range. */
+  /** Stay dates out of order or out of range, or an amount outside the allowed range. */
   @ExceptionHandler(InvalidGuestStayException.class)
   public ResponseEntity<BffErrorResponse> handleInvalidGuestStay(InvalidGuestStayException e) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -228,6 +247,41 @@ public class BffExceptionHandler {
   public ResponseEntity<BffErrorResponse> handleEmptyGuestUpdate() {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("VALIDATION_ERROR", "Indica al menos un dato para cambiar"));
+  }
+
+  @ExceptionHandler(StayNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handleStayNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("STAY_NOT_FOUND", "La estadía no existe"));
+  }
+
+  /** RN-35: only an active guest takes a new stay. */
+  @ExceptionHandler(GuestNotActiveException.class)
+  public ResponseEntity<BffGuestNotActiveResponse> handleGuestNotActive(GuestNotActiveException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffGuestNotActiveResponse(
+                "GUEST_NOT_ACTIVE",
+                "El huésped no está activo",
+                ids.mask(IdKind.GUEST, e.guestId())));
+  }
+
+  /** RN-13: only temporary guests have stays. */
+  @ExceptionHandler(GuestNotTemporaryException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestNotTemporary() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "GUEST_NOT_TEMPORARY", "Solo los huéspedes temporales tienen estadías"));
+  }
+
+  /** The dates of a stay cross another stay of the same guest. */
+  @ExceptionHandler(StayOverlapException.class)
+  public ResponseEntity<BffErrorResponse> handleStayOverlap() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "STAY_OVERLAP", "Las fechas se cruzan con otra estadía del huésped"));
   }
 
   @ExceptionHandler(ExpenseNotFoundException.class)
@@ -295,6 +349,7 @@ public class BffExceptionHandler {
       case ENVIRONMENT -> handleEnvironmentNotFound();
       case EXPENSE -> handleExpenseNotFound();
       case GUEST -> handleGuestNotFound();
+      case STAY -> handleStayNotFound();
       // The session reads the user id itself and refuses the token: no BFF path carries one.
       case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
     };

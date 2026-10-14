@@ -10,7 +10,8 @@ public enum IdKind {
   USER("user"),
   ENVIRONMENT("environment"),
   EXPENSE("expense"),
-  GUEST("guest");
+  GUEST("guest"),
+  STAY("stay");
 
   private final long tag;
 
