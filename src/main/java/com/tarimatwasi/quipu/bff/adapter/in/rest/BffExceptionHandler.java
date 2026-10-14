@@ -33,6 +33,14 @@ import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import com.tarimatwasi.quipu.guest.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.StayOverlapException;
+import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
+import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
+import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
@@ -44,6 +52,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -157,6 +166,17 @@ public class BffExceptionHandler {
    * BE-SPR-DAT-13: a row was changed by someone else after it was read. It surfaces when the
    * transaction commits, so it is mapped here, once for every versioned entity.
    */
+  @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+  public ResponseEntity<BffErrorResponse> handleObjectConcurrentModification(
+      ObjectOptimisticLockingFailureException e) {
+    // A payment is resolved once: losing the race for it is "already resolved".
+    String entity = e.getPersistentClassName();
+    if (entity != null && entity.endsWith("PaymentJpaEntity")) {
+      return handlePaymentAlreadyResolved();
+    }
+    return handleConcurrentModification();
+  }
+
   @ExceptionHandler(OptimisticLockingFailureException.class)
   public ResponseEntity<BffErrorResponse> handleConcurrentModification() {
     return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -320,9 +340,68 @@ public class BffExceptionHandler {
   }
 
   /** An id of a payment that was never issued answers as a payment that does not exist. */
-  private ResponseEntity<BffErrorResponse> handlePaymentNotFound() {
+  @ExceptionHandler(PaymentNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentNotFound() {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(new BffErrorResponse("PAYMENT_NOT_FOUND", "El pago no existe"));
+  }
+
+  /** RN-05: a rejection says why. */
+  @ExceptionHandler(PaymentReasonRequiredException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentReasonRequired() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "PAYMENT_REASON_REQUIRED", "Indica el motivo del rechazo", "reason"));
+  }
+
+  /** A field of the payment outside its range, or the choice of period or stay. */
+  @ExceptionHandler(InvalidPaymentException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidPayment(InvalidPaymentException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VALIDATION_ERROR", "Los datos del pago no son válidos", e.field()));
+  }
+
+  /** RF-15: a JPG, a PNG or a PDF by content, up to 5 MB. */
+  @ExceptionHandler(InvalidVoucherFileException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidVoucherFile() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(
+            new BffErrorResponse(
+                "VOUCHER_INVALID_FILE",
+                "El comprobante debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
+                "file"));
+  }
+
+  /** Another process resolved the payment first. */
+  @ExceptionHandler(PaymentAlreadyResolvedException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentAlreadyResolved() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "PAYMENT_ALREADY_RESOLVED", "El pago ya fue resuelto; vuelve a cargarlo"));
+  }
+
+  /** RN-02: an approved payment covers the period or the stay. */
+  @ExceptionHandler(PaymentAlreadyExistsForPeriodException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentAlreadyExistsForPeriod() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "PAYMENT_ALREADY_EXISTS_FOR_PERIOD",
+                "El período o la estadía ya tiene un pago aprobado"));
+  }
+
+  /** RN-15: a voucher is still waiting for its review. */
+  @ExceptionHandler(VoucherAlreadyExistsException.class)
+  public ResponseEntity<BffErrorResponse> handleVoucherAlreadyExists() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "VOUCHER_ALREADY_EXISTS",
+                "Ya hay un comprobante pendiente de revisión; resuélvelo primero"));
   }
 
   @ExceptionHandler(ContractNotFoundException.class)
@@ -361,7 +440,7 @@ public class BffExceptionHandler {
   }
 
   /** The bucket is not configured or did not answer; nothing was stored. */
-  @ExceptionHandler(ContractFileUnavailableException.class)
+  @ExceptionHandler({ContractFileUnavailableException.class, PaymentFileUnavailableException.class})
   public ResponseEntity<BffErrorResponse> handleFileStorage() {
     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
         .body(

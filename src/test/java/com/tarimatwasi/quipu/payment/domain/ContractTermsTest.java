@@ -143,6 +143,79 @@ class ContractTermsTest {
     assertThat(open.periods(TODAY)).containsExactly(ym("2026-09"), ym("2026-10"));
   }
 
+  // --- which periods accept a voucher (RN-27) ---
+
+  @Test
+  void aContractInForceAcceptsAnyChargedPeriodAndNoOtherOne() {
+    var contract = terms("2026-08-01", null, null, 5, 3);
+
+    for (String month : List.of("2026-08", "2026-09", "2026-10")) {
+      assertThat(contract.acceptsPayment(ym(month), List.of(), TODAY)).as(month).isTrue();
+    }
+    assertThat(contract.acceptsPayment(ym("2026-07"), List.of(), TODAY))
+        .as("before the start")
+        .isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-11"), List.of(), TODAY))
+        .as("a future month")
+        .isFalse();
+  }
+
+  @Test
+  void aContractThatHasNotStartedAcceptsNothingYet() {
+    assertThat(
+            terms("2026-11-01", null, null, 5, 3).acceptsPayment(ym("2026-11"), List.of(), TODAY))
+        .isFalse();
+  }
+
+  @Test
+  void anExpiredContractAcceptsOnlyTheMostRecentPeriodInDebt() {
+    // ended 2026-09-15: charged Jul, Aug, Sep; none paid, so the debt is all three
+    var contract = terms("2026-07-01", "2026-09-15", null, 5, 3);
+
+    assertThat(contract.acceptsPayment(ym("2026-09"), List.of(), TODAY)).isTrue();
+    assertThat(contract.acceptsPayment(ym("2026-08"), List.of(), TODAY)).isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-07"), List.of(), TODAY)).isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-10"), List.of(), TODAY))
+        .as("after the end")
+        .isFalse();
+  }
+
+  @Test
+  void anExpiredContractWhoseLastPeriodIsPaidAcceptsTheLatestOneStillInDebt() {
+    var contract = terms("2026-07-01", "2026-09-15", null, 5, 3);
+    List<Payment> payments = List.of(payment(1, "2026-09", PaymentStatus.APPROVED, null));
+
+    assertThat(contract.acceptsPayment(ym("2026-09"), payments, TODAY)).isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-08"), payments, TODAY)).isTrue();
+  }
+
+  @Test
+  void anExpiredContractWithNoDebtAcceptsNothing() {
+    var contract = terms("2026-08-01", "2026-09-15", null, 5, 3);
+    List<Payment> payments =
+        List.of(
+            payment(1, "2026-08", PaymentStatus.APPROVED, null),
+            payment(2, "2026-09", PaymentStatus.APPROVED, null));
+
+    assertThat(contract.acceptsPayment(ym("2026-09"), payments, TODAY)).isFalse();
+  }
+
+  @Test
+  void aContractFinishedByHandAcceptsNoPayment() {
+    var contract = terms("2026-07-01", null, ym("2026-09"), 5, 3);
+
+    assertThat(contract.acceptsPayment(ym("2026-09"), List.of(), TODAY)).isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-08"), List.of(), TODAY)).isFalse();
+  }
+
+  @Test
+  void aContractThatEndsTodayIsStillInForce() {
+    assertThat(
+            terms("2026-08-01", "2026-10-14", null, 5, 3)
+                .acceptsPayment(ym("2026-10"), List.of(), TODAY))
+        .isTrue();
+  }
+
   // --- the due date ---
 
   @ParameterizedTest

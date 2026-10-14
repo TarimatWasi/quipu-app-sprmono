@@ -1,0 +1,70 @@
+package com.tarimatwasi.quipu.payment.port.out;
+
+import com.tarimatwasi.quipu.payment.domain.Payment;
+import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.YearMonth;
+import java.util.List;
+import java.util.Optional;
+import org.jspecify.annotations.Nullable;
+
+public interface PaymentRepositoryPort {
+
+  /** A payment as stored: the domain object and what only the storage knows. */
+  record StoredPayment(
+      Payment payment, String voucherKey, VoucherType voucherType, Instant createdAt) {}
+
+  /** A payment the administrator registers by hand, which is approved at once (RN-23). */
+  record DirectDraft(
+      Long guestId,
+      @Nullable Long contractId,
+      @Nullable Long stayId,
+      @Nullable YearMonth period,
+      BigDecimal amount,
+      @Nullable String paymentMethod,
+      String voucherKey,
+      String originalName,
+      VoucherType voucherType,
+      long sizeBytes,
+      Instant reviewedAt,
+      Long reviewedById) {}
+
+  /**
+   * Stores the approved payment; the write is flushed, so a failure surfaces here.
+   *
+   * @throws LivePaymentExistsException if the period or the stay already has a live payment
+   */
+  StoredPayment insertApproved(DirectDraft draft);
+
+  Optional<StoredPayment> findById(Long id);
+
+  /**
+   * Like {@link #findById} but the row stays locked until the transaction ends, so two requests
+   * that resolve the same payment are decided one after the other. Needs a transaction.
+   */
+  Optional<StoredPayment> findByIdForUpdate(Long id);
+
+  /** Stores the resolution of a payment that exists. */
+  StoredPayment save(Payment resolved);
+
+  /**
+   * One page, oldest first; {@code status == null} reads every payment.
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   */
+  CursorPage<StoredPayment> findQueue(@Nullable PaymentStatus status, PageQuery page);
+
+  /** The pending or approved payment of the period, if there is one. */
+  Optional<Payment> findLiveByPeriod(Long contractId, YearMonth period);
+
+  /** The pending or approved payment of the stay, if there is one. */
+  Optional<Payment> findLiveByStay(Long stayId);
+
+  /** Every payment of the contract, whatever its state. */
+  List<Payment> findAllByContract(Long contractId);
+}

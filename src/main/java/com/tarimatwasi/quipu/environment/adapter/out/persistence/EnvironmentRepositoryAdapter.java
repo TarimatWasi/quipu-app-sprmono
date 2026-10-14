@@ -10,6 +10,7 @@ import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -40,6 +41,11 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
   @Override
   public Optional<Environment> findByIdForUpdate(Long id) {
     return jpaRepository.findWithLockById(id).map(EnvironmentJpaEntity::toDomain);
+  }
+
+  @Override
+  public List<Environment> findAllByIds(Collection<Long> ids) {
+    return jpaRepository.findAllById(ids).stream().map(EnvironmentJpaEntity::toDomain).toList();
   }
 
   @Override

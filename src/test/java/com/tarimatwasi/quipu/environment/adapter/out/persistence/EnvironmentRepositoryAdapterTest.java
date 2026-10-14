@@ -81,4 +81,14 @@ class EnvironmentRepositoryAdapterTest {
     assertThatThrownBy(() -> adapter.findAll(null, new PageQuery("garbage!", 5)))
         .isInstanceOf(InvalidCursorException.class);
   }
+
+  @Test
+  void findAllByIds_readsOnlyTheEnvironmentsAsked() {
+    var one = adapter.insert("A1", com.tarimatwasi.quipu.environment.domain.EnvironmentType.ROOM);
+    adapter.insert("A2", com.tarimatwasi.quipu.environment.domain.EnvironmentType.CABIN);
+
+    assertThat(adapter.findAllByIds(java.util.List.of(one.id(), -3L)))
+        .extracting(e -> e.code())
+        .containsExactly("A1");
+  }
 }

@@ -284,4 +284,27 @@ class ContractRepositoryAdapterTest {
   private static List<Long> ids(CursorPage<Contract> page) {
     return page.content().stream().map(Contract::id).toList();
   }
+
+  @Test
+  void findAllByGuest_isTheContractsOfThatGuestOldestStartFirst() {
+    Contract later = insert(guestId, otherRoomId, "2026-06-01", null);
+    Contract earlier = insert(guestId, roomId, "2025-01-01", "2026-05-31");
+    insert(otherGuestId, insertEnvironment("109"), "2026-01-01", null);
+
+    assertThat(adapter.findAllByGuest(guestId))
+        .extracting(Contract::id)
+        .containsExactly(earlier.id(), later.id());
+    assertThat(adapter.findAllByGuest(-1L)).isEmpty();
+  }
+
+  @Test
+  void findAllByIds_readsOnlyTheContractsAsked() {
+    Contract one = insert(guestId, roomId, "2026-01-01", null);
+    Contract two = insert(otherGuestId, otherRoomId, "2026-01-01", null);
+
+    assertThat(adapter.findAllByIds(List.of(one.id(), -5L)))
+        .extracting(Contract::id)
+        .containsExactly(one.id());
+    assertThat(adapter.findAllByIds(List.of(one.id(), two.id()))).hasSize(2);
+  }
 }

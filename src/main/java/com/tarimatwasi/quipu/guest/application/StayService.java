@@ -55,6 +55,15 @@ public class StayService implements ManageStaysUseCase {
   }
 
   @Override
+  @Transactional(readOnly = true)
+  public StayView get(Long guestId, Long stayId) {
+    return stays
+        .findByIdAndGuest(stayId, guestId)
+        .map(StayService::view)
+        .orElseThrow(StayNotFoundException::new);
+  }
+
+  @Override
   @Transactional
   public StayView create(Long guestId, NewStay stay) {
     validate(stay.startDate(), stay.endDate(), stay.agreedAmount());

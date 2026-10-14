@@ -84,19 +84,19 @@ class PaymentTest {
     Payment rejected = pending().reject(9L, "No coincide", AT);
 
     assertThatThrownBy(() -> approved.approve(9L, AT))
-        .isInstanceOf(PaymentAlreadyResolvedException.class);
+        .isInstanceOf(PaymentNotPendingException.class);
     assertThatThrownBy(() -> approved.reject(9L, "Tarde", AT))
-        .isInstanceOf(PaymentAlreadyResolvedException.class);
+        .isInstanceOf(PaymentNotPendingException.class);
     assertThatThrownBy(() -> rejected.approve(9L, AT))
-        .isInstanceOf(PaymentAlreadyResolvedException.class);
+        .isInstanceOf(PaymentNotPendingException.class);
     assertThatThrownBy(() -> rejected.reject(9L, "Otra vez", AT))
-        .isInstanceOf(PaymentAlreadyResolvedException.class);
+        .isInstanceOf(PaymentNotPendingException.class);
   }
 
   @Test
   void aResolvedPaymentIsReportedBeforeABadReason() {
     assertThatThrownBy(() -> pending().approve(9L, AT).reject(9L, " ", AT))
-        .isInstanceOf(PaymentAlreadyResolvedException.class);
+        .isInstanceOf(PaymentNotPendingException.class);
   }
 
   @Test
@@ -107,5 +107,17 @@ class PaymentTest {
 
     assertThat(stay.approve(9L, AT).stayId()).isEqualTo(7L);
     assertThat(stay.approve(9L, AT).period()).isNull();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @ValueSource(strings = {"0.01", "1", "800.5", "800.50", "800.500", "99999999.99"})
+  void validAmount_acceptsAPositiveAmountOfTwoDecimalsThatFitsTheColumn(String amount) {
+    assertThat(Payment.validAmount(new BigDecimal(amount))).isTrue();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @ValueSource(strings = {"0", "0.00", "-1", "0.001", "800.123", "100000000", "99999999.991"})
+  void validAmount_refusesTheRest(String amount) {
+    assertThat(Payment.validAmount(new BigDecimal(amount))).isFalse();
   }
 }

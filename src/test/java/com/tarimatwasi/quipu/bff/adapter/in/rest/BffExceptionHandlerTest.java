@@ -66,4 +66,27 @@ class BffExceptionHandlerTest {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(response.getBody()).extracting(BffErrorResponse::code).isEqualTo("STAY_NOT_FOUND");
   }
+
+  /**
+   * TAR-43: losing the race for a payment is "already resolved"; for anything else it is a
+   * conflict.
+   */
+  @Test
+  void aVersionConflictOnAPaymentIsAlreadyResolved() {
+    var payment =
+        new org.springframework.orm.ObjectOptimisticLockingFailureException(
+            "com.tarimatwasi.quipu.payment.adapter.out.persistence.PaymentJpaEntity", 7L);
+    var other =
+        new org.springframework.orm.ObjectOptimisticLockingFailureException(
+            "com.tarimatwasi.quipu.contract.adapter.out.persistence.ContractJpaEntity", 7L);
+
+    assertThat(handler.handleObjectConcurrentModification(payment).getBody())
+        .extracting(BffErrorResponse::code)
+        .isEqualTo("PAYMENT_ALREADY_RESOLVED");
+    assertThat(handler.handleObjectConcurrentModification(payment).getStatusCode())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(handler.handleObjectConcurrentModification(other).getBody())
+        .extracting(BffErrorResponse::code)
+        .isEqualTo("CONCURRENT_MODIFICATION");
+  }
 }

@@ -15,6 +15,9 @@ import com.tarimatwasi.quipu.environment.port.out.EnvironmentOccupancyPort;
 import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -104,6 +107,16 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
     if (!environments.updateStatus(id, status)) {
       throw new EnvironmentNotFoundException();
     }
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, String> codesOf(Collection<Long> ids) {
+    Map<Long, String> codes = new HashMap<>();
+    if (!ids.isEmpty()) {
+      environments.findAllByIds(ids).forEach(e -> codes.put(e.id(), e.code()));
+    }
+    return codes;
   }
 
   @Override

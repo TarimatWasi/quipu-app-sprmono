@@ -7,6 +7,8 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -52,4 +54,10 @@ public interface ContractRepositoryPort {
 
   /** Stores the terminated state of an existing contract. */
   Contract save(Contract contract);
+
+  /** Every contract of the guest, whatever its state, the oldest start first. */
+  List<Contract> findAllByGuest(Long guestId);
+
+  /** The contracts with those ids; an id with no contract adds nothing. */
+  List<Contract> findAllByIds(Collection<Long> ids);
 }
