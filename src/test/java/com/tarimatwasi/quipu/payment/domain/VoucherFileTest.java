@@ -84,4 +84,69 @@ class VoucherFileTest {
     assertThat(Arrays.stream(VoucherType.values()).map(VoucherType::extension).distinct())
         .hasSize(3);
   }
+
+  private static byte[] pdf(String body) {
+    return ("%PDF-1.7\n" + body + "\n%%EOF").getBytes(StandardCharsets.ISO_8859_1);
+  }
+
+  @Test
+  void aPlainPdfIsAccepted() {
+    assertThat(
+            VoucherFile.typeOf(
+                pdf(
+                    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 3 0 obj << /Length 4 /Filter /FlateDecode >>")))
+        .contains(VoucherType.PDF);
+  }
+
+  @Test
+  void aPdfThatRunsSomethingIsNotAVoucher() {
+    for (String token :
+        new String[] {"/JavaScript", "/JS", "/Launch", "/OpenAction", "/AA", "/EmbeddedFile"}) {
+      assertThat(VoucherFile.typeOf(pdf("1 0 obj << /Type /Catalog " + token + " 5 0 R >> endobj")))
+          .as(token)
+          .isEmpty();
+    }
+  }
+
+  @Test
+  void theNamesAreFoundWhateverFollowsThem() {
+    assertThat(VoucherFile.typeOf(pdf("<</S/JavaScript/JS(app.alert(1))>>"))).isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("[/JS]"))).isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("<</OpenAction<</S/URI>>>>"))).isEmpty();
+    assertThat(VoucherFile.typeOf("%PDF-1.7\n/Launch".getBytes(StandardCharsets.ISO_8859_1)))
+        .isEmpty();
+  }
+
+  @Test
+  void anEscapedNameIsDecodedBeforeItIsComparedSoItCannotHideTheToken() {
+    assertThat(VoucherFile.typeOf(pdf("<< /J#61vaScript 5 0 R >>"))).isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("<< /#4A#53 5 0 R >>"))).isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("<< /Open#41ction 5 0 R >>"))).isEmpty();
+  }
+
+  @Test
+  void aNameThatMerelyStartsLikeOneOfThemIsNotActiveContent() {
+    assertThat(
+            VoucherFile.typeOf(pdf("<< /JSON 1 /AAPL 2 /Launcher 3 /JavaScripts 4 /Actions 5 >>")))
+        .contains(VoucherType.PDF);
+  }
+
+  @Test
+  void theWordsInsideTheTextOfThePageAreNotNames() {
+    assertThat(VoucherFile.typeOf(pdf("BT (Pago por JavaScript, Launch y OpenAction) Tj ET")))
+        .contains(VoucherType.PDF);
+  }
+
+  @Test
+  void aVeryLongNameIsNotMistakenForAShortOne() {
+    assertThat(VoucherFile.typeOf(pdf("<< /" + "A".repeat(5000) + " 1 >>")))
+        .contains(VoucherType.PDF);
+  }
+
+  @Test
+  void anImageIsNotScannedForPdfNames() {
+    byte[] png = bytes(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, '/', 'J', 'S', ' ');
+
+    assertThat(VoucherFile.typeOf(png)).contains(VoucherType.PNG);
+  }
 }

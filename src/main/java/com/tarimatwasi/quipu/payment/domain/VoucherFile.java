@@ -4,7 +4,9 @@ import java.util.Optional;
 
 /**
  * Which file a voucher is, by its bytes: JPEG, PNG or PDF, of at most 5 MB (RF-15). The type the
- * client declares and the extension of its file name are never read.
+ * client declares and the extension of its file name are never read. A PDF that names JavaScript, a
+ * launch action, an action on open, additional actions or an embedded file is not accepted (see
+ * {@link PdfActiveContent}).
  */
 public final class VoucherFile {
 
@@ -29,7 +31,7 @@ public final class VoucherFile {
       return Optional.of(VoucherType.PNG);
     }
     if (startsWith(content, PDF)) {
-      return Optional.of(VoucherType.PDF);
+      return PdfActiveContent.found(content) ? Optional.empty() : Optional.of(VoucherType.PDF);
     }
     return Optional.empty();
   }

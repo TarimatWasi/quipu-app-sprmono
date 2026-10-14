@@ -71,14 +71,15 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
   /**
    * A multipart form is a "simple" cross-site request, so the upload must say where it comes from:
    * a browser always sends {@code Origin} on a POST (CORS has already refused a foreign one) or
-   * {@code Sec-Fetch-Site: same-origin | same-site}. A request with neither is refused.
+   * {@code Sec-Fetch-Site: same-origin}. A request the browser itself marks {@code cross-site} is
+   * refused even with an {@code Origin}, and one with neither header is refused.
    */
   private static boolean declaresItsOrigin(HttpServletRequest request) {
-    if (request.getHeader(HttpHeaders.ORIGIN) != null) {
-      return true;
-    }
     String fetchSite = request.getHeader("Sec-Fetch-Site");
-    return "same-origin".equals(fetchSite) || "same-site".equals(fetchSite);
+    if ("cross-site".equals(fetchSite)) {
+      return false;
+    }
+    return request.getHeader(HttpHeaders.ORIGIN) != null || "same-origin".equals(fetchSite);
   }
 
   /** A multipart POST to one of the exact routes that take a file (ADR-006). */

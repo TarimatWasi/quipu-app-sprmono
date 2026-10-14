@@ -71,21 +71,39 @@ class JsonOnlyFilterTest {
   }
 
   @Test
-  void a_cross_site_fetch_without_origin_is_refused_and_a_same_site_one_is_let_in()
-      throws Exception {
+  void a_fetch_the_browser_marks_cross_site_is_refused_even_with_an_origin() throws Exception {
     for (String route : UploadRoutes.ALL) {
-      var crossSite = multipart("POST", route);
-      crossSite.addHeader("Sec-Fetch-Site", "cross-site");
-      var none = multipart("POST", route);
-      none.addHeader("Sec-Fetch-Site", "none");
+      var request = multipart("POST", route);
+      request.addHeader("Origin", ORIGIN);
+      request.addHeader("Sec-Fetch-Site", "cross-site");
 
-      assertThat(run(crossSite).getStatus()).as(route).isEqualTo(403);
-      assertThat(run(none).getStatus()).as(route).isEqualTo(403);
-      for (String site : List.of("same-origin", "same-site")) {
+      assertThat(run(request).getStatus()).as(route).isEqualTo(403);
+    }
+    assertThat(reached).hasValue(0);
+  }
+
+  @Test
+  void without_origin_only_a_same_origin_fetch_is_let_in() throws Exception {
+    for (String route : UploadRoutes.ALL) {
+      for (String site : List.of("cross-site", "same-site", "none", "")) {
         var request = multipart("POST", route);
         request.addHeader("Sec-Fetch-Site", site);
-        assertThat(run(request).getStatus()).as(route + " " + site).isEqualTo(200);
+        assertThat(run(request).getStatus()).as(route + " " + site).isEqualTo(403);
       }
+      var sameOrigin = multipart("POST", route);
+      sameOrigin.addHeader("Sec-Fetch-Site", "same-origin");
+      assertThat(run(sameOrigin).getStatus()).as(route).isEqualTo(200);
+    }
+  }
+
+  @Test
+  void a_same_site_or_same_origin_fetch_with_an_origin_is_let_in() throws Exception {
+    for (String site : List.of("same-origin", "same-site", "none")) {
+      var request = multipart("POST", UploadRoutes.CONTRACTS);
+      request.addHeader("Origin", ORIGIN);
+      request.addHeader("Sec-Fetch-Site", site);
+
+      assertThat(run(request).getStatus()).as(site).isEqualTo(200);
     }
   }
 
