@@ -132,4 +132,14 @@ class PaymentTest {
   void validAmount_refusesTheRest(String amount) {
     assertThat(Payment.validAmount(new BigDecimal(amount))).isFalse();
   }
+
+  @Test
+  void theReasonLimitCountsCharactersAndNotUtf16Units() {
+    String emoji = new String(Character.toChars(0x1F600));
+
+    assertThat(pending().reject(9L, emoji.repeat(500), AT).rejectionReason())
+        .isEqualTo(emoji.repeat(500));
+    assertThatThrownBy(() -> pending().reject(9L, emoji.repeat(501), AT))
+        .isInstanceOf(InvalidRejectionReasonException.class);
+  }
 }

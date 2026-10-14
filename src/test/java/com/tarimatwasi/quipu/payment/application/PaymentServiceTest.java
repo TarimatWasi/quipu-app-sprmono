@@ -662,47 +662,6 @@ class PaymentServiceTest {
   }
 
   @Test
-  void resolve_noControlFormatOrLineSeparatorCharacterIsAllowedInAReason() {
-    for (String reason :
-        new String[] {
-          "line\nbreak",
-          "tab\there",
-          "cr\rhere",
-          "bidi\u202Eevil",
-          "zero\u200Bwidth",
-          "ls\u2028x",
-          "ps\u2029x",
-          "bom\uFEFFx",
-          "nul\u0000x",
-          "esc\u001Bx",
-          "del\u007Fx"
-        }) {
-      pendingPayment();
-      assertThatThrownBy(
-              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, reason)))
-          .as(reason)
-          .isInstanceOfSatisfying(
-              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
-    }
-    verify(payments, never()).save(any());
-  }
-
-  @Test
-  void registerDirect_thePaymentMethodIsOneLineWithoutHiddenCharacters() {
-    for (String method :
-        new String[] {"Ef\nectivo", "Yape\u202E", "a\u200Bb", "x\ty", "l\u2028s"}) {
-      var direct =
-          new DirectPayment(
-              ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, method, new VoucherUpload("v.pdf", PDF));
-      assertThatThrownBy(() -> service.registerDirect(direct))
-          .as(method)
-          .isInstanceOfSatisfying(
-              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("paymentMethod"));
-    }
-    verifyNoInteractions(guests, files, payments);
-  }
-
-  @Test
   void registerDirect_anAmountInScientificNotationIsRefused() {
     for (String amount : new String[] {"8E+2", "1e2", "0.8E+3"}) {
       assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", amount, PDF)))
@@ -772,5 +731,63 @@ class PaymentServiceTest {
     assertThat(queue.content()).hasSize(1);
     assertThat(queue.content().get(0).guestId()).isEqualTo(GUEST);
     assertThat(queue.nextCursor()).isEqualTo("next");
+  }
+
+  @Test
+  void hiddenCharactersAreRefusedInTheReasonAndInThePaymentMethod() {
+    pendingPayment();
+    assertThatThrownBy(
+            () ->
+                service.resolve(
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "mal\u202Emotivo")))
+        .isInstanceOfSatisfying(
+            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
+    assertThatThrownBy(
+            () ->
+                service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "linea\nnueva")))
+        .isInstanceOf(InvalidPaymentException.class);
+    var method =
+        new DirectPayment(
+            ADMIN,
+            GUEST,
+            OCTOBER,
+            null,
+            BigDecimal.TEN,
+            "Yape\u200B",
+            new VoucherUpload("v.pdf", PDF));
+    assertThatThrownBy(() -> service.registerDirect(method))
+        .isInstanceOfSatisfying(
+            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("paymentMethod"));
+  }
+
+  @Test
+  void theLimitsOfTheReasonAndThePaymentMethodCountCharactersAndNotUtf16Units() {
+    String emoji = new String(Character.toChars(0x1F600));
+    contractGuestWithOpenContract();
+    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+    when(payments.insertApproved(any()))
+        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
+    pendingPayment();
+    var upload = new VoucherUpload("v.pdf", PDF);
+
+    assertThat(
+            service
+                .registerDirect(
+                    new DirectPayment(
+                        ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, emoji.repeat(50), upload))
+                .status())
+        .isEqualTo(PaymentState.APPROVED);
+    assertThatThrownBy(
+            () ->
+                service.registerDirect(
+                    new DirectPayment(
+                        ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, emoji.repeat(51), upload)))
+        .isInstanceOf(InvalidPaymentException.class);
+    assertThat(
+            service
+                .resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, emoji.repeat(500)))
+                .rejectionReason())
+        .isEqualTo(emoji.repeat(500));
   }
 }

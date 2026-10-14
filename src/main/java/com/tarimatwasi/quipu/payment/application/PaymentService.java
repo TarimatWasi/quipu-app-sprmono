@@ -180,37 +180,16 @@ public class PaymentService implements ManagePaymentsUseCase {
    */
   private static Payment reject(Payment payment, Resolution resolution, Instant now) {
     String reason = resolution.reason();
-    if (reason != null && !isBlank(reason) && hasUnsafeCharacter(reason)) {
+    if (reason != null && !PaymentText.isBlank(reason) && PaymentText.hasUnsafeCharacter(reason)) {
       throw new InvalidPaymentException("reason");
     }
     try {
       return payment.reject(resolution.reviewerId(), reason, now);
     } catch (InvalidRejectionReasonException invalid) {
-      throw reason != null && reason.strip().length() > Payment.MAX_REASON_LENGTH
+      throw reason != null && PaymentText.characters(reason.strip()) > Payment.MAX_REASON_LENGTH
           ? new InvalidPaymentException("reason")
           : new PaymentReasonRequiredException();
     }
-  }
-
-  /** Only white space and separators: a reason that is missing, not one with hidden characters. */
-  private static boolean isBlank(String text) {
-    return text.codePoints().allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c));
-  }
-
-  /**
-   * Control characters (line breaks and tabs included), and the format and line-separator ones that
-   * disguise text: the bidi override U+202E, the zero-width space U+200B, U+2028 and U+2029.
-   */
-  private static boolean hasUnsafeCharacter(String text) {
-    return text.chars()
-        .anyMatch(
-            c -> {
-              int type = Character.getType(c);
-              return Character.isISOControl(c)
-                  || type == Character.FORMAT
-                  || type == Character.LINE_SEPARATOR
-                  || type == Character.PARAGRAPH_SEPARATOR;
-            });
   }
 
   // --- the payment registered by hand ---
@@ -245,7 +224,8 @@ public class PaymentService implements ManagePaymentsUseCase {
     }
     String method = direct.paymentMethod();
     if (method != null
-        && (method.strip().length() > MAX_METHOD_LENGTH || hasUnsafeCharacter(method))) {
+        && (PaymentText.characters(method.strip()) > MAX_METHOD_LENGTH
+            || PaymentText.hasUnsafeCharacter(method))) {
       throw new InvalidPaymentException("paymentMethod");
     }
   }

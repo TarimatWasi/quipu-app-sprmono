@@ -89,7 +89,7 @@ public record Payment(
   public Payment reject(Long reviewerId, @Nullable String reason, Instant at) {
     requirePending();
     String clean = reason == null ? "" : EDGE_SPACE.matcher(reason).replaceAll("");
-    if (clean.isEmpty() || clean.length() > MAX_REASON_LENGTH) {
+    if (clean.isEmpty() || clean.codePointCount(0, clean.length()) > MAX_REASON_LENGTH) {
       throw new InvalidRejectionReasonException();
     }
     return new Payment(
