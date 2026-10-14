@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
+import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,6 +25,15 @@ public class UnknownFieldException extends RuntimeException {
   /** The name of the unknown field. */
   public String field() {
     return field;
+  }
+
+  /** Refuses a form that carried a field or a file part outside the closed list of the contract. */
+  static void rejectAnyOutside(Set<String> declared, Collection<String> received) {
+    for (String name : received) {
+      if (!declared.contains(name)) {
+        throw new UnknownFieldException(name);
+      }
+    }
   }
 
   /** Refuses the body if it carried any field the record does not declare. */

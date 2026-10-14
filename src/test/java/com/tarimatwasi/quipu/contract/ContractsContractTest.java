@@ -213,6 +213,37 @@ class ContractsContractTest {
   }
 
   @Test
+  void aFieldTheFormDoesNotDefineIsAValidationErrorNamingIt() throws Exception {
+    mockMvc
+        .perform(
+            fields(
+                    multipartWith(PDF, "c.pdf"),
+                    room,
+                    contractGuest,
+                    new Terms("850.50", "5", "3", "2026-11-01", null))
+                .param("endDtae", "2027-10-31")
+                .header("Origin", "http://localhost:3000")
+                .cookie(admin()))
+        .andExpect(status().isBadRequest())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("endDtae"));
+    mockMvc
+        .perform(
+            fields(
+                    multipartWith(PDF, "c.pdf").file(new MockMultipartFile("copy", PDF)),
+                    room,
+                    contractGuest,
+                    new Terms("850.50", "5", "3", "2026-11-01", null))
+                .header("Origin", "http://localhost:3000")
+                .cookie(admin()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("copy"));
+    verify(files, never()).store(any());
+    assertThat(count("contracts")).isZero();
+  }
+
+  @Test
   void theEndDateMustBeAfterTheStartDate() throws Exception {
     upload(room, contractGuest, PDF, "c.pdf", "2026-11-01", "2026-11-01")
         .andExpect(status().isBadRequest())

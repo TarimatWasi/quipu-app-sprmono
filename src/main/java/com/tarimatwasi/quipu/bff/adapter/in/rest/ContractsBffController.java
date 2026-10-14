@@ -15,7 +15,9 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.format.annotation.DateTimeFormat.ISO;
@@ -27,10 +29,23 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 /** RF-03, RF-09, CU-03, CU-07, CU-12. Only ADMIN reaches /bff/admin/** (RN-08). */
 @RestController
 public class ContractsBffController {
+
+  /** Every part the multipart form of the contract defines. */
+  private static final Set<String> FORM_FIELDS =
+      Set.of(
+          "file",
+          "environmentId",
+          "guestId",
+          "monthlyAmount",
+          "paymentDay",
+          "graceDays",
+          "startDate",
+          "endDate");
 
   private final ManageContractsUseCase contracts;
   private final IdMasker ids;
@@ -130,7 +145,15 @@ public class ContractsBffController {
       @DateTimeFormat(iso = ISO.DATE) @Nullable LocalDate endDate) {}
 
   @PostMapping(path = "/bff/admin/contracts", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public ResponseEntity<ContractResponse> create(@Valid ContractForm form) {
+  public ResponseEntity<ContractResponse> create(
+      @Valid ContractForm form, MultipartHttpServletRequest request) {
+    // Spring binds only what the record declares and silently drops the rest, but the form of the
+    // contract is closed: a misspelled optional field must not create a contract with other terms.
+    UnknownFieldException.rejectAnyOutside(
+        FORM_FIELDS,
+        Stream.concat(
+                request.getParameterMap().keySet().stream(), request.getFileMap().keySet().stream())
+            .toList());
     String name = form.file().getOriginalFilename();
     ContractResponse created =
         ContractResponse.of(
