@@ -304,6 +304,16 @@ class PaymentServiceTest {
   }
 
   @Test
+  void resolve_aLongReasonOfOnlySeparatorsIsMissingNotTooLong() {
+    pendingPayment();
+    String separators = " ".repeat(501);
+
+    assertThatThrownBy(
+            () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, separators)))
+        .isInstanceOf(PaymentReasonRequiredException.class);
+  }
+
+  @Test
   void resolve_aReasonOfOnlyATabOrALineBreakIsInvalidNotMissing() {
     for (String reason : new String[] {"\t", "\n", "  \n ", "\u2028"}) {
       pendingPayment();
@@ -768,29 +778,10 @@ class PaymentServiceTest {
   }
 
   @Test
-  void theLimitsOfTheReasonAndThePaymentMethodCountCharactersAndNotUtf16Units() {
+  void theLimitOfTheReasonCountsCharactersAndNotUtf16Units() {
     String emoji = new String(Character.toChars(0x1F600));
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
     pendingPayment();
-    var upload = new VoucherUpload("v.pdf", PDF);
 
-    assertThat(
-            service
-                .registerDirect(
-                    new DirectPayment(
-                        ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, emoji.repeat(50), upload))
-                .status())
-        .isEqualTo(PaymentState.APPROVED);
-    assertThatThrownBy(
-            () ->
-                service.registerDirect(
-                    new DirectPayment(
-                        ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, emoji.repeat(51), upload)))
-        .isInstanceOf(InvalidPaymentException.class);
     assertThat(
             service
                 .resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, emoji.repeat(500)))

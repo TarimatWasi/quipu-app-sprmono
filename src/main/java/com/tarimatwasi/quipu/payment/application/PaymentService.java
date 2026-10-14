@@ -186,7 +186,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     try {
       return payment.reject(resolution.reviewerId(), reason, now);
     } catch (InvalidRejectionReasonException invalid) {
-      throw reason != null && PaymentText.characters(reason.strip()) > Payment.MAX_REASON_LENGTH
+      throw PaymentText.characters(Payment.cleanReason(reason)) > Payment.MAX_REASON_LENGTH
           ? new InvalidPaymentException("reason")
           : new PaymentReasonRequiredException();
     }

@@ -48,6 +48,11 @@ public record Payment(
         && amount.compareTo(MAX_AMOUNT) <= 0;
   }
 
+  /** The reason without the white space and separators at its edges; empty if it has none. */
+  public static String cleanReason(@Nullable String reason) {
+    return reason == null ? "" : EDGE_SPACE.matcher(reason).replaceAll("");
+  }
+
   /** Whether the review is still to be done. */
   public boolean pending() {
     return status == PaymentStatus.PENDING;
@@ -88,7 +93,7 @@ public record Payment(
    */
   public Payment reject(Long reviewerId, @Nullable String reason, Instant at) {
     requirePending();
-    String clean = reason == null ? "" : EDGE_SPACE.matcher(reason).replaceAll("");
+    String clean = cleanReason(reason);
     if (clean.isEmpty() || clean.codePointCount(0, clean.length()) > MAX_REASON_LENGTH) {
       throw new InvalidRejectionReasonException();
     }
