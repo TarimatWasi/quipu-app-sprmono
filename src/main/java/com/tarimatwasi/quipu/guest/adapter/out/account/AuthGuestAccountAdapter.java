@@ -27,4 +27,9 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
                 states.put(id, new AccountState(state.canLogIn(), state.passwordChosen())));
     return states;
   }
+
+  @Override
+  public boolean documentBelongsToAdministrator(String documentType, String documentNumber) {
+    return accounts.documentBelongsToAdministrator(documentType, documentNumber);
+  }
 }

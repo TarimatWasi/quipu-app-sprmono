@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
+import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
@@ -17,6 +18,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -25,6 +27,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class GuestRepositoryAdapter implements GuestRepositoryPort {
+
+  private static final String EMAIL_CONSTRAINT = "uq_guests_email_lower";
 
   private final GuestJpaRepository jpaRepository;
 
@@ -102,7 +106,21 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
     try {
       return jpaRepository.saveAndFlush(entity).toDomain();
     } catch (DataIntegrityViolationException e) {
-      throw new GuestDocumentAlreadyExistsException(e);
+      throw conflict(e);
     }
+  }
+
+  /**
+   * Which unique rule broke is read from the name of the constraint, not guessed: a repeated email
+   * must not be reported as a repeated document. Anything else keeps the document answer.
+   */
+  static RuntimeException conflict(DataIntegrityViolationException e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      if (cause instanceof ConstraintViolationException violation
+          && EMAIL_CONSTRAINT.equals(violation.getConstraintName())) {
+        return new GuestEmailAlreadyExistsException(e);
+      }
+    }
+    return new GuestDocumentAlreadyExistsException(e);
   }
 }

@@ -18,6 +18,7 @@ import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
@@ -200,8 +201,16 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "GUEST_DOCUMENT_TAKEN",
-                "Ese documento ya pertenece a otro huésped",
+                "Ese documento ya pertenece a otro huésped o a una cuenta de administrador",
                 "documentNumber"));
+  }
+
+  @ExceptionHandler(GuestEmailTakenException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestEmailTaken() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "GUEST_EMAIL_TAKEN", "Ese correo ya pertenece a otro huésped", "contactEmail"));
   }
 
   /** A number the schema let through that does not fit its type (a DNI has 8 digits). */

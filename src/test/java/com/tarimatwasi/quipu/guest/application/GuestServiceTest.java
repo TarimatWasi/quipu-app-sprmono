@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
@@ -26,6 +27,7 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.UpdateCommand;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
+import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -373,6 +375,31 @@ class GuestServiceTest {
     assertThatThrownBy(
             () -> service().update(ID, new UpdateCommand(null, "87654321", null, null, null)))
         .isInstanceOf(GuestDocumentTakenException.class);
+  }
+
+  @Test
+  void aDocumentOfAnAdministratorIsTakenAndNothingIsSaved() {
+    when(repository.findByIdForUpdate(ID))
+        .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
+    when(accounts.documentBelongsToAdministrator("DNI", "87654321")).thenReturn(true);
+
+    assertThatThrownBy(
+            () -> service().update(ID, new UpdateCommand(null, "87654321", null, null, null)))
+        .isInstanceOf(GuestDocumentTakenException.class);
+
+    verify(repository, never()).save(any());
+  }
+
+  @Test
+  void aContactEmailOfAnotherGuestIsTaken() {
+    when(repository.findByIdForUpdate(ID))
+        .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
+    when(repository.save(any()))
+        .thenThrow(new GuestEmailAlreadyExistsException(new RuntimeException("unique")));
+
+    assertThatThrownBy(
+            () -> service().update(ID, new UpdateCommand(null, "87654321", null, null, null)))
+        .isInstanceOf(GuestEmailTakenException.class);
   }
 
   @Test
