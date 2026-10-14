@@ -1,9 +1,6 @@
 package com.tarimatwasi.quipu.guest.port.in;
 
-/**
- * A stay field that is not valid: dates out of order, a bad amount, or stay data on a contract
- * guest.
- */
+/** A stay field that is not valid: dates out of order or out of range, or a bad amount. */
 public class InvalidGuestStayException extends RuntimeException {
 
   private static final long serialVersionUID = 1L;

@@ -126,10 +126,14 @@ class GuestsContractTest {
         saved);
     var active = insertGuest("44444444", "DNI", "TEMPORARY", "ACTIVE", "Luis Mamani");
     jdbc.update(
-        "UPDATE guests SET phone = '999333444', stay_start_date = '2026-10-10',"
-            + " stay_end_date = '2026-10-20', agreed_amount = 150.50,"
+        "UPDATE guests SET phone = '999333444',"
             + " emergency_contact_name = 'Rosa', emergency_contact_relationship = 'Madre',"
             + " emergency_contact_phone = '999555666' WHERE id = ?",
+        active);
+    jdbc.update(
+        "INSERT INTO stays (id, guest_id, start_date, end_date, agreed_amount)"
+            + " VALUES (?, ?, DATE '2026-10-10', DATE '2026-10-20', 150.50)",
+        TestIds.next(),
         active);
     var inactive = insertGuest("55555555", "DNI", "CONTRACT", "INACTIVE", "Eva Paz");
     jdbc.update(
@@ -208,43 +212,39 @@ class GuestsContractTest {
         .andExpect(jsonPath("$.field").value("documentNumber"));
   }
 
+  /** TAR-182: the stays have their own endpoints; the guest edit no longer takes stay fields. */
   @Test
-  void theStayOfATemporaryGuestIsEdited() throws Exception {
+  void theStayFieldsAreNoLongerPartOfTheGuestEdit() throws Exception {
     var id = insertGuest("12345678", "DNI", "TEMPORARY", "ACTIVE", "Ana Quispe");
-    jdbc.update("UPDATE guests SET phone = '999111222' WHERE id = ?", id);
 
-    patchGuest(
-            id,
-            "{\"stayStartDate\":\"2026-10-10\",\"stayEndDate\":\"2026-10-20\","
-                + "\"agreedAmount\":300.50}")
-        .andExpect(status().isOk())
-        .andExpect(satisfiesTheContract());
-    mockMvc
-        .perform(get(URL + "/" + masked(id)).cookie(admin()))
-        .andExpect(status().isOk())
-        .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.stayEndDate").value("2026-10-20"))
-        .andExpect(jsonPath("$.agreedAmount").value(300.50));
+    for (var body :
+        new String[] {
+          "{\"stayStartDate\":\"2026-10-10\"}",
+          "{\"agreedAmount\":300.50}",
+          "{\"documentNumber\":\"87654321\",\"stayEndDate\":\"2026-10-20\"}"
+        }) {
+      patchGuest(id, body)
+          .andExpect(status().isBadRequest())
+          .andExpect(
+              answersTheContractToARequestWith(
+                  "validation.request.body.schema.additionalProperties"));
+    }
+    var stays = jdbc.queryForObject("SELECT count(*) FROM stays", Integer.class);
+    org.assertj.core.api.Assertions.assertThat(stays).isZero();
   }
 
   @Test
   void invalidEditsAreValidationErrors() throws Exception {
     var contract = insertGuest("12345678", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
-    var temporary = insertGuest("23456789", "DNI", "TEMPORARY", "ACTIVE", "Ana Quispe");
 
     patchGuest(contract, "{\"documentNumber\":\"123\"}")
         .andExpect(status().isBadRequest())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.field").value("documentNumber"));
-    patchGuest(contract, "{\"agreedAmount\":100}")
+    patchGuest(contract, "{}")
         .andExpect(status().isBadRequest())
-        .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.field").value("agreedAmount"));
-    patchGuest(temporary, "{\"stayStartDate\":\"2026-10-20\",\"stayEndDate\":\"2026-10-10\"}")
-        .andExpect(status().isBadRequest())
-        .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.field").value("stayEndDate"));
-    patchGuest(contract, "{}").andExpect(status().isBadRequest()).andExpect(satisfiesTheContract());
+        .andExpect(
+            answersTheContractToARequestWith("validation.request.body.schema.minProperties"));
     patchGuest(contract, "{\"documentType\":\"LICENSE\"}")
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContractToARequestWith("validation.request.body.schema.enum"));

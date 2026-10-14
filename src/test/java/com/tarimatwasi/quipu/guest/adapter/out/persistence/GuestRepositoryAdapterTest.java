@@ -168,9 +168,6 @@ class GuestRepositoryAdapterTest {
         guest.statusBeforeInactive(),
         guest.personalDataCompletedAt(),
         guest.documentsStepCompletedAt(),
-        guest.stayStartDate(),
-        guest.stayEndDate(),
-        guest.agreedAmount(),
         guest.emergencyContact());
   }
 
@@ -187,9 +184,6 @@ class GuestRepositoryAdapterTest {
         guest.statusBeforeInactive(),
         guest.personalDataCompletedAt(),
         guest.documentsStepCompletedAt(),
-        guest.stayStartDate(),
-        guest.stayEndDate(),
-        guest.agreedAmount(),
         guest.emergencyContact());
   }
 }

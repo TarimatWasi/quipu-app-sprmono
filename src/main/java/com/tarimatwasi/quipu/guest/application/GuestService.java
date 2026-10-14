@@ -5,22 +5,23 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.guest.domain.Stay;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
-import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
-import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,13 +40,20 @@ public class GuestService implements ManageGuestsUseCase {
 
   private static final Pattern DNI = Pattern.compile("[0-9]{8}");
   private static final Pattern OTHER_DOCUMENT = Pattern.compile("[A-Za-z0-9]{1,20}");
-  private static final BigDecimal MAX_AMOUNT = new BigDecimal("99999999.99");
   private static final AccountState NO_ACCOUNT = new AccountState(false, false);
 
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
+  private final StayRepositoryPort stays;
+  private final Clock clock;
 
-  GuestService(GuestRepositoryPort guests, GuestAccountPort accounts) {
+  GuestService(
+      GuestRepositoryPort guests,
+      GuestAccountPort accounts,
+      StayRepositoryPort stays,
+      Clock clock) {
+    this.stays = stays;
+    this.clock = clock;
     this.guests = guests;
     this.accounts = accounts;
   }
@@ -67,14 +75,15 @@ public class GuestService implements ManageGuestsUseCase {
   public GuestDetailView get(Long id) {
     Guest guest = guests.findById(id).orElseThrow(GuestNotFoundException::new);
     AccountState account = stateOf(guest);
+    Stay stay = Stay.relevantOn(stays.findAllByGuest(id), LocalDate.now(clock)).orElse(null);
     return new GuestDetailView(
         summary(guest, account),
         guest.phone(),
         guest.email(),
         emergencyContact(guest.emergencyContact()),
-        guest.stayStartDate(),
-        guest.stayEndDate(),
-        guest.agreedAmount(),
+        stay == null ? null : stay.startDate(),
+        stay == null ? null : stay.endDate(),
+        stay == null ? null : stay.agreedAmount(),
         progress(guest, account),
         // The documents of the onboarding and the access of RF-11 arrive with TAR-137 and TAR-36.
         0,
@@ -84,15 +93,11 @@ public class GuestService implements ManageGuestsUseCase {
   @Override
   @Transactional
   public GuestSummaryView update(Long id, UpdateCommand command) {
-    if (command.documentType() == null
-        && command.documentNumber() == null
-        && command.stayStartDate() == null
-        && command.stayEndDate() == null
-        && command.agreedAmount() == null) {
+    if (command.documentType() == null && command.documentNumber() == null) {
       throw new EmptyGuestUpdateException();
     }
     Guest current = guests.findByIdForUpdate(id).orElseThrow(GuestNotFoundException::new);
-    Guest changed = withStay(withDocument(current, command), command);
+    Guest changed = withDocument(current, command);
     try {
       Guest saved = guests.save(changed);
       return summary(saved, stateOf(saved));
@@ -131,9 +136,6 @@ public class GuestService implements ManageGuestsUseCase {
         guest.statusBeforeInactive(),
         guest.personalDataCompletedAt(),
         guest.documentsStepCompletedAt(),
-        guest.stayStartDate(),
-        guest.stayEndDate(),
-        guest.agreedAmount(),
         guest.emergencyContact());
   }
 
@@ -149,58 +151,6 @@ public class GuestService implements ManageGuestsUseCase {
       throw new InvalidGuestDocumentException();
     }
     return type == DocumentType.DNI ? number : number.toUpperCase(Locale.ROOT);
-  }
-
-  private static Guest withStay(Guest guest, UpdateCommand command) {
-    if (command.stayStartDate() == null
-        && command.stayEndDate() == null
-        && command.agreedAmount() == null) {
-      return guest;
-    }
-    if (guest.type() != GuestType.TEMPORARY) {
-      throw new InvalidGuestStayException(firstPresentStayField(command));
-    }
-    LocalDate start =
-        command.stayStartDate() == null ? guest.stayStartDate() : command.stayStartDate();
-    LocalDate end = command.stayEndDate() == null ? guest.stayEndDate() : command.stayEndDate();
-    BigDecimal amount =
-        command.agreedAmount() == null ? guest.agreedAmount() : command.agreedAmount();
-    if (start != null && end != null && end.isBefore(start)) {
-      throw new InvalidGuestStayException("stayEndDate");
-    }
-    if (command.agreedAmount() != null && !validAmount(command.agreedAmount())) {
-      throw new InvalidGuestStayException("agreedAmount");
-    }
-    return new Guest(
-        guest.id(),
-        guest.documentType(),
-        guest.documentNumber(),
-        guest.fullName(),
-        guest.email(),
-        guest.phone(),
-        guest.type(),
-        guest.status(),
-        guest.statusBeforeInactive(),
-        guest.personalDataCompletedAt(),
-        guest.documentsStepCompletedAt(),
-        start,
-        end,
-        amount,
-        guest.emergencyContact());
-  }
-
-  private static String firstPresentStayField(UpdateCommand command) {
-    if (command.stayStartDate() != null) {
-      return "stayStartDate";
-    }
-    return command.stayEndDate() != null ? "stayEndDate" : "agreedAmount";
-  }
-
-  /** Greater than 0, at most two decimals, and it fits NUMERIC(10,2). */
-  private static boolean validAmount(BigDecimal amount) {
-    return amount.signum() > 0
-        && amount.stripTrailingZeros().scale() <= 2
-        && amount.compareTo(MAX_AMOUNT) <= 0;
   }
 
   private AccountState stateOf(Guest guest) {

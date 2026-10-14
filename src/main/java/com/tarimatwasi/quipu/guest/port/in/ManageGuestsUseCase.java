@@ -82,15 +82,10 @@ public interface ManageGuestsUseCase {
       @Nullable Instant accessExpiresAt) {}
 
   /**
-   * What the administrator may change: the document (only while the guest is pending activation)
-   * and the stay data of a temporary guest. Only the present fields change.
+   * What the administrator may change: the document, only while the guest is pending activation.
+   * The stays are managed through {@link ManageStaysUseCase}. Only the present fields change.
    */
-  record UpdateCommand(
-      @Nullable IdDocumentKind documentType,
-      @Nullable String documentNumber,
-      @Nullable LocalDate stayStartDate,
-      @Nullable LocalDate stayEndDate,
-      @Nullable BigDecimal agreedAmount) {}
+  record UpdateCommand(@Nullable IdDocumentKind documentType, @Nullable String documentNumber) {}
 
   /**
    * Lists one page of the guests of the filter, ordered by document type and number and read by
@@ -115,7 +110,6 @@ public interface ManageGuestsUseCase {
    * @throws GuestDocumentLockedException if the document changes and the guest already activated
    * @throws InvalidGuestDocumentException if the number does not fit the type
    * @throws GuestDocumentTakenException if another guest has the new document
-   * @throws InvalidGuestStayException if a stay field is not valid for this guest
    */
   GuestSummaryView update(Long id, UpdateCommand command);
 }

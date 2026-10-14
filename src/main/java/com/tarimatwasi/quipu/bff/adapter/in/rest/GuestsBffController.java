@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.EmergencyContactView;
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -115,13 +117,14 @@ public class GuestsBffController {
     }
   }
 
-  /** The use case checks what the document type allows and the stay rules of each guest kind. */
+  /**
+   * The use case checks what the document type allows. The contract refuses any other field (the
+   * stays have their own endpoints), so an unknown one is a 400 and not silently ignored.
+   */
   public record UpdateGuestRequest(
       @Nullable IdDocumentKind documentType,
       @Nullable @Size(min = 1, max = 20) String documentNumber,
-      @Nullable LocalDate stayStartDate,
-      @Nullable LocalDate stayEndDate,
-      @Nullable BigDecimal agreedAmount) {}
+      @JsonAnySetter @Nullable Map<String, Object> unknown) {}
 
   @GetMapping("/bff/admin/guests")
   public PagedResponse<GuestSummaryResponse> list(
@@ -139,19 +142,15 @@ public class GuestsBffController {
     return GuestDetailResponse.of(guests.get(ids.unmask(IdKind.GUEST, id)), ids);
   }
 
-  /** RN-17, RN-36: only the document (while pending activation) and the stay data change here. */
+  /** RN-17, RN-36: only the document changes here, while the guest is pending activation. */
   @PatchMapping("/bff/admin/guests/{id}")
   public GuestSummaryResponse update(
       @PathVariable UUID id, @Valid @RequestBody UpdateGuestRequest request) {
+    UnknownFieldException.rejectAny(request.unknown());
     return GuestSummaryResponse.of(
         guests.update(
             ids.unmask(IdKind.GUEST, id),
-            new UpdateCommand(
-                request.documentType(),
-                request.documentNumber(),
-                request.stayStartDate(),
-                request.stayEndDate(),
-                request.agreedAmount())),
+            new UpdateCommand(request.documentType(), request.documentNumber())),
         ids);
   }
 }
