@@ -111,7 +111,12 @@ public record ContractTerms(
   private static @Nullable Payment last(List<Payment> payments, PaymentStatus status) {
     return payments.stream()
         .filter(p -> p.status() == status)
-        .max(Comparator.comparing(Payment::id))
+        // The newest review, not the highest id: ids come from blocks of 50 that each instance
+        // reserves, so a later retry can have a lower id than an earlier voucher.
+        .max(
+            Comparator.comparing(
+                    Payment::reviewedAt, Comparator.nullsFirst(Comparator.<Instant>naturalOrder()))
+                .thenComparing(Payment::id))
         .orElse(null);
   }
 }

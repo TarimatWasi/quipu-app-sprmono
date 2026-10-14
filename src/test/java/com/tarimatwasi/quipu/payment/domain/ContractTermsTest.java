@@ -223,6 +223,44 @@ class ContractTermsTest {
   }
 
   @Test
+  void theLastRejectionIsTheNewestReviewEvenIfItsIdIsLower() {
+    // ids come from blocks of 50 reserved by each instance: the later retry has the lower id
+    Payment earlier = rejected(9, "2026-10", "Primero", "2026-10-02T10:00:00Z");
+    Payment later = rejected(5, "2026-10", "Segundo", "2026-10-03T10:00:00Z");
+
+    var status =
+        terms("2026-10-01", null, null, 5, 3).status(ym("2026-10"), List.of(earlier, later), TODAY);
+
+    assertThat(status.paymentId()).isEqualTo(5L);
+    assertThat(status.rejectionReason()).isEqualTo("Segundo");
+  }
+
+  @Test
+  void whenTwoRejectionsShareTheReviewInstantTheHigherIdBreaksTheTie() {
+    Payment a = rejected(5, "2026-10", "A", "2026-10-02T10:00:00Z");
+    Payment b = rejected(9, "2026-10", "B", "2026-10-02T10:00:00Z");
+
+    var status = terms("2026-10-01", null, null, 5, 3).status(ym("2026-10"), List.of(b, a), TODAY);
+
+    assertThat(status.paymentId()).isEqualTo(9L);
+  }
+
+  private static Payment rejected(long id, String period, String reason, String reviewedAt) {
+    return new Payment(
+        id,
+        1L,
+        10L,
+        null,
+        ym(period),
+        BigDecimal.TEN,
+        null,
+        PaymentStatus.REJECTED,
+        reason,
+        Instant.parse(reviewedAt),
+        9L);
+  }
+
+  @Test
   void aPeriodWithNothingIsUnpaidUntilTheDueDatePlusTheGraceDays() {
     // due 2026-10-05, grace 3: unpaid through the 8th, overdue from the 9th
     var contract = terms("2026-10-01", null, null, 5, 3);

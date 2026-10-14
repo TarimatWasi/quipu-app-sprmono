@@ -86,7 +86,7 @@ class PaymentsMigrationTest {
               + ".payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
               + " content_type, size_bytes, recorded_by) VALUES (nextval('"
               + schema
-              + ".payments_seq'), ?, ?, '2026-10-01', 800, 'vouchers/a', 'a.pdf', 'application/pdf',"
+              + ".payments_seq'), ?, ?, '2026-10-01', 800, 'vouchers/' || gen_random_uuid(), 'a.pdf', 'application/pdf',"
               + " 10, 'GUEST')",
           g,
           c);
@@ -169,12 +169,8 @@ class PaymentsMigrationTest {
         .anyMatch(
             d ->
                 d.contains("UNIQUE")
-                    && d.contains("(guest_id, contract_id, period)")
-                    && d.contains("'PENDING'"))
-        .anyMatch(
-            d ->
-                d.contains("UNIQUE")
                     && d.contains("(contract_id, period)")
+                    && d.contains("'PENDING'")
                     && d.contains("'APPROVED'"))
         .anyMatch(
             d ->
@@ -238,18 +234,61 @@ class PaymentsMigrationTest {
     insert(guest, contract, "2026-10-01", null, "REJECTED", "Ilegible", true);
     insert(guest, contract, "2026-10-01", null, "REJECTED", "Otra vez ilegible", true);
     insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
-    insert(guest, contract, "2026-10-01", null, "APPROVED", null, true);
   }
 
   @Test
-  void onlyOneVoucherCanBePendingForAPeriodAndOnlyOneApproved() {
+  void aPeriodHasOneLivePaymentWhetherItIsPendingOrApproved() {
     insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
-    assertThatThrownBy(() -> insert(guest, contract, "2026-10-01", null, "PENDING", null, false))
+    insert(guest, contract, "2026-11-01", null, "APPROVED", null, true);
+
+    assertRefused("pending twice", contract, "2026-10-01", null, "PENDING", null, false);
+    assertRefused("approved over a pending", contract, "2026-10-01", null, "APPROVED", null, true);
+    assertRefused("pending over an approved", contract, "2026-11-01", null, "PENDING", null, false);
+    assertRefused("approved twice", contract, "2026-11-01", null, "APPROVED", null, true);
+  }
+
+  @Test
+  void approvingThePendingVoucherLeavesNoRoomForAnotherOne() {
+    long pending = insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
+
+    jdbc.update(
+        "UPDATE payments SET status = 'APPROVED', reviewed_at = now(), reviewed_by_id = ? WHERE id = ?",
+        admin,
+        pending);
+
+    assertRefused(
+        "pending after the approval", contract, "2026-10-01", null, "PENDING", null, false);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM payments WHERE status IN ('PENDING', 'APPROVED')",
+                Integer.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void aVoucherKeyBelongsToOnePaymentAndTheTypeIsOneOfTheThree() {
+    jdbc.update(
+        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
+            + " content_type, size_bytes, recorded_by) VALUES (?, ?, ?, '2026-10-01', 800,"
+            + " 'vouchers/same', 'a.pdf', 'application/pdf', 10, 'GUEST')",
+        NEXT_ID.incrementAndGet(),
+        guest,
+        contract);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key,"
+                        + " original_name, content_type, size_bytes, recorded_by) VALUES (?, ?, ?,"
+                        + " '2026-11-01', 800, 'vouchers/same', 'a.pdf', 'application/pdf', 10,"
+                        + " 'GUEST')",
+                    NEXT_ID.incrementAndGet(),
+                    guest,
+                    contract))
         .isInstanceOf(DataIntegrityViolationException.class);
-    insert(guest, contract, "2026-11-01", null, "PENDING", null, false);
-    insert(guest, contract, "2026-10-01", null, "APPROVED", null, true);
-    assertThatThrownBy(() -> insert(guest, contract, "2026-10-01", null, "APPROVED", null, true))
+    assertThatThrownBy(() -> insertRaw("content_type", "'image/gif'"))
         .isInstanceOf(DataIntegrityViolationException.class);
+    insertRaw("content_type", "'image/jpeg'", NEXT_ID.incrementAndGet(), "2026-09-01");
+    insertRaw("content_type", "'image/png'", NEXT_ID.incrementAndGet(), "2026-08-01");
   }
 
   @Test
@@ -286,6 +325,45 @@ class PaymentsMigrationTest {
     assertOneWinner(
         () -> insert(guest, null, null, stay, "PENDING", null, false),
         () -> insert(otherGuest, null, null, stay, "APPROVED", null, true));
+  }
+
+  /**
+   * Approving the pending voucher while a replacement is uploaded, on two connections: whichever
+   * goes first, the period never ends with two live payments (the two partial indexes of an earlier
+   * draft let both through).
+   */
+  @Test
+  void approvingThePendingVoucherWhileAnotherIsUploadedLeavesOneLivePayment() throws Exception {
+    for (int round = 0; round < 10; round++) {
+      long pending = insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
+      var barrier = new CyclicBarrier(2);
+      var approval =
+          CompletableFuture.supplyAsync(
+              () ->
+                  attempt(
+                      barrier,
+                      () ->
+                          jdbc.update(
+                              "UPDATE payments SET status = 'APPROVED', reviewed_at = now(),"
+                                  + " reviewed_by_id = ? WHERE id = ?",
+                              admin,
+                              pending)));
+      var upload =
+          CompletableFuture.supplyAsync(
+              () ->
+                  attempt(
+                      barrier,
+                      () -> insert(guest, contract, "2026-10-01", null, "PENDING", null, false)));
+
+      assertThat(approval.get()).as("the approval always goes through").isTrue();
+      assertThat(upload.get()).as("the second voucher never finds the period free").isFalse();
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT count(*) FROM payments WHERE status IN ('PENDING', 'APPROVED')",
+                  Integer.class))
+          .isEqualTo(1);
+      jdbc.update("DELETE FROM payments");
+    }
   }
 
   /** Both inserts start together, on two connections: the database lets exactly one in. */
@@ -337,7 +415,7 @@ class PaymentsMigrationTest {
     jdbc.update(
         "INSERT INTO payments (id, guest_id, contract_id, stay_id, period, amount, voucher_key,"
             + " original_name, content_type, size_bytes, status, rejection_reason, reviewed_at,"
-            + " reviewed_by_id, recorded_by) VALUES (?, ?, ?, ?, ?::date, 800, 'vouchers/a', 'a.pdf',"
+            + " reviewed_by_id, recorded_by) VALUES (?, ?, ?, ?, ?::date, 800, 'vouchers/' || gen_random_uuid(), 'a.pdf',"
             + " 'application/pdf', 10, ?, ?, CASE WHEN ? THEN now() END, CASE WHEN ? THEN ?::bigint END,"
             + " 'GUEST')",
         id,
@@ -355,15 +433,25 @@ class PaymentsMigrationTest {
 
   /** A valid pending payment with one column replaced by a value the table must refuse. */
   private void insertRaw(String column, String value) {
+    insertRaw(column, value, 1L, "2026-12-01");
+  }
+
+  private void insertRaw(String column, String value, long id, String period) {
     jdbc.execute(
         "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-            + " content_type, size_bytes, status, recorded_by) SELECT 1, "
+            + " content_type, size_bytes, status, recorded_by) SELECT "
+            + id
+            + ", "
             + guest
             + ", "
             + contract
-            + ", '2026-12-01'::date, "
+            + ", '"
+            + period
+            + "'::date, "
             + ("amount".equals(column) ? value : "800")
-            + ", 'vouchers/a', 'a.pdf', 'application/pdf', "
+            + ", 'vouchers/' || gen_random_uuid(), 'a.pdf', "
+            + ("content_type".equals(column) ? value : "'application/pdf'")
+            + ", "
             + ("size_bytes".equals(column) ? value : "10")
             + ", "
             + ("status".equals(column) ? value : "'PENDING'")

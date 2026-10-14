@@ -3,11 +3,11 @@
 -- una estadía (huésped temporal, RN-03). Nace PENDING y el administrador lo aprueba o lo rechaza una sola vez.
 --
 -- Qué decide la base y qué la aplicación:
---  * A lo sumo un voucher PENDING por huésped, contrato y período (RN-15), un solo APPROVED por contrato y
---    período (RN-02) y un solo pago vivo (PENDING o APPROVED) por estadía (RN-03): índices únicos parciales, para
---    que dos peticiones simultáneas no dejen dos filas. Un REJECTED no ocupa el lugar: el huésped sube otro.
---  * El "pago complementario" (RN-16) no existe: si la persona lo decide, solo cambia el índice único de
---    APPROVED por contrato y período; el resto del esquema no lo impide.
+--  * Un solo pago vivo (PENDING o APPROVED) por contrato y período (RN-02, RN-15) y por estadía (RN-03): índices
+--    únicos parciales, para que dos peticiones simultáneas no dejen dos filas. Un REJECTED no ocupa el lugar: el
+--    huésped sube otro.
+--  * El "pago complementario" (RN-16) no existe: si la persona lo decide, solo cambia el índice
+--    uq_payments_live_period; el resto del esquema no lo impide.
 --  * Los estados por período (pagado, en revisión, atrasado, sin pagar) y la deuda NO se guardan: se calculan al
 --    consultar, con el Clock (America/Lima), igual que el vencimiento de un contrato.
 
@@ -54,6 +54,8 @@ CREATE TABLE payments (
     CONSTRAINT ck_payments_period_first_day CHECK (period IS NULL OR EXTRACT(DAY FROM period) = 1),
     CONSTRAINT ck_payments_amount CHECK (amount > 0),
     CONSTRAINT ck_payments_size_bytes CHECK (size_bytes > 0),
+    CONSTRAINT uq_payments_voucher_key UNIQUE (voucher_key),
+    CONSTRAINT ck_payments_content_type CHECK (content_type IN ('image/jpeg', 'image/png', 'application/pdf')),
     CONSTRAINT ck_payments_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
     CONSTRAINT ck_payments_recorded_by CHECK (recorded_by IN ('GUEST', 'ADMIN')),
     -- Todo rechazo lleva un motivo que no es solo espacios (RN-05).
@@ -65,10 +67,10 @@ CREATE TABLE payments (
         OR (status IN ('APPROVED', 'REJECTED') AND reviewed_at IS NOT NULL AND reviewed_by_id IS NOT NULL))
 );
 
--- RN-15: mientras haya un voucher pendiente para el período, el huésped no sube otro.
-CREATE UNIQUE INDEX uq_payments_pending_period ON payments (guest_id, contract_id, period) WHERE status = 'PENDING';
--- RN-02: un período tiene a lo sumo un pago aprobado.
-CREATE UNIQUE INDEX uq_payments_approved_period ON payments (contract_id, period) WHERE status = 'APPROVED';
+-- RN-02, RN-15: un período tiene a lo sumo UN pago vivo (PENDING o APPROVED). Un solo índice y no dos (uno por
+-- estado): con dos, aprobar el voucher pendiente mientras otra petición sube uno nuevo dejaba un APPROVED y un
+-- PENDING del mismo período, porque la aprobación libera el índice de pendientes y toma el de aprobados.
+CREATE UNIQUE INDEX uq_payments_live_period ON payments (contract_id, period) WHERE status IN ('PENDING', 'APPROVED');
 -- RN-03: una estadía tiene un único pago vivo.
 CREATE UNIQUE INDEX uq_payments_live_stay ON payments (stay_id) WHERE status IN ('PENDING', 'APPROVED');
 
