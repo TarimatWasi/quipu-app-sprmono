@@ -34,6 +34,25 @@ public record Payment(
   /** Whitespace and Unicode separators (NBSP, EM SPACE...), which String.strip() leaves. */
   private static final Pattern EDGE_SPACE = Pattern.compile("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$");
 
+  /** NUMERIC(10,2): eight digits before the point. */
+  private static final BigDecimal MAX_AMOUNT = new BigDecimal("99999999.99");
+
+  /**
+   * Greater than 0, at most two decimals, written without exponent, and it fits NUMERIC(10,2)
+   * (RF-05).
+   */
+  public static boolean validAmount(BigDecimal amount) {
+    return amount.signum() > 0
+        && amount.scale() >= 0
+        && amount.stripTrailingZeros().scale() <= 2
+        && amount.compareTo(MAX_AMOUNT) <= 0;
+  }
+
+  /** The reason without the white space and separators at its edges; empty if it has none. */
+  public static String cleanReason(@Nullable String reason) {
+    return reason == null ? "" : EDGE_SPACE.matcher(reason).replaceAll("");
+  }
+
   /** Whether the review is still to be done. */
   public boolean pending() {
     return status == PaymentStatus.PENDING;
@@ -47,7 +66,7 @@ public record Payment(
   /**
    * Approved by the administrator.
    *
-   * @throws PaymentAlreadyResolvedException if it was already approved or rejected
+   * @throws PaymentNotPendingException if it was already approved or rejected
    */
   public Payment approve(Long reviewerId, Instant at) {
     requirePending();
@@ -69,13 +88,13 @@ public record Payment(
    * Rejected with a reason, which is stored without the spaces at its edges. The period or the stay
    * stays open: the guest can upload a new voucher (RN-05).
    *
-   * @throws PaymentAlreadyResolvedException if it was already approved or rejected
+   * @throws PaymentNotPendingException if it was already approved or rejected
    * @throws InvalidRejectionReasonException if the reason is blank or has more than 500 characters
    */
   public Payment reject(Long reviewerId, @Nullable String reason, Instant at) {
     requirePending();
-    String clean = reason == null ? "" : EDGE_SPACE.matcher(reason).replaceAll("");
-    if (clean.isEmpty() || clean.length() > MAX_REASON_LENGTH) {
+    String clean = cleanReason(reason);
+    if (clean.isEmpty() || clean.codePointCount(0, clean.length()) > MAX_REASON_LENGTH) {
       throw new InvalidRejectionReasonException();
     }
     return new Payment(
@@ -94,7 +113,7 @@ public record Payment(
 
   private void requirePending() {
     if (!pending()) {
-      throw new PaymentAlreadyResolvedException();
+      throw new PaymentNotPendingException();
     }
   }
 }

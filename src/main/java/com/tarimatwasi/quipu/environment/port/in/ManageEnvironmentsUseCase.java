@@ -3,6 +3,8 @@ package com.tarimatwasi.quipu.environment.port.in;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import java.util.Collection;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** RF-01: create, read, edit and list the rentable environments. */
@@ -82,4 +84,7 @@ public interface ManageEnvironmentsUseCase {
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
   CursorPage<EnvironmentView> list(StatusFilter filter, PageQuery page);
+
+  /** The code of each environment; an id with no environment adds nothing. */
+  Map<Long, String> codesOf(Collection<Long> ids);
 }

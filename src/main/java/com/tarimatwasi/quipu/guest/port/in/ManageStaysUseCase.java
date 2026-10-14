@@ -51,4 +51,11 @@ public interface ManageStaysUseCase {
    * @throws StayOverlapException if the resulting dates cross another stay of the guest
    */
   StayView update(Long guestId, Long stayId, StayChange change);
+
+  /**
+   * One stay of the guest.
+   *
+   * @throws StayNotFoundException if the guest has no stay with that id
+   */
+  StayView get(Long guestId, Long stayId);
 }

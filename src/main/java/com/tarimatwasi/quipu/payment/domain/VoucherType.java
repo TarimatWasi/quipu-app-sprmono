@@ -14,6 +14,16 @@ public enum VoucherType {
     this.extension = extension;
   }
 
+  /** The type with that content type; the table only lets the three through. */
+  public static VoucherType ofContentType(String contentType) {
+    for (VoucherType type : values()) {
+      if (type.contentType.equals(contentType)) {
+        return type;
+      }
+    }
+    throw new IllegalArgumentException("Not a voucher type: " + contentType);
+  }
+
   /** The type that is stored and served, derived from the content and never from the client. */
   public String contentType() {
     return contentType;

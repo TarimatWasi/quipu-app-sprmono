@@ -99,7 +99,7 @@ class UploadRoutesContractTest {
     }
     mockMvc
         .perform(upload(UploadRoutes.ADMIN_PAYMENTS).header("Origin", ORIGIN).cookie(admin()))
-        .andExpect(status().isNotFound());
+        .andExpect(status().isBadRequest());
   }
 
   @Test

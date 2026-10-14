@@ -64,6 +64,26 @@ public record ContractTerms(
     return periods;
   }
 
+  /**
+   * Whether a voucher may be registered for the period (RN-27): the period must be one the contract
+   * charges up to today. A contract in force takes any of them. One that expired by date takes only
+   * the most recent period still in debt, which the administrator registers by hand. One finished
+   * by hand takes none, and one that has not started has no period yet.
+   */
+  public boolean acceptsPayment(YearMonth period, List<Payment> payments, LocalDate today) {
+    if (!periods(today).contains(period)) {
+      return false;
+    }
+    if (terminatedIn != null) {
+      return false;
+    }
+    if (endDate == null || !endDate.isBefore(today)) {
+      return true;
+    }
+    List<DebtPeriod> debt = DebtCalculator.debt(this, payments, today);
+    return !debt.isEmpty() && debt.get(debt.size() - 1).period().equals(period);
+  }
+
   /** The payment day of the month, or its last day when the month is shorter (RN-10). */
   public LocalDate dueDate(YearMonth period) {
     return period.atDay(Math.min(paymentDay, period.lengthOfMonth()));

@@ -6,6 +6,8 @@ import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -42,4 +44,7 @@ public interface EnvironmentRepositoryPort {
 
   /** Sets the status of the environment; false if there is none with that id. */
   boolean updateStatus(Long id, EnvironmentStatus status);
+
+  /** The environments with those ids; an id with no environment adds nothing. */
+  List<Environment> findAllByIds(Collection<Long> ids);
 }

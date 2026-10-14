@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -47,6 +48,18 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
   @Override
   public Optional<Contract> findByIdForUpdate(Long id) {
     return jpaRepository.findWithLockById(id).map(ContractJpaEntity::toDomain);
+  }
+
+  @Override
+  public List<Contract> findAllByGuest(Long guestId) {
+    return jpaRepository.findByGuestIdOrderByStartDateAscIdAsc(guestId).stream()
+        .map(ContractJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Contract> findAllByIds(Collection<Long> ids) {
+    return jpaRepository.findAllById(ids).stream().map(ContractJpaEntity::toDomain).toList();
   }
 
   @Override

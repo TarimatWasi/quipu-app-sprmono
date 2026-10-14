@@ -301,4 +301,20 @@ class StayServiceTest {
             InvalidGuestStayException.class, e -> assertThat(e.field()).isEqualTo("agreedAmount"));
     verify(stays, never()).update(any());
   }
+
+  @Test
+  void get_returnsTheStayOfTheGuestAndNotFoundForAnyOtherCombination() {
+    var stay =
+        new Stay(
+            STAY_ID,
+            GUEST_ID,
+            LocalDate.parse("2026-10-10"),
+            LocalDate.parse("2026-10-20"),
+            new BigDecimal("150.50"));
+    when(stays.findByIdAndGuest(STAY_ID, GUEST_ID)).thenReturn(Optional.of(stay));
+    when(stays.findByIdAndGuest(STAY_ID, 5L)).thenReturn(Optional.empty());
+
+    assertThat(service().get(GUEST_ID, STAY_ID).endDate()).isEqualTo(LocalDate.parse("2026-10-20"));
+    assertThatThrownBy(() -> service().get(5L, STAY_ID)).isInstanceOf(StayNotFoundException.class);
+  }
 }

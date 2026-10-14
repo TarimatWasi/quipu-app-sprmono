@@ -247,4 +247,13 @@ class EnvironmentServiceTest {
 
     assertThat(service().list(StatusFilter.ACTIVE, page).nextCursor()).isEqualTo("next");
   }
+
+  @Test
+  void codesOf_mapsEachIdToItsCodeAndAsksNothingForNoIds() {
+    when(repository.findAllByIds(java.util.Set.of(ID))).thenReturn(List.of(ROOM_201));
+
+    assertThat(service().codesOf(java.util.Set.of(ID))).isEqualTo(java.util.Map.of(ID, "201"));
+    assertThat(service().codesOf(java.util.Set.of())).isEmpty();
+    verify(repository, never()).findAllByIds(java.util.Set.of());
+  }
 }
