@@ -14,12 +14,6 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-  # RF-15: un contrato es un PDF de hasta 10 MB. El límite del archivo es el del contrato; el de la
-  # petición deja lugar a los demás campos del formulario.
-  servlet:
-    multipart:
-      max-file-size: 10MB # NOSONAR java:S5693 TAR-40: RF-15 fija 10 MB y solo el ADMIN sube contratos
-      max-request-size: 11MB # NOSONAR java:S5693 TAR-40: 10 MB del PDF más los campos del formulario
   mvc:
     problemdetails:
       enabled: true

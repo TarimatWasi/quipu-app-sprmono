@@ -49,7 +49,6 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 // Before Boot's ProblemDetails advice: the BFF answers {code, message, field?}, not problem+json.
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -346,8 +345,8 @@ public class BffExceptionHandler {
                 "endDate"));
   }
 
-  /** RF-15: a PDF by content, up to 10 MB; the multipart limit answers the same. */
-  @ExceptionHandler({InvalidContractFileException.class, MaxUploadSizeExceededException.class})
+  /** RF-15: a PDF by content, up to 10 MB (the multipart limit has its own advice). */
+  @ExceptionHandler(InvalidContractFileException.class)
   public ResponseEntity<BffErrorResponse> handleInvalidContractFile() {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
