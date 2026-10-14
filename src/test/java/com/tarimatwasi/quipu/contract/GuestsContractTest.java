@@ -201,6 +201,17 @@ class GuestsContractTest {
         .andExpect(jsonPath("$.code").value("GUEST_DOCUMENT_TAKEN"));
   }
 
+  @Test
+  void aDocumentOfAnAdministratorIsTaken() throws Exception {
+    var id = insertGuest("12345678", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
+
+    patchGuest(id, "{\"documentNumber\":\"00000001\"}")
+        .andExpect(status().isConflict())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("GUEST_DOCUMENT_TAKEN"))
+        .andExpect(jsonPath("$.field").value("documentNumber"));
+  }
+
   /** TAR-182: the stays have their own endpoints; the guest edit no longer takes stay fields. */
   @Test
   void theStayFieldsAreNoLongerPartOfTheGuestEdit() throws Exception {

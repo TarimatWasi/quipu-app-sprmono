@@ -86,4 +86,46 @@ class GuestAccountServiceTest {
     assertThat(states).containsOnlyKeys(other);
     assertThat(service.stateOf(List.of())).isEmpty();
   }
+
+  private void accountOf(Role role, String document, String status) {
+    users.save(
+        new UserAccount(
+            TestIds.next(),
+            document + "@example.test",
+            DocumentType.DNI,
+            document,
+            "hash",
+            role,
+            null,
+            false,
+            status,
+            0,
+            null,
+            null));
+  }
+
+  @Test
+  void theDocumentOfAnAdministratorBelongsToAnAdministratorEvenIfInactive() {
+    accountOf(Role.ADMIN, "55555555", "ACTIVE");
+    accountOf(Role.ADMIN, "66666666", "INACTIVE");
+
+    assertThat(service.documentBelongsToAdministrator("DNI", "55555555")).isTrue();
+    assertThat(service.documentBelongsToAdministrator("DNI", "66666666")).isTrue();
+  }
+
+  @Test
+  void theDocumentOfAGuestOrOfNobodyDoesNotBelongToAnAdministrator() {
+    accountOf(Role.GUEST, "77777777", "ACTIVE");
+
+    assertThat(service.documentBelongsToAdministrator("DNI", "77777777")).isFalse();
+    assertThat(service.documentBelongsToAdministrator("DNI", "88888888")).isFalse();
+    assertThat(service.documentBelongsToAdministrator("CE", "55555555")).isFalse();
+  }
+
+  @Test
+  void anUnknownDocumentTypeBelongsToNobody() {
+    accountOf(Role.ADMIN, "55555555", "ACTIVE");
+
+    assertThat(service.documentBelongsToAdministrator("VISA", "55555555")).isFalse();
+  }
 }

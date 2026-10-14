@@ -3,9 +3,12 @@ package com.tarimatwasi.quipu.guest.adapter.out.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
+import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
@@ -13,14 +16,19 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** BE-SPR-WEB-08 (TAR-176): guests are read by last index, ordered by document type and number. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
@@ -29,6 +37,7 @@ class GuestRepositoryAdapterTest {
 
   @Autowired GuestRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
+  @Autowired TransactionTemplate transaction;
 
   @BeforeEach
   void setUp() {
@@ -100,5 +109,81 @@ class GuestRepositoryAdapterTest {
     String oneKeyOnly = CursorToken.encode("DNI");
     assertThatThrownBy(() -> adapter.findAll(null, null, new PageQuery(oneKeyOnly, 5)))
         .isInstanceOf(InvalidCursorException.class);
+  }
+
+  /** TAR-186 (D-33): a repeated contact email is not reported as a repeated document. */
+  @Test
+  void save_withAnEmailOfAnotherGuest_reportsTheEmailNotTheDocument() {
+    Long first = idOf("DNI", "30000001");
+    Long second = idOf("CE", "20000001");
+    jdbc.update("UPDATE guests SET email = ? WHERE id = ?", "ana@example.test", first);
+    Guest changed = withEmail(adapter.findById(second).orElseThrow(), "ANA@example.test");
+
+    assertThatThrownBy(() -> transaction.execute(status -> adapter.save(changed)))
+        .isInstanceOf(GuestEmailAlreadyExistsException.class);
+  }
+
+  @Test
+  void save_withTheDocumentOfAnotherGuest_reportsTheDocument() {
+    Long second = idOf("CE", "20000001");
+    Guest changed = withDocument(adapter.findById(second).orElseThrow(), "DNI", "30000001");
+
+    assertThatThrownBy(() -> transaction.execute(status -> adapter.save(changed)))
+        .isInstanceOf(GuestDocumentAlreadyExistsException.class);
+  }
+
+  @Test
+  void conflict_readsTheNameOfTheConstraint() {
+    var email =
+        new ConstraintViolationException("dup", new SQLException(), "uq_guests_email_lower");
+    var other = new ConstraintViolationException("dup", new SQLException(), "uq_guests_document");
+
+    assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x", email)))
+        .isInstanceOf(GuestEmailAlreadyExistsException.class);
+    assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x", other)))
+        .isInstanceOf(GuestDocumentAlreadyExistsException.class);
+    assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x")))
+        .isInstanceOf(GuestDocumentAlreadyExistsException.class);
+  }
+
+  private Long idOf(String documentType, String number) {
+    return Objects.requireNonNull(
+        jdbc.queryForObject(
+            "SELECT id FROM guests WHERE document_type = ? AND document_number = ?",
+            Long.class,
+            documentType,
+            number));
+  }
+
+  private static Guest withEmail(Guest guest, String email) {
+    return new Guest(
+        guest.id(),
+        guest.documentType(),
+        guest.documentNumber(),
+        guest.fullName(),
+        email,
+        guest.phone(),
+        guest.type(),
+        guest.status(),
+        guest.statusBeforeInactive(),
+        guest.personalDataCompletedAt(),
+        guest.documentsStepCompletedAt(),
+        guest.emergencyContact());
+  }
+
+  private static Guest withDocument(Guest guest, String documentType, String number) {
+    return new Guest(
+        guest.id(),
+        DocumentType.valueOf(documentType),
+        number,
+        guest.fullName(),
+        guest.email(),
+        guest.phone(),
+        guest.type(),
+        guest.status(),
+        guest.statusBeforeInactive(),
+        guest.personalDataCompletedAt(),
+        guest.documentsStepCompletedAt(),
+        guest.emergencyContact());
   }
 }

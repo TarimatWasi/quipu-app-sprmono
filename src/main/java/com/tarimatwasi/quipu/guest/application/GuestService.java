@@ -9,12 +9,14 @@ import com.tarimatwasi.quipu.guest.domain.Stay;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
+import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -101,6 +103,8 @@ public class GuestService implements ManageGuestsUseCase {
       return summary(saved, stateOf(saved));
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
+    } catch (GuestEmailAlreadyExistsException e) {
+      throw new GuestEmailTakenException(e);
     }
   }
 
@@ -116,6 +120,9 @@ public class GuestService implements ManageGuestsUseCase {
     }
     if (!guest.documentCanBeCorrected()) {
       throw new GuestDocumentLockedException();
+    }
+    if (accounts.documentBelongsToAdministrator(type.name(), number)) {
+      throw new GuestDocumentTakenException();
     }
     return new Guest(
         guest.id(),
