@@ -138,6 +138,41 @@ class VoucherFileTest {
   }
 
   @Test
+  void aNameInsideAStringACommentOrAStreamIsNotActiveContent() {
+    assertThat(VoucherFile.typeOf(pdf("BT (/JS) Tj ET"))).contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(pdf("BT (text (nested /JavaScript) more) Tj ET")))
+        .contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(pdf("BT (an escaped paren \\) then /Launch) Tj ET")))
+        .contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(pdf("% a comment about /OpenAction\n1 0 obj << /Type /Page >>")))
+        .contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(pdf("<< /Contents <2f4a53> >>"))).contains(VoucherType.PDF);
+    assertThat(
+            VoucherFile.typeOf(
+                pdf("<< /Length 12 >>\nstream\nbinary /JS /AA data\nendstream\nendobj")))
+        .contains(VoucherType.PDF);
+  }
+
+  @Test
+  void aNameThatFollowsAStringAStreamOrACommentIsStillFound() {
+    assertThat(VoucherFile.typeOf(pdf("(text) /JS 5 0 R"))).isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("(text (nested)) /Launch 5 0 R"))).isEmpty();
+    assertThat(
+            VoucherFile.typeOf(
+                pdf("<< /Length 4 >>\nstream\nabcd\nendstream\n<< /OpenAction 1 0 R >>")))
+        .isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("% a comment\n<< /AA << >> >>"))).isEmpty();
+    assertThat(VoucherFile.typeOf(pdf("<2f4a53> /EmbeddedFile 1 0 R"))).isEmpty();
+  }
+
+  @Test
+  void anUnclosedStringOrStreamDoesNotMakeTheScanFail() {
+    assertThat(VoucherFile.typeOf(pdf("(never closed /JS"))).contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(pdf("<< >>\nstream\nnever ends /JS"))).contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(pdf("<2f4a53 never closed"))).contains(VoucherType.PDF);
+  }
+
+  @Test
   void aVeryLongNameIsNotMistakenForAShortOne() {
     assertThat(VoucherFile.typeOf(pdf("<< /" + "A".repeat(5000) + " 1 >>")))
         .contains(VoucherType.PDF);
