@@ -204,6 +204,7 @@ class ContractsContractTest {
                 .param("paymentDay", "5")
                 .param("graceDays", "3")
                 .param("startDate", "2026-11-01")
+                .header("Origin", "http://localhost:3000")
                 .cookie(admin()))
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContract())
@@ -230,7 +231,10 @@ class ContractsContractTest {
 
   private void assertRefused(Terms terms, String field) throws Exception {
     mockMvc
-        .perform(fields(multipartWith(PDF, "c.pdf"), room, contractGuest, terms).cookie(admin()))
+        .perform(
+            fields(multipartWith(PDF, "c.pdf"), room, contractGuest, terms)
+                .header("Origin", "http://localhost:3000")
+                .cookie(admin()))
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -524,6 +528,32 @@ class ContractsContractTest {
   }
 
   @Test
+  void anUploadThatDoesNotSayWhereItComesFromIsRefused() throws Exception {
+    mockMvc
+        .perform(multipartWith(PDF, "c.pdf").cookie(admin()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    mockMvc
+        .perform(multipartWith(PDF, "c.pdf").header("Sec-Fetch-Site", "cross-site").cookie(admin()))
+        .andExpect(status().isForbidden());
+    verify(files, never()).store(any());
+  }
+
+  @Test
+  void anUploadFromTheSameSiteNeedsNoOriginHeader() throws Exception {
+    mockMvc
+        .perform(
+            fields(
+                    multipartWith(PDF, "c.pdf"),
+                    room,
+                    contractGuest,
+                    new Terms("850.50", "5", "3", "2026-11-01", null))
+                .header("Sec-Fetch-Site", "same-origin")
+                .cookie(admin()))
+        .andExpect(status().isCreated());
+  }
+
+  @Test
   void aCrossSiteUploadIsStoppedByCors() throws Exception {
     mockMvc
         .perform(
@@ -596,6 +626,7 @@ class ContractsContractTest {
                 environment,
                 guest,
                 new Terms("850.50", "5", "3", start, end))
+            .header("Origin", "http://localhost:3000")
             .cookie(cookie));
   }
 

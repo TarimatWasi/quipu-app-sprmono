@@ -90,6 +90,9 @@ public class R2ContractFileAdapter implements ContractFilePort {
                           .bucket(properties.bucketName())
                           .key(key)
                           .responseContentType(PDF)
+                          // A fixed name, never the uploaded one: an active PDF must not run inline
+                          // on the domain of the bucket.
+                          .responseContentDisposition("attachment; filename=\"contrato.pdf\"")
                           .build())
                   .build())
           .url()

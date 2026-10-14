@@ -91,10 +91,15 @@ public class ContractService implements ManageContractsUseCase {
 
   /** The object goes to the bucket first; if the row then fails, the object is removed. */
   private ContractView store(NewContract contract, LocalDate today) {
+    // ponytail: the upload runs inside the transaction that holds the lock of the environment, so a
+    // slow bucket delays other contracts on that same environment (one per upload, at most 10 MB);
+    // upload before opening the transaction if that ever hurts. A failure of the commit itself
+    // leaves
+    // the object orphan: it is rare and the key is in the logs of the failed request.
     String key = storeFile(contract.file().content());
-    Contract saved = null;
+    ContractView view = null;
     try {
-      saved =
+      Contract saved =
           contracts.insert(
               new Draft(
                   contract.environmentId(),
@@ -107,12 +112,14 @@ public class ContractService implements ManageContractsUseCase {
                   key,
                   sanitizedName(contract.file().originalName()),
                   contract.file().content().length));
+      // Signing is inside the try: if it fails the transaction rolls back and the object goes too.
+      view = ContractViews.of(saved, today, files);
+      return view;
     } finally {
-      if (saved == null) {
+      if (view == null) {
         discard(key);
       }
     }
-    return ContractViews.of(saved, today, files);
   }
 
   private String storeFile(byte[] content) {
@@ -191,7 +198,8 @@ public class ContractService implements ManageContractsUseCase {
    */
   static String sanitizedName(String name) {
     String base = name.substring(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1);
-    String clean = base.replaceAll("\\p{Cntrl}", "").strip();
+    // Control and format characters (such as the bidi override U+202E) can disguise an extension.
+    String clean = base.replaceAll("[\\p{Cntrl}\\p{Cf}]", "").strip();
     if (clean.length() > MAX_NAME_LENGTH) {
       clean = clean.substring(0, MAX_NAME_LENGTH);
     }

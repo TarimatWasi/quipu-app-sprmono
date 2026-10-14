@@ -76,6 +76,10 @@ class R2ContractFileAdapterTest {
 
     assertThat(url).contains("/bucket/contracts/abc.pdf").contains("X-Amz-Signature=");
     assertThat(url).contains("X-Amz-Expires=900");
+    assertThat(url)
+        .as("the file is downloaded, never shown inline, and under a fixed name")
+        .contains("response-content-disposition=attachment")
+        .contains("contrato.pdf");
     assertThat(url).doesNotContain("test-secret-key");
     assertThat(requests).as("signing is local, nothing is sent").isEmpty();
     adapter.close();

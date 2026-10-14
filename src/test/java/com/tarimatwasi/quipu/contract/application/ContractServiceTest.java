@@ -304,6 +304,8 @@ class ContractServiceTest {
         .isEqualTo("Contrato Ñandú.pdf");
     assertThat(ContractService.sanitizedName("")).isEqualTo("contrato.pdf");
     assertThat(ContractService.sanitizedName("..")).isEqualTo("contrato.pdf");
+    assertThat(ContractService.sanitizedName("cont\u202Efdp.exe")).isEqualTo("contfdp.exe");
+    assertThat(ContractService.sanitizedName("a\u200Bb\uFEFF.pdf")).isEqualTo("ab.pdf");
     assertThat(ContractService.sanitizedName("dir/")).isEqualTo("contrato.pdf");
     assertThat(ContractService.sanitizedName("x".repeat(300))).hasSize(255);
   }
@@ -400,5 +402,17 @@ class ContractServiceTest {
     assertThatThrownBy(() -> service.get(CONTRACT_ID))
         .isInstanceOf(ContractFileUnavailableException.class)
         .hasCauseInstanceOf(ContractFileStorageException.class);
+  }
+
+  @Test
+  void ifTheUrlCannotBeSignedAfterTheInsertTheStoredObjectIsRemoved() {
+    freeEnvironmentAndActiveContractGuest();
+    when(files.store(PDF)).thenReturn(KEY);
+    when(contracts.insert(any())).thenReturn(stored(false, null));
+    when(files.signedUrl(KEY)).thenThrow(new ContractFileStorageException("down"));
+
+    assertThatThrownBy(() -> service.create(request()))
+        .isInstanceOf(ContractFileUnavailableException.class);
+    verify(files).delete(KEY);
   }
 }

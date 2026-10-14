@@ -40,6 +40,10 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
    */
   private static final String CONTRACT_UPLOAD = "/bff/admin/contracts";
 
+  /** The same body the security layer writes for a refused request. */
+  private static final String FORBIDDEN_BODY =
+      "{\"code\":\"AUTH_FORBIDDEN\",\"message\":\"No tienes permiso para esta acción\"}";
+
   /** BFF error shape (QP-SPRMONO-BFF-01): stable English code, Spanish message. */
   private static final String BODY =
       "{\"code\":\"UNSUPPORTED_MEDIA_TYPE\",\"message\":\"El contenido debe ser application/json.\"}";
@@ -60,7 +64,27 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       response.getWriter().write(BODY);
       return;
     }
+    if (isContractUpload(request) && !declaresItsOrigin(request)) {
+      response.setStatus(HttpStatus.FORBIDDEN.value());
+      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+      response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+      response.getWriter().write(FORBIDDEN_BODY);
+      return;
+    }
     chain.doFilter(request, response);
+  }
+
+  /**
+   * A multipart form is a "simple" cross-site request, so the upload must say where it comes from:
+   * a browser always sends {@code Origin} on a POST (CORS has already refused a foreign one) or
+   * {@code Sec-Fetch-Site: same-origin | same-site}. A request with neither is refused.
+   */
+  private static boolean declaresItsOrigin(HttpServletRequest request) {
+    if (request.getHeader(HttpHeaders.ORIGIN) != null) {
+      return true;
+    }
+    String fetchSite = request.getHeader("Sec-Fetch-Site");
+    return "same-origin".equals(fetchSite) || "same-site".equals(fetchSite);
   }
 
   private static boolean isContractUpload(HttpServletRequest request) {

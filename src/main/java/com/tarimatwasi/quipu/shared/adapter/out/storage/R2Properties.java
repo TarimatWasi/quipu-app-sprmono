@@ -20,4 +20,17 @@ public record R2Properties(
     String accessKeyId,
     String secretAccessKey,
     String endpoint,
-    String bucketName) {}
+    String bucketName) {
+
+  /** Without the secret: a record prints every component, and this one would reach a log. */
+  @Override
+  public String toString() {
+    return "R2Properties[accountId="
+        + accountId
+        + ", endpoint="
+        + endpoint
+        + ", bucketName="
+        + bucketName
+        + ", accessKeyId=***, secretAccessKey=***]";
+  }
+}
