@@ -16,6 +16,20 @@
 -- última modificación de la fila, que es cuando se finalizaron (lo único que se modifica después de cargarlo).
 ALTER TABLE contracts ADD COLUMN terminated_at TIMESTAMPTZ NULL;
 UPDATE contracts SET terminated_at = last_modified_date WHERE status = 'TERMINATED';
+-- Compatibilidad con la versión anterior de la aplicación (expandir, migrar, contraer): si se vuelve a ella tras
+-- esta migración, o mientras una instancia suya sigue viva en el despliegue, finaliza un contrato cambiando solo
+-- status y no conoce terminated_at. El disparador completa el instante en ese caso y así el CHECK de abajo no
+-- rechaza la finalización. Se retira en una migración posterior, cuando ya no corra esa versión.
+CREATE FUNCTION contracts_fill_terminated_at() RETURNS trigger AS $$
+BEGIN
+    IF NEW.status = 'TERMINATED' AND NEW.terminated_at IS NULL THEN
+        NEW.terminated_at := now();
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_contracts_fill_terminated_at BEFORE INSERT OR UPDATE ON contracts
+    FOR EACH ROW EXECUTE FUNCTION contracts_fill_terminated_at();
 ALTER TABLE contracts ADD CONSTRAINT ck_contracts_terminated_at CHECK ((status = 'TERMINATED') = (terminated_at IS NOT NULL));
 COMMENT ON COLUMN contracts.terminated_at IS 'Instante en que el administrador finalizó el contrato a mano (RN-21); NULL mientras no se finalizó. El último mes que cobra es el de esta fecha en America/Lima.';
 

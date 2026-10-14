@@ -140,13 +140,48 @@ class PaymentsMigrationTest {
   @Test
   void aContractIsFinishedExactlyWhenItHasTheInstantItWasFinished() {
     assertThatThrownBy(
-            () -> jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", contract))
+            () -> jdbc.update("UPDATE contracts SET terminated_at = now() WHERE id = ?", contract))
+        .as("an active contract with an instant")
         .isInstanceOf(DataIntegrityViolationException.class);
     assertThatThrownBy(
-            () -> jdbc.update("UPDATE contracts SET terminated_at = now() WHERE id = ?", contract))
+            () ->
+                jdbc.update(
+                    "UPDATE contracts SET status = 'ACTIVE', terminated_at = now() WHERE id = ?",
+                    contract))
         .isInstanceOf(DataIntegrityViolationException.class);
     jdbc.update(
         "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", contract);
+  }
+
+  /** The previous version of the application finishes a contract by changing only the status. */
+  @Test
+  void aLegacyTerminationThatOnlyChangesTheStatusStillWorksAndGetsItsInstant() {
+    jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", contract);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT terminated_at IS NOT NULL FROM contracts WHERE id = ?",
+                Boolean.class,
+                contract))
+        .isTrue();
+  }
+
+  @Test
+  void aLegacyInsertOfAFinishedContractAlsoGetsItsInstant() {
+    long room = insertEnvironment("public", "698");
+    long id = NEXT_ID.incrementAndGet();
+    jdbc.update(
+        "INSERT INTO contracts (id, guest_id, environment_id, start_date, monthly_amount, payment_day,"
+            + " grace_days, file_key, original_name, size_bytes, status) VALUES (?, ?, ?,"
+            + " '2026-01-01', 800, 5, 3, 'contracts/legacy.pdf', 'a.pdf', 10, 'TERMINATED')",
+        id,
+        guest,
+        room);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT terminated_at IS NOT NULL FROM contracts WHERE id = ?", Boolean.class, id))
+        .isTrue();
   }
 
   @Test
