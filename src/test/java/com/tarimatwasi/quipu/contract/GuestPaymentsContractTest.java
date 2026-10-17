@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -367,6 +368,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
         mockMvc
             .perform(get(ACCOUNT_STATUS).cookie(guest()))
             .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(satisfiesTheContract())
             .andExpect(jsonPath("$.length()").value(10))
             .andExpect(jsonPath("$[0].period").value("2026-01"))
@@ -407,6 +409,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
         mockMvc
             .perform(get(STAY_STATUS).cookie(temporary()))
             .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(satisfiesTheContract())
             .andExpect(jsonPath("$.stayId").value(id(IdKind.STAY, stay)))
             .andExpect(jsonPath("$.startDate").value("2026-10-01"))

@@ -23,8 +23,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -114,15 +116,21 @@ public class GuestPaymentsBffController {
       @NotNull MultipartFile file, @NotNull BigDecimal amount, @Nullable String paymentMethod) {}
 
   @GetMapping("/bff/guest/account-status")
-  public List<PeriodStatusResponse> accountStatus(Authentication authentication) {
-    return payments.accountStatus(guestOf(authentication)).stream()
-        .map(view -> PeriodStatusResponse.of(view, ids))
-        .toList();
+  public ResponseEntity<List<PeriodStatusResponse>> accountStatus(Authentication authentication) {
+    // The state of the payments of a person: no cache keeps it.
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            payments.accountStatus(guestOf(authentication)).stream()
+                .map(view -> PeriodStatusResponse.of(view, ids))
+                .toList());
   }
 
   @GetMapping("/bff/temporary-guest/payment-status")
-  public StayPaymentStatusResponse stayStatus(Authentication authentication) {
-    return StayPaymentStatusResponse.of(payments.stayStatus(guestOf(authentication)), ids);
+  public ResponseEntity<StayPaymentStatusResponse> stayStatus(Authentication authentication) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(StayPaymentStatusResponse.of(payments.stayStatus(guestOf(authentication)), ids));
   }
 
   @PostMapping(path = UploadRoutes.GUEST_PAYMENTS, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
