@@ -11,13 +11,15 @@ public interface PaymentGuestPort {
    *
    * @param name {@code null} until the guest gives it in the onboarding
    * @param contractType a guest with a contract; otherwise a temporary one
+   * @param inactive deactivated by the administrator (RN-12); never true with {@code active}
    */
   record GuestProfile(
       Long id,
       @Nullable String name,
       String documentNumber,
       boolean contractType,
-      boolean active) {}
+      boolean active,
+      boolean inactive) {}
 
   /** Where the guest of a session is in its lifecycle (RN-36), as the payments read it. */
   enum Standing {

@@ -47,7 +47,8 @@ public class GuestPaymentAdapter implements PaymentGuestPort {
         guest.name(),
         guest.documentNumber(),
         guest.type() == GuestKind.CONTRACT,
-        guest.status() == GuestState.ACTIVE);
+        guest.status() == GuestState.ACTIVE,
+        guest.status() == GuestState.INACTIVE);
   }
 
   // ponytail: one call to the guest module per distinct guest of the page (at most 100); a batch

@@ -2,6 +2,8 @@ package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,6 +64,44 @@ class GuestDeactivationContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.periods[0]").value("2026-01"));
     assertThat(guestRow(contractGuest)).containsEntry("status", "INACTIVE");
     assertThat(accountStatus(guestAccountId)).isEqualTo("INACTIVE");
+  }
+
+  /** D-27: the administrator pays what the inactive guest owes, and then it is reactivated. */
+  @Test
+  void theDebtOfAnInactiveGuestIsPaidByDirectPaymentsAndThenItIsReactivated() throws Exception {
+    terminateTheContract();
+    when(files.store(any(), any())).thenAnswer(call -> KEY + "-" + TestIds.next());
+    deactivate(contractGuest).andExpect(status().isNoContent());
+    reactivate(contractGuest).andExpect(status().isConflict());
+
+    for (int month = 1; month <= 10; month++) {
+      String period = String.format("2026-%02d", month);
+      post(contractGuest, "period", period, "800", PDF, "v.pdf")
+          .andExpect(status().isCreated())
+          .andExpect(answersTheContract())
+          .andExpect(jsonPath("$.period").value(period));
+    }
+    post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf")
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"));
+
+    reactivate(contractGuest)
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.status").value("ACTIVE"));
+    assertThat(accountStatus(guestAccountId)).isEqualTo("ACTIVE");
+  }
+
+  /** D-27 covers only the debt of a contract: an inactive temporary guest pays no stay. */
+  @Test
+  void anInactiveTemporaryGuestPaysNoStay() throws Exception {
+    deactivate(temporaryGuest).andExpect(status().isNoContent());
+
+    post(temporaryGuest, "stayId", id(IdKind.STAY, stay), "150", PDF, "v.pdf")
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"));
   }
 
   @Test
@@ -169,7 +209,8 @@ class GuestDeactivationContractTest extends PaymentsContractSupport {
 
   private void terminateTheContract() {
     jdbc.update(
-        "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", contract);
+        "UPDATE contracts SET status = 'TERMINATED', terminated_at = '2026-10-14T12:00:00Z' WHERE id = ?",
+        contract);
   }
 
   private ResultActions deactivate(Long guestId) throws Exception {

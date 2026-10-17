@@ -207,7 +207,10 @@ public class PaymentService implements ManagePaymentsUseCase {
     if (stayId != null) {
       stays.stayOf(direct.guestId(), stayId);
     }
-    if (!guest.active()) {
+    // D-27: an inactive guest is reactivated once its debt is paid, so the administrator may still
+    // pay the periods of a contract it owes; anything else needs an active guest.
+    boolean settlingDebt = guest.inactive() && guest.contractType() && stayId == null;
+    if (!guest.active() && !settlingDebt) {
       throw new GuestNotActiveException(direct.guestId());
     }
     Target target = stayId != null ? stayTarget(guest, stayId) : periodTarget(guest, direct);
@@ -256,7 +259,9 @@ public class PaymentService implements ManagePaymentsUseCase {
             .sorted(Comparator.comparing((ContractInfo c) -> c.terms().startDate()).reversed())
             .toList();
     if (charging.isEmpty()) {
-      throw new InvalidPaymentException("period");
+      throw guest.active()
+          ? new InvalidPaymentException("period")
+          : new GuestNotActiveException(guest.id());
     }
     ContractInfo target =
         charging.size() == 1
@@ -265,6 +270,10 @@ public class PaymentService implements ManagePaymentsUseCase {
                 .filter(c -> owes(c, period, today))
                 .findFirst()
                 .orElse(charging.get(0));
+    // An inactive guest pays only a month it owes (D-27), never one ahead.
+    if (!guest.active() && !owes(target, period, today)) {
+      throw new GuestNotActiveException(guest.id());
+    }
     return new Target(target.id(), null, period);
   }
 
