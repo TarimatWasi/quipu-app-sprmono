@@ -1,17 +1,13 @@
 package com.tarimatwasi.quipu.auth.application;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
-import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import com.tarimatwasi.quipu.auth.port.in.AccountDisabledException;
-import com.tarimatwasi.quipu.auth.port.in.ActivateAccessUseCase;
+import com.tarimatwasi.quipu.auth.port.in.AccountDocumentTakenException;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
-import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.port.out.AccessMailPort;
-import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
+import com.tarimatwasi.quipu.auth.port.out.AccountAlreadyExistsException;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
-import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -20,6 +16,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
  * person chose, they live 30 minutes and the login and the activation are rate limited.
  */
 @Service
-public class GuestAccessService implements GuestAccessUseCase, ActivateAccessUseCase {
+@PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02: only the administrator flows hand accesses
+public class GuestAccessService implements GuestAccessUseCase {
 
   static final Duration ACCESS_VALIDITY = Duration.ofMinutes(30);
 
@@ -45,25 +43,19 @@ public class GuestAccessService implements GuestAccessUseCase, ActivateAccessUse
   private final UserRepositoryPort users;
   private final AccessGrantRepositoryPort grants;
   private final AccessMailPort mail;
-  private final GuestAccessListener guests;
   private final PasswordEncoder passwordEncoder;
-  private final SessionTokenPort sessionTokens;
   private final Clock clock;
 
   GuestAccessService(
       UserRepositoryPort users,
       AccessGrantRepositoryPort grants,
       AccessMailPort mail,
-      GuestAccessListener guests,
       PasswordEncoder passwordEncoder,
-      SessionTokenPort sessionTokens,
       Clock clock) {
     this.users = users;
     this.grants = grants;
     this.mail = mail;
-    this.guests = guests;
     this.passwordEncoder = passwordEncoder;
-    this.sessionTokens = sessionTokens;
     this.clock = clock;
   }
 
@@ -75,12 +67,16 @@ public class GuestAccessService implements GuestAccessUseCase, ActivateAccessUse
       return;
     }
     String free = email != null && users.findByEmail(email).isEmpty() ? email : null;
-    users.insertGuestAccount(
-        guestId,
-        DocumentType.valueOf(documentType),
-        documentNumber,
-        free,
-        passwordEncoder.encode(UUID.randomUUID().toString()));
+    try {
+      users.insertGuestAccount(
+          guestId,
+          DocumentType.valueOf(documentType),
+          documentNumber,
+          free,
+          passwordEncoder.encode(UUID.randomUUID().toString()));
+    } catch (AccountAlreadyExistsException e) {
+      throw new AccountDocumentTakenException(e);
+    }
   }
 
   @Override
@@ -101,33 +97,15 @@ public class GuestAccessService implements GuestAccessUseCase, ActivateAccessUse
   }
 
   @Override
+  @Transactional
+  public void revokeAccess(Long guestId) {
+    grants.revokeLive(guestId, clock.instant());
+  }
+
+  @Override
   @Transactional(readOnly = true)
   public Optional<Instant> accessExpiry(Long guestId) {
     return grants.liveExpiry(guestId, clock.instant());
-  }
-
-  /**
-   * The password is checked before the token is touched, so a weak one can be corrected with the
-   * same link. Every token that is not usable fails at the same conditional update, with one
-   * answer. The guest row is locked before the account, the order of the deactivation.
-   */
-  @Override
-  @Transactional
-  public ActivationResult activate(String token, String newPassword) {
-    PasswordPolicy.require(newPassword);
-    Instant now = clock.instant();
-    Long guestId =
-        grants
-            .consumeLink(ResetCodeIssuer.hash(token), now)
-            .orElseThrow(InvalidResetCodeException::new);
-    guests.accessUsed(guestId);
-    UserAccount account =
-        users.findByGuestIdForUpdate(guestId).orElseThrow(InvalidResetCodeException::new);
-    if (account.isDisabled()) {
-      throw new AccountDisabledException();
-    }
-    users.changePassword(account.id(), passwordEncoder.encode(newPassword), clock.instant());
-    return new ActivationResult(guestId, sessionTokens.issue(account.id().toString()));
   }
 
   private static String temporaryPassword() {

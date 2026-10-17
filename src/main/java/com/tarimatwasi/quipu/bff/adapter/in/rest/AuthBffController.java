@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase;
 import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase.GuestSessionView;
 import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase.OnboardingStep;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
+import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -132,7 +133,16 @@ public class AuthBffController {
   public SessionResponse me(Authentication authentication) {
     CurrentSession current = currentSessionUseCase.currentSession(authentication.getName());
     return session(
-        current.role(), current.displayEmail(), current.mustChangePassword(), current.guestId());
+        current.role(),
+        current.displayEmail(),
+        current.mustChangePassword() || isTemporary(authentication),
+        current.guestId());
+  }
+
+  /** The session opened with a temporary password (RF-12); see {@link AccessSessions}. */
+  private static boolean isTemporary(Authentication authentication) {
+    return authentication.getAuthorities().stream()
+        .anyMatch(a -> AccessSessions.TEMPORARY_AUTHORITY.equals(a.getAuthority()));
   }
 
   private SessionResponse session(
@@ -141,13 +151,22 @@ public class AuthBffController {
       return new SessionResponse(role, name, mustChangePassword, null, null, null);
     }
     GuestSessionView guest = guestSessions.sessionOf(guestId);
+    // D-30: a guest pending activation that signed in with its temporary password is still stored
+    // as pending until it chooses its password; its session is the password step of the onboarding.
+    boolean passwordStep =
+        mustChangePassword
+            && (guest.status() == GuestState.PENDING_ACTIVATION
+                || guest.status() == GuestState.ONBOARDING);
     OnboardingStep next = guest.nextStep();
-    String step =
-        guest.status() != GuestState.ONBOARDING || next == null
-            ? null
-            : mustChangePassword ? "PASSWORD" : next.name();
+    String step;
+    if (passwordStep) {
+      step = "PASSWORD";
+    } else {
+      step = guest.status() == GuestState.ONBOARDING && next != null ? next.name() : null;
+    }
+    String status = passwordStep ? GuestState.ONBOARDING.name() : guest.status().name();
     return new SessionResponse(
-        role, guest.name(), mustChangePassword, guest.type().name(), guest.status().name(), step);
+        role, guest.name(), mustChangePassword, guest.type().name(), status, step);
   }
 
   /**
@@ -168,7 +187,10 @@ public class AuthBffController {
     ChangePasswordResult result =
         changePasswordUseCase.changePassword(
             new ChangePasswordCommand(
-                authentication.getName(), request.currentPassword(), request.newPassword()));
+                authentication.getName(),
+                request.currentPassword(),
+                request.newPassword(),
+                isTemporary(authentication)));
     return ResponseEntity.noContent()
         .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
         .build();

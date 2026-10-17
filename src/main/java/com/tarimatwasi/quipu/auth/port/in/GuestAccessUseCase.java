@@ -33,6 +33,11 @@ public interface GuestAccessUseCase {
    */
   boolean sendAccess(String email, IssuedAccess access);
 
+  /**
+   * Revokes the live access of the guest, if any (RN-12: a deactivated guest). Joins the caller.
+   */
+  void revokeAccess(Long guestId);
+
   /** When the live, unused access of the guest expires; empty if it has none. */
   Optional<Instant> accessExpiry(Long guestId);
 

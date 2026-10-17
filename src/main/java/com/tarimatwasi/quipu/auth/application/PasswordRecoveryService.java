@@ -2,11 +2,13 @@ package com.tarimatwasi.quipu.auth.application;
 
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
+import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.port.out.BackgroundTaskPort;
 import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +27,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
   private final PasswordEncoder passwordEncoder;
   private final PasswordResetMailPort mail;
   private final BackgroundTaskPort background;
+  private final AccessGrantRepositoryPort grants;
   private final Clock clock;
 
   PasswordRecoveryService(
@@ -33,12 +36,14 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
       PasswordEncoder passwordEncoder,
       PasswordResetMailPort mail,
       BackgroundTaskPort background,
+      AccessGrantRepositoryPort grants,
       Clock clock) {
     this.issuer = issuer;
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.mail = mail;
     this.background = background;
+    this.grants = grants;
     this.clock = clock;
   }
 
@@ -85,12 +90,19 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
         userRepository
             .findPendingReset(ResetCodeIssuer.hash(code))
             .orElseThrow(InvalidResetCodeException::new);
-    if (!clock.instant().isBefore(pending.expiresAt()) || pending.account().isDisabled()) {
+    if (!clock.instant().isBefore(pending.expiresAt())
+        || pending.account().isDisabled()
+        || ResetCodeIssuer.neverChosePassword(pending.account())) {
       throw new InvalidResetCodeException();
     }
     // Checked after the code and before consuming it: a weak password can be corrected.
     PasswordPolicy.require(newPassword);
-    userRepository.resetPassword(
-        pending.account().id(), passwordEncoder.encode(newPassword), clock.instant());
+    Instant now = clock.instant();
+    userRepository.resetPassword(pending.account().id(), passwordEncoder.encode(newPassword), now);
+    Long guestId = pending.account().guestId();
+    if (guestId != null) {
+      // A new password ends any access the administrator handed before.
+      grants.revokeLive(guestId, now);
+    }
   }
 }

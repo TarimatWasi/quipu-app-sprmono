@@ -125,41 +125,51 @@ public class AuthApplicationService
     return sessionOf(user, temporary);
   }
 
+  /**
+   * RF-12, D-30: a temporary password opens a session marked as such, which may only choose the
+   * password. Nothing else changes here: the access is consumed and the guest starts its onboarding
+   * when it chooses the password, so a guest that leaves before can sign in again with it until it
+   * expires. The account is not flagged, so earlier sessions keep asking for the current password.
+   */
   private LoginResult sessionOf(UserAccount user, boolean temporary) {
-    boolean mustChangePassword = user.mustChangePassword();
-    if (temporary) {
-      // RF-12, D-30: the session may only choose the password; the temporary one is consumed then.
-      guests.accessUsed(Objects.requireNonNull(user.guestId()));
-      userRepository.requirePasswordChange(user.id());
-      mustChangePassword = true;
-    }
+    String userId = user.id().toString();
     return new LoginResult(
-        user.id().toString(),
+        userId,
         user.role().name(),
         user.email(),
         user.guestId(),
-        mustChangePassword,
-        sessionTokens.issue(user.id().toString()));
+        temporary || user.mustChangePassword(),
+        temporary ? sessionTokens.issueTemporary(userId) : sessionTokens.issue(userId));
   }
 
   @Override
   @Transactional
   public ChangePasswordResult changePassword(ChangePasswordCommand command) {
+    // Lock order of the accesses: the guest, then its account, then its accesses.
+    Long guestId = lookup(command.userId()).map(UserAccount::guestId).orElse(null);
+    if (guestId != null) {
+      guests.lockGuest(guestId);
+    }
     UserAccount user = findAccountForUpdate(command.userId());
     if (user.isDisabled()) {
       throw new AccountDisabledException();
     }
-    requireCurrentPassword(user, command.currentPassword());
+    requireCurrentPassword(user, command);
     PasswordPolicy.require(command.newPassword());
-    if (passwordEncoder.matches(command.newPassword(), user.passwordHash())) {
+    if (passwordEncoder.matches(command.newPassword(), user.passwordHash())
+        || liveTemporaryPassword(guestId, command.newPassword())) {
       throw new PasswordUnchangedException();
     }
     // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
     String newHash = passwordEncoder.encode(command.newPassword());
-    userRepository.changePassword(user.id(), newHash, clock.instant());
-    if (user.guestId() != null) {
-      // D-30: the temporary password is used up when the guest chooses its own.
-      grants.consumeTemporaryPassword(user.guestId(), clock.instant());
+    Instant now = clock.instant();
+    userRepository.changePassword(user.id(), newHash, now);
+    if (guestId != null) {
+      // D-30: the temporary password is used up when the guest chooses its own, and the guest
+      // starts its onboarding; any other live access stops working too.
+      grants.consumeTemporaryPassword(guestId, now);
+      grants.revokeLive(guestId, now);
+      guests.accessUsed(guestId);
     }
     return new ChangePasswordResult(sessionTokens.issue(command.userId()));
   }
@@ -211,21 +221,46 @@ public class AuthApplicationService
     if (live.isEmpty()) {
       return false;
     }
-    boolean matches =
-        MessageDigest.isEqual(
-            ResetCodeIssuer.hash(rawPassword).getBytes(StandardCharsets.US_ASCII),
-            live.get().tokenHash().getBytes(StandardCharsets.US_ASCII));
+    boolean matches = sameHash(rawPassword, live.get());
     if (matches && !clock.instant().isBefore(live.get().expiresAt())) {
       throw new TemporaryPasswordExpiredException();
     }
     return matches;
   }
 
-  /** Optional only while the account must change its password: that session just logged in. */
-  private void requireCurrentPassword(UserAccount user, @Nullable String currentPassword) {
+  /** Whether the guest has a live temporary password equal to that one, expired or not. */
+  private boolean liveTemporaryPassword(@Nullable Long guestId, String rawPassword) {
+    return guestId != null
+        && grants
+            .findLiveTemporaryPassword(guestId)
+            .filter(live -> sameHash(rawPassword, live))
+            .isPresent();
+  }
+
+  /** Constant-time comparison of the SHA-256 of the password with the stored one. */
+  private static boolean sameHash(String rawPassword, LiveTemporaryPassword live) {
+    return MessageDigest.isEqual(
+        ResetCodeIssuer.hash(rawPassword).getBytes(StandardCharsets.US_ASCII),
+        live.tokenHash().getBytes(StandardCharsets.US_ASCII));
+  }
+
+  /**
+   * The current password may be left out by the session of a guest account only if it was opened
+   * with a temporary password that is still live (not used nor revoked, RF-12): earlier sessions,
+   * and a temporary session whose access was revoked, must give it. An account of no guest (the
+   * initial administrator) may leave it out while it must replace its first password, which it got
+   * before having any session.
+   */
+  private void requireCurrentPassword(UserAccount user, ChangePasswordCommand command) {
+    String currentPassword = command.currentPassword();
     boolean matches =
         currentPassword != null && passwordEncoder.matches(currentPassword, user.passwordHash());
-    boolean skippable = currentPassword == null && user.mustChangePassword();
+    Long guestId = user.guestId();
+    boolean exempt =
+        guestId == null
+            ? user.mustChangePassword()
+            : command.temporarySession() && grants.findLiveTemporaryPassword(guestId).isPresent();
+    boolean skippable = currentPassword == null && exempt;
     if (!matches && !skippable) {
       throw new InvalidCredentialsException();
     }

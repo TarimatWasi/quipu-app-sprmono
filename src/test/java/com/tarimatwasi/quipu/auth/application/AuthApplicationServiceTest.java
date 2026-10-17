@@ -32,6 +32,7 @@ import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort.LiveTemporaryPassword;
+import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -53,7 +54,37 @@ class AuthApplicationServiceTest {
   private final MutableClock clock = new MutableClock(Instant.parse("2026-10-05T10:00:00Z"));
   private final AccessGrantRepositoryPort grants = mock(AccessGrantRepositoryPort.class);
   private final List<Long> startedOnboarding = new ArrayList<>();
-  private final GuestAccessListener guests = startedOnboarding::add;
+  private final List<Long> lockedGuests = new ArrayList<>();
+  private final GuestAccessListener guests =
+      new GuestAccessListener() {
+        @Override
+        public void lockGuest(Long guestId) {
+          lockedGuests.add(guestId);
+        }
+
+        @Override
+        public void accessUsed(Long guestId) {
+          startedOnboarding.add(guestId);
+        }
+      };
+
+  private static final SessionTokenPort TOKENS = sessions(u -> "t");
+  private static final SessionTokenPort ECHO = sessions(u -> u);
+
+  private static SessionTokenPort sessions(java.util.function.UnaryOperator<String> issue) {
+    return new SessionTokenPort() {
+      @Override
+      public String issue(String userId) {
+        return issue.apply(userId);
+      }
+
+      @Override
+      public String issueTemporary(String userId) {
+        return "temporary:" + issue.apply(userId);
+      }
+    };
+  }
+
   private InMemoryUserRepository repository;
   private AuthApplicationService service;
 
@@ -62,7 +93,7 @@ class AuthApplicationServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new AuthApplicationService(
-            repository, encoder, userId -> userId, (type, number) -> 0L, grants, guests, clock);
+            repository, encoder, ECHO, (type, number) -> 0L, grants, guests, clock);
   }
 
   @Test
@@ -125,7 +156,7 @@ class AuthApplicationServiceTest {
     BCryptPasswordEncoder spied = spy(new BCryptPasswordEncoder());
     AuthApplicationService spiedService =
         new AuthApplicationService(
-            repository, spied, u -> "t", (type, number) -> 0L, grants, guests, clock);
+            repository, spied, TOKENS, (type, number) -> 0L, grants, guests, clock);
     verify(spied).encode(any());
 
     assertThatThrownBy(
@@ -345,7 +376,7 @@ class AuthApplicationServiceTest {
     UserRepositoryPort untouched = mock(UserRepositoryPort.class);
     var limited =
         new AuthApplicationService(
-            untouched, encoder, u -> "t", (type, number) -> 7L, grants, guests, clock);
+            untouched, encoder, TOKENS, (type, number) -> 7L, grants, guests, clock);
 
     var thrown =
         catchThrowableOfType(
@@ -362,7 +393,7 @@ class AuthApplicationServiceTest {
         new AuthApplicationService(
             repository,
             encoder,
-            u -> "t",
+            TOKENS,
             (type, number) -> {
               asked.add(type + ":" + number);
               return 0L;
@@ -438,7 +469,7 @@ class AuthApplicationServiceTest {
     when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
     var racing =
         new AuthApplicationService(
-            stale, encoder, u -> "t", (type, number) -> 0L, grants, guests, clock);
+            stale, encoder, TOKENS, (type, number) -> 0L, grants, guests, clock);
 
     assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
         .isInstanceOf(AccountLockedException.class);
@@ -451,7 +482,7 @@ class AuthApplicationServiceTest {
     when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
     var locking =
         new AuthApplicationService(
-            repo, encoder, u -> "t", (type, number) -> 0L, grants, guests, clock);
+            repo, encoder, TOKENS, (type, number) -> 0L, grants, guests, clock);
 
     assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -467,12 +498,15 @@ class AuthApplicationServiceTest {
     UserRepositoryPort spied = spy(repository);
     var locking =
         new AuthApplicationService(
-            spied, encoder, u -> "t", (type, number) -> 0L, grants, guests, clock);
+            spied, encoder, TOKENS, (type, number) -> 0L, grants, guests, clock);
 
     locking.changePassword(change(user, "Actual12345", "Nueva12345"));
 
-    verify(spied).findByIdForUpdate(user.id());
-    verify(spied, never()).findById(any());
+    // TAR-36: an unlocked read only finds the guest to lock first (lock order guest, account,
+    // accesses); every decision is taken on the copy read under the lock.
+    var order = org.mockito.Mockito.inOrder(spied);
+    order.verify(spied).findById(user.id());
+    order.verify(spied).findByIdForUpdate(user.id());
   }
 
   @Test
@@ -512,7 +546,7 @@ class AuthApplicationServiceTest {
   }
 
   @Test
-  void aValidTemporaryPasswordOpensASessionThatMustChooseItsPassword() {
+  void aValidTemporaryPasswordOpensATemporarySessionAndChangesNothingElse() {
     UserAccount user = pendingGuestAccount();
     temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
 
@@ -520,7 +554,9 @@ class AuthApplicationServiceTest {
 
     assertThat(result.mustChangePassword()).isTrue();
     assertThat(result.guestId()).isEqualTo(GUEST);
-    assertThat(startedOnboarding).containsExactly(GUEST);
+    assertThat(result.sessionToken()).startsWith("temporary:");
+    // D-30: the access is consumed and the onboarding starts when the password is chosen.
+    assertThat(startedOnboarding).isEmpty();
     assertThat(repository.find(user.id()).mustChangePassword()).isTrue();
     verify(grants, never()).consumeTemporaryPassword(any(), any());
   }
@@ -535,7 +571,6 @@ class AuthApplicationServiceTest {
         .isInstanceOf(TemporaryPasswordExpiredException.class);
     assertThatThrownBy(() -> service.login(loginOf("Otra-clave-1")))
         .isInstanceOf(InvalidCredentialsException.class);
-    assertThat(startedOnboarding).isEmpty();
     // Only the wrong password counted as a failed attempt.
     assertThat(repository.find(user.id()).failedLoginAttempts()).isEqualTo(1);
   }
@@ -550,11 +585,52 @@ class AuthApplicationServiceTest {
   }
 
   @Test
-  void choosingThePasswordConsumesTheTemporaryOne() {
+  void theTemporarySessionChoosesThePasswordConsumingTheAccessInLockOrder() {
+    UserAccount user = pendingGuestAccount();
+    temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
+
+    service.changePassword(
+        new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", true));
+
+    assertThat(lockedGuests).containsExactly(GUEST);
+    verify(grants).consumeTemporaryPassword(GUEST, clock.instant());
+    verify(grants).revokeLive(GUEST, clock.instant());
+    assertThat(startedOnboarding).containsExactly(GUEST);
+    assertThat(repository.find(user.id()).mustChangePassword()).isFalse();
+  }
+
+  @Test
+  void theTemporaryPasswordCannotBecomeThePassword() {
+    UserAccount user = pendingGuestAccount();
+    temporaryPassword("Tmp-abc-12345", clock.instant().plus(Duration.ofMinutes(30)));
+
+    assertThatThrownBy(
+            () ->
+                service.changePassword(
+                    new ChangePasswordCommand(user.id().toString(), null, "Tmp-abc-12345", true)))
+        .isInstanceOf(PasswordUnchangedException.class);
+    verify(grants, never()).consumeTemporaryPassword(any(), any());
+  }
+
+  /** Only the session opened with the temporary password skips the current one. */
+  @Test
+  void anEarlierSessionOfAGuestStillNeedsTheCurrentPassword() {
+    UserAccount user = pendingGuestAccount();
+    temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
+
+    assertThatThrownBy(() -> service.changePassword(change(user, null, "Nueva12345")))
+        .isInstanceOf(InvalidCredentialsException.class);
+  }
+
+  /** A temporary session whose access was revoked or used can no longer skip it either. */
+  @Test
+  void aTemporarySessionWithoutALiveTemporaryPasswordNeedsTheCurrentPassword() {
     UserAccount user = pendingGuestAccount();
 
-    service.changePassword(change(user, null, "Nueva12345"));
-
-    verify(grants).consumeTemporaryPassword(GUEST, clock.instant());
+    assertThatThrownBy(
+            () ->
+                service.changePassword(
+                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", true)))
+        .isInstanceOf(InvalidCredentialsException.class);
   }
 }

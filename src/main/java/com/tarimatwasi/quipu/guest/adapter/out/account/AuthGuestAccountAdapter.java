@@ -1,8 +1,10 @@
 package com.tarimatwasi.quipu.guest.adapter.out.account;
 
+import com.tarimatwasi.quipu.auth.port.in.AccountDocumentTakenException;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
+import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
 import java.util.Collection;
@@ -27,7 +29,16 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
   @Override
   public void openAccount(
       Long guestId, String documentType, String documentNumber, @Nullable String email) {
-    access.openAccount(guestId, documentType, documentNumber, email);
+    try {
+      access.openAccount(guestId, documentType, documentNumber, email);
+    } catch (AccountDocumentTakenException e) {
+      throw new GuestDocumentAlreadyExistsException(e);
+    }
+  }
+
+  @Override
+  public void revokeAccess(Long guestId) {
+    access.revokeAccess(guestId);
   }
 
   @Override

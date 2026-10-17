@@ -59,6 +59,7 @@ import java.time.YearMonth;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -195,6 +196,15 @@ public class BffExceptionHandler {
     if (entity != null && entity.endsWith("PaymentJpaEntity")) {
       return handlePaymentAlreadyResolved();
     }
+    return handleConcurrentModification();
+  }
+
+  /**
+   * Two requests waited for each other's row locks and the database chose this one as the loser
+   * (deadlock, 40P01) or a lock could not be taken: retrying is safe, nothing was committed.
+   */
+  @ExceptionHandler(PessimisticLockingFailureException.class)
+  public ResponseEntity<BffErrorResponse> handleLockConflict() {
     return handleConcurrentModification();
   }
 

@@ -8,4 +8,10 @@ public interface SessionTokenPort {
    * the pending password change are read from the account on every request (BE-SPR-SEC-07).
    */
   String issue(String userId);
+
+  /**
+   * Like {@link #issue} but marked as opened with a temporary password: only this session may
+   * choose the password without giving the current one (RF-12).
+   */
+  String issueTemporary(String userId);
 }

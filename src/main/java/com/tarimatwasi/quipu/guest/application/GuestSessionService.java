@@ -39,7 +39,13 @@ public class GuestSessionService implements GuestSessionUseCase, GuestAccessList
         guest.status() == GuestStatus.ONBOARDING ? nextStep(guest) : null);
   }
 
-  /** D-30: the first access used opens the onboarding; any other state is kept. */
+  @Override
+  @Transactional
+  public void lockGuest(Long guestId) {
+    guests.findByIdForUpdate(guestId);
+  }
+
+  /** D-30: the password chosen with an access opens the onboarding; any other state is kept. */
   @Override
   @Transactional
   public void accessUsed(Long guestId) {

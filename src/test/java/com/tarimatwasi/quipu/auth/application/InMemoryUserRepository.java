@@ -172,25 +172,6 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void requirePasswordChange(Long id) {
-    UserAccount user = find(id);
-    save(
-        new UserAccount(
-            user.id(),
-            user.email(),
-            user.documentType(),
-            user.documentNumber(),
-            user.passwordHash(),
-            user.role(),
-            user.guestId(),
-            true,
-            user.status(),
-            user.failedLoginAttempts(),
-            user.lockedUntil(),
-            user.passwordChangedAt()));
-  }
-
-  @Override
   public void clearFailedLogins(Long id) {
     save(withLock(find(id), 0, null));
   }

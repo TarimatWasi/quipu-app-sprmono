@@ -13,13 +13,16 @@ public interface AccessGrantRepositoryPort {
   /** Stores a new access; the live one must have been revoked first. */
   void save(Long guestId, AccessMode mode, String tokenHash, Instant expiresAt);
 
+  /** The guest of the access with that hash, whatever its state; read without a lock. */
+  Optional<Long> findGuestIdByTokenHash(String tokenHash);
+
   /**
    * Marks the link with that hash as used, only if it is unused, not revoked and not expired at
-   * {@code now}. Atomic: of two simultaneous calls with one hash only one gets the guest.
+   * {@code now}. Atomic: of two simultaneous calls with one hash only one succeeds.
    *
-   * @return the guest of the link, or empty if no link was consumed
+   * @return whether this call consumed the link
    */
-  Optional<Long> consumeLink(String tokenHash, Instant now);
+  boolean consumeLink(String tokenHash, Instant now);
 
   /** The temporary password of the guest that is neither used nor revoked, expired or not. */
   Optional<LiveTemporaryPassword> findLiveTemporaryPassword(Long guestId);

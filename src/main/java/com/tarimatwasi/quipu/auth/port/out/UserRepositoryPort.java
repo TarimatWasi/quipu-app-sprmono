@@ -75,7 +75,11 @@ public interface UserRepositoryPort {
 
   /**
    * Creates the account of a guest: role GUEST, ACTIVE, pending its first password. The hash is of
-   * a random value nobody knows, so the account cannot log in until the guest uses an access.
+   * a random value nobody knows, so the account cannot log in until the guest uses an access. If
+   * another request created it meanwhile nothing changes; if only the email was taken meanwhile the
+   * account is created without email.
+   *
+   * @throws AccountAlreadyExistsException if another account has the document
    */
   void insertGuestAccount(
       Long guestId,
@@ -86,9 +90,6 @@ public interface UserRepositoryPort {
 
   /** The account of the guest, its row locked until the transaction ends. Needs a transaction. */
   Optional<UserAccount> findByGuestIdForUpdate(Long guestId);
-
-  /** The account must choose a new password before anything else (RF-12). */
-  void requirePasswordChange(Long id);
 
   /** The account a recovery code belongs to and when the code expires. */
   record PendingReset(UserAccount account, Instant expiresAt) {}

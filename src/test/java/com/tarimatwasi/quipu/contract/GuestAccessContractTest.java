@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -35,6 +36,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,10 +50,16 @@ import org.springframework.test.web.servlet.ResultMatcher;
  * one, activating the link and logging in with a temporary password, against the shared contract of
  * the tag pinned in pom.xml. The clock is a test clock: the 30 minutes are moved, not waited.
  */
-@SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
+// Many logins of one document in a minute: the allowance per account is not what this tests.
+@SpringBootTest(
+    properties = {
+      "app.cors.allowed-origin=http://localhost:3000",
+      "app.rate-limit.per-account-per-minute=1000"
+    })
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)
 @ExtendWith(OutputCaptureExtension.class)
+@Import(SynchronousBackgroundTasksConfig.class)
 class GuestAccessContractTest {
 
   private static final String SPEC =
@@ -177,7 +185,7 @@ class GuestAccessContractTest {
             .andExpect(jsonPath("$.access.emailSent").value(false))
             .andReturn();
     String url = read(created, "$.access.activationUrl");
-    assertThat(url).startsWith("http://localhost:3000/activate?token=");
+    assertThat(url).startsWith("http://localhost:3000/activate#token=");
     assertThat(read(created, "$.access.shareMessage")).contains(url).contains("30 minutos");
     assertThat(read(created, "$.access.expiresAt"))
         .isEqualTo(clock.instant().plus(Duration.ofMinutes(30)).toString());
@@ -291,24 +299,100 @@ class GuestAccessContractTest {
             .andExpect(jsonPath("$.guestStatus").value("ONBOARDING"))
             .andExpect(jsonPath("$.nextOnboardingStep").value("PASSWORD"))
             .andReturn();
-    assertThat(statusOf(guestId)).isEqualTo("ONBOARDING");
-    // D-30: logging in does not consume it.
+    // D-30: logging in neither consumes the access nor changes the stored state.
+    assertThat(statusOf(guestId)).isEqualTo("PENDING_ACTIVATION");
     login("12345678", temporary).andExpect(status().isOk());
 
     Cookie cookie = session.getResponse().getCookie("sessionToken");
     mockMvc
-        .perform(
-            post("/bff/auth/change-password")
-                .cookie(cookie)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"newPassword\":\"%s\"}".formatted(NEW_PASSWORD)))
-        .andExpect(status().isNoContent());
+        .perform(get("/bff/auth/me").cookie(cookie))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.mustChangePassword").value(true))
+        .andExpect(jsonPath("$.nextOnboardingStep").value("PASSWORD"));
+    changePassword(cookie, null, temporary)
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("AUTH_PASSWORD_UNCHANGED"));
+    assertThat(statusOf(guestId)).isEqualTo("PENDING_ACTIVATION");
+
+    changePassword(cookie, null, NEW_PASSWORD).andExpect(status().isNoContent());
+    assertThat(statusOf(guestId)).isEqualTo("ONBOARDING");
 
     login("12345678", temporary).andExpect(status().isUnauthorized());
     login("12345678", NEW_PASSWORD)
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.mustChangePassword").value(false));
+  }
+
+  private ResultActions changePassword(Cookie session, @Nullable String current, String next)
+      throws Exception {
+    String currentField = current == null ? "" : "\"currentPassword\":\"" + current + "\",";
+    return mockMvc.perform(
+        post("/bff/auth/change-password")
+            .cookie(session)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{%s\"newPassword\":\"%s\"}".formatted(currentField, next)));
+  }
+
+  /** Only the session opened with the temporary password skips the current one. */
+  @Test
+  void anEarlierSessionStillNeedsTheCurrentPasswordAfterATemporaryLogin() throws Exception {
+    MvcResult created = register("12345678", "LINK", null).andReturn();
+    String guestId = read(created, "$.guest.id");
+    Cookie earlier =
+        activate(tokenOf(read(created, "$.access.activationUrl")), NEW_PASSWORD)
+            .andReturn()
+            .getResponse()
+            .getCookie("sessionToken");
+    String temporary =
+        read(generate(guestId, "TEMPORARY_PASSWORD", admin()).andReturn(), "$.temporaryPassword");
+    Cookie temporarySession =
+        login("12345678", temporary).andReturn().getResponse().getCookie("sessionToken");
+
+    changePassword(earlier, null, "Otra-clave-2026")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+    changePassword(temporarySession, null, "Otra-clave-2026").andExpect(status().isNoContent());
+    login("12345678", "Otra-clave-2026").andExpect(status().isOk());
+  }
+
+  /** RN-12: a deactivated guest loses the access it was handed; reactivating does not revive it. */
+  @Test
+  void deactivatingTheGuestRevokesItsAccess() throws Exception {
+    MvcResult created = register("12345678", "LINK", null).andReturn();
+    String guestId = read(created, "$.guest.id");
+    String token = tokenOf(read(created, "$.access.activationUrl"));
+
+    mockMvc
+        .perform(post(GUESTS + "/" + guestId + "/deactivate").cookie(admin()))
+        .andExpect(status().isNoContent());
+    mockMvc
+        .perform(post(GUESTS + "/" + guestId + "/reactivate").cookie(admin()))
+        .andExpect(status().isOk());
+
+    activate(token, NEW_PASSWORD)
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_OR_EXPIRED_CODE"));
+  }
+
+  /** RF-11: a guest pending activation gets its first password only through its access. */
+  @Test
+  void theRecoveryDoesNothingForAGuestPendingActivation() throws Exception {
+    register("12345678", "LINK", "ana@example.com").andExpect(status().isCreated());
+
+    mockMvc
+        .perform(
+            post("/bff/auth/forgot-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"ana@example.com\"}"))
+        .andExpect(status().isAccepted());
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM users WHERE reset_token_hash IS NOT NULL", Integer.class))
+        .isZero();
   }
 
   @Test

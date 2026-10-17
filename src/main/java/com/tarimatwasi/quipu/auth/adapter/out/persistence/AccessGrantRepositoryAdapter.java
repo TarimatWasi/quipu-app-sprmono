@@ -27,11 +27,13 @@ public class AccessGrantRepositoryAdapter implements AccessGrantRepositoryPort {
   }
 
   @Override
-  public Optional<Long> consumeLink(String tokenHash, Instant now) {
-    if (jpaRepository.consumeLink(tokenHash, now) != 1) {
-      return Optional.empty();
-    }
+  public Optional<Long> findGuestIdByTokenHash(String tokenHash) {
     return jpaRepository.findGuestIdByTokenHash(tokenHash);
+  }
+
+  @Override
+  public boolean consumeLink(String tokenHash, Instant now) {
+    return jpaRepository.consumeLink(tokenHash, now) == 1;
   }
 
   @Override

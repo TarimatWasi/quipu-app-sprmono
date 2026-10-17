@@ -32,7 +32,9 @@ public class AccessMailAdapter implements AccessMailPort {
 
   @Override
   public String activationUrl(String token) {
-    return frontendOrigin.replaceAll("/+$", "") + "/activate?token=" + token;
+    // In the fragment, not the query: the browser never sends it, so it reaches no Referer nor the
+    // access logs of the hosting.
+    return frontendOrigin.replaceAll("/+$", "") + "/activate#token=" + token;
   }
 
   @Override

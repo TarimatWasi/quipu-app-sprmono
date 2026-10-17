@@ -64,11 +64,6 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
     clearFailedLogins();
   }
 
-  /** RF-12: the next request of the account may only change the password. */
-  public void requirePasswordChange() {
-    this.mustChangePassword = true;
-  }
-
   /**
    * SEG-06: an expired lock restarts the count; reaching the limit locks the account. Returns true,
    * changing nothing, if the account is already locked.

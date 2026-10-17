@@ -146,7 +146,9 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
               throw new GuestHasActiveContractException(contract);
             });
     guests.save(withStatus(guest, GuestStatus.INACTIVE, guest.status()));
+    // Lock order: guest, account, accesses. An access handed before stops working.
     accounts.setActive(id, false);
+    accounts.revokeAccess(id);
   }
 
   /** The debt is read under the lock of the guest, as the contracts and direct payments do. */

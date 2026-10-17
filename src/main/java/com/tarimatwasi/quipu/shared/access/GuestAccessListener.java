@@ -1,14 +1,20 @@
 package com.tarimatwasi.quipu.shared.access;
 
 /**
- * What the auth module tells the guest module when a guest uses an access: the activation link or a
- * valid temporary password. Implemented by the guest module; joins the transaction of the caller.
+ * What the auth module asks of the guest module around the access of a guest. Implemented by the
+ * guest module; both methods join the transaction of the caller.
+ *
+ * <p>Lock order of every change to a guest's access (deadlock-free): the guest row first, then its
+ * account, then its accesses.
  */
 public interface GuestAccessListener {
 
+  /** Locks the row of the guest until the caller's commit; nothing if there is no such guest. */
+  void lockGuest(Long guestId);
+
   /**
-   * A guest pending activation starts its onboarding (D-30, RN-36); any other state is kept. The
-   * row of the guest stays locked until the caller's commit.
+   * The guest chose its password with an access: a guest pending activation starts its onboarding
+   * (D-30, RN-36); any other state is kept.
    */
   void accessUsed(Long guestId);
 }

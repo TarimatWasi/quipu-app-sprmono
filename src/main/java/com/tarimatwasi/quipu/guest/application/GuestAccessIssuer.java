@@ -73,7 +73,11 @@ class GuestAccessIssuer {
       // ponytail: two simultaneous registrations of one document; the loser gets a 409, not RN-18.
       throw new GuestDocumentTakenException(e);
     }
-    accounts.openAccount(created.id(), type.name(), number, email);
+    try {
+      accounts.openAccount(created.id(), type.name(), number, email);
+    } catch (GuestDocumentAlreadyExistsException e) {
+      throw new GuestDocumentTakenException(e);
+    }
     IssuedAccess access = accounts.issueAccess(created.id(), command.accessMode());
     return new Issued(GuestService.summary(created, stateOf(created)), access, email);
   }
@@ -86,8 +90,12 @@ class GuestAccessIssuer {
       throw new GuestInactiveException(guestId);
     }
     // A guest registered before RF-11 has no account yet.
-    accounts.openAccount(
-        guestId, guest.documentType().name(), guest.documentNumber(), guest.email());
+    try {
+      accounts.openAccount(
+          guestId, guest.documentType().name(), guest.documentNumber(), guest.email());
+    } catch (GuestDocumentAlreadyExistsException e) {
+      throw new GuestDocumentTakenException(e);
+    }
     return new Issued(null, accounts.issueAccess(guestId, mode), guest.email());
   }
 

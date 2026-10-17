@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.auth.adapter.out.security;
 
 import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
+import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import java.time.Clock;
@@ -36,13 +37,25 @@ public class JwtTokenProvider implements SessionTokenPort {
 
   @Override
   public String issue(String userId) {
+    return issue(userId, false);
+  }
+
+  @Override
+  public String issueTemporary(String userId) {
+    return issue(userId, true);
+  }
+
+  private String issue(String userId, boolean temporary) {
     Instant now = clock.instant();
-    JwtClaimsSet claims =
+    JwtClaimsSet.Builder builder =
         JwtClaimsSet.builder()
             .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
             .issuedAt(now)
-            .expiresAt(now.plus(expiration))
-            .build();
+            .expiresAt(now.plus(expiration));
+    if (temporary) {
+      builder.claim(AccessSessions.TEMPORARY_CLAIM, true);
+    }
+    JwtClaimsSet claims = builder.build();
     return encoder
         .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
         .getTokenValue();

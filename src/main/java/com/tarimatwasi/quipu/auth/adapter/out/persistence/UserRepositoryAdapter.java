@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.auth.port.out.AccountAlreadyExistsException;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,10 +36,30 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
       String documentNumber,
       @Nullable String email,
       String unusablePasswordHash) {
-    jdbc.update(
+    // ON CONFLICT keeps the transaction usable when a simultaneous request won a unique rule.
+    if (insertGuest(guestId, documentType, documentNumber, email, unusablePasswordHash) == 1
+        || !jpaRepository.findByGuestIdIn(List.of(guestId)).isEmpty()) {
+      return;
+    }
+    if (jpaRepository.findByDocumentTypeAndDocumentNumber(documentType, documentNumber).isPresent()
+        || insertGuest(guestId, documentType, documentNumber, null, unusablePasswordHash) != 1) {
+      throw new AccountAlreadyExistsException(
+          new IllegalStateException("The document of guest " + guestId + " has an account"));
+    }
+    // Only the email was taken meanwhile: the account email is optional (D-33).
+  }
+
+  private int insertGuest(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    return jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " guest_id, must_change_password, status)"
-            + " VALUES (nextval('users_seq'), ?, ?, ?, ?, 'GUEST', ?, TRUE, 'ACTIVE')",
+            + " VALUES (nextval('users_seq'), ?, ?, ?, ?, 'GUEST', ?, TRUE, 'ACTIVE')"
+            + " ON CONFLICT DO NOTHING",
         email,
         documentType.name(),
         documentNumber,
@@ -49,13 +70,6 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   @Override
   public Optional<UserAccount> findByGuestIdForUpdate(Long guestId) {
     return jpaRepository.findWithLockByGuestId(guestId).map(UserJpaEntity::toDomain);
-  }
-
-  @Override
-  public void requirePasswordChange(Long id) {
-    UserJpaEntity user = loadLocked(id);
-    user.requirePasswordChange();
-    jpaRepository.save(user);
   }
 
   @Override

@@ -24,7 +24,11 @@ public interface GuestAccountPort {
    */
   boolean documentBelongsToAdministrator(String documentType, String documentNumber);
 
-  /** Creates the account of the guest if it has none (RF-11). Joins the caller's transaction. */
+  /**
+   * Creates the account of the guest if it has none (RF-11). Joins the caller's transaction.
+   *
+   * @throws GuestDocumentAlreadyExistsException if another account has the document
+   */
   void openAccount(
       Long guestId, String documentType, String documentNumber, @Nullable String email);
 
@@ -33,6 +37,9 @@ public interface GuestAccountPort {
 
   /** Queues the email with the access, best-effort; whether it was queued. After the commit. */
   boolean sendAccess(String email, IssuedAccess access);
+
+  /** Revokes the live access of the guest, if any (RN-12). Joins the caller's transaction. */
+  void revokeAccess(Long guestId);
 
   /** When the live, unused access of the guest expires; empty if it has none. */
   Optional<Instant> accessExpiry(Long guestId);
