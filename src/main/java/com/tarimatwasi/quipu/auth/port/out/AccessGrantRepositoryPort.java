@@ -2,7 +2,9 @@ package com.tarimatwasi.quipu.auth.port.out;
 
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 /** The accesses of the guests; only the SHA-256 of each secret is stored (RN-32). */
 public interface AccessGrantRepositoryPort {
@@ -32,6 +34,12 @@ public interface AccessGrantRepositoryPort {
    * not expired at {@code now}: what a session opened with it needs to choose the password (RF-12).
    */
   boolean isLiveTemporaryPassword(Long grantId, Long guestId, Instant now);
+
+  /**
+   * Of those guests, the ones with a temporary password that is unused, not revoked and not expired
+   * at {@code now}; one query for the whole page.
+   */
+  Set<Long> guestsWithLiveTemporaryPassword(Collection<Long> guestIds, Instant now);
 
   /** Marks the live temporary password of the guest as used (D-30), if there is one. */
   void consumeTemporaryPassword(Long guestId, Instant now);

@@ -2,6 +2,8 @@ package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -48,6 +50,15 @@ interface AccessGrantJpaRepository extends JpaRepository<AccessGrantJpaEntity, L
       nativeQuery = true)
   boolean isLiveTemporaryPassword(
       @Param("id") Long grantId, @Param("guestId") Long guestId, @Param("now") Instant now);
+
+  @Query(
+      value =
+          "SELECT guest_id FROM access_grants WHERE guest_id IN (:guestIds)"
+              + " AND mode = 'TEMPORARY_PASSWORD' AND used_at IS NULL AND revoked_at IS NULL"
+              + " AND expires_at > :now",
+      nativeQuery = true)
+  List<Long> findGuestsWithLiveTemporaryPassword(
+      @Param("guestIds") Collection<Long> guestIds, @Param("now") Instant now);
 
   @Query(value = "SELECT guest_id FROM access_grants WHERE token_hash = :hash", nativeQuery = true)
   Optional<Long> findGuestIdByTokenHash(@Param("hash") String tokenHash);

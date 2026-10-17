@@ -415,6 +415,62 @@ class GuestAccessContractTest {
         .isEqualTo("87654321");
   }
 
+  private boolean hasLoginAccess(String guestId) throws Exception {
+    return JsonPath.read(
+        mockMvc
+            .perform(get(GUESTS + "/" + guestId).cookie(admin()))
+            .andExpect(status().isOk())
+            .andExpect(satisfiesTheContract())
+            .andReturn()
+            .getResponse()
+            .getContentAsString(),
+        "$.hasLoginAccess");
+  }
+
+  /** hasLoginAccess says whether the guest holds a credential that logs in right now. */
+  @Test
+  void theLoginAccessFollowsAUsableCredential() throws Exception {
+    MvcResult link =
+        register("12345678", "LINK", null)
+            .andExpect(jsonPath("$.guest.hasLoginAccess").value(false))
+            .andReturn();
+    String linkGuest = read(link, "$.guest.id");
+    assertThat(hasLoginAccess(linkGuest)).isFalse();
+    activate(tokenOf(read(link, "$.access.activationUrl")), NEW_PASSWORD)
+        .andExpect(status().isOk());
+    assertThat(hasLoginAccess(linkGuest)).isTrue();
+
+    MvcResult temporary =
+        register("87654321", "TEMPORARY_PASSWORD", null)
+            .andExpect(jsonPath("$.guest.hasLoginAccess").value(true))
+            .andReturn();
+    String temporaryGuest = read(temporary, "$.guest.id");
+    assertThat(hasLoginAccess(temporaryGuest)).isTrue();
+    clock().advance(Duration.ofMinutes(30));
+    assertThat(hasLoginAccess(temporaryGuest)).isFalse();
+
+    mockMvc
+        .perform(post(GUESTS + "/" + linkGuest + "/deactivate").cookie(admin()))
+        .andExpect(status().isNoContent());
+    assertThat(hasLoginAccess(linkGuest)).isFalse();
+  }
+
+  /** Choosing the password with the temporary session gives login access for good. */
+  @Test
+  void choosingThePasswordGivesLoginAccess() throws Exception {
+    MvcResult created = register("12345678", "TEMPORARY_PASSWORD", null).andReturn();
+    String guestId = read(created, "$.guest.id");
+    Cookie session =
+        login("12345678", read(created, "$.access.temporaryPassword"))
+            .andReturn()
+            .getResponse()
+            .getCookie("sessionToken");
+    changePassword(session, null, NEW_PASSWORD).andExpect(status().isNoContent());
+    clock().advance(Duration.ofMinutes(31));
+
+    assertThat(hasLoginAccess(guestId)).isTrue();
+  }
+
   /** RN-12: a deactivated guest loses the access it was handed; reactivating does not revive it. */
   @Test
   void deactivatingTheGuestRevokesItsAccess() throws Exception {

@@ -1,19 +1,28 @@
 package com.tarimatwasi.quipu.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase.GuestAccountState;
+import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
+import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
+import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class GuestAccountServiceTest {
 
   private final InMemoryUserRepository users = new InMemoryUserRepository();
-  private final GuestAccountService service = new GuestAccountService(users);
+  private final AccessGrantRepositoryPort grants = mock(AccessGrantRepositoryPort.class);
+  private final MutableClock clock = new MutableClock(Instant.parse("2026-10-14T14:00:00Z"));
+  private final GuestAccountService service = new GuestAccountService(users, grants, clock);
 
   private UserAccount account(Long guestId, String document, boolean mustChange, String status) {
     var account =
@@ -47,9 +56,21 @@ class GuestAccountServiceTest {
   void aTemporaryPasswordIsNotAChosenOne() {
     var guest = TestIds.next();
     account(guest, "22222222", true, "ACTIVE");
+    when(grants.guestsWithLiveTemporaryPassword(any(), any())).thenReturn(Set.of(guest));
 
     assertThat(service.stateOf(List.of(guest)).get(guest))
         .isEqualTo(new GuestAccountState(true, false));
+  }
+
+  /** Pending activation with only a link (or an expired temporary password): nobody logs in. */
+  @Test
+  void anAccountThatNeverChoseAPasswordAndHasNoLiveTemporaryOneCannotLogIn() {
+    var guest = TestIds.next();
+    account(guest, "88888888", true, "ACTIVE");
+    when(grants.guestsWithLiveTemporaryPassword(any(), any())).thenReturn(Set.of());
+
+    assertThat(service.stateOf(List.of(guest)).get(guest))
+        .isEqualTo(new GuestAccountState(false, false));
   }
 
   @Test

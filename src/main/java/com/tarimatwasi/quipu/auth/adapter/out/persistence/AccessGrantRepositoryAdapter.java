@@ -3,8 +3,10 @@ package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -46,6 +48,13 @@ public class AccessGrantRepositoryAdapter implements AccessGrantRepositoryPort {
             grant ->
                 new LiveTemporaryPassword(
                     Objects.requireNonNull(grant.getId()), grant.tokenHash(), grant.expiresAt()));
+  }
+
+  @Override
+  public Set<Long> guestsWithLiveTemporaryPassword(Collection<Long> guestIds, Instant now) {
+    return guestIds.isEmpty()
+        ? Set.of()
+        : Set.copyOf(jpaRepository.findGuestsWithLiveTemporaryPassword(guestIds, now));
   }
 
   @Override

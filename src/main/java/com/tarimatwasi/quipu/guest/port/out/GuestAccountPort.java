@@ -63,7 +63,8 @@ public interface GuestAccountPort {
   /**
    * The state of one guest's account.
    *
-   * @param canLogIn the account exists, has a password and is not disabled
+   * @param canLogIn the account is not disabled and has a usable credential (its own password or a
+   *     live temporary one)
    * @param passwordChosen the guest chose its own password (no temporary one is pending)
    */
   record AccountState(boolean canLogIn, boolean passwordChosen) {}
