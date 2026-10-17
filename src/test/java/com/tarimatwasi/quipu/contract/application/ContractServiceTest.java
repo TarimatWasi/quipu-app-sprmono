@@ -31,6 +31,8 @@ import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
+import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -39,6 +41,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -67,12 +70,13 @@ class ContractServiceTest {
   @Mock ContractFilePort files;
   @Mock ContractEnvironmentPort environments;
   @Mock ContractGuestPort guests;
+  @Mock GuestDebtQuery debts;
 
   private ContractService service;
 
   @BeforeEach
   void setUp() {
-    service = new ContractService(contracts, files, environments, guests, clock);
+    service = new ContractService(contracts, files, environments, guests, debts, clock);
   }
 
   private static NewContract request(byte[] content, String name, @Nullable String end) {
@@ -179,6 +183,32 @@ class ContractServiceTest {
         .isInstanceOf(GuestNotContractException.class);
     verify(contracts, never()).existsInForce(any(), any());
     verifyNoInteractions(files);
+  }
+
+  @Test
+  void aTemporaryGuestIsNotAskedForDebt() {
+    when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, false));
+
+    assertThatThrownBy(() -> service.create(request()))
+        .isInstanceOf(GuestNotContractException.class);
+    verifyNoInteractions(debts);
+  }
+
+  @Test
+  void aGuestThatOwesPeriodsTakesNoContractEvenIfTheEnvironmentIsOccupied() {
+    List<YearMonth> owed = List.of(YearMonth.of(2026, 8), YearMonth.of(2026, 9));
+    when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
+    when(debts.owedPeriods(GUEST_ID)).thenReturn(owed);
+
+    assertThatThrownBy(() -> service.create(request()))
+        .isInstanceOfSatisfying(
+            GuestHasPendingDebtException.class, e -> assertThat(e.periods()).isEqualTo(owed));
+    var order = inOrder(environments, debts);
+    order.verify(environments).lock(ENVIRONMENT_ID); // the debt is read under the lock
+    order.verify(debts).owedPeriods(GUEST_ID);
+    verify(contracts, never()).existsInForce(any(), any());
+    verifyNoInteractions(files);
+    verify(contracts, never()).insert(any());
   }
 
   @Test

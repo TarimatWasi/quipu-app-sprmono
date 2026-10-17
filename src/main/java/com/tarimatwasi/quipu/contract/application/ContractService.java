@@ -19,13 +19,17 @@ import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort.Draft;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
+import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
+import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Arrays;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +54,7 @@ public class ContractService implements ManageContractsUseCase {
   private final ContractFilePort files;
   private final ContractEnvironmentPort environments;
   private final ContractGuestPort guests;
+  private final GuestDebtQuery debts;
   private final Clock clock;
 
   ContractService(
@@ -57,11 +62,13 @@ public class ContractService implements ManageContractsUseCase {
       ContractFilePort files,
       ContractEnvironmentPort environments,
       ContractGuestPort guests,
+      GuestDebtQuery debts,
       Clock clock) {
     this.contracts = contracts;
     this.files = files;
     this.environments = environments;
     this.guests = guests;
+    this.debts = debts;
     this.clock = clock;
   }
 
@@ -78,8 +85,12 @@ public class ContractService implements ManageContractsUseCase {
     if (!guest.hasContractType()) {
       throw new GuestNotContractException();
     }
-    // GUEST_HAS_PENDING_DEBT (RN-25, RN-35) is checked here, between the guest type and the
-    // environment, once the payments exist.
+    // RN-25, RN-35 (D-27): the debt is of the guest, over all its contracts. Read inside the lock,
+    // in the order of the contract: guest state, guest type, debt, environment.
+    List<YearMonth> owed = debts.owedPeriods(contract.guestId());
+    if (!owed.isEmpty()) {
+      throw new GuestHasPendingDebtException(owed);
+    }
     LocalDate today = ContractViews.today(clock);
     if (contracts.existsInForce(contract.environmentId(), today)) {
       throw new EnvironmentOccupiedException();

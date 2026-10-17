@@ -143,77 +143,75 @@ class ContractTermsTest {
     assertThat(open.periods(TODAY)).containsExactly(ym("2026-09"), ym("2026-10"));
   }
 
-  // --- which periods accept a voucher (RN-27) ---
+  // --- which periods accept a direct payment (RN-27 after D-31) ---
 
   @Test
   void aContractInForceAcceptsAnyChargedPeriodAndNoOtherOne() {
     var contract = terms("2026-08-01", null, null, 5, 3);
 
     for (String month : List.of("2026-08", "2026-09", "2026-10")) {
-      assertThat(contract.acceptsPayment(ym(month), List.of(), TODAY)).as(month).isTrue();
+      assertThat(contract.acceptsPayment(ym(month), TODAY)).as(month).isTrue();
     }
-    assertThat(contract.acceptsPayment(ym("2026-07"), List.of(), TODAY))
-        .as("before the start")
-        .isFalse();
-    assertThat(contract.acceptsPayment(ym("2026-11"), List.of(), TODAY))
-        .as("a future month")
-        .isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-07"), TODAY)).as("before the start").isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-11"), TODAY)).as("a future month").isFalse();
   }
 
   @Test
   void aContractThatHasNotStartedAcceptsNothingYet() {
-    assertThat(
-            terms("2026-11-01", null, null, 5, 3).acceptsPayment(ym("2026-11"), List.of(), TODAY))
+    assertThat(terms("2026-11-01", null, null, 5, 3).acceptsPayment(ym("2026-11"), TODAY))
         .isFalse();
   }
 
   @Test
-  void anExpiredContractAcceptsOnlyTheMostRecentPeriodInDebt() {
-    // ended 2026-09-15: charged Jul, Aug, Sep; none paid, so the debt is all three
+  void anExpiredContractAcceptsEveryMonthItChargedAndNothingAfterItsEnd() {
     var contract = terms("2026-07-01", "2026-09-15", null, 5, 3);
 
-    assertThat(contract.acceptsPayment(ym("2026-09"), List.of(), TODAY)).isTrue();
-    assertThat(contract.acceptsPayment(ym("2026-08"), List.of(), TODAY)).isFalse();
-    assertThat(contract.acceptsPayment(ym("2026-07"), List.of(), TODAY)).isFalse();
-    assertThat(contract.acceptsPayment(ym("2026-10"), List.of(), TODAY))
-        .as("after the end")
-        .isFalse();
+    for (String month : List.of("2026-07", "2026-08", "2026-09")) {
+      assertThat(contract.acceptsPayment(ym(month), TODAY)).as(month).isTrue();
+    }
+    assertThat(contract.acceptsPayment(ym("2026-10"), TODAY)).as("after the end").isFalse();
   }
 
   @Test
-  void anExpiredContractWhoseLastPeriodIsPaidAcceptsTheLatestOneStillInDebt() {
-    var contract = terms("2026-07-01", "2026-09-15", null, 5, 3);
-    List<Payment> payments = List.of(payment(1, "2026-09", PaymentStatus.APPROVED, null));
-
-    assertThat(contract.acceptsPayment(ym("2026-09"), payments, TODAY)).isFalse();
-    assertThat(contract.acceptsPayment(ym("2026-08"), payments, TODAY)).isTrue();
-  }
-
-  @Test
-  void anExpiredContractWithNoDebtAcceptsNothing() {
-    var contract = terms("2026-08-01", "2026-09-15", null, 5, 3);
-    List<Payment> payments =
-        List.of(
-            payment(1, "2026-08", PaymentStatus.APPROVED, null),
-            payment(2, "2026-09", PaymentStatus.APPROVED, null));
-
-    assertThat(contract.acceptsPayment(ym("2026-09"), payments, TODAY)).isFalse();
-  }
-
-  @Test
-  void aContractFinishedByHandAcceptsNoPayment() {
+  void aContractFinishedByHandAcceptsTheMonthsUpToTheOneItWasFinishedIn() {
     var contract = terms("2026-07-01", null, ym("2026-09"), 5, 3);
 
-    assertThat(contract.acceptsPayment(ym("2026-09"), List.of(), TODAY)).isFalse();
-    assertThat(contract.acceptsPayment(ym("2026-08"), List.of(), TODAY)).isFalse();
+    assertThat(contract.acceptsPayment(ym("2026-07"), TODAY)).isTrue();
+    assertThat(contract.acceptsPayment(ym("2026-09"), TODAY)).isTrue();
+    assertThat(contract.acceptsPayment(ym("2026-10"), TODAY)).as("after the finish").isFalse();
   }
 
   @Test
   void aContractThatEndsTodayIsStillInForce() {
-    assertThat(
-            terms("2026-08-01", "2026-10-14", null, 5, 3)
-                .acceptsPayment(ym("2026-10"), List.of(), TODAY))
+    assertThat(terms("2026-08-01", "2026-10-14", null, 5, 3).acceptsPayment(ym("2026-10"), TODAY))
         .isTrue();
+  }
+
+  /** D-31: the debt and the direct payment read the same months, so no debt is left unpayable. */
+  @Test
+  void everyPeriodInDebtAcceptsADirectPaymentAndOnceApprovedIsNoLongerDebt() {
+    List<ContractTerms> contracts =
+        List.of(
+            terms("2026-01-01", null, null, 5, 3),
+            terms("2026-01-01", null, null, 31, 0),
+            terms("2026-02-01", "2026-02-28", null, 31, 0),
+            terms("2026-05-01", "2026-07-15", null, 20, 3),
+            terms("2026-03-01", null, ym("2026-08"), 10, 5),
+            terms("2026-09-30", null, null, 5, 0),
+            terms("2026-11-01", null, null, 5, 3));
+    for (ContractTerms contract : contracts) {
+      List<Payment> paid = new java.util.ArrayList<>();
+      for (DebtPeriod owed : DebtCalculator.debt(contract, List.of(), TODAY)) {
+        assertThat(contract.acceptsPayment(owed.period(), TODAY))
+            .as("%s %s", contract, owed.period())
+            .isTrue();
+        paid.add(payment(paid.size() + 1, owed.period().toString(), PaymentStatus.APPROVED, null));
+        assertThat(DebtCalculator.debt(contract, paid, TODAY))
+            .extracting(DebtPeriod::period)
+            .doesNotContain(owed.period());
+      }
+      assertThat(DebtCalculator.debt(contract, paid, TODAY)).as("%s", contract).isEmpty();
+    }
   }
 
   // --- the due date ---

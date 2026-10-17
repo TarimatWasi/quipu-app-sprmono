@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.payment.application;
 
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
+import com.tarimatwasi.quipu.payment.domain.DebtCalculator;
 import com.tarimatwasi.quipu.payment.domain.InvalidRejectionReasonException;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
@@ -36,7 +37,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -238,7 +238,10 @@ public class PaymentService implements ManagePaymentsUseCase {
   }
 
   /**
-   * The contract that charges the period, and only if RN-27 lets a voucher be registered for it.
+   * The contract whose period is paid (RN-27 after D-31): any contract of the guest that charges
+   * the month, in force or not. When two charge it (a renewal), the newest one that still owes it,
+   * so that every month in debt can be settled; else the newest one, whose live payment answers
+   * 409.
    */
   private Target periodTarget(GuestProfile guest, DirectPayment direct) {
     YearMonth period = direct.period();
@@ -246,18 +249,28 @@ public class PaymentService implements ManagePaymentsUseCase {
       throw new InvalidPaymentException("period");
     }
     LocalDate today = BusinessDay.today(clock);
-    Optional<ContractInfo> charging =
+    List<ContractInfo> charging =
         contracts.contractsOf(direct.guestId()).stream()
-            .filter(c -> c.terms().periods(today).contains(period))
-            .max(Comparator.comparing(c -> c.terms().startDate()));
-    if (charging.isEmpty()
-        || !charging
-            .get()
-            .terms()
-            .acceptsPayment(period, payments.findAllByContract(charging.get().id()), today)) {
+            .filter(c -> c.terms().acceptsPayment(period, today))
+            .sorted(Comparator.comparing((ContractInfo c) -> c.terms().startDate()).reversed())
+            .toList();
+    if (charging.isEmpty()) {
       throw new InvalidPaymentException("period");
     }
-    return new Target(charging.get().id(), null, period);
+    ContractInfo target =
+        charging.size() == 1
+            ? charging.get(0)
+            : charging.stream()
+                .filter(c -> owes(c, period, today))
+                .findFirst()
+                .orElse(charging.get(0));
+    return new Target(target.id(), null, period);
+  }
+
+  private boolean owes(ContractInfo contract, YearMonth period, LocalDate today) {
+    return DebtCalculator.debt(contract.terms(), payments.findAllByContract(contract.id()), today)
+        .stream()
+        .anyMatch(d -> d.period().equals(period));
   }
 
   private void rejectLivePayment(Target target) {

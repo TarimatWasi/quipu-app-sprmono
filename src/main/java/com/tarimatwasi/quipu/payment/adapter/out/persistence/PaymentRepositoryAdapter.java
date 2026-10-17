@@ -201,6 +201,15 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
     return jpaRepository.findByStayId(stayId).stream().map(PaymentJpaEntity::toDomain).toList();
   }
 
+  @Override
+  public List<Payment> findApprovedOfContracts(Long guestId) {
+    return jpaRepository
+        .findByGuestIdAndStatusAndContractIdIsNotNull(guestId, PaymentStatus.APPROVED)
+        .stream()
+        .map(PaymentJpaEntity::toDomain)
+        .toList();
+  }
+
   private static String cursorOf(PaymentJpaEntity payment) {
     return CursorToken.encode(
         // PostgreSQL keeps microseconds: a finer value would sort after the row it came from.
