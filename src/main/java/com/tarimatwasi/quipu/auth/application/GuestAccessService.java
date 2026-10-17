@@ -98,6 +98,16 @@ public class GuestAccessService implements GuestAccessUseCase {
 
   @Override
   @Transactional
+  public void changeAccountDocument(Long guestId, String documentType, String documentNumber) {
+    try {
+      users.changeGuestDocument(guestId, DocumentType.valueOf(documentType), documentNumber);
+    } catch (AccountAlreadyExistsException e) {
+      throw new AccountDocumentTakenException(e);
+    }
+  }
+
+  @Override
+  @Transactional
   public void revokeAccess(Long guestId) {
     grants.revokeLive(guestId, clock.instant());
   }

@@ -37,25 +37,28 @@ public class JwtTokenProvider implements SessionTokenPort {
 
   @Override
   public String issue(String userId) {
-    return issue(userId, false);
-  }
-
-  @Override
-  public String issueTemporary(String userId) {
-    return issue(userId, true);
-  }
-
-  private String issue(String userId, boolean temporary) {
     Instant now = clock.instant();
-    JwtClaimsSet.Builder builder =
-        JwtClaimsSet.builder()
-            .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
-            .issuedAt(now)
-            .expiresAt(now.plus(expiration));
-    if (temporary) {
-      builder.claim(AccessSessions.TEMPORARY_CLAIM, true);
-    }
-    JwtClaimsSet claims = builder.build();
+    return encode(builder(userId, now).expiresAt(now.plus(expiration)).build());
+  }
+
+  /** The access id is signed like the rest of the token, so the client cannot swap it. */
+  @Override
+  public String issueTemporary(String userId, Long grantId, Instant expiresAt) {
+    Instant now = clock.instant();
+    return encode(
+        builder(userId, now)
+            .expiresAt(expiresAt)
+            .claim(AccessSessions.TEMPORARY_CLAIM, grantId.toString())
+            .build());
+  }
+
+  private JwtClaimsSet.Builder builder(String userId, Instant now) {
+    return JwtClaimsSet.builder()
+        .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
+        .issuedAt(now);
+  }
+
+  private String encode(JwtClaimsSet claims) {
     return encoder
         .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
         .getTokenValue();

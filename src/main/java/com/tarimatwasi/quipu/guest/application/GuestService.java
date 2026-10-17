@@ -120,6 +120,11 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     Guest changed = withDocument(current, command);
     try {
       Guest saved = guests.save(changed);
+      if (saved.documentType() != current.documentType()
+          || !saved.documentNumber().equals(current.documentNumber())) {
+        // Under the lock of the guest: its account logs in with the corrected document.
+        accounts.changeAccountDocument(id, saved.documentType().name(), saved.documentNumber());
+      }
       return summary(saved, stateOf(saved));
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);

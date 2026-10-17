@@ -40,6 +40,15 @@ interface AccessGrantJpaRepository extends JpaRepository<AccessGrantJpaEntity, L
       nativeQuery = true)
   int consumeTemporaryPassword(@Param("guestId") Long guestId, @Param("now") Instant now);
 
+  @Query(
+      value =
+          "SELECT count(*) > 0 FROM access_grants WHERE id = :id AND guest_id = :guestId"
+              + " AND mode = 'TEMPORARY_PASSWORD' AND used_at IS NULL AND revoked_at IS NULL"
+              + " AND expires_at > :now",
+      nativeQuery = true)
+  boolean isLiveTemporaryPassword(
+      @Param("id") Long grantId, @Param("guestId") Long guestId, @Param("now") Instant now);
+
   @Query(value = "SELECT guest_id FROM access_grants WHERE token_hash = :hash", nativeQuery = true)
   Optional<Long> findGuestIdByTokenHash(@Param("hash") String tokenHash);
 

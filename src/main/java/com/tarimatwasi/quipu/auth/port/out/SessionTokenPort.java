@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.auth.port.out;
 
+import java.time.Instant;
+
 /** Issues the session credential that the BFF hands to the browser. */
 public interface SessionTokenPort {
 
@@ -10,8 +12,9 @@ public interface SessionTokenPort {
   String issue(String userId);
 
   /**
-   * Like {@link #issue} but marked as opened with a temporary password: only this session may
-   * choose the password without giving the current one (RF-12).
+   * Like {@link #issue} but bound to the temporary password that opened it (its access id, signed
+   * in the token) and ending when that password expires: only this session may choose the password
+   * without giving the current one, and only while that same access is live (RF-12).
    */
-  String issueTemporary(String userId);
+  String issueTemporary(String userId, Long grantId, Instant expiresAt);
 }

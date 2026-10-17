@@ -26,6 +26,21 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
       nativeQuery = true)
   int updateStatusByGuestId(@Param("guestId") Long guestId, @Param("status") String status);
 
+  @Query("SELECT u.guestId FROM UserJpaEntity u WHERE u.id = :id AND u.guestId IS NOT NULL")
+  Optional<Long> findGuestIdById(@Param("id") Long id);
+
+  /**
+   * Only the document of the guest's account; flushed before and cleared after, like the status.
+   */
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query(
+      value =
+          "UPDATE users SET document_type = :type, document_number = :number,"
+              + " last_modified_date = now() WHERE guest_id = :guestId",
+      nativeQuery = true)
+  int updateDocumentByGuestId(
+      @Param("guestId") Long guestId, @Param("type") String type, @Param("number") String number);
+
   Optional<UserJpaEntity> findByDocumentTypeAndDocumentNumber(
       DocumentType documentType, String documentNumber);
 

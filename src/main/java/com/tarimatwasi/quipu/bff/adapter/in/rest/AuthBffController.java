@@ -27,6 +27,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -139,6 +140,19 @@ public class AuthBffController {
         current.guestId());
   }
 
+  /** The access that opened a temporary session, signed in its token; null for any other. */
+  private static @Nullable Long temporaryGrantOf(Authentication authentication) {
+    if (!(authentication instanceof JwtAuthenticationToken token)) {
+      return null;
+    }
+    String grant = token.getToken().getClaimAsString(AccessSessions.TEMPORARY_CLAIM);
+    try {
+      return grant == null ? null : Long.valueOf(grant);
+    } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
   /** The session opened with a temporary password (RF-12); see {@link AccessSessions}. */
   private static boolean isTemporary(Authentication authentication) {
     return authentication.getAuthorities().stream()
@@ -190,7 +204,7 @@ public class AuthBffController {
                 authentication.getName(),
                 request.currentPassword(),
                 request.newPassword(),
-                isTemporary(authentication)));
+                temporaryGrantOf(authentication)));
     return ResponseEntity.noContent()
         .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
         .build();

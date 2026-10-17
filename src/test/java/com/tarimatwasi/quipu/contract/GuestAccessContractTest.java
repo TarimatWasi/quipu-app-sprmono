@@ -358,6 +358,63 @@ class GuestAccessContractTest {
     login("12345678", "Otra-clave-2026").andExpect(status().isOk());
   }
 
+  /** The temporary session is bound to its own access: a new access ends its exemption. */
+  @Test
+  void aTemporarySessionWhoseAccessWasReplacedNeedsTheCurrentPassword() throws Exception {
+    MvcResult created = register("12345678", "TEMPORARY_PASSWORD", null).andReturn();
+    String guestId = read(created, "$.guest.id");
+    Cookie session =
+        login("12345678", read(created, "$.access.temporaryPassword"))
+            .andReturn()
+            .getResponse()
+            .getCookie("sessionToken");
+    generate(guestId, "TEMPORARY_PASSWORD", admin()).andExpect(status().isOk());
+
+    changePassword(session, null, NEW_PASSWORD)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+    assertThat(statusOf(guestId)).isEqualTo("PENDING_ACTIVATION");
+  }
+
+  /** The temporary session ends with its access (30 minutes), not with the 30 days of a session. */
+  @Test
+  void aTemporarySessionEndsWhenItsAccessExpires() throws Exception {
+    MvcResult created = register("12345678", "TEMPORARY_PASSWORD", null).andReturn();
+    MvcResult logged =
+        login("12345678", read(created, "$.access.temporaryPassword"))
+            .andExpect(status().isOk())
+            .andReturn();
+    Cookie session = logged.getResponse().getCookie("sessionToken");
+    // The token is valid up to its expiry second included.
+    clock().advance(Duration.ofMinutes(30).plusSeconds(1));
+
+    mockMvc.perform(get("/bff/auth/me").cookie(session)).andExpect(status().isUnauthorized());
+    changePassword(session, null, NEW_PASSWORD).andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * RN-36: correcting the document of a pending guest also changes the document it logs in with.
+   */
+  @Test
+  void correctingTheDocumentAlsoCorrectsTheAccount() throws Exception {
+    String guestId = read(register("12345678", "LINK", null).andReturn(), "$.guest.id");
+
+    mockMvc
+        .perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(
+                    GUESTS + "/" + guestId)
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"documentNumber\":\"87654321\"}"))
+        .andExpect(status().isOk());
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT document_number FROM users WHERE role = 'GUEST' AND guest_id IS NOT NULL",
+                String.class))
+        .isEqualTo("87654321");
+  }
+
   /** RN-12: a deactivated guest loses the access it was handed; reactivating does not revive it. */
   @Test
   void deactivatingTheGuestRevokesItsAccess() throws Exception {

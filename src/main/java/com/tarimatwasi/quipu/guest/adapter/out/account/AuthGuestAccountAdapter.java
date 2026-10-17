@@ -37,6 +37,15 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
   }
 
   @Override
+  public void changeAccountDocument(Long guestId, String documentType, String documentNumber) {
+    try {
+      access.changeAccountDocument(guestId, documentType, documentNumber);
+    } catch (AccountDocumentTakenException e) {
+      throw new GuestDocumentAlreadyExistsException(e);
+    }
+  }
+
+  @Override
   public void revokeAccess(Long guestId) {
     access.revokeAccess(guestId);
   }

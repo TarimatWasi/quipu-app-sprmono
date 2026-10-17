@@ -38,6 +38,13 @@ public interface GuestAccountPort {
   /** Queues the email with the access, best-effort; whether it was queued. After the commit. */
   boolean sendAccess(String email, IssuedAccess access);
 
+  /**
+   * The account of the guest logs in with its corrected document (RN-36). Joins the transaction.
+   *
+   * @throws GuestDocumentAlreadyExistsException if another account has that document
+   */
+  void changeAccountDocument(Long guestId, String documentType, String documentNumber);
+
   /** Revokes the live access of the guest, if any (RN-12). Joins the caller's transaction. */
   void revokeAccess(Long guestId);
 

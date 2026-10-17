@@ -79,8 +79,8 @@ class AuthApplicationServiceTest {
       }
 
       @Override
-      public String issueTemporary(String userId) {
-        return "temporary:" + issue.apply(userId);
+      public String issueTemporary(String userId, Long grantId, Instant expiresAt) {
+        return "temporary:" + grantId + ":" + expiresAt + ":" + issue.apply(userId);
       }
     };
   }
@@ -520,6 +520,7 @@ class AuthApplicationServiceTest {
   // ------------------------------------------------------------------ TAR-36 temporary password
 
   private static final Long GUEST = 77L;
+  private static final Long GRANT = 501L;
 
   private UserAccount pendingGuestAccount() {
     UserAccount user =
@@ -542,7 +543,10 @@ class AuthApplicationServiceTest {
 
   private void temporaryPassword(String raw, Instant expiresAt) {
     when(grants.findLiveTemporaryPassword(GUEST))
-        .thenReturn(Optional.of(new LiveTemporaryPassword(ResetCodeIssuer.hash(raw), expiresAt)));
+        .thenReturn(
+            Optional.of(new LiveTemporaryPassword(GRANT, ResetCodeIssuer.hash(raw), expiresAt)));
+    when(grants.isLiveTemporaryPassword(eq(GRANT), eq(GUEST), any()))
+        .thenAnswer(call -> call.<Instant>getArgument(2).isBefore(expiresAt));
   }
 
   @Test
@@ -554,7 +558,9 @@ class AuthApplicationServiceTest {
 
     assertThat(result.mustChangePassword()).isTrue();
     assertThat(result.guestId()).isEqualTo(GUEST);
-    assertThat(result.sessionToken()).startsWith("temporary:");
+    // Bound to its access and ending with it, not in 30 days.
+    assertThat(result.sessionToken())
+        .startsWith("temporary:" + GRANT + ":" + clock.instant().plus(Duration.ofMinutes(30)));
     // D-30: the access is consumed and the onboarding starts when the password is chosen.
     assertThat(startedOnboarding).isEmpty();
     assertThat(repository.find(user.id()).mustChangePassword()).isTrue();
@@ -590,7 +596,7 @@ class AuthApplicationServiceTest {
     temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
 
     service.changePassword(
-        new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", true));
+        new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", GRANT));
 
     assertThat(lockedGuests).containsExactly(GUEST);
     verify(grants).consumeTemporaryPassword(GUEST, clock.instant());
@@ -607,7 +613,7 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () ->
                 service.changePassword(
-                    new ChangePasswordCommand(user.id().toString(), null, "Tmp-abc-12345", true)))
+                    new ChangePasswordCommand(user.id().toString(), null, "Tmp-abc-12345", GRANT)))
         .isInstanceOf(PasswordUnchangedException.class);
     verify(grants, never()).consumeTemporaryPassword(any(), any());
   }
@@ -622,6 +628,32 @@ class AuthApplicationServiceTest {
         .isInstanceOf(InvalidCredentialsException.class);
   }
 
+  /** The session is bound to its own access: another live one of the guest does not count. */
+  @Test
+  void aTemporarySessionWhoseAccessWasReplacedNeedsTheCurrentPassword() {
+    UserAccount user = pendingGuestAccount();
+    temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
+
+    assertThatThrownBy(
+            () ->
+                service.changePassword(
+                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", 999L)))
+        .isInstanceOf(InvalidCredentialsException.class);
+  }
+
+  @Test
+  void aTemporarySessionWhoseAccessExpiredNeedsTheCurrentPassword() {
+    UserAccount user = pendingGuestAccount();
+    temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
+    clock.advance(Duration.ofMinutes(30));
+
+    assertThatThrownBy(
+            () ->
+                service.changePassword(
+                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", GRANT)))
+        .isInstanceOf(InvalidCredentialsException.class);
+  }
+
   /** A temporary session whose access was revoked or used can no longer skip it either. */
   @Test
   void aTemporarySessionWithoutALiveTemporaryPasswordNeedsTheCurrentPassword() {
@@ -630,7 +662,7 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () ->
                 service.changePassword(
-                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", true)))
+                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", GRANT)))
         .isInstanceOf(InvalidCredentialsException.class);
   }
 }

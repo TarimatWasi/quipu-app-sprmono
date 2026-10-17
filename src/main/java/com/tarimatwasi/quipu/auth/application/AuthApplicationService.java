@@ -105,8 +105,9 @@ public class AuthApplicationService
     if (user.isLockedAt(now)) {
       throw new AccountLockedException(now, Objects.requireNonNull(user.lockedUntil()));
     }
-    boolean temporary = !passwordMatches && matchesTemporaryPassword(user, command.rawPassword());
-    if (!passwordMatches && !temporary) {
+    LiveTemporaryPassword temporary =
+        passwordMatches ? null : matchingTemporaryPassword(user, command.rawPassword());
+    if (!passwordMatches && temporary == null) {
       // Defensive: the row is already locked, but the repository still answers if it was locked.
       boolean alreadyLocked =
           userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
@@ -131,22 +132,27 @@ public class AuthApplicationService
    * when it chooses the password, so a guest that leaves before can sign in again with it until it
    * expires. The account is not flagged, so earlier sessions keep asking for the current password.
    */
-  private LoginResult sessionOf(UserAccount user, boolean temporary) {
+  private LoginResult sessionOf(UserAccount user, @Nullable LiveTemporaryPassword temporary) {
     String userId = user.id().toString();
     return new LoginResult(
         userId,
         user.role().name(),
         user.email(),
         user.guestId(),
-        temporary || user.mustChangePassword(),
-        temporary ? sessionTokens.issueTemporary(userId) : sessionTokens.issue(userId));
+        temporary != null || user.mustChangePassword(),
+        temporary == null
+            ? sessionTokens.issue(userId)
+            : sessionTokens.issueTemporary(userId, temporary.id(), temporary.expiresAt()));
   }
 
   @Override
   @Transactional
   public ChangePasswordResult changePassword(ChangePasswordCommand command) {
     // Lock order of the accesses: the guest, then its account, then its accesses.
-    Long guestId = lookup(command.userId()).map(UserAccount::guestId).orElse(null);
+    // A scalar read: no account enters the persistence context before the guest lock is held, so
+    // the account read under its own lock below is fresh (a deactivation committed meanwhile
+    // shows).
+    Long guestId = guestOf(command.userId());
     if (guestId != null) {
       guests.lockGuest(guestId);
     }
@@ -212,20 +218,28 @@ public class AuthApplicationService
    * hash in constant time. Right but expired gives its own answer; it is only reached when the
    * password matched, so it never tells whether a document exists.
    */
-  private boolean matchesTemporaryPassword(UserAccount user, String rawPassword) {
+  private @Nullable LiveTemporaryPassword matchingTemporaryPassword(
+      UserAccount user, String rawPassword) {
     Long guestId = user.guestId();
     if (guestId == null) {
-      return false;
+      return null;
     }
-    Optional<LiveTemporaryPassword> live = grants.findLiveTemporaryPassword(guestId);
-    if (live.isEmpty()) {
-      return false;
+    LiveTemporaryPassword live = grants.findLiveTemporaryPassword(guestId).orElse(null);
+    if (live == null || !sameHash(rawPassword, live)) {
+      return null;
     }
-    boolean matches = sameHash(rawPassword, live.get());
-    if (matches && !clock.instant().isBefore(live.get().expiresAt())) {
+    if (!clock.instant().isBefore(live.expiresAt())) {
       throw new TemporaryPasswordExpiredException();
     }
-    return matches;
+    return live;
+  }
+
+  private @Nullable Long guestOf(String userId) {
+    try {
+      return userRepository.findGuestIdOf(Long.parseLong(userId)).orElse(null);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 
   /** Whether the guest has a live temporary password equal to that one, expired or not. */
@@ -256,10 +270,11 @@ public class AuthApplicationService
     boolean matches =
         currentPassword != null && passwordEncoder.matches(currentPassword, user.passwordHash());
     Long guestId = user.guestId();
+    Long grantId = command.temporaryGrantId();
     boolean exempt =
         guestId == null
             ? user.mustChangePassword()
-            : command.temporarySession() && grants.findLiveTemporaryPassword(guestId).isPresent();
+            : grantId != null && grants.isLiveTemporaryPassword(grantId, guestId, clock.instant());
     boolean skippable = currentPassword == null && exempt;
     if (!matches && !skippable) {
       throw new InvalidCredentialsException();

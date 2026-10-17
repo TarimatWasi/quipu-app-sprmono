@@ -38,6 +38,14 @@ public interface GuestAccessUseCase {
    */
   void revokeAccess(Long guestId);
 
+  /**
+   * The account of the guest logs in with the document the administrator corrected (RN-36). Joins
+   * the transaction of the caller, which holds the lock of the guest.
+   *
+   * @throws AccountDocumentTakenException if another account has that document
+   */
+  void changeAccountDocument(Long guestId, String documentType, String documentNumber);
+
   /** When the live, unused access of the guest expires; empty if it has none. */
   Optional<Instant> accessExpiry(Long guestId);
 

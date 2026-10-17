@@ -55,7 +55,7 @@ public class AccountJwtAuthenticationConverter
     }
     List<GrantedAuthority> authorities = new ArrayList<>();
     authorities.add(new SimpleGrantedAuthority("ROLE_" + account.role().name()));
-    boolean temporary = Boolean.TRUE.equals(jwt.getClaimAsBoolean(AccessSessions.TEMPORARY_CLAIM));
+    boolean temporary = jwt.hasClaim(AccessSessions.TEMPORARY_CLAIM);
     if (account.mustChangePassword() || temporary) {
       authorities.add(new SimpleGrantedAuthority(PASSWORD_CHANGE_PENDING));
     }

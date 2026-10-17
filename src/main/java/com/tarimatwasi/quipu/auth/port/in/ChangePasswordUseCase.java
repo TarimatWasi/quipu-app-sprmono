@@ -19,19 +19,20 @@ public interface ChangePasswordUseCase {
 
   /**
    * The change requested by the account's own session. The current password is optional only for
-   * the session opened with a live temporary password ({@code temporarySession}) and for an
-   * administrator that has not replaced its initial password; any other session must give it.
+   * the session opened with a temporary password ({@code temporaryGrantId}, the access that opened
+   * it) while that same access is live, and for an administrator that has not replaced its initial
+   * password; any other session must give it.
    */
   record ChangePasswordCommand(
       String userId,
       @Nullable String currentPassword,
       String newPassword,
-      boolean temporarySession) {
+      @Nullable Long temporaryGrantId) {
 
     /** A change from a session that was not opened with a temporary password. */
     public ChangePasswordCommand(
         String userId, @Nullable String currentPassword, String newPassword) {
-      this(userId, currentPassword, newPassword, false);
+      this(userId, currentPassword, newPassword, null);
     }
   }
 

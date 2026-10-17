@@ -27,6 +27,12 @@ public interface AccessGrantRepositoryPort {
   /** The temporary password of the guest that is neither used nor revoked, expired or not. */
   Optional<LiveTemporaryPassword> findLiveTemporaryPassword(Long guestId);
 
+  /**
+   * Whether that exact access is a temporary password of that guest that is unused, not revoked and
+   * not expired at {@code now}: what a session opened with it needs to choose the password (RF-12).
+   */
+  boolean isLiveTemporaryPassword(Long grantId, Long guestId, Instant now);
+
   /** Marks the live temporary password of the guest as used (D-30), if there is one. */
   void consumeTemporaryPassword(Long guestId, Instant now);
 
@@ -36,5 +42,5 @@ public interface AccessGrantRepositoryPort {
   Optional<Instant> liveExpiry(Long guestId, Instant now);
 
   /** The hash of a temporary password and when it expires. */
-  record LiveTemporaryPassword(String tokenHash, Instant expiresAt) {}
+  record LiveTemporaryPassword(Long id, String tokenHash, Instant expiresAt) {}
 }

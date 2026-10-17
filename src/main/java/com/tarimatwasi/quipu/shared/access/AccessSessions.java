@@ -7,7 +7,7 @@ package com.tarimatwasi.quipu.shared.access;
  */
 public final class AccessSessions {
 
-  /** JWT claim set to true on the session opened with a temporary password. */
+  /** JWT claim with the id of the access (temporary password) that opened the session. */
   public static final String TEMPORARY_CLAIM = "tmp";
 
   /** Authority the security layer gives to that session. */

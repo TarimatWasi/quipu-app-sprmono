@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -41,12 +42,29 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
         || !jpaRepository.findByGuestIdIn(List.of(guestId)).isEmpty()) {
       return;
     }
-    if (jpaRepository.findByDocumentTypeAndDocumentNumber(documentType, documentNumber).isPresent()
-        || insertGuest(guestId, documentType, documentNumber, null, unusablePasswordHash) != 1) {
-      throw new AccountAlreadyExistsException(
-          new IllegalStateException("The document of guest " + guestId + " has an account"));
-    }
+    boolean documentTaken =
+        jpaRepository.findByDocumentTypeAndDocumentNumber(documentType, documentNumber).isPresent();
     // Only the email was taken meanwhile: the account email is optional (D-33).
+    if (!documentTaken
+        && insertGuest(guestId, documentType, documentNumber, null, unusablePasswordHash) == 1) {
+      return;
+    }
+    // The account of this guest may have been committed meanwhile by another request: nothing to
+    // do.
+    if (!jpaRepository.findByGuestIdIn(List.of(guestId)).isEmpty()) {
+      return;
+    }
+    throw new AccountAlreadyExistsException(
+        new IllegalStateException("The document of guest " + guestId + " has an account"));
+  }
+
+  @Override
+  public void changeGuestDocument(Long guestId, DocumentType documentType, String documentNumber) {
+    try {
+      jpaRepository.updateDocumentByGuestId(guestId, documentType.name(), documentNumber);
+    } catch (DataIntegrityViolationException e) {
+      throw new AccountAlreadyExistsException(e);
+    }
   }
 
   private int insertGuest(
@@ -90,6 +108,11 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   @Override
   public Optional<UserAccount> findById(Long id) {
     return jpaRepository.findById(id).map(UserJpaEntity::toDomain);
+  }
+
+  @Override
+  public Optional<Long> findGuestIdOf(Long id) {
+    return jpaRepository.findGuestIdById(id);
   }
 
   @Override

@@ -15,6 +15,13 @@ public interface UserRepositoryPort {
   Optional<UserAccount> findById(Long id);
 
   /**
+   * The guest of the account, read as a single value: no account is kept by the persistence
+   * context, so a later read under a lock is fresh. Empty for an unknown account or one of no
+   * guest.
+   */
+  Optional<Long> findGuestIdOf(Long id);
+
+  /**
    * The accounts that belong to the guests with those ids; the ids without an account add nothing.
    */
   List<UserAccount> findAllByGuestIds(Collection<Long> guestIds);
@@ -87,6 +94,14 @@ public interface UserRepositoryPort {
       String documentNumber,
       @Nullable String email,
       String unusablePasswordHash);
+
+  /**
+   * The document the guest account logs in with follows the document of the guest (RN-36); nothing
+   * if the guest has no account.
+   *
+   * @throws AccountAlreadyExistsException if another account has that document
+   */
+  void changeGuestDocument(Long guestId, DocumentType documentType, String documentNumber);
 
   /** The account of the guest, its row locked until the transaction ends. Needs a transaction. */
   Optional<UserAccount> findByGuestIdForUpdate(Long guestId);

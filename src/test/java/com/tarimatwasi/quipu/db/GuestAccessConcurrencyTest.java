@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -23,6 +25,7 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -44,6 +47,8 @@ class GuestAccessConcurrencyTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+  @Autowired PasswordEncoder passwordEncoder;
+  @Autowired IdMasker masker;
 
   private final Long adminId = TestIds.next();
 
@@ -105,6 +110,71 @@ class GuestAccessConcurrencyTest {
                 "SELECT count(*) FROM access_grants WHERE used_at IS NULL AND revoked_at IS NULL",
                 Integer.class))
         .isZero();
+  }
+
+  /**
+   * The password change reads the account only after the lock of the guest: a deactivation that
+   * commits while it waits is seen, and the account stays INACTIVE whatever the order.
+   */
+  @Test
+  void aPasswordChangeNeverRevivesAnAccountDeactivatedMeanwhile() throws Exception {
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      for (int round = 0; round < ROUNDS; round++) {
+        Long guest = TestIds.next();
+        jdbc.update(
+            "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
+                + " VALUES (?, 'DNI', ?, 'CONTRACT', 'ACTIVE')",
+            guest,
+            String.format("7100%04d", round));
+        Long account = TestIds.next();
+        jdbc.update(
+            "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+                + " guest_id, must_change_password, status) VALUES (?, NULL, 'DNI', ?, ?, 'GUEST',"
+                + " ?, FALSE, 'ACTIVE')",
+            account,
+            String.format("7100%04d", round),
+            passwordEncoder.encode("Actual-2026"),
+            guest);
+        Cookie session = new Cookie("sessionToken", jwtTokenProvider.issue(account.toString()));
+        String guestId = masker.mask(IdKind.GUEST, guest).toString();
+
+        CountDownLatch start = new CountDownLatch(1);
+        Future<Integer> deactivation =
+            pool.submit(
+                () -> {
+                  start.await();
+                  return deactivate(guestId);
+                });
+        Future<Integer> change =
+            pool.submit(
+                () -> {
+                  start.await();
+                  return changePassword(session);
+                });
+        start.countDown();
+
+        assertThat(deactivation.get(20, TimeUnit.SECONDS)).isIn(204, 409);
+        assertThat(change.get(20, TimeUnit.SECONDS)).isIn(204, 401, 403, 409);
+        assertThat(
+                jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, account))
+            .isEqualTo("INACTIVE");
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  private int changePassword(Cookie session) throws Exception {
+    return mockMvc
+        .perform(
+            post("/bff/auth/change-password")
+                .cookie(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"Actual-2026\",\"newPassword\":\"Nueva-2026\"}"))
+        .andReturn()
+        .getResponse()
+        .getStatus();
   }
 
   private String register(String number) throws Exception {
