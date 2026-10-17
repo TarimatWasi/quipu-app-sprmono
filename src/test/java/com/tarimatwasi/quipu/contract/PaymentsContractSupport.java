@@ -10,8 +10,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
-import com.atlassian.oai.validator.report.LevelResolver;
-import com.atlassian.oai.validator.report.ValidationReport;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
@@ -102,19 +100,11 @@ abstract class PaymentsContractSupport {
   }
 
   /**
-   * The oneOf branches of PaymentSummary, Payment and PaymentQueueItem list only the properties
-   * that tell them apart; they are open in JSON Schema, but the validator reads each one as closed
-   * and refuses the properties of the other branch. That one rule is ignored, everything else is
-   * checked.
+   * Validates against the full contract. Since v0.7.2 the oneOf branches of PaymentSummary, Payment
+   * and PaymentQueueItem declare {@code additionalProperties: true}, so no rule is ignored.
    */
   protected static OpenApiInteractionValidator validator(ValidationErrorsWhitelist whitelist) {
-    return OpenApiInteractionValidator.createFor(SPEC)
-        .withLevelResolver(
-            LevelResolver.create()
-                .withLevel("validation.schema.additionalProperties", ValidationReport.Level.IGNORE)
-                .build())
-        .withWhitelist(whitelist)
-        .build();
+    return OpenApiInteractionValidator.createFor(SPEC).withWhitelist(whitelist).build();
   }
 
   protected static ResultMatcher satisfiesTheContract() {
