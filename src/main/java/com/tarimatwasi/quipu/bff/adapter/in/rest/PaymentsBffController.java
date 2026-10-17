@@ -224,18 +224,7 @@ public class PaymentsBffController {
       @Valid DirectPaymentForm form,
       MultipartHttpServletRequest request,
       Authentication authentication) {
-    // Spring binds only what the record declares and silently drops the rest, but the form is
-    // closed: a misspelled field (periodo) must not register a payment with other terms.
-    UnknownFieldException.rejectAnyOutside(
-        FORM_FIELDS,
-        Stream.concat(
-                request.getParameterMap().keySet().stream(), request.getFileMap().keySet().stream())
-            .toList());
-    // BigDecimal drops the exponent (8.00E+2 reads as 800): the text is what tells it apart.
-    String written = request.getParameter("amount");
-    if (written != null && written.toLowerCase(Locale.ROOT).indexOf('e') >= 0) {
-      throw new InvalidPaymentException("amount");
-    }
+    checkVoucherForm(FORM_FIELDS, request);
     String name = form.file().getOriginalFilename();
     PaymentResponse created =
         PaymentResponse.of(
@@ -265,7 +254,24 @@ public class PaymentsBffController {
     }
   }
 
-  private static @Nullable YearMonth period(@Nullable String period) {
+  /**
+   * Spring binds only what the record declares and silently drops the rest, but a voucher form is
+   * closed: a misspelled field (periodo) must not register a payment with other terms. And
+   * BigDecimal drops the exponent (8.00E+2 reads as 800): the text is what tells it apart.
+   */
+  static void checkVoucherForm(Set<String> fields, MultipartHttpServletRequest request) {
+    UnknownFieldException.rejectAnyOutside(
+        fields,
+        Stream.concat(
+                request.getParameterMap().keySet().stream(), request.getFileMap().keySet().stream())
+            .toList());
+    String written = request.getParameter("amount");
+    if (written != null && written.toLowerCase(Locale.ROOT).indexOf('e') >= 0) {
+      throw new InvalidPaymentException("amount");
+    }
+  }
+
+  static @Nullable YearMonth period(@Nullable String period) {
     if (period == null) {
       return null;
     }
@@ -275,7 +281,7 @@ public class PaymentsBffController {
     return YearMonth.parse(period);
   }
 
-  private static byte[] content(MultipartFile file) {
+  static byte[] content(MultipartFile file) {
     try {
       return file.getBytes();
     } catch (IOException unreadable) {

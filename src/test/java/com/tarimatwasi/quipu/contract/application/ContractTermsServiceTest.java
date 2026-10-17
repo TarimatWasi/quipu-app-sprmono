@@ -57,6 +57,7 @@ class ContractTermsServiceTest {
     assertThat(terms.get(1).environmentId()).isEqualTo(11L);
     assertThat(terms.get(1).paymentDay()).isEqualTo(5);
     assertThat(terms.get(1).graceDays()).isEqualTo(3);
+    assertThat(terms.get(1).monthlyAmount()).isEqualByComparingTo("800.00");
   }
 
   @Test

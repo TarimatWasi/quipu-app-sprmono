@@ -45,6 +45,7 @@ public class ContractTermsService implements ContractTermsUseCase {
         contract.endDate(),
         contract.terminatedAt(),
         contract.paymentDay(),
-        contract.graceDays());
+        contract.graceDays(),
+        contract.monthlyAmount());
   }
 }

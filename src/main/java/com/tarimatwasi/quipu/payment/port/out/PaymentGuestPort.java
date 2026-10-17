@@ -19,6 +19,28 @@ public interface PaymentGuestPort {
       boolean contractType,
       boolean active) {}
 
+  /** Where the guest of a session is in its lifecycle (RN-36), as the payments read it. */
+  enum Standing {
+    /** It has not finished the onboarding yet (RN-33), or has not even activated its access. */
+    ONBOARDING,
+    ACTIVE,
+    INACTIVE
+  }
+
+  /**
+   * The guest of a session, read with its own rights.
+   *
+   * @param contractType a guest with a contract; otherwise a temporary one
+   */
+  record OwnGuest(Long id, boolean contractType, Standing standing) {}
+
+  /**
+   * The guest of the session.
+   *
+   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if there is none
+   */
+  OwnGuest ownGuest(Long guestId);
+
   /**
    * One guest.
    *

@@ -24,8 +24,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * The upload routes through the whole security chain (ADR-006, RN-08, RN-09): who may reach each
- * one and what happens to an upload that does not say where it comes from. The routes of the
- * payments have no controller yet, so a request that passes the security answers 404.
+ * one and what happens to an upload that does not say where it comes from. A request that passes
+ * the security reaches the controller, which reads the form and the guest of the session.
  */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @AutoConfigureMockMvc
@@ -111,9 +111,11 @@ class UploadRoutesContractTest {
           .andExpect(status().isForbidden())
           .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
       mockMvc.perform(upload(route).header("Origin", ORIGIN)).andExpect(status().isUnauthorized());
+      // past the security: the form is read (and this one lacks its amount)
       mockMvc
           .perform(upload(route).header("Origin", ORIGIN).cookie(guest()))
-          .andExpect(status().isNotFound());
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
   }
 
@@ -126,9 +128,11 @@ class UploadRoutesContractTest {
     mockMvc
         .perform(get("/bff/temporary-guest/payment-status"))
         .andExpect(status().isUnauthorized());
+    // past the security: this account belongs to no guest, so the route refuses it
     mockMvc
         .perform(get("/bff/temporary-guest/payment-status").cookie(guest()))
-        .andExpect(status().isNotFound());
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
   }
 
   private void insertAccount(Long id, String role, String document) {

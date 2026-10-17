@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract.port.in;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -23,7 +24,8 @@ public interface ContractTermsUseCase {
       @Nullable LocalDate endDate,
       @Nullable Instant terminatedAt,
       int paymentDay,
-      int graceDays) {}
+      int graceDays,
+      BigDecimal monthlyAmount) {}
 
   /** Every contract of the guest, whatever its state, the oldest first. */
   List<ContractTermsView> termsOfGuest(Long guestId);

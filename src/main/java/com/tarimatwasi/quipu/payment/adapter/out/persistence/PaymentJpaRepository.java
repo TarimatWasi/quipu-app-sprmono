@@ -24,4 +24,6 @@ interface PaymentJpaRepository
       Long stayId, Collection<PaymentStatus> statuses);
 
   List<PaymentJpaEntity> findByContractId(Long contractId);
+
+  List<PaymentJpaEntity> findByStayId(Long stayId);
 }

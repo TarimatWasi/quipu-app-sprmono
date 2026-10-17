@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -30,6 +32,8 @@ class MethodSecurityContractTest {
   @Autowired ManageGuestsUseCase guests;
   @Autowired ManageEnvironmentsUseCase environments;
   @Autowired ManageExpensesUseCase expenses;
+  @Autowired OwnPaymentsUseCase ownPayments;
+  @Autowired OwnGuestUseCase ownGuests;
   @Autowired JdbcTemplate jdbc;
 
   @BeforeEach
@@ -58,6 +62,15 @@ class MethodSecurityContractTest {
   void expenseUseCases_withoutAdminRole_areForbidden() {
     assertThatThrownBy(() -> expenses.list(YearMonth.of(2026, 10), PageQuery.first()))
         .isInstanceOf(AccessDeniedException.class);
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  void ownGuestUseCases_withoutGuestRole_areForbidden() {
+    assertThatThrownBy(() -> ownPayments.accountStatus(1L))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> ownPayments.stayStatus(1L)).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> ownGuests.own(1L)).isInstanceOf(AccessDeniedException.class);
   }
 
   @Test
