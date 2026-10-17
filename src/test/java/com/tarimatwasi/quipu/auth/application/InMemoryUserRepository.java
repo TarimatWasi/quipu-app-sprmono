@@ -121,6 +121,27 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
+  public void setGuestAccountStatus(Long guestId, String status) {
+    findAllByGuestIds(List.of(guestId))
+        .forEach(
+            user ->
+                save(
+                    new UserAccount(
+                        user.id(),
+                        user.email(),
+                        user.documentType(),
+                        user.documentNumber(),
+                        user.passwordHash(),
+                        user.role(),
+                        user.guestId(),
+                        user.mustChangePassword(),
+                        status,
+                        user.failedLoginAttempts(),
+                        user.lockedUntil(),
+                        user.passwordChangedAt())));
+  }
+
+  @Override
   public void clearFailedLogins(Long id) {
     save(withLock(find(id), 0, null));
   }

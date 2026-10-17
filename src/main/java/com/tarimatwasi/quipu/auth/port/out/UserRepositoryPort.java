@@ -36,6 +36,12 @@ public interface UserRepositoryPort {
    */
   void changePassword(Long id, String newPasswordHash, Instant changedAt);
 
+  /**
+   * Sets the status (ACTIVE or INACTIVE) of the account of the guest; nothing if it has none. An
+   * INACTIVE account cannot log in and its sessions stop working (RN-12).
+   */
+  void setGuestAccountStatus(Long guestId, String status);
+
   /** Emails are unique ignoring case. */
   Optional<UserAccount> findByEmail(String email);
 

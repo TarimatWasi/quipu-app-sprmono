@@ -112,4 +112,24 @@ public interface ManageGuestsUseCase {
    * @throws GuestDocumentTakenException if another guest has the new document
    */
   GuestSummaryView update(Long id, UpdateCommand command);
+
+  /**
+   * RF-13, RN-12: the guest becomes INACTIVE, keeps the state it had to come back to it, and its
+   * account can no longer log in. The debt does not block it. Deactivating an inactive guest
+   * changes nothing.
+   *
+   * @throws GuestNotFoundException if there is no guest with that id
+   * @throws GuestHasActiveContractException if the guest has a contract in force
+   */
+  void deactivate(Long id);
+
+  /**
+   * RF-13, RN-12, CU-28: the guest comes back to the state it had when it was deactivated and its
+   * account can log in again. A guest that is not inactive is answered as it is, unchanged.
+   *
+   * @throws GuestNotFoundException if there is no guest with that id
+   * @throws com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException if the guest owes
+   *     periods (RN-25, RN-35)
+   */
+  GuestSummaryView reactivate(Long id);
 }

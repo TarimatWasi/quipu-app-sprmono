@@ -158,4 +158,29 @@ class GuestAccountServiceTest {
 
     assertThat(service.guestOf(admin.id())).isEmpty();
   }
+
+  @Test
+  void disablingAndEnablingTheAccountOfAGuestTouchesOnlyThatAccount() {
+    var guest = TestIds.next();
+    var other = TestIds.next();
+    var account = account(guest, "66666666", false, "ACTIVE");
+    var untouched = account(other, "77777777", false, "ACTIVE");
+
+    service.setActive(guest, false);
+    assertThat(users.findById(account.id()))
+        .get()
+        .extracting(UserAccount::status)
+        .isEqualTo("INACTIVE");
+    assertThat(users.findById(untouched.id()))
+        .get()
+        .extracting(UserAccount::status)
+        .isEqualTo("ACTIVE");
+
+    service.setActive(guest, true);
+    assertThat(users.findById(account.id()))
+        .get()
+        .extracting(UserAccount::status)
+        .isEqualTo("ACTIVE");
+    service.setActive(TestIds.next(), false); // a guest without account: nothing happens
+  }
 }

@@ -39,6 +39,12 @@ public class GuestAccountService implements GuestAccountUseCase {
   }
 
   @Override
+  @Transactional
+  public void setActive(Long guestId, boolean active) {
+    users.setGuestAccountStatus(guestId, active ? "ACTIVE" : "INACTIVE");
+  }
+
+  @Override
   @Transactional(readOnly = true)
   public Optional<Long> guestOf(Long accountId) {
     return users.findById(accountId).map(UserAccount::guestId);

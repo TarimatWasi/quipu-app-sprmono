@@ -29,6 +29,11 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
   }
 
   @Override
+  public void setActive(Long guestId, boolean active) {
+    accounts.setActive(guestId, active);
+  }
+
+  @Override
   public boolean documentBelongsToAdministrator(String documentType, String documentNumber) {
     return accounts.documentBelongsToAdministrator(documentType, documentNumber);
   }

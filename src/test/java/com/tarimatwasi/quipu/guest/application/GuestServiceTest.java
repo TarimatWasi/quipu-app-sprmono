@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.guest.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,10 +17,12 @@ import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
+import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.IdDocumentKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.OnboardingProgress;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.StatusFilter;
@@ -30,6 +33,9 @@ import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
+import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
+import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -37,6 +43,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -59,9 +66,11 @@ class GuestServiceTest {
   @Mock GuestRepositoryPort repository;
   @Mock GuestAccountPort accounts;
   @Mock StayRepositoryPort stays;
+  @Mock ContractOccupancyQuery contracts;
+  @Mock GuestDebtQuery debts;
 
   private GuestService service() {
-    return new GuestService(repository, accounts, stays, CLOCK);
+    return new GuestService(repository, accounts, stays, contracts, debts, CLOCK);
   }
 
   private static Guest guest(GuestStatus status) {
@@ -412,5 +421,124 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service().lock(ID)).isInstanceOf(GuestNotFoundException.class);
+  }
+
+  // --- deactivate and reactivate (RF-13, RN-12) ---
+
+  @Test
+  void deactivatingKeepsTheStateItHadAndDisablesTheAccount() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ONBOARDING)));
+    when(contracts.guestContractInForce(ID)).thenReturn(Optional.empty());
+
+    service().deactivate(ID);
+
+    ArgumentCaptor<Guest> saved = ArgumentCaptor.forClass(Guest.class);
+    verify(repository).save(saved.capture());
+    assertThat(saved.getValue().status()).isEqualTo(GuestStatus.INACTIVE);
+    assertThat(saved.getValue().statusBeforeInactive()).isEqualTo(GuestStatus.ONBOARDING);
+    verify(accounts).setActive(ID, false);
+  }
+
+  @Test
+  void aGuestWithAContractInForceIsNotDeactivatedAndTheAnswerNamesTheContract() {
+    Long contractId = TestIds.next();
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
+    when(contracts.guestContractInForce(ID)).thenReturn(Optional.of(contractId));
+
+    assertThatThrownBy(() -> service().deactivate(ID))
+        .isInstanceOfSatisfying(
+            GuestHasActiveContractException.class,
+            e -> assertThat(e.contractId()).isEqualTo(contractId));
+    verify(repository, never()).save(any());
+    verify(accounts, never()).setActive(any(), anyBoolean());
+  }
+
+  @Test
+  void theDebtDoesNotStopTheDeactivation() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
+    when(contracts.guestContractInForce(ID)).thenReturn(Optional.empty());
+
+    service().deactivate(ID);
+
+    verify(debts, never()).owedPeriods(any());
+    verify(accounts).setActive(ID, false);
+  }
+
+  @Test
+  void deactivatingAnInactiveGuestAgainChangesNothing() {
+    when(repository.findByIdForUpdate(ID))
+        .thenReturn(Optional.of(inactiveFrom(GuestStatus.ACTIVE, guest(GuestStatus.ACTIVE))));
+
+    service().deactivate(ID);
+
+    verify(repository, never()).save(any());
+    verify(contracts, never()).guestContractInForce(any());
+    verify(accounts, never()).setActive(any(), anyBoolean());
+  }
+
+  @Test
+  void deactivatingOrReactivatingAnUnknownGuestIsNotFound() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service().deactivate(ID)).isInstanceOf(GuestNotFoundException.class);
+    assertThatThrownBy(() -> service().reactivate(ID)).isInstanceOf(GuestNotFoundException.class);
+  }
+
+  @Test
+  void reactivatingRestoresTheStateItHadAndTheAccount() {
+    Guest inactive = inactiveFrom(GuestStatus.ONBOARDING, guest(GuestStatus.ONBOARDING));
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(inactive));
+    when(debts.owedPeriods(ID)).thenReturn(List.of());
+    when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+    accountIs(true, true);
+
+    GuestSummaryView view = service().reactivate(ID);
+
+    ArgumentCaptor<Guest> saved = ArgumentCaptor.forClass(Guest.class);
+    verify(repository).save(saved.capture());
+    assertThat(saved.getValue().status()).isEqualTo(GuestStatus.ONBOARDING);
+    assertThat(saved.getValue().statusBeforeInactive()).isNull();
+    verify(accounts).setActive(ID, true);
+    assertThat(view.status()).isEqualTo(GuestState.ONBOARDING);
+    assertThat(view.hasLoginAccess()).isTrue();
+  }
+
+  @Test
+  void aGuestPendingActivationComesBackPendingActivation() {
+    Guest inactive =
+        inactiveFrom(GuestStatus.PENDING_ACTIVATION, guest(GuestStatus.PENDING_ACTIVATION));
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(inactive));
+    when(debts.owedPeriods(ID)).thenReturn(List.of());
+    when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+    noAccount();
+
+    assertThat(service().reactivate(ID).status()).isEqualTo(GuestState.PENDING_ACTIVATION);
+  }
+
+  @Test
+  void aGuestThatOwesPeriodsIsNotReactivated() {
+    Guest inactive = inactiveFrom(GuestStatus.ACTIVE, guest(GuestStatus.ACTIVE));
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(inactive));
+    when(debts.owedPeriods(ID)).thenReturn(List.of(YearMonth.of(2026, 9)));
+
+    assertThatThrownBy(() -> service().reactivate(ID))
+        .isInstanceOfSatisfying(
+            GuestHasPendingDebtException.class,
+            e -> assertThat(e.periods()).containsExactly(YearMonth.of(2026, 9)));
+    verify(repository, never()).save(any());
+    verify(accounts, never()).setActive(any(), anyBoolean());
+  }
+
+  @Test
+  void reactivatingAGuestThatIsNotInactiveAnswersItAsItIs() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
+    accountIs(true, true);
+
+    GuestSummaryView view = service().reactivate(ID);
+
+    assertThat(view.status()).isEqualTo(GuestState.ACTIVE);
+    verify(repository, never()).save(any());
+    verify(debts, never()).owedPeriods(any());
+    verify(accounts, never()).setActive(any(), anyBoolean());
   }
 }
