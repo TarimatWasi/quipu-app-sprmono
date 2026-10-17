@@ -7,9 +7,24 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
   List<UserJpaEntity> findByGuestIdIn(Collection<Long> guestIds);
+
+  /**
+   * Writes only the status (and the audit date) of the guest's account: the row is never rewritten
+   * whole, so a login, a password change or a reset that commits meanwhile keeps its columns. The
+   * persistence context is flushed before and cleared after, so no stale copy is written later.
+   */
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query(
+      value =
+          "UPDATE users SET status = :status, last_modified_date = now() WHERE guest_id = :guestId",
+      nativeQuery = true)
+  int updateStatusByGuestId(@Param("guestId") Long guestId, @Param("status") String status);
 
   Optional<UserJpaEntity> findByDocumentTypeAndDocumentNumber(
       DocumentType documentType, String documentNumber);

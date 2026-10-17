@@ -62,10 +62,7 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
 
   @Override
   public void setGuestAccountStatus(Long guestId, String status) {
-    for (UserJpaEntity user : jpaRepository.findByGuestIdIn(List.of(guestId))) {
-      user.changeStatus(status);
-      jpaRepository.save(user);
-    }
+    jpaRepository.updateStatusByGuestId(guestId, status);
   }
 
   @Override

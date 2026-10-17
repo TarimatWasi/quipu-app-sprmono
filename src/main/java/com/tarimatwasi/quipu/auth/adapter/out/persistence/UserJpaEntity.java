@@ -54,11 +54,6 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   protected UserJpaEntity() {}
 
-  /** ACTIVE or INACTIVE; an INACTIVE account cannot log in. */
-  public void changeStatus(String status) {
-    this.status = status;
-  }
-
   /** A new password also kills a recovery code that was emailed before it. */
   public void changePassword(String newPasswordHash, Instant changedAt) {
     this.passwordHash = newPasswordHash;
