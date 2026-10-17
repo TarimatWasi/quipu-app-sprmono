@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.payment.adapter.out.guest;
 
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
@@ -19,10 +20,18 @@ public class GuestPaymentAdapter implements PaymentGuestPort {
 
   private final ManageGuestsUseCase guests;
   private final OwnGuestUseCase ownGuests;
+  private final LockGuestUseCase locks;
 
-  GuestPaymentAdapter(ManageGuestsUseCase guests, OwnGuestUseCase ownGuests) {
+  GuestPaymentAdapter(
+      ManageGuestsUseCase guests, OwnGuestUseCase ownGuests, LockGuestUseCase locks) {
     this.guests = guests;
     this.ownGuests = ownGuests;
+    this.locks = locks;
+  }
+
+  @Override
+  public void lock(Long guestId) {
+    locks.lock(guestId);
   }
 
   @Override

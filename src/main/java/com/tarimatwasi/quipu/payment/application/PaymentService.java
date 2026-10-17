@@ -202,6 +202,9 @@ public class PaymentService implements ManagePaymentsUseCase {
   @Transactional
   public PaymentView registerDirect(DirectPayment direct) {
     validate(direct);
+    // TAR-38: the guest is locked before its state is read and before the contracts (order: guest,
+    // contract, payment), so a deactivation that has not committed yet is waited for, not missed.
+    guests.lock(direct.guestId());
     GuestProfile guest = guests.profileOf(direct.guestId());
     Long stayId = direct.stayId();
     if (stayId != null) {
