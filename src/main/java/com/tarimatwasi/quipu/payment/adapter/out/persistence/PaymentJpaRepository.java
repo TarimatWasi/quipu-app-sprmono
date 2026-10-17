@@ -26,4 +26,8 @@ interface PaymentJpaRepository
   List<PaymentJpaEntity> findByContractId(Long contractId);
 
   List<PaymentJpaEntity> findByStayId(Long stayId);
+
+  /** Read by ix_payments_guest_status_period (guest_id, status, period). */
+  List<PaymentJpaEntity> findByGuestIdAndStatusAndContractIdIsNotNull(
+      Long guestId, PaymentStatus status);
 }

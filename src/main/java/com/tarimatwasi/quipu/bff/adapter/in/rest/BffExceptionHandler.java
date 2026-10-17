@@ -47,10 +47,12 @@ import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
 import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
+import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import java.time.YearMonth;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -333,6 +335,18 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "GUEST_NOT_CONTRACT", "Solo los huéspedes con contrato pueden tener un contrato"));
+  }
+
+  /** RN-25, RN-35: a guest that owes periods takes no new contract; the months, oldest first. */
+  @ExceptionHandler(GuestHasPendingDebtException.class)
+  public ResponseEntity<BffGuestHasPendingDebtResponse> handleGuestHasPendingDebt(
+      GuestHasPendingDebtException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffGuestHasPendingDebtResponse(
+                "GUEST_HAS_PENDING_DEBT",
+                "El huésped tiene períodos pendientes de pago; primero regístralos",
+                e.periods().stream().map(YearMonth::toString).toList()));
   }
 
   /** RN-12, RN-20: a contract in force holds the environment. */

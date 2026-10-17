@@ -79,7 +79,8 @@ public interface ManageContractsUseCase {
 
   /**
    * Stores the PDF, then the contract (RF-03). The checks go in this order: the environment and the
-   * guest exist, the guest is active, the guest has a contract (RN-13), the environment is free.
+   * guest exist, the guest is active, the guest has a contract (RN-13), the guest owes no period
+   * (RN-25, RN-35), the environment is free.
    *
    * @throws InvalidContractException a field is out of range
    * @throws InvalidContractDatesException the end date is not after the start date
@@ -89,6 +90,7 @@ public interface ManageContractsUseCase {
    * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
    * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException the guest is not active
    * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotContractException the guest is temporary
+   * @throws com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException the guest owes periods
    * @throws com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException a contract in
    *     force holds the environment
    */

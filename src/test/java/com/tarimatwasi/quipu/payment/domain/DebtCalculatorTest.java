@@ -122,4 +122,42 @@ class DebtCalculatorTest {
         .extracting(DebtPeriod::period)
         .containsExactly(YearMonth.parse("2026-09"), YearMonth.parse("2026-10"));
   }
+
+  @Test
+  void aContractFinishedInTheMiddleOfTheMonthOwesThatMonthOnlyOnceItIsDue() {
+    // finished on 2026-10-10 at 22:00 in Lima, already the 11th in UTC; today is the 14th
+    var finished =
+        ContractTerms.of(
+            LocalDate.parse("2026-09-01"),
+            null,
+            java.time.Instant.parse("2026-10-11T03:00:00Z"),
+            java.time.ZoneId.of("America/Lima"),
+            10,
+            0);
+    var dueLater =
+        ContractTerms.of(
+            LocalDate.parse("2026-09-01"),
+            null,
+            java.time.Instant.parse("2026-10-11T03:00:00Z"),
+            java.time.ZoneId.of("America/Lima"),
+            20,
+            0);
+
+    assertThat(debt(finished, List.of())).containsExactly("2026-09", "2026-10");
+    assertThat(debt(dueLater, List.of())).containsExactly("2026-09");
+  }
+
+  @Test
+  void theThirtyFirstFallsDueOnTheLastDayOfFebruaryInALeapYearToo() {
+    var found =
+        DebtCalculator.debt(
+            terms("2028-02-01", "2028-02-29", 31, 0), List.of(), LocalDate.parse("2028-03-01"));
+
+    assertThat(found)
+        .containsExactly(new DebtPeriod(YearMonth.parse("2028-02"), LocalDate.parse("2028-02-29")));
+    assertThat(
+            DebtCalculator.debt(
+                terms("2028-02-01", "2028-02-29", 31, 0), List.of(), LocalDate.parse("2028-02-29")))
+        .isEmpty();
+  }
 }

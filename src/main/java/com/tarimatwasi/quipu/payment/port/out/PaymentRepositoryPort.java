@@ -98,4 +98,10 @@ public interface PaymentRepositoryPort {
 
   /** Every payment of the stay, whatever its state. */
   List<Payment> findAllByStay(Long stayId);
+
+  /**
+   * The approved payments of periods of the guest, of all its contracts in one read: the only ones
+   * that clear a period of its debt (RN-25).
+   */
+  List<Payment> findApprovedOfContracts(Long guestId);
 }

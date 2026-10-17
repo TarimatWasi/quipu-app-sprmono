@@ -265,6 +265,18 @@ class PaymentRepositoryAdapterTest {
   }
 
   @Test
+  void findApprovedOfContracts_readsOnlyTheApprovedPeriodsOfThatGuest() {
+    StoredPayment september = adapter.insertApproved(draftForPeriod("2026-09"));
+    insertPending("2026-10", null);
+    adapter.insertApproved(draftForStay()); // of the temporary guest, and of a stay
+
+    assertThat(adapter.findApprovedOfContracts(guest))
+        .extracting(p -> p.id())
+        .containsExactly(september.payment().id());
+    assertThat(adapter.findApprovedOfContracts(temporaryGuest)).isEmpty();
+  }
+
+  @Test
   void save_storesTheResolution() {
     Long id = insertPending("2026-10", null);
     StoredPayment pending = adapter.findById(id).orElseThrow();
