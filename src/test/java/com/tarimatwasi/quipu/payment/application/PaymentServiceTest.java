@@ -135,7 +135,8 @@ class PaymentServiceTest {
             terminatedAt,
             ZoneId.of("America/Lima"),
             5,
-            3));
+            3),
+        new BigDecimal("800.00"));
   }
 
   private static DirectPayment forPeriod(String period, String amount, byte[] content) {

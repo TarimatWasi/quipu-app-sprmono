@@ -52,14 +52,27 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
+  public StoredPayment insertPending(VoucherDraft draft) {
+    return insert(new PaymentJpaEntity(draft), draft.contractId(), draft.stayId(), draft.period());
+  }
+
+  @Override
   public StoredPayment insertApproved(DirectDraft draft) {
+    return insert(new PaymentJpaEntity(draft), draft.contractId(), draft.stayId(), draft.period());
+  }
+
+  private StoredPayment insert(
+      PaymentJpaEntity entity,
+      @Nullable Long contractId,
+      @Nullable Long stayId,
+      @Nullable YearMonth period) {
     try {
-      return jpaRepository.saveAndFlush(new PaymentJpaEntity(draft)).toStored();
+      return jpaRepository.saveAndFlush(entity).toStored();
     } catch (DataIntegrityViolationException e) {
       if (!isLiveIndexViolation(e)) {
         throw e;
       }
-      throw new LivePaymentExistsException(liveStatusOf(draft));
+      throw new LivePaymentExistsException(liveStatusOf(contractId, stayId, period));
     }
   }
 
@@ -74,14 +87,14 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
    * in a transaction of its own: it was committed by the other request, or there would be no
    * violation.
    */
-  private @Nullable PaymentStatus liveStatusOf(DirectDraft draft) {
+  private @Nullable PaymentStatus liveStatusOf(
+      @Nullable Long contractId, @Nullable Long stayId, @Nullable YearMonth period) {
     return separateTransaction.execute(
         status ->
-            (draft.stayId() != null
-                    ? findLiveByStay(draft.stayId())
+            (stayId != null
+                    ? findLiveByStay(stayId)
                     : findLiveByPeriod(
-                        Objects.requireNonNull(draft.contractId()),
-                        Objects.requireNonNull(draft.period())))
+                        Objects.requireNonNull(contractId), Objects.requireNonNull(period)))
                 .map(Payment::status)
                 .orElse(null));
   }
@@ -152,6 +165,11 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
     return jpaRepository.findByContractId(contractId).stream()
         .map(PaymentJpaEntity::toDomain)
         .toList();
+  }
+
+  @Override
+  public List<Payment> findAllByStay(Long stayId) {
+    return jpaRepository.findByStayId(stayId).stream().map(PaymentJpaEntity::toDomain).toList();
   }
 
   private static String cursorOf(PaymentJpaEntity payment) {

@@ -5,6 +5,8 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase.OwnGuestView;
 import com.tarimatwasi.quipu.payment.port.out.PaymentGuestPort;
 import java.util.Collection;
 import java.util.HashMap;
@@ -16,9 +18,25 @@ import org.springframework.stereotype.Component;
 public class GuestPaymentAdapter implements PaymentGuestPort {
 
   private final ManageGuestsUseCase guests;
+  private final OwnGuestUseCase ownGuests;
 
-  GuestPaymentAdapter(ManageGuestsUseCase guests) {
+  GuestPaymentAdapter(ManageGuestsUseCase guests, OwnGuestUseCase ownGuests) {
     this.guests = guests;
+    this.ownGuests = ownGuests;
+  }
+
+  @Override
+  public OwnGuest ownGuest(Long guestId) {
+    OwnGuestView guest = ownGuests.own(guestId);
+    return new OwnGuest(guest.id(), guest.type() == GuestKind.CONTRACT, standing(guest.status()));
+  }
+
+  private static Standing standing(GuestState status) {
+    return switch (status) {
+      case PENDING_ACTIVATION, ONBOARDING -> Standing.ONBOARDING;
+      case ACTIVE -> Standing.ACTIVE;
+      case INACTIVE -> Standing.INACTIVE;
+    };
   }
 
   @Override

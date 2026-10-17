@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.DirectDraft;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.StoredPayment;
+import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.VoucherDraft;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -95,6 +96,22 @@ public class PaymentJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> 
     this.reviewedAt = draft.reviewedAt();
     this.reviewedById = draft.reviewedById();
     this.recordedBy = "ADMIN";
+  }
+
+  /** A voucher uploaded by the guest, waiting for the review (RN-04). */
+  PaymentJpaEntity(VoucherDraft draft) {
+    this.guestId = draft.guestId();
+    this.contractId = draft.contractId();
+    this.stayId = draft.stayId();
+    this.period = draft.period() == null ? null : draft.period().atDay(1);
+    this.amount = draft.amount();
+    this.paymentMethod = draft.paymentMethod();
+    this.voucherKey = draft.voucherKey();
+    this.originalName = draft.originalName();
+    this.contentType = draft.voucherType().contentType();
+    this.sizeBytes = draft.sizeBytes();
+    this.status = PaymentStatus.PENDING;
+    this.recordedBy = "GUEST";
   }
 
   /** Copies the only things that change after the upload: the resolution. */

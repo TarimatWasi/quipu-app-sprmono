@@ -10,14 +10,10 @@ import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
-import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
-import com.tarimatwasi.quipu.payment.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
-import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
-import com.tarimatwasi.quipu.payment.port.out.LivePaymentExistsException;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort.ContractInfo;
 import com.tarimatwasi.quipu.payment.port.out.PaymentEnvironmentPort;
@@ -49,19 +45,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
 public class PaymentService implements ManagePaymentsUseCase {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PaymentService.class);
-
-  /** VARCHAR(50) of payment_method. */
-  private static final int MAX_METHOD_LENGTH = 50;
-
-  private static final String DEFAULT_NAME = "comprobante";
 
   private final PaymentRepositoryPort payments;
   private final PaymentFilePort files;
@@ -70,6 +59,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   private final PaymentEnvironmentPort environments;
   private final PaymentStayPort stays;
   private final Clock clock;
+  private final VoucherRecorder recorder;
 
   PaymentService(
       PaymentRepositoryPort payments,
@@ -86,6 +76,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     this.environments = environments;
     this.stays = stays;
     this.clock = clock;
+    this.recorder = new VoucherRecorder(files);
   }
 
   // --- the queue and the detail ---
@@ -142,7 +133,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   @Transactional(readOnly = true)
   public PaymentDetailView get(Long id) {
     StoredPayment stored = payments.findById(id).orElseThrow(PaymentNotFoundException::new);
-    return new PaymentDetailView(view(stored), signedUrl(stored));
+    return new PaymentDetailView(VoucherRecorder.view(stored), signedUrl(stored));
   }
 
   private String signedUrl(StoredPayment stored) {
@@ -170,7 +161,7 @@ public class PaymentService implements ManagePaymentsUseCase {
         resolution.decision() == Decision.APPROVED
             ? payment.approve(resolution.reviewerId(), now)
             : reject(payment, resolution, now);
-    return view(payments.save(resolved));
+    return VoucherRecorder.view(payments.save(resolved));
   }
 
   /**
@@ -219,15 +210,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     if ((direct.period() == null) == (direct.stayId() == null)) {
       throw new InvalidPaymentException("period");
     }
-    if (!Payment.validAmount(direct.amount())) {
-      throw new InvalidPaymentException("amount");
-    }
-    String method = direct.paymentMethod();
-    if (method != null
-        && (PaymentText.characters(method.strip()) > MAX_METHOD_LENGTH
-            || PaymentText.hasUnsafeCharacter(method))) {
-      throw new InvalidPaymentException("paymentMethod");
-    }
+    VoucherRecorder.checkAmountAndMethod(direct.amount(), direct.paymentMethod());
   }
 
   /** What the payment is for: a period of a contract, or a stay. */
@@ -264,129 +247,38 @@ public class PaymentService implements ManagePaymentsUseCase {
     return new Target(charging.get().id(), null, period);
   }
 
-  /** An approved payment is a conflict of its own (RN-02); a pending one asks to be resolved. */
   private void rejectLivePayment(Target target) {
-    Optional<Payment> live = liveOf(target);
-    if (live.isPresent()) {
-      throw conflictOf(live.get().status());
-    }
-  }
-
-  private Optional<Payment> liveOf(Target target) {
     Long stayId = target.stayId();
-    if (stayId != null) {
-      return payments.findLiveByStay(stayId);
-    }
     Long contractId = target.contractId();
     YearMonth period = target.period();
-    if (contractId == null || period == null) {
-      return Optional.empty();
+    if (stayId != null) {
+      VoucherRecorder.rejectLive(payments.findLiveByStay(stayId));
+    } else if (contractId != null && period != null) {
+      VoucherRecorder.rejectLive(payments.findLiveByPeriod(contractId, period));
     }
-    return payments.findLiveByPeriod(contractId, period);
   }
 
-  /** The conflict for the live payment that is there; if it is gone, a neutral one (try again). */
-  private static RuntimeException conflictOf(@Nullable PaymentStatus live) {
-    if (live == null) {
-      return new PaymentConcurrentChangeException();
-    }
-    return live == PaymentStatus.PENDING
-        ? new VoucherAlreadyExistsException()
-        : new PaymentAlreadyExistsForPeriodException();
-  }
-
-  /** The object goes to the bucket first; if the row then fails, the object is removed. */
   private PaymentView store(DirectPayment direct, Target target, VoucherType type) {
     byte[] content = direct.voucher().content();
-    String key = storeFile(content, type);
-    boolean removedIfNotCommitted = removeUnlessCommitted(key);
-    PaymentView saved = null;
-    try {
-      saved =
-          view(
-              payments.insertApproved(
-                  new DirectDraft(
-                      direct.guestId(),
-                      target.contractId(),
-                      target.stayId(),
-                      target.period(),
-                      direct.amount().setScale(2),
-                      blankToNull(direct.paymentMethod()),
-                      key,
-                      FileNames.sanitized(direct.voucher().originalName(), DEFAULT_NAME),
-                      type,
-                      content.length,
-                      clock.instant(),
-                      direct.adminId())));
-    } catch (LivePaymentExistsException raced) {
-      // Another request got the period or the stay between the check and the insert.
-      throw conflictOf(raced.liveStatus());
-    } finally {
-      if (saved == null && !removedIfNotCommitted) {
-        discard(key);
-      }
-    }
-    return saved;
-  }
-
-  /**
-   * Inside a transaction the object is removed whenever the transaction does not commit: the insert
-   * failed, or something after it did, or the commit itself failed. Returns true if it will be;
-   * with no transaction the caller removes it.
-   */
-  private boolean removeUnlessCommitted(String key) {
-    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-      return false;
-    }
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCompletion(int status) {
-            if (status != STATUS_COMMITTED) {
-              discard(key);
-            }
-          }
-        });
-    return true;
-  }
-
-  private String storeFile(byte[] content, VoucherType type) {
-    try {
-      return files.store(content, type);
-    } catch (PaymentFileStorageException e) {
-      throw new PaymentFileUnavailableException(e);
-    }
-  }
-
-  /**
-   * A failure to clean up must not hide the failure that made the cleanup necessary: it is logged
-   * with the key, so the orphan object can be removed by hand.
-   */
-  private void discard(String key) {
-    try {
-      files.delete(key);
-    } catch (PaymentFileStorageException cleanupFailed) {
-      LOGGER.error("The voucher {} stays in the bucket without a payment", key, cleanupFailed);
-    }
-  }
-
-  private static @Nullable String blankToNull(@Nullable String text) {
-    return text == null || text.isBlank() ? null : text.strip();
-  }
-
-  private static PaymentView view(StoredPayment stored) {
-    Payment payment = stored.payment();
-    return new PaymentView(
-        payment.id(),
-        payment.guestId(),
-        payment.contractId(),
-        payment.stayId(),
-        payment.period(),
-        payment.amount(),
-        payment.paymentMethod(),
-        PaymentState.valueOf(payment.status().name()),
-        payment.rejectionReason(),
-        payment.reviewedAt(),
-        stored.createdAt());
+    return VoucherRecorder.view(
+        recorder.store(
+            content,
+            type,
+            key ->
+                payments.insertApproved(
+                    new DirectDraft(
+                        direct.guestId(),
+                        target.contractId(),
+                        target.stayId(),
+                        target.period(),
+                        direct.amount().setScale(2),
+                        VoucherRecorder.blankToNull(direct.paymentMethod()),
+                        key,
+                        FileNames.sanitized(
+                            direct.voucher().originalName(), VoucherRecorder.DEFAULT_NAME),
+                        type,
+                        content.length,
+                        clock.instant(),
+                        direct.adminId()))));
   }
 }

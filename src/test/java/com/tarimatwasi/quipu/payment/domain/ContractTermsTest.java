@@ -406,4 +406,21 @@ class ContractTermsTest {
     assertThat(status.state()).isEqualTo(PeriodState.OVERDUE);
     assertThat(status.paymentId()).isNull();
   }
+
+  // --- in force for a voucher of the guest (RN-27) ---
+
+  @Test
+  void aContractIsActiveUntilItsEndDateOrForeverIfOpenEnded() {
+    assertThat(terms("2026-01-01", null, null, 5, 3).activeOn(TODAY)).isTrue();
+    assertThat(terms("2026-01-01", "2026-10-14", null, 5, 3).activeOn(TODAY)).isTrue();
+    assertThat(terms("2026-01-01", "2026-10-13", null, 5, 3).activeOn(TODAY)).isFalse();
+  }
+
+  @Test
+  void aContractFinishedByHandIsNotActiveAndOneToComeIsButChargesNothing() {
+    assertThat(terms("2026-01-01", null, ym("2026-10"), 5, 3).activeOn(TODAY)).isFalse();
+    ContractTerms toCome = terms("2026-11-01", null, null, 5, 3);
+    assertThat(toCome.activeOn(TODAY)).isTrue();
+    assertThat(toCome.periods(TODAY)).isEmpty();
+  }
 }

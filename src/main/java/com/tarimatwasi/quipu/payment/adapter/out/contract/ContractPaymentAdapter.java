@@ -45,6 +45,7 @@ public class ContractPaymentAdapter implements PaymentContractPort {
             view.terminatedAt(),
             clock.getZone(),
             view.paymentDay(),
-            view.graceDays()));
+            view.graceDays()),
+        view.monthlyAmount());
   }
 }

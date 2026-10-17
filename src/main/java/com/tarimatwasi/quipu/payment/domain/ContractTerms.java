@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -100,43 +99,23 @@ public record ContractTerms(
    * close the period (RN-05).
    */
   public PeriodStatus status(YearMonth period, List<Payment> payments, LocalDate today) {
-    List<Payment> ofPeriod = payments.stream().filter(p -> period.equals(p.period())).toList();
     LocalDate due = dueDate(period);
-    Payment approved = first(ofPeriod, PaymentStatus.APPROVED);
-    if (approved != null) {
-      return new PeriodStatus(period, due, PeriodState.PAID, approved.id(), null);
-    }
-    Payment pending = first(ofPeriod, PaymentStatus.PENDING);
-    if (pending != null) {
-      return new PeriodStatus(period, due, PeriodState.UNDER_REVIEW, pending.id(), null);
-    }
-    Payment rejected = last(ofPeriod, PaymentStatus.REJECTED);
+    Settlement settlement =
+        Settlement.of(payments.stream().filter(p -> period.equals(p.period())).toList());
+    PeriodState settled = settlement.settled();
     PeriodState state =
-        today.isAfter(due.plusDays(graceDays)) ? PeriodState.OVERDUE : PeriodState.UNPAID;
+        settled != null
+            ? settled
+            : today.isAfter(due.plusDays(graceDays)) ? PeriodState.OVERDUE : PeriodState.UNPAID;
     return new PeriodStatus(
-        period,
-        due,
-        state,
-        rejected == null ? null : rejected.id(),
-        rejected == null ? null : rejected.rejectionReason());
+        period, due, state, settlement.paymentId(), settlement.rejectionReason());
   }
 
-  private static @Nullable Payment first(List<Payment> payments, PaymentStatus status) {
-    return payments.stream()
-        .filter(p -> p.status() == status)
-        .min(Comparator.comparing(Payment::id))
-        .orElse(null);
-  }
-
-  private static @Nullable Payment last(List<Payment> payments, PaymentStatus status) {
-    return payments.stream()
-        .filter(p -> p.status() == status)
-        // The newest review, not the highest id: ids come from blocks of 50 that each instance
-        // reserves, so a later retry can have a lower id than an earlier voucher.
-        .max(
-            Comparator.comparing(
-                    Payment::reviewedAt, Comparator.nullsFirst(Comparator.<Instant>naturalOrder()))
-                .thenComparing(Payment::id))
-        .orElse(null);
+  /**
+   * Whether the contract is in force for a voucher of the guest (RN-27): not finished by hand and
+   * not expired by date. One that has not started yet is in force but charges no period.
+   */
+  public boolean activeOn(LocalDate today) {
+    return terminatedIn == null && (endDate == null || !endDate.isBefore(today));
   }
 }

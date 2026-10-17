@@ -34,6 +34,26 @@ public interface PaymentRepositoryPort {
       Instant reviewedAt,
       Long reviewedById) {}
 
+  /** A voucher the guest uploads, which waits for the review (RN-04). */
+  record VoucherDraft(
+      Long guestId,
+      @Nullable Long contractId,
+      @Nullable Long stayId,
+      @Nullable YearMonth period,
+      BigDecimal amount,
+      @Nullable String paymentMethod,
+      String voucherKey,
+      String originalName,
+      VoucherType voucherType,
+      long sizeBytes) {}
+
+  /**
+   * Stores the pending payment; the write is flushed, so a failure surfaces here.
+   *
+   * @throws LivePaymentExistsException if the period or the stay already has a live payment
+   */
+  StoredPayment insertPending(VoucherDraft draft);
+
   /**
    * Stores the approved payment; the write is flushed, so a failure surfaces here.
    *
@@ -67,4 +87,7 @@ public interface PaymentRepositoryPort {
 
   /** Every payment of the contract, whatever its state. */
   List<Payment> findAllByContract(Long contractId);
+
+  /** Every payment of the stay, whatever its state. */
+  List<Payment> findAllByStay(Long stayId);
 }

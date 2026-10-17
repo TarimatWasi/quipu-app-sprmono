@@ -12,6 +12,8 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.Decision;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.Resolution;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
+import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
+import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.PeriodVoucher;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
@@ -53,6 +55,7 @@ class PaymentConcurrencyTest {
   private static final byte[] PDF = "%PDF-1.7\n%race".getBytes(StandardCharsets.US_ASCII);
 
   @Autowired ManagePaymentsUseCase payments;
+  @Autowired OwnPaymentsUseCase ownPayments;
   @Autowired JdbcTemplate jdbc;
   @Autowired javax.sql.DataSource dataSource;
   @Autowired org.springframework.transaction.support.TransactionTemplate transaction;
@@ -61,6 +64,7 @@ class PaymentConcurrencyTest {
   private Long admin;
   private Long guest;
   private Long contract;
+  private String role = "ROLE_ADMIN";
 
   @BeforeEach
   void setUp() {
@@ -140,7 +144,7 @@ class PaymentConcurrencyTest {
 
   private void run(CyclicBarrier barrier, Runnable request) {
     SecurityContextHolder.getContext()
-        .setAuthentication(new TestingAuthenticationToken(admin.toString(), "x", "ROLE_ADMIN"));
+        .setAuthentication(new TestingAuthenticationToken(admin.toString(), "x", role));
     try {
       barrier.await();
       request.run();
@@ -288,6 +292,47 @@ class PaymentConcurrencyTest {
 
     org.mockito.Mockito.verify(files, org.mockito.Mockito.never()).delete(any());
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isEqualTo(1);
+  }
+
+  /**
+   * TAR-42: two vouchers of one guest for one month at once (a double tap): the unique index keeps
+   * one, the other is the conflict of the contract and never a 500, and its object is removed.
+   */
+  @Test
+  void twoVouchersOfTheGuestForOneMonthKeepOneAndTheOtherIsAConflict() throws Exception {
+    role = "ROLE_GUEST";
+    for (int round = 0; round < ROUNDS; round++) {
+      reset(files);
+      when(files.store(any(), any())).thenAnswer(call -> "vouchers/" + UUID.randomUUID());
+      Runnable upload =
+          () ->
+              ownPayments.uploadForPeriod(
+                  new PeriodVoucher(
+                      guest,
+                      JANUARY,
+                      new BigDecimal("800"),
+                      null,
+                      new VoucherUpload("v.pdf", PDF)));
+
+      List<Optional<Throwable>> outcomes = race(upload, upload);
+
+      assertThat(succeeded(outcomes)).as("uploaded once").isEqualTo(1);
+      assertThat(count(outcomes, VoucherAlreadyExistsException.class))
+          .as("the loser gets a conflict, never a 500")
+          .isEqualTo(1);
+      assertThat(jdbc.queryForObject("SELECT status FROM payments", String.class))
+          .isEqualTo("PENDING");
+      var uploaded =
+          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+              .filter(i -> i.getMethod().getName().equals("store"))
+              .count();
+      var removed =
+          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+              .filter(i -> i.getMethod().getName().equals("delete"))
+              .count();
+      assertThat(uploaded - removed).as("only the stored voucher is left").isEqualTo(1);
+      jdbc.update("DELETE FROM payments");
+    }
   }
 
   /** The conflict of the unique index reads the live payment on a second connection. */

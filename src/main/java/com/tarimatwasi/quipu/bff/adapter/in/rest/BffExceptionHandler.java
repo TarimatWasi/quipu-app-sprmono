@@ -35,6 +35,11 @@ import com.tarimatwasi.quipu.guest.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
+import com.tarimatwasi.quipu.payment.port.in.NoActiveContractException;
+import com.tarimatwasi.quipu.payment.port.in.NoActiveStayException;
+import com.tarimatwasi.quipu.payment.port.in.NoStayYetException;
+import com.tarimatwasi.quipu.payment.port.in.OnboardingRequiredException;
+import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentConcurrentChangeException;
@@ -409,6 +414,49 @@ public class BffExceptionHandler {
             new BffErrorResponse(
                 "VOUCHER_ALREADY_EXISTS",
                 "Ya hay un comprobante pendiente de revisión; resuélvelo primero"));
+  }
+
+  /** RN-27: a guest uploads a voucher only while its contract is in force. */
+  @ExceptionHandler(NoActiveContractException.class)
+  public ResponseEntity<BffErrorResponse> handleNoActiveContract() {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(
+            new BffErrorResponse(
+                "VOUCHER_NO_ACTIVE_CONTRACT",
+                "No tienes un contrato vigente; consulta con la administración"));
+  }
+
+  /** CU-22: a temporary guest pays only a stay in course or to come. */
+  @ExceptionHandler(NoActiveStayException.class)
+  public ResponseEntity<BffErrorResponse> handleNoActiveStay() {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(
+            new BffErrorResponse(
+                "VOUCHER_NO_ACTIVE_STAY",
+                "No tienes una estadía vigente ni próxima; consulta con la administración"));
+  }
+
+  /** CU-21: a temporary guest with no stay has no payment status. */
+  @ExceptionHandler(NoStayYetException.class)
+  public ResponseEntity<BffErrorResponse> handleNoStayYet() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("RESOURCE_NOT_FOUND", "Aún no tienes una estadía registrada"));
+  }
+
+  /** RN-09: a route of the other type of guest, answered like any route the role cannot use. */
+  @ExceptionHandler(OtherGuestTypeException.class)
+  public ResponseEntity<BffErrorResponse> handleOtherGuestType() {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(new BffErrorResponse("AUTH_FORBIDDEN", "No tienes permiso para esta acción"));
+  }
+
+  /** RN-33: the guest finishes the onboarding before anything else. */
+  @ExceptionHandler(OnboardingRequiredException.class)
+  public ResponseEntity<BffErrorResponse> handleOnboardingRequired() {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(
+            new BffErrorResponse(
+                "AUTH_ONBOARDING_REQUIRED", "Completa tu registro para continuar"));
   }
 
   @ExceptionHandler(ContractNotFoundException.class)
