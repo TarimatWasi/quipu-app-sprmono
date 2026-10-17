@@ -79,6 +79,14 @@ public interface PaymentRepositoryPort {
    */
   CursorPage<StoredPayment> findQueue(@Nullable PaymentStatus status, PageQuery page);
 
+  /**
+   * One page of the payments of the guest, whatever their state, newest first (RF-10); empty if
+   * there is no such guest.
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   */
+  CursorPage<StoredPayment> findHistory(Long guestId, PageQuery page);
+
   /** The pending or approved payment of the period, if there is one. */
   Optional<Payment> findLiveByPeriod(Long contractId, YearMonth period);
 

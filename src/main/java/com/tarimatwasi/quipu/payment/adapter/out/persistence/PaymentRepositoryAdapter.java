@@ -121,26 +121,55 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   @Override
   public CursorPage<StoredPayment> findQueue(@Nullable PaymentStatus status, PageQuery page) {
+    return findByCreation(
+        status == null ? null : (root, query, builder) -> builder.equal(root.get("status"), status),
+        Sort.Direction.ASC,
+        page);
+  }
+
+  @Override
+  public CursorPage<StoredPayment> findHistory(Long guestId, PageQuery page) {
+    // ix_payments_history (guest_id, created_date DESC, id DESC) serves this order.
+    return findByCreation(
+        (root, query, builder) -> builder.equal(root.get("guestId"), guestId),
+        Sort.Direction.DESC,
+        page);
+  }
+
+  /**
+   * One page of the payments that meet the condition, ordered by (createdDate, id) in that
+   * direction and read by last index: the page starts right after the key of the cursor.
+   */
+  private CursorPage<StoredPayment> findByCreation(
+      @Nullable Specification<PaymentJpaEntity> condition,
+      Sort.Direction direction,
+      PageQuery page) {
     CreationKey after = page.after() == null ? null : CreationKey.decode(page.after());
+    boolean ascending = direction == Sort.Direction.ASC;
     Specification<PaymentJpaEntity> filter =
         (root, query, builder) -> {
           List<Predicate> where = new ArrayList<>();
-          if (status != null) {
-            where.add(builder.equal(root.get("status"), status));
+          if (condition != null) {
+            where.add(Objects.requireNonNull(condition.toPredicate(root, query, builder)));
           }
           if (after != null) {
-            // (createdDate, id) > (date, id), in the order of the queue: oldest first.
+            // (createdDate, id) after (date, id) in the order of the list.
             Path<LocalDateTime> createdDate = root.get("createdDate");
+            Path<Long> id = root.get("id");
             where.add(
                 builder.or(
-                    builder.greaterThan(createdDate, after.createdDate()),
+                    ascending
+                        ? builder.greaterThan(createdDate, after.createdDate())
+                        : builder.lessThan(createdDate, after.createdDate()),
                     builder.and(
                         builder.equal(createdDate, after.createdDate()),
-                        builder.greaterThan(root.<Long>get("id"), after.id()))));
+                        ascending
+                            ? builder.greaterThan(id, after.id())
+                            : builder.lessThan(id, after.id()))));
           }
           return builder.and(where.toArray(Predicate[]::new));
         };
-    Sort order = Sort.by(Sort.Order.asc("createdDate"), Sort.Order.asc("id"));
+    Sort order = Sort.by(new Sort.Order(direction, "createdDate"), new Sort.Order(direction, "id"));
     // One more than the limit: the extra row only says that there is a next page.
     List<PaymentJpaEntity> rows =
         jpaRepository.findBy(filter, query -> query.sortBy(order).limit(page.limit() + 1).all());

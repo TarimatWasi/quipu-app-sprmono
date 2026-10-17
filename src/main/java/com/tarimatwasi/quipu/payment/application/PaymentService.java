@@ -129,6 +129,19 @@ public class PaymentService implements ManagePaymentsUseCase {
         stored.createdAt());
   }
 
+  /**
+   * Both types of guest have a history: the payments of a period and the payments of a stay come in
+   * one list. The page is read before the guest is looked up, so a forged cursor is a 400 even for
+   * a guest that does not exist.
+   */
+  @Override
+  @Transactional(readOnly = true)
+  public CursorPage<PaymentView> history(Long guestId, PageQuery page) {
+    CursorPage<StoredPayment> found = payments.findHistory(guestId, page);
+    guests.profileOf(guestId);
+    return found.map(VoucherRecorder::view);
+  }
+
   @Override
   @Transactional(readOnly = true)
   public PaymentDetailView get(Long id) {

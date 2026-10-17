@@ -43,6 +43,8 @@ import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.StoredPayment;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.VoucherDraft;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
@@ -465,6 +467,44 @@ class OwnPaymentServiceTest {
     assertThat(view.agreedAmount()).isEqualByComparingTo("150");
     assertThat(view.paymentId()).isEqualTo(PAYMENT);
     assertThat(view.rejectionReason()).isEqualTo("Monto incompleto");
+  }
+
+  // ------------------------------------------------------------------ the history (RF-10)
+
+  @Test
+  void history_isThePageOfTheGuestWithTheRejectionReasonEvenWhenItIsInactive() {
+    guest(true, Standing.INACTIVE);
+    PageQuery page = new PageQuery("c", 2);
+    when(payments.findHistory(GUEST, page))
+        .thenReturn(
+            new CursorPage<>(
+                List.of(
+                    new StoredPayment(
+                        payment(PAYMENT, PaymentStatus.REJECTED, OCTOBER, null),
+                        KEY,
+                        VoucherType.PDF,
+                        CREATED)),
+                "next"));
+
+    CursorPage<PaymentView> history = service.history(GUEST, page);
+
+    assertThat(history.nextCursor()).isEqualTo("next");
+    PaymentView view = history.content().get(0);
+    assertThat(view.status()).isEqualTo(PaymentState.REJECTED);
+    assertThat(view.rejectionReason()).isEqualTo("Monto incompleto");
+    assertThat(view.createdAt()).isEqualTo(CREATED);
+  }
+
+  @Test
+  void history_isRefusedToATemporaryGuestAndDuringTheOnboardingBeforeReadingAnything() {
+    guest(false, Standing.ACTIVE);
+    assertThatThrownBy(() -> service.history(GUEST, PageQuery.first()))
+        .isInstanceOf(OtherGuestTypeException.class);
+
+    guest(true, Standing.ONBOARDING);
+    assertThatThrownBy(() -> service.history(GUEST, PageQuery.first()))
+        .isInstanceOf(OnboardingRequiredException.class);
+    verifyNoInteractions(payments);
   }
 
   @Test
