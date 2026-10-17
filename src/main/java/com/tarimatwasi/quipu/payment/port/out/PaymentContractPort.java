@@ -14,6 +14,12 @@ public interface PaymentContractPort {
   /** Every contract of the guest, whatever its state, the oldest first. */
   List<ContractInfo> contractsOf(Long guestId);
 
+  /**
+   * Like {@link #contractsOf} but the rows stay locked until the transaction ends (TAR-192), so a
+   * termination that races the read is seen or waits. Needs a transaction.
+   */
+  List<ContractInfo> lockedContractsOf(Long guestId);
+
   /** The environment of each contract; an id with no contract adds nothing. */
   Map<Long, Long> environmentsOf(Collection<Long> contractIds);
 }

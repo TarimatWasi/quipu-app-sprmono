@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract.adapter.out.guest;
 
 import com.tarimatwasi.quipu.contract.port.out.ContractGuestPort;
+import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
@@ -12,9 +13,16 @@ import org.springframework.stereotype.Component;
 public class GuestContractAdapter implements ContractGuestPort {
 
   private final ManageGuestsUseCase guests;
+  private final LockGuestUseCase locks;
 
-  GuestContractAdapter(ManageGuestsUseCase guests) {
+  GuestContractAdapter(ManageGuestsUseCase guests, LockGuestUseCase locks) {
     this.guests = guests;
+    this.locks = locks;
+  }
+
+  @Override
+  public void lock(Long guestId) {
+    locks.lock(guestId);
   }
 
   @Override

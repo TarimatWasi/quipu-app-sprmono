@@ -61,6 +61,19 @@ class ContractTermsServiceTest {
   }
 
   @Test
+  void lockedTermsOfGuest_readTheTermsFromTheLockedRows() {
+    Instant finished = Instant.parse("2026-09-20T15:00:00Z");
+    when(contracts.findAllByGuestForUpdate(9L))
+        .thenReturn(List.of(contract(1, 10, "2025-01-01", finished)));
+
+    var terms = service.lockedTermsOfGuest(9L);
+
+    assertThat(terms).extracting(t -> t.contractId()).containsExactly(1L);
+    assertThat(terms.get(0).terminatedAt()).isEqualTo(finished);
+    org.mockito.Mockito.verify(contracts, org.mockito.Mockito.never()).findAllByGuest(9L);
+  }
+
+  @Test
   void environmentsOf_mapsEachContractToItsEnvironment() {
     when(contracts.findAllByIds(Set.of(1L, 2L)))
         .thenReturn(

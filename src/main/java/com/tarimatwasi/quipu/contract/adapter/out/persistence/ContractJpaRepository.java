@@ -16,5 +16,9 @@ interface ContractJpaRepository
 
   List<ContractJpaEntity> findByGuestIdOrderByStartDateAscIdAsc(Long guestId);
 
+  /** Every contract of the guest, locked until the commit in the order of their ids. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  List<ContractJpaEntity> findWithLockByGuestIdOrderByIdAsc(Long guestId);
+
   Optional<ContractJpaEntity> findFirstByGuestIdOrderByCreatedDateDescIdDesc(Long guestId);
 }

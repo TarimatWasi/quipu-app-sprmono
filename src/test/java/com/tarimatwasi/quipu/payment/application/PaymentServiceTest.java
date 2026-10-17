@@ -163,7 +163,8 @@ class PaymentServiceTest {
 
   private void contractGuestWithOpenContract() {
     when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.contractsOf(GUEST)).thenReturn(List.of(contract("2026-01-01", null, null)));
+    when(contracts.lockedContractsOf(GUEST))
+        .thenReturn(List.of(contract("2026-01-01", null, null)));
     lenient().when(payments.findAllByContract(CONTRACT)).thenReturn(List.of());
   }
 
@@ -531,10 +532,28 @@ class PaymentServiceTest {
     verifyNoInteractions(files);
   }
 
+  /**
+   * TAR-192: the terms are read with the rows of the contracts locked, so a termination that
+   * committed first is seen: a month after it is not chargeable, the same answer as any other.
+   */
+  @Test
+  void registerDirect_readsTheTermsUnderTheLockAndRefusesAMonthAfterTheTermination() {
+    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
+    when(contracts.lockedContractsOf(GUEST))
+        .thenReturn(List.of(contract("2026-01-01", null, Instant.parse("2026-09-30T15:00:00Z"))));
+
+    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+        .isInstanceOfSatisfying(
+            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
+    verify(contracts, never()).contractsOf(any());
+    verifyNoInteractions(files);
+    verify(payments, never()).insertApproved(any());
+  }
+
   @Test
   void registerDirect_aGuestWithoutAContractHasNoPeriodToPay() {
     when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.contractsOf(GUEST)).thenReturn(List.of());
+    when(contracts.lockedContractsOf(GUEST)).thenReturn(List.of());
 
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isInstanceOf(InvalidPaymentException.class);

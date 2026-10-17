@@ -133,8 +133,10 @@ class ContractServiceTest {
     assertThat(created.id()).isEqualTo(CONTRACT_ID);
     assertThat(created.status()).isEqualTo(ContractState.ACTIVE);
     assertThat(created.fileUrl()).isEqualTo(URL);
-    var inOrder = inOrder(environments, files, contracts);
+    var inOrder = inOrder(environments, guests, files, contracts);
     inOrder.verify(environments).lock(ENVIRONMENT_ID);
+    inOrder.verify(guests).lock(GUEST_ID);
+    inOrder.verify(guests).profileOf(GUEST_ID);
     inOrder.verify(files).store(PDF);
     inOrder.verify(contracts).insert(any());
     ArgumentCaptor<Draft> draft = ArgumentCaptor.forClass(Draft.class);
@@ -203,8 +205,9 @@ class ContractServiceTest {
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOfSatisfying(
             GuestHasPendingDebtException.class, e -> assertThat(e.periods()).isEqualTo(owed));
-    var order = inOrder(environments, debts);
-    order.verify(environments).lock(ENVIRONMENT_ID); // the debt is read under the lock
+    var order = inOrder(environments, guests, debts);
+    order.verify(environments).lock(ENVIRONMENT_ID); // environment, then guest, then the debt
+    order.verify(guests).lock(GUEST_ID);
     order.verify(debts).owedPeriods(GUEST_ID);
     verify(contracts, never()).existsInForce(any(), any());
     verifyNoInteractions(files);

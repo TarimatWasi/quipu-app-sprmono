@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -25,6 +26,14 @@ public class ContractTermsService implements ContractTermsUseCase {
   @Transactional(readOnly = true)
   public List<ContractTermsView> termsOfGuest(Long guestId) {
     return contracts.findAllByGuest(guestId).stream().map(ContractTermsService::view).toList();
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  public List<ContractTermsView> lockedTermsOfGuest(Long guestId) {
+    return contracts.findAllByGuestForUpdate(guestId).stream()
+        .map(ContractTermsService::view)
+        .toList();
   }
 
   @Override

@@ -30,6 +30,13 @@ public interface ContractTermsUseCase {
   /** Every contract of the guest, whatever its state, the oldest first. */
   List<ContractTermsView> termsOfGuest(Long guestId);
 
+  /**
+   * Like {@link #termsOfGuest} but read with the rows locked until the transaction of the caller
+   * ends, so a termination that races the read is seen or waits. The oldest id first. Needs a
+   * transaction.
+   */
+  List<ContractTermsView> lockedTermsOfGuest(Long guestId);
+
   /** The environment of each contract; an id with no contract adds nothing. */
   Map<Long, Long> environmentsOf(Collection<Long> contractIds);
 }
