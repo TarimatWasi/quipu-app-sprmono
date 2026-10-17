@@ -305,6 +305,22 @@ class OwnPaymentServiceTest {
   }
 
   @Test
+  void uploadForPeriod_aRenewalLoadedAheadOfTimeDoesNotHideTheContractThatChargesTheMonth() {
+    guest(true, Standing.ACTIVE);
+    when(contracts.contractsOf(GUEST))
+        .thenReturn(
+            List.of(
+                contract(CONTRACT, "2026-01-01", "2026-12-31", null),
+                contract(OLD_CONTRACT, "2027-01-01", null, null)));
+    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    storedAs(PaymentStatus.PENDING);
+
+    PaymentView view = service.uploadForPeriod(forPeriod("2026-10", "800", PDF));
+
+    assertThat(view.contractId()).isEqualTo(CONTRACT);
+  }
+
+  @Test
   void uploadForPeriod_aFileThatIsNotAVoucherIsRefusedBeforeItIsStored() {
     openContract();
 

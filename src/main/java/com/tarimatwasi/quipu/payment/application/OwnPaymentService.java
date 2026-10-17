@@ -124,17 +124,20 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     VoucherRecorder.checkAmountAndMethod(voucher.amount(), voucher.paymentMethod());
     requireActive(guest);
     LocalDate today = BusinessDay.today(clock);
-    // RN-27: only the contract in force takes a voucher of the guest; an older one that ended is
-    // settled by the administrator (direct payment).
-    ContractInfo contract =
-        contracts.contractsOf(guestId).stream()
-            .filter(c -> c.terms().activeOn(today))
-            .max(Comparator.comparing(c -> c.terms().startDate()))
-            .orElseThrow(NoActiveContractException::new);
-    YearMonth period = voucher.period();
-    if (!contract.terms().periods(today).contains(period)) {
-      throw new InvalidPaymentException("period");
+    // RN-27: only a contract in force takes a voucher of the guest; an older one that ended is
+    // settled by the administrator (direct payment). Of those in force, the one that charges the
+    // period: a renewal loaded ahead of time is in force too but charges nothing yet.
+    List<ContractInfo> inForce =
+        contracts.contractsOf(guestId).stream().filter(c -> c.terms().activeOn(today)).toList();
+    if (inForce.isEmpty()) {
+      throw new NoActiveContractException();
     }
+    YearMonth period = voucher.period();
+    ContractInfo contract =
+        inForce.stream()
+            .filter(c -> c.terms().periods(today).contains(period))
+            .max(Comparator.comparing(c -> c.terms().startDate()))
+            .orElseThrow(() -> new InvalidPaymentException("period"));
     VoucherType type = typeOf(voucher.voucher());
     VoucherRecorder.rejectLive(payments.findLiveByPeriod(contract.id(), period));
     return store(
