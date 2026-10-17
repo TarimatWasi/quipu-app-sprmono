@@ -541,34 +541,6 @@ class PaymentServiceTest {
   }
 
   @Test
-  void registerDirect_aContractExpiredByDateOnlyTakesTheLastPeriodInDebt() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.contractsOf(GUEST))
-        .thenReturn(List.of(contract("2026-07-01", "2026-09-15", null)));
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of());
-    when(payments.findLiveByPeriod(CONTRACT, YearMonth.of(2026, 9))).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, YearMonth.of(2026, 9), null)));
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-08", "800", PDF)))
-        .isInstanceOf(InvalidPaymentException.class);
-    assertThat(service.registerDirect(forPeriod("2026-09", "800", PDF)).period())
-        .isEqualTo(YearMonth.of(2026, 9));
-  }
-
-  @Test
-  void registerDirect_aContractFinishedByHandTakesNoPayment() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.contractsOf(GUEST))
-        .thenReturn(List.of(contract("2026-07-01", null, Instant.parse("2026-09-20T15:00:00Z"))));
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of());
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-09", "800", PDF)))
-        .isInstanceOf(InvalidPaymentException.class);
-  }
-
-  @Test
   void registerDirect_theFileIsCheckedByItsContentAfterThePeriodAndBeforeTheLivePayment() {
     contractGuestWithOpenContract();
     byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3};

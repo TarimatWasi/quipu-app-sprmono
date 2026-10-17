@@ -64,18 +64,64 @@ class GuestDebtContractTest extends PaymentsContractSupport {
 
   @Test
   void finishingAContractWithDebtIsAllowedButTheDebtStaysWithTheGuest() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.post(
-                    CONTRACTS + "/" + masker.mask(IdKind.CONTRACT, contract) + "/terminate")
-                .cookie(admin()))
-        .andExpect(status().isNoContent());
+    terminate().andExpect(status().isNoContent());
 
     load(room2)
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.periods.length()").value(10))
         .andExpect(jsonPath("$.periods[0]").value("2026-01"));
+  }
+
+  /** D-31: the administrator settles the debt of a contract finished by hand, month by month. */
+  @Test
+  void theDebtOfAFinishedContractIsSettledByDirectPaymentsAndThenTheGuestTakesTheContract()
+      throws Exception {
+    terminate().andExpect(status().isNoContent());
+    when(files.store(any(), any())).thenAnswer(call -> KEY + "-" + TestIds.next());
+
+    for (int month = 1; month <= 10; month++) {
+      String period = String.format("2026-%02d", month);
+      post(contractGuest, "period", period, "800", PDF, "v.pdf")
+          .andExpect(status().isCreated())
+          .andExpect(answersTheContract())
+          .andExpect(jsonPath("$.period").value(period));
+    }
+    post(contractGuest, "period", "2026-11", "800", PDF, "v.pdf")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("period"));
+
+    load(room2).andExpect(status().isCreated()).andExpect(answersTheContract());
+  }
+
+  /** D-31: a contract expired by date takes any month it charged, not only the latest one. */
+  @Test
+  void aContractExpiredByDateTakesADirectPaymentForAnyMonthItCharged() throws Exception {
+    Long other = insertGuest("55555555", "CONTRACT", "ACTIVE", null);
+    insertContract(other, room2, "2026-07-01", "2026-09-15");
+    when(files.store(any(), any())).thenAnswer(call -> KEY + "-" + TestIds.next());
+
+    post(other, "period", "2026-07", "800", PDF, "v.pdf").andExpect(status().isCreated());
+    post(other, "period", "2026-08", "800", PDF, "v.pdf").andExpect(status().isCreated());
+    post(other, "period", "2026-10", "800", PDF, "v.pdf")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("period"));
+  }
+
+  /** Two contracts charge October; the payment goes to the one that still owes it. */
+  @Test
+  void whenTwoContractsChargeTheMonthTheDirectPaymentSettlesTheOneThatOwesIt() throws Exception {
+    Long renewal = insertContract(contractGuest, room2, "2026-10-01", null);
+    insertPayment(contractGuest, renewal, null, "2026-10", "APPROVED", "2026-10-01");
+
+    post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf").andExpect(status().isCreated());
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT contract_id FROM payments WHERE period = '2026-10-01' AND contract_id <> ?",
+                Long.class,
+                renewal))
+        .isEqualTo(contract);
   }
 
   @Test
@@ -99,6 +145,13 @@ class GuestDebtContractTest extends PaymentsContractSupport {
     Long other = insertGuest("44444444", "CONTRACT", "ACTIVE", null);
 
     load(room2, other).andExpect(status().isCreated());
+  }
+
+  private ResultActions terminate() throws Exception {
+    return mockMvc.perform(
+        MockMvcRequestBuilders.post(
+                CONTRACTS + "/" + masker.mask(IdKind.CONTRACT, contract) + "/terminate")
+            .cookie(admin()));
   }
 
   private ResultActions load(Long environment) throws Exception {
