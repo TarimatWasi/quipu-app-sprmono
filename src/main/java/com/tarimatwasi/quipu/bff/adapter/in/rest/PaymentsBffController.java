@@ -185,6 +185,26 @@ public class PaymentsBffController {
                 item -> QueueItemResponse.of(item, ids)));
   }
 
+  /**
+   * RF-10: the history of a guest of either type. The parameters are checked before the id is
+   * unmasked, and an id that was never issued reads as a guest that does not exist only after the
+   * cursor is checked: a forged cursor is a 400 for any id.
+   */
+  @GetMapping("/bff/admin/guests/{id}/payments")
+  public ResponseEntity<PagedResponse<PaymentResponse>> history(
+      @PathVariable UUID id,
+      @RequestParam(name = "limit", defaultValue = "20") int limit,
+      @RequestParam(name = "after", required = false) @Nullable String after) {
+    var page = PageParams.query(after, limit);
+    // The payments of a person: no cache keeps them.
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            PagedResponse.of(
+                payments.history(unmaskOrMissing(IdKind.GUEST, id), page),
+                payment -> PaymentResponse.of(payment, ids)));
+  }
+
   /** The state filter is a closed list; any other value is a 400 that names the parameter. */
   private static @Nullable PaymentState state(@Nullable String status) {
     if (status == null) {

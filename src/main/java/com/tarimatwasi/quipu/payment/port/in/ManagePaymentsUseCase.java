@@ -119,6 +119,15 @@ public interface ManagePaymentsUseCase {
   CursorPage<QueueItemView> list(@Nullable PaymentState status, PageQuery page);
 
   /**
+   * One page of the payment history of a guest of either type, newest first and read by last index
+   * (RF-10), without the voucher URLs. The cursor is checked before the guest.
+   *
+   * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
+   */
+  CursorPage<PaymentView> history(Long guestId, PageQuery page);
+
+  /**
    * One payment with the signed URL of its voucher.
    *
    * @throws PaymentNotFoundException if there is no payment with that id

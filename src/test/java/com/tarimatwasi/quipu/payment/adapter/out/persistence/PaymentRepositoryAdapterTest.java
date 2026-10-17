@@ -342,6 +342,62 @@ class PaymentRepositoryAdapterTest {
   }
 
   @Test
+  void findHistory_walksTheNewestFirstWithoutRepeatingOrSkippingAndOnlyForTheGuest() {
+    List<Long> created = new ArrayList<>();
+    for (int month = 1; month <= 5; month++) {
+      created.add(0, insertPending("2026-0" + month, "2026-10-0" + month + "T10:00:00Z"));
+    }
+    adapter.insertApproved(draftForStay());
+    List<Long> seen = new ArrayList<>();
+    String cursor = null;
+    do {
+      CursorPage<StoredPayment> page = adapter.findHistory(guest, new PageQuery(cursor, 2));
+      page.content().forEach(p -> seen.add(p.payment().id()));
+      cursor = page.nextCursor();
+    } while (cursor != null);
+
+    assertThat(seen).containsExactlyElementsOf(created);
+    assertThat(adapter.findHistory(temporaryGuest, PageQuery.first()).content()).hasSize(1);
+    assertThat(adapter.findHistory(-1L, PageQuery.first()).content()).isEmpty();
+  }
+
+  @Test
+  void findHistory_keepsTheIdAsTheTieBreakerNewestFirst() {
+    Long first = insertPending("2026-01", "2026-10-01T10:00:00Z");
+    Long second = insertPending("2026-02", "2026-10-01T10:00:00Z");
+
+    CursorPage<StoredPayment> page = adapter.findHistory(guest, new PageQuery(null, 1));
+    assertThat(page.content()).extracting(p -> p.payment().id()).containsExactly(second);
+    assertThat(adapter.findHistory(guest, new PageQuery(page.nextCursor(), 1)).content())
+        .extracting(p -> p.payment().id())
+        .containsExactly(first);
+  }
+
+  @Test
+  void findHistory_refusesACursorThatIsNotOurs() {
+    for (String bad :
+        new String[] {
+          "nope",
+          CursorToken.encode("not-a-date", "1"),
+          CursorToken.encode("+12345-01-01T00:00:00", "1"),
+          CursorToken.encode("2026-01-01T00:00:00", "x")
+        }) {
+      assertThatThrownBy(() -> adapter.findHistory(guest, new PageQuery(bad, 5)))
+          .as(bad)
+          .isInstanceOf(InvalidCursorException.class);
+    }
+  }
+
+  @Test
+  void theHistoryOfAGuestHasAnIndexForItsOrder() {
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_payments_history'",
+                String.class))
+        .contains("(guest_id, created_date DESC, id DESC)");
+  }
+
+  @Test
   void theQueueWithoutAStatusHasAnIndexForItsOrder() {
     assertThat(
             jdbc.queryForObject(

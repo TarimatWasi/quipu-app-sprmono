@@ -30,6 +30,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -124,6 +125,21 @@ public class GuestPaymentsBffController {
             payments.accountStatus(guestOf(authentication)).stream()
                 .map(view -> PeriodStatusResponse.of(view, ids))
                 .toList());
+  }
+
+  /** RF-10, CU-19: the own history of a guest with a contract, without the voucher URLs. */
+  @GetMapping("/bff/guest/payments")
+  public ResponseEntity<PagedResponse<PaymentResponse>> history(
+      @RequestParam(name = "limit", defaultValue = "20") int limit,
+      @RequestParam(name = "after", required = false) @Nullable String after,
+      Authentication authentication) {
+    var page = PageParams.query(after, limit);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            PagedResponse.of(
+                payments.history(guestOf(authentication), page),
+                payment -> PaymentResponse.of(payment, ids)));
   }
 
   @GetMapping("/bff/temporary-guest/payment-status")

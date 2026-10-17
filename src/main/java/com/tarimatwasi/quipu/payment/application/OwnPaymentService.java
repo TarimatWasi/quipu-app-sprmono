@@ -29,6 +29,8 @@ import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.VoucherDraft;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.shared.file.FileNames;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -108,6 +110,13 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
         stay.agreedAmount(),
         status.paymentId(),
         status.rejectionReason());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public CursorPage<PaymentView> history(Long guestId, PageQuery page) {
+    admitted(guestId, true);
+    return payments.findHistory(guestId, page).map(VoucherRecorder::view);
   }
 
   private static ChargeState state(PeriodState state) {

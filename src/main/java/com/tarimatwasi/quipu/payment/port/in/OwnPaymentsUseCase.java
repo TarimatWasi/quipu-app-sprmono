@@ -2,6 +2,8 @@ package com.tarimatwasi.quipu.payment.port.in;
 
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.PaymentView;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
+import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -83,6 +85,18 @@ public interface OwnPaymentsUseCase {
    * @throws NoStayYetException if the guest has no stay
    */
   StayStatusView stayStatus(Long guestId);
+
+  /**
+   * One page of the own payment history of a guest with a contract, newest first and read by last
+   * index (RF-10, CU-19), without the voucher URLs; a rejected payment carries its reason. An
+   * inactive guest still reads it.
+   *
+   * @throws OtherGuestTypeException if the guest is temporary
+   * @throws OnboardingRequiredException if the guest has not finished the onboarding
+   * @throws com.tarimatwasi.quipu.shared.paging.InvalidCursorException if the cursor is not one
+   *     this service issued
+   */
+  CursorPage<PaymentView> history(Long guestId, PageQuery page);
 
   /**
    * Uploads the voucher of a period of the contract in force, which waits for the review. The
