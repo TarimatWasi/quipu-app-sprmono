@@ -28,6 +28,11 @@ public class ContractPaymentAdapter implements PaymentContractPort {
   }
 
   @Override
+  public List<ContractInfo> lockedContractsOf(Long guestId) {
+    return contracts.lockedTermsOfGuest(guestId).stream().map(this::info).toList();
+  }
+
+  @Override
   public Map<Long, Long> environmentsOf(Collection<Long> contractIds) {
     return contracts.environmentsOf(contractIds);
   }

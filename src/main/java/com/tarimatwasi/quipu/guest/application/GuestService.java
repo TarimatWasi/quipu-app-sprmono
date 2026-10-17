@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
+import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
@@ -36,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
-public class GuestService implements ManageGuestsUseCase {
+public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
 
   private static final Pattern DNI = Pattern.compile("[0-9]{8}");
   private static final Pattern OTHER_DOCUMENT = Pattern.compile("[A-Za-z0-9]{1,20}");
@@ -88,6 +89,14 @@ public class GuestService implements ManageGuestsUseCase {
         // The documents of the onboarding and the access of RF-11 arrive with TAR-137 and TAR-36.
         0,
         null);
+  }
+
+  @Override
+  @Transactional
+  public void lock(Long id) {
+    if (guests.findByIdForUpdate(id).isEmpty()) {
+      throw new GuestNotFoundException();
+    }
   }
 
   @Override

@@ -58,6 +58,12 @@ public interface ContractRepositoryPort {
   /** Every contract of the guest, whatever its state, the oldest start first. */
   List<Contract> findAllByGuest(Long guestId);
 
+  /**
+   * Like {@link #findAllByGuest} but every row stays locked until the transaction ends, taken in
+   * the order of the ids; the oldest id first. Needs a transaction.
+   */
+  List<Contract> findAllByGuestForUpdate(Long guestId);
+
   /** The contracts with those ids; an id with no contract adds nothing. */
   List<Contract> findAllByIds(Collection<Long> ids);
 }

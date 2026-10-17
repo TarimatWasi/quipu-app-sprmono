@@ -241,7 +241,8 @@ public class PaymentService implements ManagePaymentsUseCase {
    * The contract whose period is paid (RN-27 after D-31): any contract of the guest that charges
    * the month, in force or not. When two charge it (a renewal), the newest one that still owes it,
    * so that every month in debt can be settled; else the newest one, whose live payment answers
-   * 409.
+   * 409. The terms are read with the rows of the contracts locked until the commit (TAR-192): a
+   * termination that commits first is seen, and one that comes later waits for this payment.
    */
   private Target periodTarget(GuestProfile guest, DirectPayment direct) {
     YearMonth period = direct.period();
@@ -250,7 +251,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     }
     LocalDate today = BusinessDay.today(clock);
     List<ContractInfo> charging =
-        contracts.contractsOf(direct.guestId()).stream()
+        contracts.lockedContractsOf(direct.guestId()).stream()
             .filter(c -> c.terms().acceptsPayment(period, today))
             .sorted(Comparator.comparing((ContractInfo c) -> c.terms().startDate()).reversed())
             .toList();

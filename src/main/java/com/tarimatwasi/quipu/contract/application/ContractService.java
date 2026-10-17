@@ -76,8 +76,10 @@ public class ContractService implements ManageContractsUseCase {
   @Transactional
   public ContractView create(NewContract contract) {
     validate(contract);
-    // The environment stays locked until the commit: two contracts on it are decided one by one.
+    // Both rows stay locked until the commit, in the global order environment, guest, contract,
+    // payment: two contracts on one environment, or two of one guest, are decided one by one.
     environments.lock(contract.environmentId());
+    guests.lock(contract.guestId());
     GuestProfile guest = guests.profileOf(contract.guestId());
     if (!guest.active()) {
       throw new GuestNotActiveException(contract.guestId());
@@ -85,8 +87,8 @@ public class ContractService implements ManageContractsUseCase {
     if (!guest.hasContractType()) {
       throw new GuestNotContractException();
     }
-    // RN-25, RN-35 (D-27): the debt is of the guest, over all its contracts. Read inside the lock,
-    // in the order of the contract: guest state, guest type, debt, environment.
+    // RN-25, RN-35 (D-27): the debt is of the guest, over all its contracts. Read under the lock of
+    // the guest, in the order of the contract: guest state, guest type, debt, environment.
     List<YearMonth> owed = debts.owedPeriods(contract.guestId());
     if (!owed.isEmpty()) {
       throw new GuestHasPendingDebtException(owed);

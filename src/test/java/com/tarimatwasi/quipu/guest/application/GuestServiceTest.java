@@ -406,4 +406,11 @@ class GuestServiceTest {
     assertThat(detail.stayEndDate()).isNull();
     assertThat(detail.agreedAmount()).isNull();
   }
+
+  @Test
+  void lockingAnUnknownGuestIsNotFound() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service().lock(ID)).isInstanceOf(GuestNotFoundException.class);
+  }
 }
