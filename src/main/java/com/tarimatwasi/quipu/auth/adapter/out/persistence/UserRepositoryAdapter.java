@@ -61,6 +61,11 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
+  public void setGuestAccountStatus(Long guestId, String status) {
+    jpaRepository.updateStatusByGuestId(guestId, status);
+  }
+
+  @Override
   public Optional<UserAccount> findByEmail(String email) {
     return jpaRepository.findByEmailIgnoreCase(email).map(UserJpaEntity::toDomain);
   }

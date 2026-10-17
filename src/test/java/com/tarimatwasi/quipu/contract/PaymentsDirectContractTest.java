@@ -159,8 +159,9 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     post(contractGuest, "stayId", masker.mask(IdKind.STAY, stay).toString(), "150", PDF, "v.pdf")
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("STAY_NOT_FOUND"));
+    // D-27: an inactive guest pays only the months it owes; November is not owed
     jdbc.update("UPDATE guests SET status = 'INACTIVE' WHERE id = ?", contractGuest);
-    post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf")
+    post(contractGuest, "period", "2026-11", "800", PDF, "v.pdf")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))

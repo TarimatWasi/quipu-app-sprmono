@@ -25,6 +25,7 @@ import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
@@ -347,6 +348,18 @@ public class BffExceptionHandler {
                 "GUEST_HAS_PENDING_DEBT",
                 "El huésped tiene períodos pendientes de pago; primero regístralos",
                 e.periods().stream().map(YearMonth::toString).toList()));
+  }
+
+  /** RN-12: a guest with a contract in force is not deactivated; the UI links the contract. */
+  @ExceptionHandler(GuestHasActiveContractException.class)
+  public ResponseEntity<BffGuestHasActiveContractResponse> handleGuestHasActiveContract(
+      GuestHasActiveContractException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffGuestHasActiveContractResponse(
+                "GUEST_HAS_ACTIVE_CONTRACT",
+                "El huésped tiene un contrato vigente; primero finaliza el contrato",
+                ids.mask(IdKind.CONTRACT, e.contractId())));
   }
 
   /** RN-12, RN-20: a contract in force holds the environment. */

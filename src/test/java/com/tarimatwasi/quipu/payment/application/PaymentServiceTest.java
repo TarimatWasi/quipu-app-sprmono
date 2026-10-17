@@ -121,7 +121,7 @@ class PaymentServiceTest {
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
-    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active);
+    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, false);
   }
 
   private static ContractInfo contract(
@@ -196,7 +196,7 @@ class PaymentServiceTest {
                 GUEST,
                 guest(true, true),
                 temporaryGuest,
-                new GuestProfile(temporaryGuest, null, "87654321", false, true)));
+                new GuestProfile(temporaryGuest, null, "87654321", false, true, false)));
     when(contracts.environmentsOf(any())).thenReturn(Map.of(CONTRACT, ENVIRONMENT));
     when(environments.codesOf(any())).thenReturn(Map.of(ENVIRONMENT, "201"));
 
@@ -502,6 +502,22 @@ class PaymentServiceTest {
         .isInstanceOfSatisfying(
             GuestNotActiveException.class, e -> assertThat(e.guestId()).isEqualTo(GUEST));
     verifyNoInteractions(files, contracts);
+  }
+
+  /** D-27: an inactive guest pays only a month it owes (October is paid, September is not). */
+  @Test
+  void registerDirect_anInactiveGuestPaysOnlyAMonthItOwes() {
+    contractGuestWithOpenContract();
+    when(guests.profileOf(GUEST)).thenReturn(new GuestProfile(GUEST, null, "1", true, false, true));
+    var paid = payment(PaymentStatus.APPROVED, OCTOBER, null);
+    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(paid));
+    when(payments.insertApproved(any())).thenReturn(stored(paid));
+    for (var period : List.of("2026-10", "2026-11")) {
+      assertThatThrownBy(() -> service.registerDirect(forPeriod(period, "800", PDF)))
+          .isInstanceOf(GuestNotActiveException.class);
+    }
+    assertThat(service.registerDirect(forPeriod("2026-09", "800", PDF)).status())
+        .isEqualTo(PaymentState.APPROVED);
   }
 
   @Test

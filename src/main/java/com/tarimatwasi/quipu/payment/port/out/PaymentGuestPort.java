@@ -11,13 +11,15 @@ public interface PaymentGuestPort {
    *
    * @param name {@code null} until the guest gives it in the onboarding
    * @param contractType a guest with a contract; otherwise a temporary one
+   * @param inactive deactivated by the administrator (RN-12); never true with {@code active}
    */
   record GuestProfile(
       Long id,
       @Nullable String name,
       String documentNumber,
       boolean contractType,
-      boolean active) {}
+      boolean active,
+      boolean inactive) {}
 
   /** Where the guest of a session is in its lifecycle (RN-36), as the payments read it. */
   enum Standing {
@@ -47,6 +49,14 @@ public interface PaymentGuestPort {
    * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if there is none
    */
   GuestProfile profileOf(Long guestId);
+
+  /**
+   * Locks the guest until the transaction ends (order: environment, guest, contract, payment), so a
+   * deactivation that races a direct payment is seen or waits (TAR-38). Needs a transaction.
+   *
+   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if there is none
+   */
+  void lock(Long guestId);
 
   /** The guests with those ids by id. */
   Map<Long, GuestProfile> profilesOf(Collection<Long> guestIds);

@@ -21,11 +21,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** RF-02. Only ADMIN reaches /bff/admin/** (RN-08); SecurityConfig enforces it. */
@@ -152,5 +155,18 @@ public class GuestsBffController {
             ids.unmask(IdKind.GUEST, id),
             new UpdateCommand(request.documentType(), request.documentNumber())),
         ids);
+  }
+
+  /** RF-13, RN-12: the guest loses its login access; a contract in force blocks it. */
+  @PostMapping("/bff/admin/guests/{id}/deactivate")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deactivate(@PathVariable UUID id) {
+    guests.deactivate(ids.unmask(IdKind.GUEST, id));
+  }
+
+  /** RF-13, CU-28: back to the state it had (NonInactiveGuestSummary); debt blocks it. */
+  @PostMapping("/bff/admin/guests/{id}/reactivate")
+  public GuestSummaryResponse reactivate(@PathVariable UUID id) {
+    return GuestSummaryResponse.of(guests.reactivate(ids.unmask(IdKind.GUEST, id)), ids);
   }
 }

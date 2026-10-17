@@ -12,6 +12,9 @@ public interface GuestAccountPort {
    */
   Map<Long, AccountState> stateOf(Collection<Long> guestIds);
 
+  /** Enables or disables the account of the guest, if it has one (RN-12). */
+  void setActive(Long guestId, boolean active);
+
   /**
    * Whether an administrator account owns that document, so no guest can be registered under it.
    */

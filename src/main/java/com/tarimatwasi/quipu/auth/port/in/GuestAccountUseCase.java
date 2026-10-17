@@ -18,6 +18,13 @@ public interface GuestAccountUseCase {
   /** The state of the account of each guest; a guest without an account is not in the map. */
   Map<Long, GuestAccountState> stateOf(Collection<Long> guestIds);
 
+  /**
+   * Enables or disables the account of the guest, if it has one (RN-12): a disabled account cannot
+   * log in and a session it already had stops working at its next request. Joins the transaction of
+   * the caller.
+   */
+  void setActive(Long guestId, boolean active);
+
   /** The guest that the account with that id belongs to; empty for an account of no guest. */
   Optional<Long> guestOf(Long accountId);
 

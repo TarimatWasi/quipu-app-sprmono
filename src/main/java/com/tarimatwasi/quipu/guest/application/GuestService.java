@@ -10,6 +10,7 @@ import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
@@ -20,10 +21,14 @@ import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
+import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
+import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -46,14 +51,20 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
   private final StayRepositoryPort stays;
+  private final ContractOccupancyQuery contracts;
+  private final GuestDebtQuery debts;
   private final Clock clock;
 
   GuestService(
       GuestRepositoryPort guests,
       GuestAccountPort accounts,
       StayRepositoryPort stays,
+      ContractOccupancyQuery contracts,
+      GuestDebtQuery debts,
       Clock clock) {
     this.stays = stays;
+    this.contracts = contracts;
+    this.debts = debts;
     this.clock = clock;
     this.guests = guests;
     this.accounts = accounts;
@@ -115,6 +126,67 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     } catch (GuestEmailAlreadyExistsException e) {
       throw new GuestEmailTakenException(e);
     }
+  }
+
+  /**
+   * The guest row stays locked until the commit (order: environment, guest, contract, payment), so
+   * a contract loaded at the same time either sees the guest INACTIVE or is seen here as in force.
+   */
+  @Override
+  @Transactional
+  public void deactivate(Long id) {
+    Guest guest = guests.findByIdForUpdate(id).orElseThrow(GuestNotFoundException::new);
+    if (guest.status() == GuestStatus.INACTIVE) {
+      return;
+    }
+    contracts
+        .guestContractInForce(id)
+        .ifPresent(
+            contract -> {
+              throw new GuestHasActiveContractException(contract);
+            });
+    guests.save(withStatus(guest, GuestStatus.INACTIVE, guest.status()));
+    accounts.setActive(id, false);
+  }
+
+  /** The debt is read under the lock of the guest, as the contracts and direct payments do. */
+  @Override
+  @Transactional
+  public GuestSummaryView reactivate(Long id) {
+    Guest guest = guests.findByIdForUpdate(id).orElseThrow(GuestNotFoundException::new);
+    if (guest.status() != GuestStatus.INACTIVE) {
+      return summary(guest, stateOf(guest));
+    }
+    List<YearMonth> owed = debts.owedPeriods(id);
+    if (!owed.isEmpty()) {
+      throw new GuestHasPendingDebtException(owed);
+    }
+    // This service always stores the previous state; an INACTIVE row without it (loaded by hand)
+    // comes back pending activation, the state that asks for a new access.
+    GuestStatus before =
+        guest.statusBeforeInactive() == null
+            ? GuestStatus.PENDING_ACTIVATION
+            : guest.statusBeforeInactive();
+    Guest saved = guests.save(withStatus(guest, before, null));
+    accounts.setActive(id, true);
+    return summary(saved, stateOf(saved));
+  }
+
+  private static Guest withStatus(
+      Guest guest, GuestStatus status, @Nullable GuestStatus statusBeforeInactive) {
+    return new Guest(
+        guest.id(),
+        guest.documentType(),
+        guest.documentNumber(),
+        guest.fullName(),
+        guest.email(),
+        guest.phone(),
+        guest.type(),
+        status,
+        statusBeforeInactive,
+        guest.personalDataCompletedAt(),
+        guest.documentsStepCompletedAt(),
+        guest.emergencyContact());
   }
 
   private Guest withDocument(Guest guest, UpdateCommand command) {

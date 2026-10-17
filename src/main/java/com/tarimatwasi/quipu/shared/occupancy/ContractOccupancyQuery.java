@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.shared.occupancy;
 
+import java.util.Optional;
+
 /**
  * What the modules that own an environment or a guest ask the contracts. It lives in {@code shared}
  * so that those modules do not depend on the contract module, which already depends on them
@@ -9,4 +11,7 @@ public interface ContractOccupancyQuery {
 
   /** Whether a contract in force holds the environment today (RN-01, RN-12, RN-20). */
   boolean environmentOccupied(Long environmentId);
+
+  /** The id of a contract of the guest in force today, if it has one (RN-12). */
+  Optional<Long> guestContractInForce(Long guestId);
 }
