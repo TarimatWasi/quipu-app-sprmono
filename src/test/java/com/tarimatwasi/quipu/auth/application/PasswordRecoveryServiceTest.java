@@ -355,4 +355,17 @@ class PasswordRecoveryServiceTest {
     org.mockito.Mockito.verify(grants).revokeLive(77L, clock.instant());
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
   }
+
+  @Test
+  void theRecoveryCodeCannotBeTheNewPasswordAndIsKept() {
+    UserAccount user = guestAccount(false);
+    service.requestReset(EMAIL);
+    String code = mail.sent.get(0).code();
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.resetPassword(code, code))
+        .isInstanceOf(com.tarimatwasi.quipu.auth.port.in.WeakPasswordException.class);
+    service.resetPassword(code, "Nueva12345");
+
+    assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
+  }
 }

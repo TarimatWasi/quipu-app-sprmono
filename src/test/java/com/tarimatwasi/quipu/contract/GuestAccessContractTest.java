@@ -239,6 +239,21 @@ class GuestAccessContractTest {
         .andExpect(jsonPath("$.guestStatus").value("ONBOARDING"));
   }
 
+  /** The single-use token cannot become the password: whoever kept the link would sign in. */
+  @Test
+  void theTokenCannotBeTheNewPasswordAndIsKept() throws Exception {
+    String token =
+        tokenOf(read(register("12345678", "LINK", null).andReturn(), "$.access.activationUrl"));
+
+    activate(token, token)
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"))
+        .andExpect(jsonPath("$.field").value("newPassword"));
+    activate(token, NEW_PASSWORD).andExpect(status().isOk());
+    login("12345678", token).andExpect(status().isUnauthorized());
+  }
+
   @Test
   void theLinkExpiresAfterThirtyMinutes() throws Exception {
     String token =

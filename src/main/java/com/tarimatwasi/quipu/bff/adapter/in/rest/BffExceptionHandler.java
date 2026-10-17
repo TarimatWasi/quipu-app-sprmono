@@ -145,9 +145,12 @@ public class BffExceptionHandler {
   @ExceptionHandler(WeakPasswordException.class)
   public ResponseEntity<BffErrorResponse> handleWeakPassword(WeakPasswordException e) {
     String message =
-        e.reason() == WeakPasswordException.Reason.TOO_SHORT
-            ? "Mínimo 8 caracteres"
-            : "La contraseña es demasiado larga";
+        switch (e.reason()) {
+          case TOO_SHORT -> "Mínimo 8 caracteres";
+          case TOO_LONG -> "La contraseña es demasiado larga";
+          case SINGLE_USE_CREDENTIAL ->
+              "Elige una contraseña distinta del enlace o código recibido";
+        };
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("AUTH_WEAK_PASSWORD", message, "newPassword"));
   }

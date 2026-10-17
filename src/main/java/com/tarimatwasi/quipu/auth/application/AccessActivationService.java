@@ -54,6 +54,7 @@ public class AccessActivationService implements ActivateAccessUseCase {
   @Transactional
   public ActivationResult activate(String token, String newPassword) {
     PasswordPolicy.require(newPassword);
+    PasswordPolicy.requireNotTheCredential(newPassword, token);
     String hash = ResetCodeIssuer.hash(token);
     Long guestId = grants.findGuestIdByTokenHash(hash).orElseThrow(InvalidResetCodeException::new);
     guests.lockGuest(guestId);
