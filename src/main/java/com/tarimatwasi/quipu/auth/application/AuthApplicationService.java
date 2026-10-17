@@ -10,10 +10,16 @@ import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.port.in.TemporaryPasswordExpiredException;
 import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
+import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
+import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort.LiveTemporaryPassword;
 import com.tarimatwasi.quipu.auth.port.out.LoginAttemptLimiterPort;
 import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -38,6 +44,8 @@ public class AuthApplicationService
   private final PasswordEncoder passwordEncoder;
   private final SessionTokenPort sessionTokens;
   private final LoginAttemptLimiterPort loginAttempts;
+  private final AccessGrantRepositoryPort grants;
+  private final GuestAccessListener guests;
   private final Clock clock;
 
   /** Hashed once at startup (CFG-06, SEC-06) so an unknown document costs one bcrypt check too. */
@@ -48,11 +56,15 @@ public class AuthApplicationService
       PasswordEncoder passwordEncoder,
       SessionTokenPort sessionTokens,
       LoginAttemptLimiterPort loginAttempts,
+      AccessGrantRepositoryPort grants,
+      GuestAccessListener guests,
       Clock clock) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.sessionTokens = sessionTokens;
     this.loginAttempts = loginAttempts;
+    this.grants = grants;
+    this.guests = guests;
     this.clock = clock;
     this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
   }
@@ -93,7 +105,8 @@ public class AuthApplicationService
     if (user.isLockedAt(now)) {
       throw new AccountLockedException(now, Objects.requireNonNull(user.lockedUntil()));
     }
-    if (!passwordMatches) {
+    boolean temporary = !passwordMatches && matchesTemporaryPassword(user, command.rawPassword());
+    if (!passwordMatches && !temporary) {
       // Defensive: the row is already locked, but the repository still answers if it was locked.
       boolean alreadyLocked =
           userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
@@ -109,12 +122,23 @@ public class AuthApplicationService
     if (user.failedLoginAttempts() > 0 || user.lockedUntil() != null) {
       userRepository.clearFailedLogins(user.id());
     }
-    String role = user.role().name();
+    return sessionOf(user, temporary);
+  }
+
+  private LoginResult sessionOf(UserAccount user, boolean temporary) {
+    boolean mustChangePassword = user.mustChangePassword();
+    if (temporary) {
+      // RF-12, D-30: the session may only choose the password; the temporary one is consumed then.
+      guests.accessUsed(Objects.requireNonNull(user.guestId()));
+      userRepository.requirePasswordChange(user.id());
+      mustChangePassword = true;
+    }
     return new LoginResult(
         user.id().toString(),
-        role,
+        user.role().name(),
         user.email(),
-        user.mustChangePassword(),
+        user.guestId(),
+        mustChangePassword,
         sessionTokens.issue(user.id().toString()));
   }
 
@@ -133,6 +157,10 @@ public class AuthApplicationService
     // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
     String newHash = passwordEncoder.encode(command.newPassword());
     userRepository.changePassword(user.id(), newHash, clock.instant());
+    if (user.guestId() != null) {
+      // D-30: the temporary password is used up when the guest chooses its own.
+      grants.consumeTemporaryPassword(user.guestId(), clock.instant());
+    }
     return new ChangePasswordResult(sessionTokens.issue(command.userId()));
   }
 
@@ -143,7 +171,8 @@ public class AuthApplicationService
         lookup(userId)
             .filter(account -> !account.isDisabled())
             .orElseThrow(NoActiveSessionException::new);
-    return new CurrentSession(user.role().name(), user.email(), user.mustChangePassword());
+    return new CurrentSession(
+        user.role().name(), user.email(), user.guestId(), user.mustChangePassword());
   }
 
   /**
@@ -166,6 +195,30 @@ public class AuthApplicationService
     } catch (IllegalArgumentException e) {
       return Optional.empty();
     }
+  }
+
+  /**
+   * RN-32: a guest may also sign in with the live temporary password of its access, compared by
+   * hash in constant time. Right but expired gives its own answer; it is only reached when the
+   * password matched, so it never tells whether a document exists.
+   */
+  private boolean matchesTemporaryPassword(UserAccount user, String rawPassword) {
+    Long guestId = user.guestId();
+    if (guestId == null) {
+      return false;
+    }
+    Optional<LiveTemporaryPassword> live = grants.findLiveTemporaryPassword(guestId);
+    if (live.isEmpty()) {
+      return false;
+    }
+    boolean matches =
+        MessageDigest.isEqual(
+            ResetCodeIssuer.hash(rawPassword).getBytes(StandardCharsets.US_ASCII),
+            live.get().tokenHash().getBytes(StandardCharsets.US_ASCII));
+    if (matches && !clock.instant().isBefore(live.get().expiresAt())) {
+      throw new TemporaryPasswordExpiredException();
+    }
+    return matches;
   }
 
   /** Optional only while the account must change its password: that session just logged in. */

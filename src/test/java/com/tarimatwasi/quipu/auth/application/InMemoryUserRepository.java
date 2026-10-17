@@ -73,7 +73,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
 
   @Override
   public Optional<UserAccount> findByEmail(String email) {
-    return byId.values().stream().filter(u -> u.email().equalsIgnoreCase(email)).findFirst();
+    return byId.values().stream().filter(u -> email.equalsIgnoreCase(u.email())).findFirst();
   }
 
   @Override
@@ -139,6 +139,55 @@ final class InMemoryUserRepository implements UserRepositoryPort {
                         user.failedLoginAttempts(),
                         user.lockedUntil(),
                         user.passwordChangedAt())));
+  }
+
+  private long nextId = 1_000_000L;
+
+  @Override
+  public void insertGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    save(
+        new UserAccount(
+            nextId++,
+            email,
+            documentType,
+            documentNumber,
+            unusablePasswordHash,
+            com.tarimatwasi.quipu.auth.domain.Role.GUEST,
+            guestId,
+            true,
+            "ACTIVE",
+            0,
+            null,
+            null));
+  }
+
+  @Override
+  public Optional<UserAccount> findByGuestIdForUpdate(Long guestId) {
+    return findAllByGuestIds(List.of(guestId)).stream().findFirst();
+  }
+
+  @Override
+  public void requirePasswordChange(Long id) {
+    UserAccount user = find(id);
+    save(
+        new UserAccount(
+            user.id(),
+            user.email(),
+            user.documentType(),
+            user.documentNumber(),
+            user.passwordHash(),
+            user.role(),
+            user.guestId(),
+            true,
+            user.status(),
+            user.failedLoginAttempts(),
+            user.lockedUntil(),
+            user.passwordChangedAt()));
   }
 
   @Override

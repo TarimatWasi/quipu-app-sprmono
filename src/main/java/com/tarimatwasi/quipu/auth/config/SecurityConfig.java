@@ -31,6 +31,7 @@ class SecurityConfig {
     "/actuator/health",
     "/actuator/health/**",
     "/bff/auth/login",
+    "/bff/auth/activate",
     "/bff/auth/forgot-password",
     "/bff/auth/reset-password",
     "/error"

@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.auth.port.in;
 
+import org.jspecify.annotations.Nullable;
+
 /** Authenticates a user by document and password. */
 public interface LoginUseCase {
 
@@ -9,6 +11,7 @@ public interface LoginUseCase {
    * @throws com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException unknown document or
    *     <p>wrong password (the same error, to avoid revealing which)
    * @throws com.tarimatwasi.quipu.auth.port.in.AccountDisabledException the account is inactive
+   * @throws TemporaryPasswordExpiredException the temporary password matched but expired
    */
   LoginResult login(LoginCommand command);
 
@@ -31,7 +34,8 @@ public interface LoginUseCase {
   record LoginResult(
       String userId,
       String role,
-      String displayEmail,
+      @Nullable String displayEmail,
+      @Nullable Long guestId,
       boolean mustChangePassword,
       String sessionToken) {}
 }

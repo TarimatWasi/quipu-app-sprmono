@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Clock;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -58,7 +59,9 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
             issued -> {
               try {
                 mail.sendResetLink(
-                    issued.account().email(), issued.code(), ResetCodeIssuer.CODE_VALIDITY);
+                    Objects.requireNonNull(issued.account().email()),
+                    issued.code(),
+                    ResetCodeIssuer.CODE_VALIDITY);
               } catch (MailDeliveryException e) {
                 // The caller must not learn whether the account exists, so a failed delivery is
                 // only logged, without the address or the provider's answer (it can echo the

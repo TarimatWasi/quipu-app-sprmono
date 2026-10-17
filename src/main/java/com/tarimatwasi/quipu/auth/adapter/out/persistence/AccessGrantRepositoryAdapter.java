@@ -1,0 +1,56 @@
+package com.tarimatwasi.quipu.auth.adapter.out.persistence;
+
+import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
+import com.tarimatwasi.quipu.shared.access.AccessMode;
+import java.time.Instant;
+import java.util.Optional;
+import org.springframework.stereotype.Component;
+
+@Component
+public class AccessGrantRepositoryAdapter implements AccessGrantRepositoryPort {
+
+  private final AccessGrantJpaRepository jpaRepository;
+
+  AccessGrantRepositoryAdapter(AccessGrantJpaRepository jpaRepository) {
+    this.jpaRepository = jpaRepository;
+  }
+
+  @Override
+  public void revokeLive(Long guestId, Instant now) {
+    jpaRepository.revokeLive(guestId, now);
+  }
+
+  /** Flushes so that a second live access of the guest fails here, not at the commit. */
+  @Override
+  public void save(Long guestId, AccessMode mode, String tokenHash, Instant expiresAt) {
+    jpaRepository.saveAndFlush(new AccessGrantJpaEntity(guestId, mode, tokenHash, expiresAt));
+  }
+
+  @Override
+  public Optional<Long> consumeLink(String tokenHash, Instant now) {
+    if (jpaRepository.consumeLink(tokenHash, now) != 1) {
+      return Optional.empty();
+    }
+    return jpaRepository.findGuestIdByTokenHash(tokenHash);
+  }
+
+  @Override
+  public Optional<LiveTemporaryPassword> findLiveTemporaryPassword(Long guestId) {
+    return jpaRepository
+        .findByGuestIdAndModeAndUsedAtIsNullAndRevokedAtIsNull(
+            guestId, AccessMode.TEMPORARY_PASSWORD)
+        .map(grant -> new LiveTemporaryPassword(grant.tokenHash(), grant.expiresAt()));
+  }
+
+  @Override
+  public void consumeTemporaryPassword(Long guestId, Instant now) {
+    jpaRepository.consumeTemporaryPassword(guestId, now);
+  }
+
+  @Override
+  public Optional<Instant> liveExpiry(Long guestId, Instant now) {
+    return jpaRepository
+        .findByGuestIdAndUsedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(guestId, now)
+        .map(AccessGrantJpaEntity::expiresAt);
+  }
+}

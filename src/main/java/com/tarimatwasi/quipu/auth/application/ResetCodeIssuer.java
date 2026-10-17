@@ -38,7 +38,7 @@ class ResetCodeIssuer {
   /** A code that was issued and still has to be emailed. */
   record IssuedCode(UserAccount account, String code) {}
 
-  private final SecureRandom random = new SecureRandom();
+  private static final SecureRandom RANDOM = new SecureRandom();
   private final UserRepositoryPort userRepository;
   private final Clock clock;
 
@@ -82,9 +82,10 @@ class ResetCodeIssuer {
         .orElse(false);
   }
 
-  private String newCode() {
+  /** 256 random bits in Base64Url: the recovery code and the activation token (RF-11). */
+  static String newCode() {
     byte[] bytes = new byte[CODE_BYTES];
-    random.nextBytes(bytes);
+    RANDOM.nextBytes(bytes);
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
 

@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 public interface UserRepositoryPort {
   Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber);
@@ -71,6 +72,23 @@ public interface UserRepositoryPort {
 
   /** Forgets the failed logins and the lock of the account (a successful login). */
   void clearFailedLogins(Long id);
+
+  /**
+   * Creates the account of a guest: role GUEST, ACTIVE, pending its first password. The hash is of
+   * a random value nobody knows, so the account cannot log in until the guest uses an access.
+   */
+  void insertGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash);
+
+  /** The account of the guest, its row locked until the transaction ends. Needs a transaction. */
+  Optional<UserAccount> findByGuestIdForUpdate(Long guestId);
+
+  /** The account must choose a new password before anything else (RF-12). */
+  void requirePasswordChange(Long id);
 
   /** The account a recovery code belongs to and when the code expires. */
   record PendingReset(UserAccount account, Instant expiresAt) {}

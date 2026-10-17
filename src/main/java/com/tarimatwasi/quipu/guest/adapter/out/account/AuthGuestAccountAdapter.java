@@ -1,10 +1,15 @@
 package com.tarimatwasi.quipu.guest.adapter.out.account;
 
+import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
+import com.tarimatwasi.quipu.shared.access.AccessMode;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /** The guest module asks the auth module, through its exposed port, about the guests' accounts. */
@@ -12,9 +17,37 @@ import org.springframework.stereotype.Component;
 public class AuthGuestAccountAdapter implements GuestAccountPort {
 
   private final GuestAccountUseCase accounts;
+  private final GuestAccessUseCase access;
 
-  AuthGuestAccountAdapter(GuestAccountUseCase accounts) {
+  AuthGuestAccountAdapter(GuestAccountUseCase accounts, GuestAccessUseCase access) {
     this.accounts = accounts;
+    this.access = access;
+  }
+
+  @Override
+  public void openAccount(
+      Long guestId, String documentType, String documentNumber, @Nullable String email) {
+    access.openAccount(guestId, documentType, documentNumber, email);
+  }
+
+  @Override
+  public IssuedAccess issueAccess(Long guestId, AccessMode mode) {
+    var issued = access.issueAccess(guestId, mode);
+    return new IssuedAccess(
+        issued.mode(), issued.secret(), issued.expiresAt(), issued.shareMessage());
+  }
+
+  @Override
+  public boolean sendAccess(String email, IssuedAccess issued) {
+    return access.sendAccess(
+        email,
+        new GuestAccessUseCase.IssuedAccess(
+            issued.mode(), issued.secret(), issued.expiresAt(), issued.shareMessage()));
+  }
+
+  @Override
+  public Optional<Instant> accessExpiry(Long guestId) {
+    return access.accessExpiry(guestId);
   }
 
   @Override

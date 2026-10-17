@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.port.in.TemporaryPasswordExpiredException;
 import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.contract.port.in.ContractFileUnavailableException;
@@ -26,6 +27,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestHasActiveContractException;
+import com.tarimatwasi.quipu.guest.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
@@ -120,6 +122,16 @@ public class BffExceptionHandler {
   public ResponseEntity<BffErrorResponse> handleNoActiveSession() {
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
         .body(new BffErrorResponse("AUTH_NO_SESSION", "Tu sesión no es válida o expiró"));
+  }
+
+  /** RN-32: the temporary password matched but expired; the administrator generates another. */
+  @ExceptionHandler(TemporaryPasswordExpiredException.class)
+  public ResponseEntity<BffErrorResponse> handleTemporaryPasswordExpired() {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(
+            new BffErrorResponse(
+                "AUTH_TEMPORARY_PASSWORD_EXPIRED",
+                "Tu contraseña temporal venció; pide a la administración un nuevo acceso"));
   }
 
   @ExceptionHandler(AccountDisabledException.class)
@@ -308,6 +320,17 @@ public class BffExceptionHandler {
             new BffGuestNotActiveResponse(
                 "GUEST_NOT_ACTIVE",
                 "El huésped no está activo",
+                ids.mask(IdKind.GUEST, e.guestId())));
+  }
+
+  /** RN-12, RN-18: the guest is inactive; {@code guestId} lets the UI reactivate it (CU-28). */
+  @ExceptionHandler(GuestInactiveException.class)
+  public ResponseEntity<BffGuestNotActiveResponse> handleGuestInactive(GuestInactiveException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffGuestNotActiveResponse(
+                "GUEST_INACTIVE",
+                "El huésped está inactivo; reactívalo primero",
                 ids.mask(IdKind.GUEST, e.guestId())));
   }
 

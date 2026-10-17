@@ -81,24 +81,29 @@ public class ResendMailSender {
             + link
             + "\n\n"
             + "Si no lo pediste, ignora este correo: tu contraseña no cambia.\n";
+    post(toEmail, "Restablece tu contraseña de Quipu", text, "recovery");
+  }
+
+  /**
+   * The email with the access of a guest (RF-11), on the same executor and with the same rule: a
+   * failure is only logged, without the address, the text (it carries the access) or the provider's
+   * answer.
+   */
+  @Async
+  public void sendText(String toEmail, String subject, String text) {
+    post(toEmail, subject, text, "access");
+  }
+
+  private void post(String toEmail, String subject, String text, String kind) {
     try {
       restClient
           .post()
           .uri("/emails")
-          .body(
-              Map.of(
-                  "from",
-                  fromEmail,
-                  "to",
-                  toEmail,
-                  "subject",
-                  "Restablece tu contraseña de Quipu",
-                  "text",
-                  text))
+          .body(Map.of("from", fromEmail, "to", toEmail, "subject", subject, "text", text))
           .retrieve()
           .toBodilessEntity();
     } catch (RestClientException | IllegalArgumentException e) {
-      LOG.warn("Resend did not accept the recovery email ({})", e.getClass().getSimpleName());
+      LOG.warn("Resend did not accept the {} email ({})", kind, e.getClass().getSimpleName());
     }
   }
 }

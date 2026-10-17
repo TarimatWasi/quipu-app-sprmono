@@ -68,6 +68,21 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   protected GuestJpaEntity() {}
 
+  /** A guest just registered by the administrator: pending activation, without a name (RN-31). */
+  GuestJpaEntity(
+      DocumentType documentType,
+      String documentNumber,
+      GuestType type,
+      @Nullable String phone,
+      @Nullable String email) {
+    this.documentType = documentType;
+    this.documentNumber = documentNumber;
+    this.type = type;
+    this.phone = phone;
+    this.email = email;
+    this.status = GuestStatus.PENDING_ACTIVATION;
+  }
+
   /** Copies the state of the domain object onto this row; the id never changes. */
   void apply(Guest guest) {
     this.documentType = guest.documentType();

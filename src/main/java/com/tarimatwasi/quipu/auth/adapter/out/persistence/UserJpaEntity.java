@@ -14,7 +14,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Table(name = "users")
 public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
-  private String email;
+  private @Nullable String email;
 
   @Column(name = "document_type")
   @Enumerated(EnumType.STRING)
@@ -62,6 +62,11 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
     this.resetTokenHash = null;
     this.resetTokenExpiresAt = null;
     clearFailedLogins();
+  }
+
+  /** RF-12: the next request of the account may only change the password. */
+  public void requirePasswordChange() {
+    this.mustChangePassword = true;
   }
 
   /**

@@ -95,6 +95,29 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
     }
   }
 
+  @Override
+  public Optional<Guest> findByDocument(DocumentType documentType, String documentNumber) {
+    return jpaRepository
+        .findByDocumentTypeAndDocumentNumber(documentType, documentNumber)
+        .map(GuestJpaEntity::toDomain);
+  }
+
+  @Override
+  public Guest create(
+      DocumentType documentType,
+      String documentNumber,
+      GuestType type,
+      @Nullable String phone,
+      @Nullable String email) {
+    try {
+      return jpaRepository
+          .saveAndFlush(new GuestJpaEntity(documentType, documentNumber, type, phone, email))
+          .toDomain();
+    } catch (DataIntegrityViolationException e) {
+      throw conflict(e);
+    }
+  }
+
   /** Flushes so that the unique violation of two simultaneous writes surfaces here, not later. */
   @Override
   public Guest save(Guest guest) {

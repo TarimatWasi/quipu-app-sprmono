@@ -97,9 +97,9 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         stay == null ? null : stay.endDate(),
         stay == null ? null : stay.agreedAmount(),
         progress(guest, account),
-        // The documents of the onboarding and the access of RF-11 arrive with TAR-137 and TAR-36.
+        // The documents of the onboarding arrive with TAR-137.
         0,
-        null);
+        accounts.accessExpiry(id).orElse(null));
   }
 
   @Override
@@ -172,7 +172,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     return summary(saved, stateOf(saved));
   }
 
-  private static Guest withStatus(
+  static Guest withStatus(
       Guest guest, GuestStatus status, @Nullable GuestStatus statusBeforeInactive) {
     return new Guest(
         guest.id(),
@@ -221,8 +221,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   }
 
   /** The stored number has no edge spaces and fits its type; CE and passport are upper case. */
-  private static String documentNumber(
-      DocumentType type, @Nullable String requested, String current) {
+  static String documentNumber(DocumentType type, @Nullable String requested, String current) {
     String number = (requested == null ? current : requested).strip();
     boolean valid =
         type == DocumentType.DNI
@@ -263,7 +262,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         : OnboardingProgress.NOT_STARTED;
   }
 
-  private static GuestSummaryView summary(Guest guest, AccountState account) {
+  static GuestSummaryView summary(Guest guest, AccountState account) {
     return new GuestSummaryView(
         guest.id(),
         IdDocumentKind.valueOf(guest.documentType().name()),

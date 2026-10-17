@@ -1,5 +1,8 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.tarimatwasi.quipu.auth.port.in.ActivateAccessUseCase;
+import com.tarimatwasi.quipu.auth.port.in.ActivateAccessUseCase.ActivationResult;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.port.in.ChangePasswordUseCase.ChangePasswordResult;
@@ -10,6 +13,10 @@ import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.LoginResult;
 import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
+import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase;
+import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase.GuestSessionView;
+import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase.OnboardingStep;
+import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -31,6 +38,8 @@ public class AuthBffController {
   private final ChangePasswordUseCase changePasswordUseCase;
   private final CurrentSessionUseCase currentSessionUseCase;
   private final PasswordRecoveryUseCase passwordRecoveryUseCase;
+  private final ActivateAccessUseCase activateAccessUseCase;
+  private final GuestSessionUseCase guestSessions;
   private final SessionCookies sessionCookies;
 
   public AuthBffController(
@@ -38,11 +47,15 @@ public class AuthBffController {
       ChangePasswordUseCase changePasswordUseCase,
       CurrentSessionUseCase currentSessionUseCase,
       PasswordRecoveryUseCase passwordRecoveryUseCase,
+      ActivateAccessUseCase activateAccessUseCase,
+      GuestSessionUseCase guestSessions,
       SessionCookies sessionCookies) {
     this.loginUseCase = loginUseCase;
     this.changePasswordUseCase = changePasswordUseCase;
     this.currentSessionUseCase = currentSessionUseCase;
     this.passwordRecoveryUseCase = passwordRecoveryUseCase;
+    this.activateAccessUseCase = activateAccessUseCase;
+    this.guestSessions = guestSessions;
     this.sessionCookies = sessionCookies;
   }
 
@@ -58,9 +71,23 @@ public class AuthBffController {
       @NotBlank @Size(max = MAX_DOCUMENT) String documentNumber,
       @NotBlank @Size(max = MAX_PASSWORD) String password) {}
 
-  public record LoginResponse(String role, String name, boolean mustChangePassword) {}
+  /**
+   * SessionInfo of the contract: the administrator carries only the first three fields; a guest
+   * also its type, its state and, while onboarding, the step to go to (PASSWORD while a temporary
+   * password has not been replaced, RF-12).
+   */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record SessionResponse(
+      String role,
+      @Nullable String name,
+      boolean mustChangePassword,
+      @Nullable String guestType,
+      @Nullable String guestStatus,
+      @Nullable String nextOnboardingStep) {}
 
-  public record CurrentSessionResponse(String role, String name, boolean mustChangePassword) {}
+  public record ActivateRequest(
+      @NotBlank @Size(max = MAX_CODE) String token,
+      @NotNull @Size(max = MAX_PASSWORD) String newPassword) {}
 
   public record ChangePasswordRequest(
       @Nullable @Size(max = MAX_PASSWORD) String currentPassword,
@@ -73,21 +100,54 @@ public class AuthBffController {
       @NotNull @Size(max = MAX_PASSWORD) String newPassword) {}
 
   @PostMapping("/bff/auth/login")
-  public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+  public ResponseEntity<SessionResponse> login(@Valid @RequestBody LoginRequest request) {
     LoginResult result =
         loginUseCase.login(
             new LoginCommand(request.documentType(), request.documentNumber(), request.password()));
     return ResponseEntity.ok()
         .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
-        .body(new LoginResponse(result.role(), result.displayEmail(), result.mustChangePassword()));
+        .body(
+            session(
+                result.role(),
+                result.displayEmail(),
+                result.mustChangePassword(),
+                result.guestId()));
+  }
+
+  /**
+   * RF-11, CU-24: the single-use link sets the password and opens the session at once. The token is
+   * never logged nor echoed.
+   */
+  @PostMapping("/bff/auth/activate")
+  public ResponseEntity<SessionResponse> activate(@Valid @RequestBody ActivateRequest request) {
+    ActivationResult result =
+        activateAccessUseCase.activate(request.token(), request.newPassword());
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
+        .body(session("GUEST", null, false, result.guestId()));
   }
 
   /** TAR-74: restores the session after a reload; answers the account as it is now. */
   @GetMapping("/bff/auth/me")
-  public CurrentSessionResponse me(Authentication authentication) {
-    CurrentSession session = currentSessionUseCase.currentSession(authentication.getName());
-    return new CurrentSessionResponse(
-        session.role(), session.displayEmail(), session.mustChangePassword());
+  public SessionResponse me(Authentication authentication) {
+    CurrentSession current = currentSessionUseCase.currentSession(authentication.getName());
+    return session(
+        current.role(), current.displayEmail(), current.mustChangePassword(), current.guestId());
+  }
+
+  private SessionResponse session(
+      String role, @Nullable String name, boolean mustChangePassword, @Nullable Long guestId) {
+    if (guestId == null) {
+      return new SessionResponse(role, name, mustChangePassword, null, null, null);
+    }
+    GuestSessionView guest = guestSessions.sessionOf(guestId);
+    OnboardingStep next = guest.nextStep();
+    String step =
+        guest.status() != GuestState.ONBOARDING || next == null
+            ? null
+            : mustChangePassword ? "PASSWORD" : next.name();
+    return new SessionResponse(
+        role, guest.name(), mustChangePassword, guest.type().name(), guest.status().name(), step);
   }
 
   /**

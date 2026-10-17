@@ -9,15 +9,53 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 public class UserRepositoryAdapter implements UserRepositoryPort {
 
   private final UserJpaRepository jpaRepository;
+  private final JdbcTemplate jdbc;
 
-  public UserRepositoryAdapter(UserJpaRepository jpaRepository) {
+  public UserRepositoryAdapter(UserJpaRepository jpaRepository, JdbcTemplate jdbc) {
     this.jpaRepository = jpaRepository;
+    this.jdbc = jdbc;
+  }
+
+  /**
+   * By JDBC, like the initial ADMIN, so users_seq is never shared with Hibernate's block allocation
+   * (see {@link InitialAdminStoreAdapter}).
+   */
+  @Override
+  public void insertGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    jdbc.update(
+        "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+            + " guest_id, must_change_password, status)"
+            + " VALUES (nextval('users_seq'), ?, ?, ?, ?, 'GUEST', ?, TRUE, 'ACTIVE')",
+        email,
+        documentType.name(),
+        documentNumber,
+        unusablePasswordHash,
+        guestId);
+  }
+
+  @Override
+  public Optional<UserAccount> findByGuestIdForUpdate(Long guestId) {
+    return jpaRepository.findWithLockByGuestId(guestId).map(UserJpaEntity::toDomain);
+  }
+
+  @Override
+  public void requirePasswordChange(Long id) {
+    UserJpaEntity user = loadLocked(id);
+    user.requirePasswordChange();
+    jpaRepository.save(user);
   }
 
   @Override

@@ -38,6 +38,10 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<UserJpaEntity> findWithLockById(Long id);
 
+  /** Locked until the commit: the activation of a guest and a login of its account queue up. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<UserJpaEntity> findWithLockByGuestId(Long guestId);
+
   /** Locked until the commit: two simultaneous recovery requests for one account queue up. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<UserJpaEntity> findByEmailIgnoreCase(String email);
