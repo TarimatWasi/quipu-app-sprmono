@@ -1,7 +1,8 @@
-package com.tarimatwasi.quipu.payment.domain;
+package com.tarimatwasi.quipu.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;

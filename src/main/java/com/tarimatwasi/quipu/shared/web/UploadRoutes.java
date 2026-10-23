@@ -3,9 +3,9 @@ package com.tarimatwasi.quipu.shared.web;
 import java.util.Set;
 
 /**
- * The only routes of the BFF that take a file as {@code multipart/form-data} (RF-03, RF-05, RF-15).
- * Every other state-changing route takes JSON only (ADR-006). The routes are exact paths: neither a
- * trailing slash nor a sub-path is an upload.
+ * The only routes of the BFF that take a file as {@code multipart/form-data} (RF-03, RF-05, RF-15,
+ * RN-37). Every other state-changing route takes JSON only (ADR-006). The routes are exact paths:
+ * neither a trailing slash nor a sub-path is an upload.
  */
 public final class UploadRoutes {
 
@@ -21,13 +21,21 @@ public final class UploadRoutes {
   /** The voucher uploaded by a temporary guest. */
   public static final String TEMPORARY_GUEST_PAYMENTS = "/bff/temporary-guest/payments";
 
+  /** A document of the onboarding of a guest of either type (JPG, PNG or PDF, up to 5 MB). */
+  public static final String GUEST_ONBOARDING_DOCUMENTS = "/bff/guest/onboarding/documents";
+
   /** The routes that take a voucher. */
   public static final Set<String> VOUCHERS =
       Set.of(ADMIN_PAYMENTS, GUEST_PAYMENTS, TEMPORARY_GUEST_PAYMENTS);
 
   /** Every route that takes a file. */
   public static final Set<String> ALL =
-      Set.of(CONTRACTS, ADMIN_PAYMENTS, GUEST_PAYMENTS, TEMPORARY_GUEST_PAYMENTS);
+      Set.of(
+          CONTRACTS,
+          ADMIN_PAYMENTS,
+          GUEST_PAYMENTS,
+          TEMPORARY_GUEST_PAYMENTS,
+          GUEST_ONBOARDING_DOCUMENTS);
 
   private UploadRoutes() {}
 }

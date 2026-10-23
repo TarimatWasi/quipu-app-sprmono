@@ -2,6 +2,8 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase.GuestDocumentView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestDetailView;
@@ -21,7 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,10 +40,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class GuestsBffController {
 
   private final ManageGuestsUseCase guests;
+  private final GuestDocumentsUseCase documents;
   private final IdMasker ids;
 
-  public GuestsBffController(ManageGuestsUseCase guests, IdMasker ids) {
+  public GuestsBffController(
+      ManageGuestsUseCase guests, GuestDocumentsUseCase documents, IdMasker ids) {
     this.guests = guests;
+    this.documents = documents;
     this.ids = ids;
   }
 
@@ -155,6 +162,38 @@ public class GuestsBffController {
             ids.unmask(IdKind.GUEST, id),
             new UpdateCommand(request.documentType(), request.documentNumber())),
         ids);
+  }
+
+  /** A document of the onboarding with a link that downloads it for 5 minutes (RN-37). */
+  public record GuestDocumentResponse(
+      UUID id,
+      String originalName,
+      String contentType,
+      long sizeBytes,
+      Instant uploadedAt,
+      String url,
+      Instant urlExpiresAt) {
+    static GuestDocumentResponse of(GuestDocumentView view, IdMasker ids) {
+      return new GuestDocumentResponse(
+          ids.mask(IdKind.GUEST_DOCUMENT, view.id()),
+          view.originalName(),
+          view.contentType(),
+          view.sizeBytes(),
+          view.uploadedAt(),
+          view.url(),
+          view.urlExpiresAt());
+    }
+  }
+
+  /** CU-27: the body carries freshly signed links, so no cache may keep it. */
+  @GetMapping("/bff/admin/guests/{id}/documents")
+  public ResponseEntity<List<GuestDocumentResponse>> documents(@PathVariable UUID id) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            documents.documents(ids.unmask(IdKind.GUEST, id)).stream()
+                .map(document -> GuestDocumentResponse.of(document, ids))
+                .toList());
   }
 
   /** RF-13, RN-12: the guest loses its login access; a contract in force blocks it. */

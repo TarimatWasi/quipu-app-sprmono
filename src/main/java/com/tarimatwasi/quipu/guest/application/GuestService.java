@@ -20,6 +20,7 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
@@ -53,6 +54,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   private final StayRepositoryPort stays;
   private final ContractOccupancyQuery contracts;
   private final GuestDebtQuery debts;
+  private final OnboardingRepositoryPort onboarding;
   private final Clock clock;
 
   GuestService(
@@ -61,7 +63,9 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
       StayRepositoryPort stays,
       ContractOccupancyQuery contracts,
       GuestDebtQuery debts,
+      OnboardingRepositoryPort onboarding,
       Clock clock) {
+    this.onboarding = onboarding;
     this.stays = stays;
     this.contracts = contracts;
     this.debts = debts;
@@ -97,8 +101,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         stay == null ? null : stay.endDate(),
         stay == null ? null : stay.agreedAmount(),
         progress(guest, account),
-        // The documents of the onboarding arrive with TAR-137.
-        0,
+        onboarding.countDocuments(id),
         accounts.accessExpiry(id).orElse(null));
   }
 

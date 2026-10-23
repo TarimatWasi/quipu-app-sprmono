@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -104,19 +105,51 @@ class UploadRoutesContractTest {
 
   @Test
   void onlyAGuestReachesTheGuestAndTheTemporaryGuestUploadRoutes() throws Exception {
-    for (String route :
-        new String[] {UploadRoutes.GUEST_PAYMENTS, UploadRoutes.TEMPORARY_GUEST_PAYMENTS}) {
+    Long contractGuest = insertGuest("12345678", "CONTRACT");
+    Long temporaryGuest = insertGuest("87654321", "TEMPORARY");
+    Long onboardingGuest = insertGuest("11223344", "TEMPORARY");
+    Map<String, Cookie> owners =
+        Map.of(
+            UploadRoutes.GUEST_PAYMENTS, guestAccount(contractGuest, "12345678"),
+            UploadRoutes.TEMPORARY_GUEST_PAYMENTS, guestAccount(temporaryGuest, "87654321"),
+            UploadRoutes.GUEST_ONBOARDING_DOCUMENTS, guestAccount(onboardingGuest, "11223344"));
+    for (var owner : owners.entrySet()) {
+      String route = owner.getKey();
       mockMvc
           .perform(upload(route).header("Origin", ORIGIN).cookie(admin()))
           .andExpect(status().isForbidden())
           .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
       mockMvc.perform(upload(route).header("Origin", ORIGIN)).andExpect(status().isUnauthorized());
-      // past the security: the form is read (and this one lacks its amount)
+      // past the security and the guard of the area: the form is read (a voucher lacks its
+      // amount; the one byte is not a document)
       mockMvc
-          .perform(upload(route).header("Origin", ORIGIN).cookie(guest()))
+          .perform(upload(route).header("Origin", ORIGIN).cookie(owner.getValue()))
           .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+          .andExpect(
+              jsonPath("$.code")
+                  .value(
+                      route.equals(UploadRoutes.GUEST_ONBOARDING_DOCUMENTS)
+                          ? "DOCUMENT_INVALID_FILE"
+                          : "VALIDATION_ERROR"));
     }
+  }
+
+  private Long insertGuest(String document, String type) {
+    Long id = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'DNI', ?, ?, 'ACTIVE')",
+        id,
+        document,
+        type);
+    return id;
+  }
+
+  private Cookie guestAccount(Long guestId, String document) {
+    Long id = TestIds.next();
+    insertAccount(id, "GUEST", document);
+    jdbc.update("UPDATE users SET guest_id = ? WHERE id = ?", guestId, id);
+    return new Cookie("sessionToken", jwtTokenProvider.issue(id.toString()));
   }
 
   @Test
@@ -128,7 +161,7 @@ class UploadRoutesContractTest {
     mockMvc
         .perform(get("/bff/temporary-guest/payment-status"))
         .andExpect(status().isUnauthorized());
-    // past the security: this account belongs to no guest, so the route refuses it
+    // past the security: this account belongs to no guest, so the guard of the area refuses it
     mockMvc
         .perform(get("/bff/temporary-guest/payment-status").cookie(guest()))
         .andExpect(status().isForbidden())

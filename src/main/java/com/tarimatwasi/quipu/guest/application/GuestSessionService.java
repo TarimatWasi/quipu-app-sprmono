@@ -57,7 +57,7 @@ public class GuestSessionService implements GuestSessionUseCase, GuestAccessList
   }
 
   /** RN-33 order after the password: personal data, documents, consent. */
-  private static OnboardingStep nextStep(Guest guest) {
+  static OnboardingStep nextStep(Guest guest) {
     if (guest.personalDataCompletedAt() == null) {
       return OnboardingStep.PERSONAL_DATA;
     }

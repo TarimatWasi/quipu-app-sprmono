@@ -62,6 +62,11 @@ app:
   session:
     same-site: lax
     max-age: ${app.jwt.expiration}
+  # Consentimiento de datos personales del onboarding (RF-14, TAR-137): versión vigente; su texto es
+  # el recurso consent/<versión>.txt. El texto actual es un BORRADOR PROVISIONAL hasta la decisión
+  # D-48: el definitivo llega como versión nueva, sin borrar el archivo de la anterior.
+  consent:
+    version: borrador-2026-10
 
 server:
   error:

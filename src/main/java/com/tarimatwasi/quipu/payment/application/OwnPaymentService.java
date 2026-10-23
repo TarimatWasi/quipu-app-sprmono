@@ -7,7 +7,6 @@ import com.tarimatwasi.quipu.payment.domain.PeriodStatus;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.StayPayments.StayStatus;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
-import com.tarimatwasi.quipu.payment.domain.VoucherFile;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
@@ -16,7 +15,6 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload
 import com.tarimatwasi.quipu.payment.port.in.NoActiveContractException;
 import com.tarimatwasi.quipu.payment.port.in.NoActiveStayException;
 import com.tarimatwasi.quipu.payment.port.in.NoStayYetException;
-import com.tarimatwasi.quipu.payment.port.in.OnboardingRequiredException;
 import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort;
@@ -225,9 +223,8 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     if (guest.contractType() != contractType) {
       throw new OtherGuestTypeException();
     }
-    if (guest.standing() == Standing.ONBOARDING) {
-      throw new OnboardingRequiredException();
-    }
+    // RN-33: a guest that has not completed the onboarding never gets here; the guard of the guest
+    // areas in the BFF refuses it first, in one place for every route.
     return guest;
   }
 
