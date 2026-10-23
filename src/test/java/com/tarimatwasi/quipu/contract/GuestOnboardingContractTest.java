@@ -440,6 +440,42 @@ class GuestOnboardingContractTest {
         .andExpect(jsonPath("$.code").value("AUTH_PASSWORD_CHANGE_REQUIRED"));
   }
 
+  /** The area comes from the parsed route, not from the raw text of the URI. */
+  @Test
+  void anEncodedPathDoesNotTakeAGuestIntoTheAreaOfTheOther() throws Exception {
+    jdbc.update("UPDATE guests SET status = 'ACTIVE'");
+    int status =
+        mockMvc
+            .perform(get("/bff/temporary%2Dguest/payment-status").cookie(guest()))
+            .andReturn()
+            .getResponse()
+            .getStatus();
+    assertThat(status).isIn(400, 403);
+  }
+
+  @Test
+  void aFieldTheBodyDoesNotDefineIsRefused() throws Exception {
+    personalData(guest(), "{\"name\":\"Ana\",\"phone\":\"1\",\"guestId\":\"x\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("guestId"));
+    assertThat(statusOf(contractGuest)).isEqualTo("ONBOARDING");
+    savePersonalData();
+    done(guest()).andExpect(status().isOk());
+    mockMvc
+        .perform(
+            post(CONSENT)
+                .cookie(guest())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"accepted\":true,\"consentVersion\":\"%s\",\"guestId\":\"x\"}"
+                        .formatted(currentVersion())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("guestId"));
+    assertThat(count("guest_consents")).isZero();
+  }
+
   // ------------------------------------------------------------------ the administrator (CU-27)
 
   @Test

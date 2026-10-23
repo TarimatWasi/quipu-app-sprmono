@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
@@ -22,6 +23,7 @@ import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -70,17 +72,28 @@ public class GuestOnboardingBffController {
       @Size(max = 50) @Nullable String relationship,
       @Size(max = 30) @Nullable String phone) {}
 
-  /** The personal data step; the limits are those of the contract and of the columns. */
-  @JsonInclude(JsonInclude.Include.NON_NULL)
+  /**
+   * The personal data step; the limits are those of the contract and of the columns. A field the
+   * schema does not define is refused, not silently ignored.
+   */
   public record PersonalDataBody(
       @NotBlank @Size(max = 200) String name,
       @NotBlank @Size(max = 30) String phone,
       @Email @Size(min = 3, max = 200) @Nullable String contactEmail,
-      @Valid @Nullable EmergencyContactBody emergencyContact) {
+      @Valid @Nullable EmergencyContactBody emergencyContact,
+      @JsonAnySetter @Nullable Map<String, Object> unknown) {}
 
-    static PersonalDataBody of(PersonalData data) {
+  /** The saved personal data, as the answers show it. */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record PersonalDataResponse(
+      String name,
+      String phone,
+      @Nullable String contactEmail,
+      @Nullable EmergencyContactBody emergencyContact) {
+
+    static PersonalDataResponse of(PersonalData data) {
       EmergencyContactView contact = data.emergencyContact();
-      return new PersonalDataBody(
+      return new PersonalDataResponse(
           data.name(),
           data.phone(),
           data.contactEmail(),
@@ -91,7 +104,10 @@ public class GuestOnboardingBffController {
   }
 
   /** {@code accepted} is not required here: anything but true is CONSENT_NOT_ACCEPTED. */
-  public record ConsentBody(@Nullable Boolean accepted, @NotNull String consentVersion) {}
+  public record ConsentBody(
+      @Nullable Boolean accepted,
+      @NotNull String consentVersion,
+      @JsonAnySetter @Nullable Map<String, Object> unknown) {}
 
   /** The document form: the use case checks the file by its content. */
   public record DocumentForm(@NotNull MultipartFile file) {}
@@ -120,14 +136,14 @@ public class GuestOnboardingBffController {
   public record OnboardingResponse(
       String status,
       @Nullable String nextStep,
-      @Nullable PersonalDataBody personalData,
+      @Nullable PersonalDataResponse personalData,
       List<DocumentRefResponse> documents,
       ConsentResponse consent) {
     static OnboardingResponse of(OnboardingView view, IdMasker ids) {
       return new OnboardingResponse(
           view.completed() ? "ACTIVE" : "ONBOARDING",
           view.nextStep() == null ? null : view.nextStep().name(),
-          view.personalData() == null ? null : PersonalDataBody.of(view.personalData()),
+          view.personalData() == null ? null : PersonalDataResponse.of(view.personalData()),
           view.documents().stream().map(document -> DocumentRefResponse.of(document, ids)).toList(),
           ConsentResponse.of(view.consent()));
     }
@@ -141,6 +157,7 @@ public class GuestOnboardingBffController {
   @PutMapping("/bff/guest/onboarding/personal-data")
   public ResponseEntity<OnboardingResponse> savePersonalData(
       @Valid @RequestBody PersonalDataBody body, Authentication authentication) {
+    UnknownFieldException.rejectAny(body.unknown());
     EmergencyContactBody contact = body.emergencyContact();
     PersonalData data =
         new PersonalData(
@@ -169,6 +186,11 @@ public class GuestOnboardingBffController {
         Stream.concat(
                 request.getParameterMap().keySet().stream(), request.getFileMap().keySet().stream())
             .toList());
+    // RF-15: the declared size is checked before the bytes are read into memory.
+    if (form.file().getSize() > OnboardingUseCase.MAX_DOCUMENT_BYTES) {
+      throw new InvalidOnboardingInputException(
+          InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
+    }
     String name = form.file().getOriginalFilename();
     return DocumentRefResponse.of(
         onboarding.uploadDocument(
@@ -185,6 +207,7 @@ public class GuestOnboardingBffController {
   @PostMapping("/bff/guest/onboarding/consent")
   public ResponseEntity<OnboardingResponse> acceptConsent(
       @Valid @RequestBody ConsentBody body, Authentication authentication) {
+    UnknownFieldException.rejectAny(body.unknown());
     return answer(
         onboarding.acceptConsent(
             guestOf(authentication), Boolean.TRUE.equals(body.accepted()), body.consentVersion()));

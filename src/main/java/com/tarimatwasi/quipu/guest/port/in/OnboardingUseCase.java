@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.guest.port.in;
 
+import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.port.in.GuestSessionUseCase.OnboardingStep;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.EmergencyContactView;
 import java.time.Instant;
@@ -12,6 +13,9 @@ import org.jspecify.annotations.Nullable;
  * chosen before. The caller passes the guest of the session, never one named in the request.
  */
 public interface OnboardingUseCase {
+
+  /** The largest document a guest may upload (RF-15). */
+  int MAX_DOCUMENT_BYTES = GuestDocument.MAX_BYTES;
 
   /** The personal data step; the strings are already within the limits of the contract. */
   record PersonalData(

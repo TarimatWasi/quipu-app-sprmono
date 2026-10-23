@@ -6,7 +6,15 @@
 -- Qué decide la base y qué la aplicación:
 --  * El máximo de 5 documentos lo cuenta la aplicación con la fila del huésped bloqueada (FOR UPDATE), así dos
 --    subidas simultáneas no pasan las dos del límite.
---  * Documentos y consentimientos no se modifican ni se borran: la aplicación solo los inserta.
+--  * Documentos y consentimientos no se modifican ni se borran: la aplicación solo los inserta y un disparador
+--    rechaza cualquier UPDATE o DELETE, porque son la prueba del consentimiento (Ley 29733). TRUNCATE no activa
+--    los disparadores de fila y queda solo para las pruebas.
+
+CREATE FUNCTION reject_onboarding_record_change() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'Los registros de % no se modifican ni se borran', TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql;
 
 CREATE SEQUENCE guest_documents_seq START WITH 1 INCREMENT BY 50;
 
@@ -28,6 +36,8 @@ CREATE TABLE guest_documents (
 );
 
 CREATE INDEX ix_guest_documents_guest ON guest_documents (guest_id, created_date, id);
+CREATE TRIGGER trg_guest_documents_immutable BEFORE UPDATE OR DELETE ON guest_documents
+    FOR EACH ROW EXECUTE FUNCTION reject_onboarding_record_change();
 
 COMMENT ON TABLE guest_documents IS 'Documentos que el huésped sube en su onboarding (RN-37): a lo sumo 5, solo los ve el administrador. No se modifican ni se borran.';
 COMMENT ON COLUMN guest_documents.id IS 'Identificador del documento (BIGINT de la secuencia guest_documents_seq); el BFF lo muestra enmascarado como UUID.';
@@ -58,6 +68,8 @@ CREATE TABLE guest_consents (
 );
 
 CREATE INDEX ix_guest_consents_guest ON guest_consents (guest_id, accepted_at DESC, id DESC);
+CREATE TRIGGER trg_guest_consents_immutable BEFORE UPDATE OR DELETE ON guest_consents
+    FOR EACH ROW EXECUTE FUNCTION reject_onboarding_record_change();
 
 COMMENT ON TABLE guest_consents IS 'Consentimientos de tratamiento de datos personales que aceptó el huésped (RF-14, RN-14). No se modifican ni se borran.';
 COMMENT ON COLUMN guest_consents.id IS 'Identificador del consentimiento (BIGINT de la secuencia guest_consents_seq); el BFF no lo muestra.';

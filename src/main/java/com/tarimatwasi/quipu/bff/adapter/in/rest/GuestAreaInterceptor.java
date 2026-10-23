@@ -11,7 +11,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
@@ -20,17 +19,18 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * {@code AUTH_FORBIDDEN} to a guest of the other type, or to an account of no guest, and with
  * {@code AUTH_ONBOARDING_REQUIRED} to a guest that has not completed the onboarding. The security
  * filters already let only a GUEST session in; this checks the guest behind it, before the request
- * is read. The answers come from {@link BffExceptionHandler}.
+ * is read. The answers come from {@link BffExceptionHandler}. One instance guards each area, with
+ * its type of guest fixed: the area never comes from the raw text of the URI, which can be encoded
+ * differently from the route that was matched.
  */
-@Component
 class GuestAreaInterceptor implements HandlerInterceptor {
 
-  private static final String TEMPORARY_AREA = "/bff/temporary-guest/";
-
+  private final GuestKind area;
   private final GuestAccountUseCase accounts;
   private final OwnGuestUseCase guests;
 
-  GuestAreaInterceptor(GuestAccountUseCase accounts, OwnGuestUseCase guests) {
+  GuestAreaInterceptor(GuestKind area, GuestAccountUseCase accounts, OwnGuestUseCase guests) {
+    this.area = area;
     this.accounts = accounts;
     this.guests = guests;
   }
@@ -48,8 +48,6 @@ class GuestAreaInterceptor implements HandlerInterceptor {
             .guestOf(Long.valueOf(authentication.getName()))
             .orElseThrow(OtherGuestTypeException::new);
     OwnGuestView guest = guests.own(guestId);
-    String path = request.getRequestURI().substring(request.getContextPath().length());
-    GuestKind area = path.startsWith(TEMPORARY_AREA) ? GuestKind.TEMPORARY : GuestKind.CONTRACT;
     if (guest.type() != area) {
       throw new OtherGuestTypeException();
     }
