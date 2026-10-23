@@ -1,7 +1,6 @@
 package com.tarimatwasi.quipu.auth.domain;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import org.jspecify.annotations.Nullable;
 
 public record UserAccount(
@@ -28,13 +27,13 @@ public record UserAccount(
   }
 
   /**
-   * TAR-125: a token issued before the last password change is no longer valid. The JWT's issue
-   * time has second precision, so the change is compared at the second it happened: the token
-   * issued in that same request (the new session) stays valid.
+   * TAR-125: a token issued before the last password change is no longer valid. TAR-201: the
+   * comparison is exact, so the issue time must not be coarser than the truth on the early side
+   * (the session layer rounds it up): the token issued in the same request as the change (the new
+   * session) is issued after it and stays valid.
    */
   public boolean issuedBeforePasswordChange(Instant issuedAt) {
-    return passwordChangedAt != null
-        && issuedAt.isBefore(passwordChangedAt.truncatedTo(ChronoUnit.SECONDS));
+    return passwordChangedAt != null && issuedAt.isBefore(passwordChangedAt);
   }
 
   /** SEG-06: locked until a moment that has not passed yet. */

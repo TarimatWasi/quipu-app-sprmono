@@ -6,8 +6,11 @@ import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.core.GrantedAuthority;
@@ -50,7 +53,7 @@ public class AccountJwtAuthenticationConverter
       throw invalid("The token has no subject");
     }
     UserAccount account = accountOf(subject);
-    if (account.isDisabled() || account.issuedBeforePasswordChange(jwt.getIssuedAt())) {
+    if (account.isDisabled() || account.issuedBeforePasswordChange(preciseIssuedAt(jwt))) {
       throw invalid("The session is no longer valid");
     }
     List<GrantedAuthority> authorities = new ArrayList<>();
@@ -63,6 +66,18 @@ public class AccountJwtAuthenticationConverter
       authorities.add(new SimpleGrantedAuthority(AccessSessions.TEMPORARY_AUTHORITY));
     }
     return new JwtAuthenticationToken(jwt, authorities, account.id().toString());
+  }
+
+  /**
+   * The issue time to compare with the password change (TAR-201). A token issued before the precise
+   * claim existed has only the second, so it counts as issued at the last instant of that second:
+   * the rule it was issued under, until it expires.
+   */
+  private static Instant preciseIssuedAt(Jwt jwt) {
+    if (jwt.getClaim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM) instanceof Number micros) {
+      return Instant.EPOCH.plus(micros.longValue(), ChronoUnit.MICROS);
+    }
+    return Objects.requireNonNull(jwt.getIssuedAt()).plusSeconds(1).minusNanos(1);
   }
 
   /** The subject is the masked id of the user; anything else is not a session of ours. */
