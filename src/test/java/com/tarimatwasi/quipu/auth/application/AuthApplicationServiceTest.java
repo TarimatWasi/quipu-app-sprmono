@@ -547,6 +547,8 @@ class AuthApplicationServiceTest {
             Optional.of(new LiveTemporaryPassword(GRANT, ResetCodeIssuer.hash(raw), expiresAt)));
     when(grants.isLiveTemporaryPassword(eq(GRANT), eq(GUEST), any()))
         .thenAnswer(call -> call.<Instant>getArgument(2).isBefore(expiresAt));
+    when(grants.isLiveAccess(eq(GUEST), eq(ResetCodeIssuer.hash(raw)), any()))
+        .thenAnswer(call -> call.<Instant>getArgument(2).isBefore(expiresAt));
   }
 
   @Test
@@ -614,7 +616,11 @@ class AuthApplicationServiceTest {
             () ->
                 service.changePassword(
                     new ChangePasswordCommand(user.id().toString(), null, "Tmp-abc-12345", GRANT)))
-        .isInstanceOf(PasswordUnchangedException.class);
+        .isInstanceOfSatisfying(
+            WeakPasswordException.class,
+            e ->
+                assertThat(e.reason())
+                    .isEqualTo(WeakPasswordException.Reason.SINGLE_USE_CREDENTIAL));
     verify(grants, never()).consumeTemporaryPassword(any(), any());
   }
 

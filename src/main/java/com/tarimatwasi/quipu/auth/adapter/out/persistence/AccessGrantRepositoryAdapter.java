@@ -63,6 +63,11 @@ public class AccessGrantRepositoryAdapter implements AccessGrantRepositoryPort {
   }
 
   @Override
+  public boolean isLiveAccess(Long guestId, String tokenHash, Instant now) {
+    return jpaRepository.isLiveAccess(guestId, tokenHash, now);
+  }
+
+  @Override
   public void consumeTemporaryPassword(Long guestId, Instant now) {
     jpaRepository.consumeTemporaryPassword(guestId, now);
   }

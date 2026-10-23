@@ -45,22 +45,23 @@ public class AccessActivationService implements ActivateAccessUseCase {
   }
 
   /**
-   * The password is checked before the token is touched, so a weak one can be corrected with the
-   * same link. Locks in the order of every access change: the guest, its account, its accesses. The
-   * conditional update is what decides: an unknown, used, revoked or expired token gets one answer.
-   * The state of the account is checked after it, so a dead token never tells it.
+   * The password is checked before the token is consumed, so a weak one, or one equal to a live
+   * access of the guest, can be corrected with the same link. Locks in the order of every access
+   * change: the guest, its account, its accesses. The conditional update is what decides: an
+   * unknown, used, revoked or expired token gets one answer. The state of the account is checked
+   * after it, so a dead token never tells it.
    */
   @Override
   @Transactional
   public ActivationResult activate(String token, String newPassword) {
     PasswordPolicy.require(newPassword);
-    PasswordPolicy.requireNotTheCredential(newPassword, token);
     String hash = ResetCodeIssuer.hash(token);
     Long guestId = grants.findGuestIdByTokenHash(hash).orElseThrow(InvalidResetCodeException::new);
     guests.lockGuest(guestId);
     UserAccount account =
         users.findByGuestIdForUpdate(guestId).orElseThrow(InvalidResetCodeException::new);
     Instant now = clock.instant();
+    PasswordPolicy.requireNotALiveAccess(grants, guestId, newPassword, now);
     if (!grants.consumeLink(hash, now)) {
       throw new InvalidResetCodeException();
     }

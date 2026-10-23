@@ -41,6 +41,12 @@ public interface AccessGrantRepositoryPort {
    */
   Set<Long> guestsWithLiveTemporaryPassword(Collection<Long> guestIds, Instant now);
 
+  /**
+   * Whether the guest has a link or temporary password with that hash that is unused, not revoked
+   * and not expired at {@code now}: a secret someone else may still hold (TAR-36).
+   */
+  boolean isLiveAccess(Long guestId, String tokenHash, Instant now);
+
   /** Marks the live temporary password of the guest as used (D-30), if there is one. */
   void consumeTemporaryPassword(Long guestId, Instant now);
 

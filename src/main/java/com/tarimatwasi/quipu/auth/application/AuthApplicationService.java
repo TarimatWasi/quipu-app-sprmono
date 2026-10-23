@@ -162,10 +162,10 @@ public class AuthApplicationService
     }
     requireCurrentPassword(user, command);
     PasswordPolicy.require(command.newPassword());
-    if (passwordEncoder.matches(command.newPassword(), user.passwordHash())
-        || liveTemporaryPassword(guestId, command.newPassword())) {
+    if (passwordEncoder.matches(command.newPassword(), user.passwordHash())) {
       throw new PasswordUnchangedException();
     }
+    PasswordPolicy.requireNotALiveAccess(grants, guestId, command.newPassword(), clock.instant());
     // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
     String newHash = passwordEncoder.encode(command.newPassword());
     Instant now = clock.instant();
@@ -240,15 +240,6 @@ public class AuthApplicationService
     } catch (IllegalArgumentException e) {
       return null;
     }
-  }
-
-  /** Whether the guest has a live temporary password equal to that one, expired or not. */
-  private boolean liveTemporaryPassword(@Nullable Long guestId, String rawPassword) {
-    return guestId != null
-        && grants
-            .findLiveTemporaryPassword(guestId)
-            .filter(live -> sameHash(rawPassword, live))
-            .isPresent();
   }
 
   /** Constant-time comparison of the SHA-256 of the password with the stored one. */

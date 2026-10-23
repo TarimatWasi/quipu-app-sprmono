@@ -356,6 +356,24 @@ class PasswordRecoveryServiceTest {
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
   }
 
+  /** TAR-36: a live access the administrator handed cannot become the password either. */
+  @Test
+  void aLiveAccessOfTheGuestCannotBeTheNewPassword() {
+    UserAccount user = guestAccount(false);
+    service.requestReset(EMAIL);
+    org.mockito.Mockito.when(
+            grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
+        .thenReturn(true);
+
+    assertThatThrownBy(() -> service.resetPassword(mail.sent.get(0).code(), "Enlace-vivo-123"))
+        .isInstanceOfSatisfying(
+            WeakPasswordException.class,
+            e ->
+                assertThat(e.reason())
+                    .isEqualTo(WeakPasswordException.Reason.SINGLE_USE_CREDENTIAL));
+    assertThat(encoder.matches("Antigua12345", repository.find(user.id()).passwordHash())).isTrue();
+  }
+
   @Test
   void theRecoveryCodeCannotBeTheNewPasswordAndIsKept() {
     UserAccount user = guestAccount(false);

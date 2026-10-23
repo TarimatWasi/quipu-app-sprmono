@@ -99,6 +99,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     PasswordPolicy.require(newPassword);
     PasswordPolicy.requireNotTheCredential(newPassword, code);
     Instant now = clock.instant();
+    PasswordPolicy.requireNotALiveAccess(grants, pending.account().guestId(), newPassword, now);
     userRepository.resetPassword(pending.account().id(), passwordEncoder.encode(newPassword), now);
     Long guestId = pending.account().guestId();
     if (guestId != null) {

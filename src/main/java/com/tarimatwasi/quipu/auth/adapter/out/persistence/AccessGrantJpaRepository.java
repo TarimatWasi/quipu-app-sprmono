@@ -53,6 +53,15 @@ interface AccessGrantJpaRepository extends JpaRepository<AccessGrantJpaEntity, L
 
   @Query(
       value =
+          "SELECT count(*) > 0 FROM access_grants WHERE guest_id = :guestId"
+              + " AND token_hash = :hash AND mode IN ('LINK', 'TEMPORARY_PASSWORD')"
+              + " AND used_at IS NULL AND revoked_at IS NULL AND expires_at > :now",
+      nativeQuery = true)
+  boolean isLiveAccess(
+      @Param("guestId") Long guestId, @Param("hash") String tokenHash, @Param("now") Instant now);
+
+  @Query(
+      value =
           "SELECT guest_id FROM access_grants WHERE guest_id IN (:guestIds)"
               + " AND mode = 'TEMPORARY_PASSWORD' AND used_at IS NULL AND revoked_at IS NULL"
               + " AND expires_at > :now",

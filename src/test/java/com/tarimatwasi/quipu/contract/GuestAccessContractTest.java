@@ -28,6 +28,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -328,7 +330,7 @@ class GuestAccessContractTest {
     changePassword(cookie, null, temporary)
         .andExpect(status().isBadRequest())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("AUTH_PASSWORD_UNCHANGED"));
+        .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"));
     assertThat(statusOf(guestId)).isEqualTo("PENDING_ACTIVATION");
 
     changePassword(cookie, null, NEW_PASSWORD).andExpect(status().isNoContent());
@@ -349,6 +351,108 @@ class GuestAccessContractTest {
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content("{%s\"newPassword\":\"%s\"}".formatted(currentField, next)));
+  }
+
+  /** A guest that already chose its password, then got a new access of that mode. */
+  private record Handed(String guestId, Cookie session, String secret) {}
+
+  private Handed activatedWithANewAccess(String mode) throws Exception {
+    MvcResult created = register("12345678", "LINK", "ana@example.com").andReturn();
+    String guestId = read(created, "$.guest.id");
+    Cookie session =
+        activate(tokenOf(read(created, "$.access.activationUrl")), NEW_PASSWORD)
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getCookie("sessionToken");
+    MvcResult access = generate(guestId, mode, admin()).andExpect(status().isOk()).andReturn();
+    String secret =
+        "LINK".equals(mode)
+            ? tokenOf(read(access, "$.activationUrl"))
+            : read(access, "$.temporaryPassword");
+    return new Handed(guestId, session, secret);
+  }
+
+  private static String sha256(String value) throws Exception {
+    return java.util.HexFormat.of()
+        .formatHex(
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+  }
+
+  /** TAR-36: a live link or temporary password cannot become the password by changing it. */
+  @ParameterizedTest
+  @ValueSource(strings = {"LINK", "TEMPORARY_PASSWORD"})
+  void aLiveAccessCannotBecomeThePasswordByChangingIt(String mode) throws Exception {
+    Handed handed = activatedWithANewAccess(mode);
+
+    changePassword(handed.session(), NEW_PASSWORD, handed.secret())
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"))
+        .andExpect(jsonPath("$.field").value("newPassword"));
+    login("12345678", NEW_PASSWORD).andExpect(status().isOk());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM access_grants WHERE used_at IS NULL AND revoked_at IS NULL",
+                Integer.class))
+        .isEqualTo(1);
+  }
+
+  /** TAR-36: a live link or temporary password cannot become the password by recovering it. */
+  @ParameterizedTest
+  @ValueSource(strings = {"LINK", "TEMPORARY_PASSWORD"})
+  void aLiveAccessCannotBecomeThePasswordByRecoveringIt(String mode) throws Exception {
+    Handed handed = activatedWithANewAccess(mode);
+    String code = "codigo-de-recuperacion-de-prueba";
+    jdbc.update(
+        "UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ?"
+            + " WHERE email = 'ana@example.com'",
+        sha256(code),
+        java.sql.Timestamp.from(clock.instant().plus(Duration.ofMinutes(30))));
+
+    mockMvc
+        .perform(
+            post("/bff/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"code\":\"%s\",\"newPassword\":\"%s\"}".formatted(code, handed.secret())))
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"))
+        .andExpect(jsonPath("$.field").value("newPassword"));
+    login("12345678", NEW_PASSWORD).andExpect(status().isOk());
+  }
+
+  /** TAR-36: an access that is used, expired or revoked no longer blocks the password. */
+  @Test
+  void aDeadAccessDoesNotBlockThePassword() throws Exception {
+    MvcResult created = register("12345678", "LINK", null).andReturn();
+    String guestId = read(created, "$.guest.id");
+    String used = tokenOf(read(created, "$.access.activationUrl"));
+    Cookie session =
+        activate(used, NEW_PASSWORD).andReturn().getResponse().getCookie("sessionToken");
+
+    session = changedTo(session, NEW_PASSWORD, used);
+
+    String expired =
+        tokenOf(read(generate(guestId, "LINK", admin()).andReturn(), "$.activationUrl"));
+    clock().advance(Duration.ofMinutes(30));
+    session = changedTo(session, used, expired);
+
+    String revoked =
+        read(generate(guestId, "TEMPORARY_PASSWORD", admin()).andReturn(), "$.temporaryPassword");
+    generate(guestId, "LINK", admin()).andExpect(status().isOk());
+    changedTo(session, expired, revoked);
+    login("12345678", revoked).andExpect(status().isOk());
+  }
+
+  private Cookie changedTo(Cookie session, String current, String next) throws Exception {
+    return changePassword(session, current, next)
+        .andExpect(status().isNoContent())
+        .andReturn()
+        .getResponse()
+        .getCookie("sessionToken");
   }
 
   /** Only the session opened with the temporary password skips the current one. */
