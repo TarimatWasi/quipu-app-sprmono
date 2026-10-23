@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.contract.port.out.ContractGuestPort;
 import com.tarimatwasi.quipu.contract.port.out.ContractGuestPort.GuestProfile;
 import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort.Draft;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentInactiveException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
@@ -78,7 +79,7 @@ public class ContractService implements ManageContractsUseCase {
     validate(contract);
     // Both rows stay locked until the commit, in the global order environment, guest, contract,
     // payment: two contracts on one environment, or two of one guest, are decided one by one.
-    environments.lock(contract.environmentId());
+    boolean environmentActive = environments.lock(contract.environmentId());
     guests.lock(contract.guestId());
     GuestProfile guest = guests.profileOf(contract.guestId());
     if (!guest.active()) {
@@ -88,10 +89,15 @@ public class ContractService implements ManageContractsUseCase {
       throw new GuestNotContractException();
     }
     // RN-25, RN-35 (D-27): the debt is of the guest, over all its contracts. Read under the lock of
-    // the guest, in the order of the contract: guest state, guest type, debt, environment.
+    // the guest, in the order of the contract: guest state, guest type, debt, environment state,
+    // environment occupancy (bff.yaml v0.8.0).
     List<YearMonth> owed = debts.owedPeriods(contract.guestId());
     if (!owed.isEmpty()) {
       throw new GuestHasPendingDebtException(owed);
+    }
+    // TAR-200: read under the lock taken above, so a deactivation cannot slip in before the insert.
+    if (!environmentActive) {
+      throw new EnvironmentInactiveException();
     }
     LocalDate today = ContractViews.today(clock);
     if (contracts.existsInForce(contract.environmentId(), today)) {

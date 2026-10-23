@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.contract.port.in.InvalidContractException;
 import com.tarimatwasi.quipu.contract.port.in.InvalidContractFileException;
 import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentInactiveException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.port.in.InvalidEnvironmentCodeException;
@@ -399,6 +400,16 @@ public class BffExceptionHandler {
                 "GUEST_HAS_ACTIVE_CONTRACT",
                 "El huésped tiene un contrato vigente; primero finaliza el contrato",
                 ids.mask(IdKind.CONTRACT, e.contractId())));
+  }
+
+  /** RF-01 (TAR-200): an inactive environment takes no new contract. */
+  @ExceptionHandler(EnvironmentInactiveException.class)
+  public ResponseEntity<BffErrorResponse> handleEnvironmentInactive() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "ENVIRONMENT_INACTIVE",
+                "El ambiente está inactivo; reactívalo antes de registrar un contrato"));
   }
 
   /** RN-12, RN-20: a contract in force holds the environment. */

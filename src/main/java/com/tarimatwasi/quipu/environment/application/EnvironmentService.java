@@ -91,10 +91,12 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   @Override
   @Transactional
-  public void lock(Long id) {
-    if (environments.findByIdForUpdate(id).isEmpty()) {
-      throw new EnvironmentNotFoundException();
-    }
+  public boolean lock(Long id) {
+    return environments
+            .findByIdForUpdate(id)
+            .orElseThrow(EnvironmentNotFoundException::new)
+            .status()
+        == EnvironmentStatus.ACTIVE;
   }
 
   @Override
