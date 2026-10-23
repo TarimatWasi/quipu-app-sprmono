@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.Optional;
 
 /**
- * The kinds of file a guest may upload (RF-15, RN-22, RN-37), told by their first bytes: the type
+ * The kinds of file that may be uploaded (RF-15, RN-22, RN-37), told by their first bytes: the type
  * the client declares and the extension of its name are never read. A PDF that names JavaScript, a
  * launch action, an action on open, additional actions or an embedded file is none of them (see
  * {@link PdfActiveContent}).

@@ -21,14 +21,13 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.util.Arrays;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -45,8 +44,6 @@ public class ContractService implements ManageContractsUseCase {
   static final int MAX_FILE_BYTES = 10 * 1024 * 1024;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ContractService.class);
-
-  private static final byte[] PDF_HEADER = "%PDF-".getBytes(StandardCharsets.US_ASCII);
 
   private static final String DEFAULT_NAME = "contrato.pdf";
 
@@ -195,13 +192,10 @@ public class ContractService implements ManageContractsUseCase {
       throw new InvalidContractException(violation.field());
     }
     byte[] content = contract.file().content();
-    if (content.length == 0 || content.length > MAX_FILE_BYTES || !startsWithPdfHeader(content)) {
+    // RF-15: a PDF by its content, with no active content, as the vouchers (shared.file).
+    if (content.length > MAX_FILE_BYTES
+        || FileKind.of(content).filter(kind -> kind == FileKind.PDF).isEmpty()) {
       throw new InvalidContractFileException();
     }
-  }
-
-  private static boolean startsWithPdfHeader(byte[] content) {
-    return content.length >= PDF_HEADER.length
-        && Arrays.equals(content, 0, PDF_HEADER.length, PDF_HEADER, 0, PDF_HEADER.length);
   }
 }
