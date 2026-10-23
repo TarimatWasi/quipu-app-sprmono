@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.auth.port.in;
 
+import org.jspecify.annotations.Nullable;
+
 /** Reads the session of the person who is signed in, as the account is now. */
 public interface CurrentSessionUseCase {
 
@@ -12,5 +14,9 @@ public interface CurrentSessionUseCase {
   CurrentSession currentSession(String userId);
 
   /** What the client needs to restore the session after a reload. */
-  record CurrentSession(String role, String displayEmail, boolean mustChangePassword) {}
+  record CurrentSession(
+      String role,
+      @Nullable String displayEmail,
+      @Nullable Long guestId,
+      boolean mustChangePassword) {}
 }

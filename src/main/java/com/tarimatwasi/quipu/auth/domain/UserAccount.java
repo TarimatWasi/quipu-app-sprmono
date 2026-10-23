@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 public record UserAccount(
     Long id,
-    String email,
+    @Nullable String email,
     DocumentType documentType,
     String documentNumber,
     String passwordHash,

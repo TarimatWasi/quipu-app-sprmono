@@ -3,12 +3,14 @@ package com.tarimatwasi.quipu.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
+import com.tarimatwasi.quipu.shared.access.AccessMode;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -36,6 +38,7 @@ class MethodSecurityContractTest {
   @Autowired OwnPaymentsUseCase ownPayments;
   @Autowired ManagePaymentsUseCase payments;
   @Autowired OwnGuestUseCase ownGuests;
+  @Autowired GuestAccessUseCase guestAccess;
   @Autowired JdbcTemplate jdbc;
 
   @BeforeEach
@@ -48,6 +51,16 @@ class MethodSecurityContractTest {
   void guestUseCases_withoutAdminRole_areForbidden() {
     assertThatThrownBy(
             () -> guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, PageQuery.first()))
+        .isInstanceOf(AccessDeniedException.class);
+  }
+
+  /** TAR-36: the accesses of a guest are handed only in the flows of the administrator. */
+  @Test
+  @WithMockUser(roles = "GUEST")
+  void guestAccessUseCases_withoutAdminRole_areForbidden() {
+    assertThatThrownBy(() -> guestAccess.issueAccess(1L, AccessMode.LINK))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> guestAccess.revokeAccess(1L))
         .isInstanceOf(AccessDeniedException.class);
   }
 

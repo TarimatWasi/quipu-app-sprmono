@@ -60,6 +60,11 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
+  public Optional<Long> findGuestIdOf(Long id) {
+    return findById(id).flatMap(user -> Optional.ofNullable(user.guestId()));
+  }
+
+  @Override
   public Optional<UserAccount> findById(Long id) {
     return Optional.ofNullable(byId.get(id));
   }
@@ -73,7 +78,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
 
   @Override
   public Optional<UserAccount> findByEmail(String email) {
-    return byId.values().stream().filter(u -> u.email().equalsIgnoreCase(email)).findFirst();
+    return byId.values().stream().filter(u -> email.equalsIgnoreCase(u.email())).findFirst();
   }
 
   @Override
@@ -139,6 +144,57 @@ final class InMemoryUserRepository implements UserRepositoryPort {
                         user.failedLoginAttempts(),
                         user.lockedUntil(),
                         user.passwordChangedAt())));
+  }
+
+  private long nextId = 1_000_000L;
+
+  @Override
+  public void insertGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    save(
+        new UserAccount(
+            nextId++,
+            email,
+            documentType,
+            documentNumber,
+            unusablePasswordHash,
+            com.tarimatwasi.quipu.auth.domain.Role.GUEST,
+            guestId,
+            true,
+            "ACTIVE",
+            0,
+            null,
+            null));
+  }
+
+  @Override
+  public void changeGuestDocument(Long guestId, DocumentType documentType, String documentNumber) {
+    findAllByGuestIds(List.of(guestId))
+        .forEach(
+            user ->
+                save(
+                    new UserAccount(
+                        user.id(),
+                        user.email(),
+                        documentType,
+                        documentNumber,
+                        user.passwordHash(),
+                        user.role(),
+                        user.guestId(),
+                        user.mustChangePassword(),
+                        user.status(),
+                        user.failedLoginAttempts(),
+                        user.lockedUntil(),
+                        user.passwordChangedAt())));
+  }
+
+  @Override
+  public Optional<UserAccount> findByGuestIdForUpdate(Long guestId) {
+    return findAllByGuestIds(List.of(guestId)).stream().findFirst();
   }
 
   @Override

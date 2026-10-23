@@ -18,6 +18,7 @@ final class PasswordChangePendingMatcher implements RequestMatcher {
   private static final Set<String> ALLOWED_WHILE_PENDING =
       Set.of(
           "/bff/auth/login",
+          "/bff/auth/activate",
           "/bff/auth/forgot-password",
           "/bff/auth/reset-password",
           "/bff/auth/change-password",

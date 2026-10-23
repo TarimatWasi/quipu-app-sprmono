@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.application;
 
+import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +39,7 @@ class ResetCodeIssuer {
   /** A code that was issued and still has to be emailed. */
   record IssuedCode(UserAccount account, String code) {}
 
-  private final SecureRandom random = new SecureRandom();
+  private static final SecureRandom RANDOM = new SecureRandom();
   private final UserRepositoryPort userRepository;
   private final Clock clock;
 
@@ -58,7 +59,7 @@ class ResetCodeIssuer {
   @Transactional
   Optional<IssuedCode> issueFor(String email) {
     Optional<UserAccount> account = userRepository.findByEmail(email.strip());
-    if (account.isEmpty() || account.get().isDisabled()) {
+    if (account.isEmpty() || account.get().isDisabled() || neverChosePassword(account.get())) {
       return Optional.empty();
     }
     UserAccount user = account.get();
@@ -82,9 +83,10 @@ class ResetCodeIssuer {
         .orElse(false);
   }
 
-  private String newCode() {
+  /** 256 random bits in Base64Url: the recovery code and the activation token (RF-11). */
+  static String newCode() {
     byte[] bytes = new byte[CODE_BYTES];
-    random.nextBytes(bytes);
+    RANDOM.nextBytes(bytes);
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
 
@@ -96,5 +98,16 @@ class ResetCodeIssuer {
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("Every Java platform provides SHA-256", e);
     }
+  }
+
+  /**
+   * A guest account that never chose its password belongs to a guest pending activation: it gets
+   * its first password only through the access the administrator hands (RF-11), never by recovery.
+   * Its account is created pending a password and only an access clears that.
+   */
+  static boolean neverChosePassword(UserAccount account) {
+    return account.role() == Role.GUEST
+        && account.guestId() != null
+        && account.mustChangePassword();
   }
 }

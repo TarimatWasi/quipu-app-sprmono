@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.adapter.out.security;
 
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
@@ -54,8 +55,12 @@ public class AccountJwtAuthenticationConverter
     }
     List<GrantedAuthority> authorities = new ArrayList<>();
     authorities.add(new SimpleGrantedAuthority("ROLE_" + account.role().name()));
-    if (account.mustChangePassword()) {
+    boolean temporary = jwt.hasClaim(AccessSessions.TEMPORARY_CLAIM);
+    if (account.mustChangePassword() || temporary) {
       authorities.add(new SimpleGrantedAuthority(PASSWORD_CHANGE_PENDING));
+    }
+    if (temporary) {
+      authorities.add(new SimpleGrantedAuthority(AccessSessions.TEMPORARY_AUTHORITY));
     }
     return new JwtAuthenticationToken(jwt, authorities, account.id().toString());
   }

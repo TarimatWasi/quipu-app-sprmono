@@ -26,6 +26,21 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
       nativeQuery = true)
   int updateStatusByGuestId(@Param("guestId") Long guestId, @Param("status") String status);
 
+  @Query("SELECT u.guestId FROM UserJpaEntity u WHERE u.id = :id AND u.guestId IS NOT NULL")
+  Optional<Long> findGuestIdById(@Param("id") Long id);
+
+  /**
+   * Only the document of the guest's account; flushed before and cleared after, like the status.
+   */
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query(
+      value =
+          "UPDATE users SET document_type = :type, document_number = :number,"
+              + " last_modified_date = now() WHERE guest_id = :guestId",
+      nativeQuery = true)
+  int updateDocumentByGuestId(
+      @Param("guestId") Long guestId, @Param("type") String type, @Param("number") String number);
+
   Optional<UserJpaEntity> findByDocumentTypeAndDocumentNumber(
       DocumentType documentType, String documentNumber);
 
@@ -37,6 +52,10 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
   /** Locked until the commit: simultaneous failed logins of one account count one by one. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<UserJpaEntity> findWithLockById(Long id);
+
+  /** Locked until the commit: the activation of a guest and a login of its account queue up. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<UserJpaEntity> findWithLockByGuestId(Long guestId);
 
   /** Locked until the commit: two simultaneous recovery requests for one account queue up. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)

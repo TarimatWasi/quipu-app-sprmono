@@ -14,7 +14,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Table(name = "users")
 public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
-  private String email;
+  private @Nullable String email;
 
   @Column(name = "document_type")
   @Enumerated(EnumType.STRING)

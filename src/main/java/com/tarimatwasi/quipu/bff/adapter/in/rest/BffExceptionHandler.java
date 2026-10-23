@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.port.in.TemporaryPasswordExpiredException;
 import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.contract.port.in.ContractFileUnavailableException;
@@ -26,6 +27,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestHasActiveContractException;
+import com.tarimatwasi.quipu.guest.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
@@ -57,6 +59,7 @@ import java.time.YearMonth;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -122,6 +125,16 @@ public class BffExceptionHandler {
         .body(new BffErrorResponse("AUTH_NO_SESSION", "Tu sesión no es válida o expiró"));
   }
 
+  /** RN-32: the temporary password matched but expired; the administrator generates another. */
+  @ExceptionHandler(TemporaryPasswordExpiredException.class)
+  public ResponseEntity<BffErrorResponse> handleTemporaryPasswordExpired() {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(
+            new BffErrorResponse(
+                "AUTH_TEMPORARY_PASSWORD_EXPIRED",
+                "Tu contraseña temporal venció; pide a la administración un nuevo acceso"));
+  }
+
   @ExceptionHandler(AccountDisabledException.class)
   public ResponseEntity<BffErrorResponse> handleAccountDisabled() {
     return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -132,9 +145,12 @@ public class BffExceptionHandler {
   @ExceptionHandler(WeakPasswordException.class)
   public ResponseEntity<BffErrorResponse> handleWeakPassword(WeakPasswordException e) {
     String message =
-        e.reason() == WeakPasswordException.Reason.TOO_SHORT
-            ? "Mínimo 8 caracteres"
-            : "La contraseña es demasiado larga";
+        switch (e.reason()) {
+          case TOO_SHORT -> "Mínimo 8 caracteres";
+          case TOO_LONG -> "La contraseña es demasiado larga";
+          case SINGLE_USE_CREDENTIAL ->
+              "Elige una contraseña distinta del enlace o código recibido";
+        };
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("AUTH_WEAK_PASSWORD", message, "newPassword"));
   }
@@ -183,6 +199,15 @@ public class BffExceptionHandler {
     if (entity != null && entity.endsWith("PaymentJpaEntity")) {
       return handlePaymentAlreadyResolved();
     }
+    return handleConcurrentModification();
+  }
+
+  /**
+   * Two requests waited for each other's row locks and the database chose this one as the loser
+   * (deadlock, 40P01) or a lock could not be taken: retrying is safe, nothing was committed.
+   */
+  @ExceptionHandler(PessimisticLockingFailureException.class)
+  public ResponseEntity<BffErrorResponse> handleLockConflict() {
     return handleConcurrentModification();
   }
 
@@ -308,6 +333,17 @@ public class BffExceptionHandler {
             new BffGuestNotActiveResponse(
                 "GUEST_NOT_ACTIVE",
                 "El huésped no está activo",
+                ids.mask(IdKind.GUEST, e.guestId())));
+  }
+
+  /** RN-12, RN-18: the guest is inactive; {@code guestId} lets the UI reactivate it (CU-28). */
+  @ExceptionHandler(GuestInactiveException.class)
+  public ResponseEntity<BffGuestNotActiveResponse> handleGuestInactive(GuestInactiveException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffGuestNotActiveResponse(
+                "GUEST_INACTIVE",
+                "El huésped está inactivo; reactívalo primero",
                 ids.mask(IdKind.GUEST, e.guestId())));
   }
 

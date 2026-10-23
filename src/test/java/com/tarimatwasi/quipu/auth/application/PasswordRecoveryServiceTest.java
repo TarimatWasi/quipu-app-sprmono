@@ -3,12 +3,14 @@ package com.tarimatwasi.quipu.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
+import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -32,6 +34,7 @@ class PasswordRecoveryServiceTest {
   private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
   private final MutableClock clock = new MutableClock(Instant.parse("2026-10-03T12:00:00Z"));
   private final RecordingMail mail = new RecordingMail();
+  private final AccessGrantRepositoryPort grants = mock(AccessGrantRepositoryPort.class);
   private InMemoryUserRepository repository;
   private PasswordRecoveryService service;
 
@@ -45,6 +48,7 @@ class PasswordRecoveryServiceTest {
             encoder,
             mail,
             Runnable::run,
+            grants,
             clock);
   }
 
@@ -308,5 +312,78 @@ class PasswordRecoveryServiceTest {
       }
       sent.add(new Sent(toEmail, code, validFor));
     }
+  }
+
+  // ------------------------------------------------------------------ TAR-36
+
+  private UserAccount guestAccount(boolean pendingItsFirstPassword) {
+    var user =
+        new UserAccount(
+            TestIds.next(),
+            EMAIL,
+            DocumentType.DNI,
+            "22222222",
+            encoder.encode("Antigua12345"),
+            Role.GUEST,
+            77L,
+            pendingItsFirstPassword,
+            "ACTIVE",
+            0,
+            null,
+            null);
+    repository.save(user);
+    return user;
+  }
+
+  /** A guest pending activation gets its first password only through its access (RF-11). */
+  @Test
+  void aGuestPendingActivationGetsNoRecoveryCode() {
+    guestAccount(true);
+
+    service.requestReset(EMAIL);
+
+    assertThat(mail.sent).isEmpty();
+  }
+
+  @Test
+  void aResetRevokesTheAccessesOfTheGuest() {
+    UserAccount user = guestAccount(false);
+    service.requestReset(EMAIL);
+
+    service.resetPassword(mail.sent.get(0).code(), "Nueva12345");
+
+    org.mockito.Mockito.verify(grants).revokeLive(77L, clock.instant());
+    assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
+  }
+
+  /** TAR-36: a live access the administrator handed cannot become the password either. */
+  @Test
+  void aLiveAccessOfTheGuestCannotBeTheNewPassword() {
+    UserAccount user = guestAccount(false);
+    service.requestReset(EMAIL);
+    org.mockito.Mockito.when(
+            grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
+        .thenReturn(true);
+
+    assertThatThrownBy(() -> service.resetPassword(mail.sent.get(0).code(), "Enlace-vivo-123"))
+        .isInstanceOfSatisfying(
+            WeakPasswordException.class,
+            e ->
+                assertThat(e.reason())
+                    .isEqualTo(WeakPasswordException.Reason.SINGLE_USE_CREDENTIAL));
+    assertThat(encoder.matches("Antigua12345", repository.find(user.id()).passwordHash())).isTrue();
+  }
+
+  @Test
+  void theRecoveryCodeCannotBeTheNewPasswordAndIsKept() {
+    UserAccount user = guestAccount(false);
+    service.requestReset(EMAIL);
+    String code = mail.sent.get(0).code();
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.resetPassword(code, code))
+        .isInstanceOf(com.tarimatwasi.quipu.auth.port.in.WeakPasswordException.class);
+    service.resetPassword(code, "Nueva12345");
+
+    assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
   }
 }

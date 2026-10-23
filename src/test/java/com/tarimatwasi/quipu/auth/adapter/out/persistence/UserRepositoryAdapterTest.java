@@ -1,7 +1,10 @@
 package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.port.out.AccountAlreadyExistsException;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -86,5 +89,56 @@ class UserRepositoryAdapterTest {
 
   private <T> @Nullable T column(String name, Class<T> type) {
     return jdbc.queryForObject("SELECT " + name + " FROM users WHERE id = ?", type, accountId);
+  }
+
+  // ------------------------------------------------------------------ TAR-36
+
+  private Long newGuest(String number) {
+    Long id = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'DNI', ?, 'CONTRACT', 'PENDING_ACTIVATION')",
+        id,
+        number);
+    return id;
+  }
+
+  /** An email taken meanwhile leaves the account without email, in a usable transaction. */
+  @Test
+  void aGuestAccountWhoseEmailWasTakenMeanwhileIsCreatedWithoutEmail() {
+    Long guest = newGuest("23456789");
+
+    transaction.executeWithoutResult(
+        tx ->
+            adapter.insertGuestAccount(
+                guest, DocumentType.DNI, "23456789", "A@example.test", "unusable"));
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT coalesce(email, 'none') FROM users WHERE guest_id = ?",
+                String.class,
+                guest))
+        .isEqualTo("none");
+  }
+
+  @Test
+  void aGuestAccountForADocumentWithAnAccountIsRefused() {
+    Long guest = newGuest("34567890");
+
+    assertThatThrownBy(
+            () ->
+                transaction.executeWithoutResult(
+                    tx ->
+                        adapter.insertGuestAccount(
+                            guest, DocumentType.DNI, "12345678", null, "unusable")))
+        .isInstanceOf(AccountAlreadyExistsException.class);
+  }
+
+  @Test
+  void openingTheAccountOfAGuestThatHasOneChangesNothing() {
+    transaction.executeWithoutResult(
+        tx -> adapter.insertGuestAccount(guestId, DocumentType.DNI, "99999999", null, "x"));
+
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isEqualTo(1);
   }
 }
