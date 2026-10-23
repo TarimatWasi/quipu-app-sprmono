@@ -3,7 +3,12 @@ package com.tarimatwasi.quipu.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -13,6 +18,7 @@ import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
@@ -24,6 +30,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 /** RF-16: the recovery code is single-use, expires, and the answer never reveals the account. */
 class PasswordRecoveryServiceTest {
@@ -102,6 +109,39 @@ class PasswordRecoveryServiceTest {
     assertThatCode(() -> service.requestReset("nobody@example.test")).doesNotThrowAnyException();
 
     assertThat(mail.sent).isEmpty();
+  }
+
+  /**
+   * TAR-201 (D-20): the answer must not take longer when the account exists. Before answering, the
+   * request does the same thing for a known and an unknown email: it queues one task and touches
+   * neither the database, the encoder nor the email; the lookup, the code and the email all run in
+   * the task.
+   */
+  @Test
+  void beforeAnsweringAKnownAndAnUnknownEmailDoTheSameWork() {
+    savedUser("ACTIVE");
+    UserRepositoryPort users = mock(UserRepositoryPort.class, delegatesTo(repository));
+    PasswordEncoder spiedEncoder = mock(PasswordEncoder.class);
+    PasswordResetMailPort spiedMail = mock(PasswordResetMailPort.class);
+    List<Runnable> queued = new ArrayList<>();
+    var deferred =
+        new PasswordRecoveryService(
+            new ResetCodeIssuer(users, clock),
+            users,
+            spiedEncoder,
+            spiedMail,
+            queued::add,
+            grants,
+            clock);
+
+    deferred.requestReset(EMAIL);
+    deferred.requestReset("nobody@example.test");
+
+    assertThat(queued).hasSize(2);
+    verifyNoInteractions(users, spiedEncoder, spiedMail, grants);
+
+    queued.forEach(Runnable::run);
+    verify(spiedMail).sendResetLink(eq(EMAIL), anyString(), eq(ResetCodeIssuer.CODE_VALIDITY));
   }
 
   @Test
