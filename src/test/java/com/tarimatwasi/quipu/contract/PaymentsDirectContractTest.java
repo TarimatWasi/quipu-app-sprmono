@@ -263,6 +263,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(builder(PDF).cookie(admin()))
         .andExpect(status().isForbidden())
+        .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
         .perform(builder(PDF).header("Origin", "https://evil.example").cookie(admin()))

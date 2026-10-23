@@ -184,6 +184,27 @@ class ContractsContractTest {
   }
 
   @Test
+  void aPdfThatRunsSomethingIsRefusedAsTheVouchersAre() throws Exception {
+    byte[] javaScript =
+        "%PDF-1.7\n1 0 obj\n<< /S /JavaScript /JS (app.alert(1)) >>\nendobj\n"
+            .getBytes(StandardCharsets.US_ASCII);
+    byte[] openAction =
+        "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /OpenAction 2 0 R >>\nendobj\n"
+            .getBytes(StandardCharsets.US_ASCII);
+
+    for (byte[] active : new byte[][] {javaScript, openAction}) {
+      upload(room, contractGuest, active, "contrato.pdf", "2026-11-01", null)
+          .andExpect(status().isBadRequest())
+          .andExpect(answersTheContract())
+          .andExpect(jsonPath("$.code").value("CONTRACT_INVALID_FILE"))
+          .andExpect(jsonPath("$.field").value("file"));
+    }
+
+    verify(files, never()).store(any());
+    assertThat(count("contracts")).isZero();
+  }
+
+  @Test
   void aFileOverTenMegabytesIsRefused() throws Exception {
     byte[] big = new byte[10 * 1024 * 1024 + 1];
     System.arraycopy(PDF, 0, big, 0, PDF.length);
@@ -592,10 +613,12 @@ class ContractsContractTest {
     mockMvc
         .perform(multipartWith(PDF, "c.pdf").cookie(admin()))
         .andExpect(status().isForbidden())
+        .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
         .perform(multipartWith(PDF, "c.pdf").header("Sec-Fetch-Site", "cross-site").cookie(admin()))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isForbidden())
+        .andExpect(answersTheContract());
     verify(files, never()).store(any());
   }
 
