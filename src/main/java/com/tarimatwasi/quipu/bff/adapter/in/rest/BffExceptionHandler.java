@@ -25,6 +25,7 @@ import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentUnavailableException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestInactiveException;
@@ -34,6 +35,8 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotTemporaryException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
+import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
+import com.tarimatwasi.quipu.guest.port.in.OnboardingConflictException;
 import com.tarimatwasi.quipu.guest.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
@@ -557,8 +560,60 @@ public class BffExceptionHandler {
                 "CONTRACT_INVALID_FILE", "El contrato debe ser un PDF de hasta 10 MB", "file"));
   }
 
+  /** RN-33, RN-37: a step out of order, an onboarding already complete or 5 documents already. */
+  @ExceptionHandler(OnboardingConflictException.class)
+  public ResponseEntity<BffErrorResponse> handleOnboardingConflict(OnboardingConflictException e) {
+    BffErrorResponse body =
+        switch (e.reason()) {
+          case STEP_OUT_OF_ORDER ->
+              new BffErrorResponse(
+                  "ONBOARDING_STEP_OUT_OF_ORDER", "Completa primero el paso anterior del registro");
+          case ALREADY_COMPLETED ->
+              new BffErrorResponse(
+                  "ONBOARDING_ALREADY_COMPLETED",
+                  "Tu registro ya está completo; edita tus datos desde tu perfil");
+          case DOCUMENT_LIMIT_REACHED ->
+              new BffErrorResponse(
+                  "DOCUMENT_LIMIT_REACHED", "Ya subiste los 5 documentos que se permiten");
+        };
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+  }
+
+  /** RF-15, RN-14: a file that is not a JPG, PNG or PDF of up to 5 MB, or a consent not given. */
+  @ExceptionHandler(InvalidOnboardingInputException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidOnboardingInput(
+      InvalidOnboardingInputException e) {
+    BffErrorResponse body =
+        switch (e.reason()) {
+          case DOCUMENT_INVALID_FILE -> invalidDocumentFile();
+          case CONSENT_NOT_ACCEPTED ->
+              new BffErrorResponse(
+                  "CONSENT_NOT_ACCEPTED",
+                  "Debes aceptar el consentimiento para completar tu registro",
+                  "accepted");
+          case CONSENT_VERSION ->
+              new BffErrorResponse(
+                  "VALIDATION_ERROR",
+                  "El texto del consentimiento cambió; vuelve a cargarlo",
+                  "consentVersion");
+        };
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+  }
+
+  /** The same answer for a document refused by its content and by the multipart limit. */
+  static BffErrorResponse invalidDocumentFile() {
+    return new BffErrorResponse(
+        "DOCUMENT_INVALID_FILE",
+        "El documento debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
+        "file");
+  }
+
   /** The bucket is not configured or did not answer; nothing was stored. */
-  @ExceptionHandler({ContractFileUnavailableException.class, PaymentFileUnavailableException.class})
+  @ExceptionHandler({
+    ContractFileUnavailableException.class,
+    PaymentFileUnavailableException.class,
+    GuestDocumentUnavailableException.class
+  })
   public ResponseEntity<BffErrorResponse> handleFileStorage() {
     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
         .body(
@@ -637,6 +692,9 @@ public class BffExceptionHandler {
       case PAYMENT -> handlePaymentNotFound();
       // The session reads the user id itself and refuses the token: no BFF path carries one.
       case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
+      // A document is only listed, never addressed by its id.
+      case GUEST_DOCUMENT ->
+          throw new IllegalStateException("A guest document id is never part of a BFF path");
     };
   }
 

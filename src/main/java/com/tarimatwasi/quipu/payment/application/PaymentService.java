@@ -6,7 +6,6 @@ import com.tarimatwasi.quipu.payment.domain.DebtCalculator;
 import com.tarimatwasi.quipu.payment.domain.InvalidRejectionReasonException;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
-import com.tarimatwasi.quipu.payment.domain.VoucherFile;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;

@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.payment.domain;
+package com.tarimatwasi.quipu.shared.file;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
@@ -7,8 +7,8 @@ import java.util.Set;
 
 /**
  * Looks for the entries that make a PDF run something: JavaScript, a launch action, an action on
- * open, additional actions or an embedded file. A voucher is uploaded by a guest and opened by the
- * administrator, so it must be a document and not a program.
+ * open, additional actions or an embedded file. A voucher or a document of the onboarding is
+ * uploaded by a guest and opened by the administrator, so it must be a document and not a program.
  *
  * <p>It follows the structure of the file just far enough to tell an entry from a name that only
  * looks like one. A name counts when it is a <em>key</em> of a dictionary ({@code /OpenAction},

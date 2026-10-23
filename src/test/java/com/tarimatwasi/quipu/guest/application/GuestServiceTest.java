@@ -32,6 +32,7 @@ import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
@@ -68,9 +69,10 @@ class GuestServiceTest {
   @Mock StayRepositoryPort stays;
   @Mock ContractOccupancyQuery contracts;
   @Mock GuestDebtQuery debts;
+  @Mock OnboardingRepositoryPort onboarding;
 
   private GuestService service() {
-    return new GuestService(repository, accounts, stays, contracts, debts, CLOCK);
+    return new GuestService(repository, accounts, stays, contracts, debts, onboarding, CLOCK);
   }
 
   private static Guest guest(GuestStatus status) {

@@ -23,7 +23,6 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload
 import com.tarimatwasi.quipu.payment.port.in.NoActiveContractException;
 import com.tarimatwasi.quipu.payment.port.in.NoActiveStayException;
 import com.tarimatwasi.quipu.payment.port.in.NoStayYetException;
-import com.tarimatwasi.quipu.payment.port.in.OnboardingRequiredException;
 import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.ChargeState;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.PeriodView;
@@ -200,17 +199,6 @@ class OwnPaymentServiceTest {
         .isInstanceOf(OtherGuestTypeException.class);
     assertThatThrownBy(() -> service.stayStatus(GUEST)).isInstanceOf(OtherGuestTypeException.class);
     verifyNoInteractions(files, payments, stays);
-  }
-
-  @Test
-  void aGuestThatHasNotFinishedTheOnboardingUsesNothingYet() {
-    when(guests.ownGuest(GUEST)).thenReturn(new OwnGuest(GUEST, true, Standing.ONBOARDING));
-
-    assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "0", PDF)))
-        .isInstanceOf(OnboardingRequiredException.class);
-    assertThatThrownBy(() -> service.accountStatus(GUEST))
-        .isInstanceOf(OnboardingRequiredException.class);
-    verifyNoInteractions(files, payments);
   }
 
   @Test
@@ -496,14 +484,10 @@ class OwnPaymentServiceTest {
   }
 
   @Test
-  void history_isRefusedToATemporaryGuestAndDuringTheOnboardingBeforeReadingAnything() {
+  void history_isRefusedToATemporaryGuestBeforeReadingAnything() {
     guest(false, Standing.ACTIVE);
     assertThatThrownBy(() -> service.history(GUEST, PageQuery.first()))
         .isInstanceOf(OtherGuestTypeException.class);
-
-    guest(true, Standing.ONBOARDING);
-    assertThatThrownBy(() -> service.history(GUEST, PageQuery.first()))
-        .isInstanceOf(OnboardingRequiredException.class);
     verifyNoInteractions(payments);
   }
 
