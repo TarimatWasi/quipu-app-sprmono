@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -21,6 +22,14 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class JwtTokenProvider implements SessionTokenPort {
+
+  /**
+   * TAR-201 (D-20): the issue time in microseconds since the epoch, rounded up. The standard {@code
+   * iat} has only the second, which let a token issued earlier in the second of a password change
+   * outlive it. Rounded up, a token issued at or after the change never compares before it, however
+   * the database rounds the stored instant to its microsecond.
+   */
+  static final String ISSUED_AT_MICROS_CLAIM = "iat_us";
 
   private final JwtEncoder encoder;
   private final Duration expiration;
@@ -55,7 +64,14 @@ public class JwtTokenProvider implements SessionTokenPort {
   private JwtClaimsSet.Builder builder(String userId, Instant now) {
     return JwtClaimsSet.builder()
         .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
-        .issuedAt(now);
+        .issuedAt(now)
+        .claim(ISSUED_AT_MICROS_CLAIM, microsRoundedUp(now));
+  }
+
+  private static long microsRoundedUp(Instant instant) {
+    Instant down = instant.truncatedTo(ChronoUnit.MICROS);
+    long micros = ChronoUnit.MICROS.between(Instant.EPOCH, down);
+    return down.equals(instant) ? micros : micros + 1;
   }
 
   private String encode(JwtClaimsSet claims) {

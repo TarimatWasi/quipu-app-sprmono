@@ -118,6 +118,16 @@ class ProfileFilesContractTest {
         .isEqualTo("${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/metrics");
   }
 
+  /** TAR-201 (D-20): the deployed profiles export their logs, so none of them logs DEBUG. */
+  @ParameterizedTest
+  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
+  void strictProfiles_logTheApplicationAtInfo(String file) throws IOException {
+    var profile = load(file);
+
+    assertThat(profile.get("logging.level.root")).isEqualTo("INFO");
+    assertThat(profile.get("logging.level.com.tarimatwasi")).isEqualTo("INFO");
+  }
+
   /**
    * TAR-124: behind Vercel and Cloudflare the address of the connection is a Cloudflare edge that
    * changes from one request to the next, so the deployed profiles key the address limit on the
