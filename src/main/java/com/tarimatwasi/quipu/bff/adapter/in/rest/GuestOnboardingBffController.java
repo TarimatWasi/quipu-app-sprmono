@@ -65,12 +65,17 @@ public class GuestOnboardingBffController {
     this.ids = ids;
   }
 
-  /** The optional emergency contact: the fields that are not there are left out of the answer. */
-  @JsonInclude(JsonInclude.Include.NON_NULL)
+  /** The optional emergency contact; a field it does not define is refused. */
   public record EmergencyContactBody(
       @Size(max = 200) @Nullable String name,
       @Size(max = 50) @Nullable String relationship,
-      @Size(max = 30) @Nullable String phone) {}
+      @Size(max = 30) @Nullable String phone,
+      @JsonAnySetter @Nullable Map<String, Object> unknown) {}
+
+  /** The saved emergency contact: the fields that are not there are left out of the answer. */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record EmergencyContactResponse(
+      @Nullable String name, @Nullable String relationship, @Nullable String phone) {}
 
   /**
    * The personal data step; the limits are those of the contract and of the columns. A field the
@@ -89,7 +94,7 @@ public class GuestOnboardingBffController {
       String name,
       String phone,
       @Nullable String contactEmail,
-      @Nullable EmergencyContactBody emergencyContact) {
+      @Nullable EmergencyContactResponse emergencyContact) {
 
     static PersonalDataResponse of(PersonalData data) {
       EmergencyContactView contact = data.emergencyContact();
@@ -99,7 +104,8 @@ public class GuestOnboardingBffController {
           data.contactEmail(),
           contact == null
               ? null
-              : new EmergencyContactBody(contact.name(), contact.relationship(), contact.phone()));
+              : new EmergencyContactResponse(
+                  contact.name(), contact.relationship(), contact.phone()));
     }
   }
 
@@ -157,8 +163,11 @@ public class GuestOnboardingBffController {
   @PutMapping("/bff/guest/onboarding/personal-data")
   public ResponseEntity<OnboardingResponse> savePersonalData(
       @Valid @RequestBody PersonalDataBody body, Authentication authentication) {
-    UnknownFieldException.rejectAny(body.unknown());
+    rejectUnknown("", body.unknown());
     EmergencyContactBody contact = body.emergencyContact();
+    if (contact != null) {
+      rejectUnknown("emergencyContact.", contact.unknown());
+    }
     PersonalData data =
         new PersonalData(
             body.name().strip(),
@@ -207,7 +216,7 @@ public class GuestOnboardingBffController {
   @PostMapping("/bff/guest/onboarding/consent")
   public ResponseEntity<OnboardingResponse> acceptConsent(
       @Valid @RequestBody ConsentBody body, Authentication authentication) {
-    UnknownFieldException.rejectAny(body.unknown());
+    rejectUnknown("", body.unknown());
     return answer(
         onboarding.acceptConsent(
             guestOf(authentication), Boolean.TRUE.equals(body.accepted()), body.consentVersion()));
@@ -224,6 +233,19 @@ public class GuestOnboardingBffController {
     return accounts
         .guestOf(Long.valueOf(authentication.getName()))
         .orElseThrow(OtherGuestTypeException::new);
+  }
+
+  /**
+   * Refuses a body that carried a field its schema does not define. The name is echoed in {@code
+   * field} only as letters, digits, {@code _} and {@code .}, at most 64 characters: whatever the
+   * client sent, the answer carries no markup.
+   */
+  private static void rejectUnknown(String prefix, @Nullable Map<String, Object> unknown) {
+    if (unknown != null && !unknown.isEmpty()) {
+      String field =
+          (prefix + unknown.keySet().iterator().next()).replaceAll("[^A-Za-z0-9_.]", "_");
+      throw new UnknownFieldException(field.substring(0, Math.min(field.length(), 64)));
+    }
   }
 
   private static @Nullable String blankToNull(@Nullable String text) {

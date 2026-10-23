@@ -459,6 +459,14 @@ class GuestOnboardingContractTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.field").value("guestId"));
+    personalData(
+            guest(),
+            "{\"name\":\"Ana\",\"phone\":\"1\",\"emergencyContact\":{\"name\":\"Rosa\","
+                + "\"email<script>\":\"x\"}}")
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContractToAnInvalidRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("emergencyContact.email_script_"));
     assertThat(statusOf(contractGuest)).isEqualTo("ONBOARDING");
     savePersonalData();
     done(guest()).andExpect(status().isOk());
