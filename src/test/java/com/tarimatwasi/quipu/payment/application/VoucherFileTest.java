@@ -144,17 +144,19 @@ class VoucherFileTest {
   }
 
   @Test
-  void theResourcesOfAPageMayUseTheseWordsAsIdentifiers() {
-    assertThat(accepted("<< /Resources << /Font << /JS 2 0 R /AA 3 0 R >> >> >>")).isTrue();
-    assertThat(
-            accepted(
-                "<< /Resources << /XObject << /Launch 4 0 R >> /ExtGState << /JS << /CA 1 >> >> >> >>"))
-        .isTrue();
-    assertThat(
-            accepted(
-                "<< /ColorSpace << /OpenAction [/ICCBased 5 0 R] >> /Pattern << /AA 6 0 R >> >>"))
-        .isTrue();
-    assertThat(accepted("<< /Properties << /EmbeddedFile 7 0 R /JavaScript 8 0 R >> >>")).isTrue();
+  void theScanFailsClosedSoAnActiveNameIsRefusedWhereverItStands() {
+    // TAR-39: the scan no longer follows the structure; these were accepted before.
+    assertThat(accepted("<< /Resources << /Font << /JS 2 0 R /AA 3 0 R >> >> >>")).isFalse();
+    assertThat(accepted("<< /Properties << /EmbeddedFile 7 0 R >> >>")).isFalse();
+    assertThat(accepted("<< /BaseFont /JS /Subtype /Type1 >>")).isFalse();
+    assertThat(accepted("<< /Filter [/JS /Launch] >>")).isFalse();
+    assertThat(accepted("<< /T (/JS) >>")).isFalse();
+    assertThat(accepted("% a comment about /OpenAction\n1 0 obj << /Type /Page >>")).isFalse();
+    assertThat(accepted("<< /Length 12 >>\nstream\nbinary /JS /AA data\nendstream\nendobj"))
+        .isFalse();
+    assertThat(accepted("(never closed /JS")).isFalse();
+    assertThat(accepted("<< >>\nstream\nnever ends /JS")).isFalse();
+    assertThat(accepted(">> ] ] >> /JS")).isFalse();
   }
 
   @Test
@@ -162,13 +164,6 @@ class VoucherFileTest {
     assertThat(accepted("<< /Resources << /Font << /F1 2 0 R >> >> /JS (x) >>")).isFalse();
     assertThat(accepted("<< /Font << /F1 << /Type /Font /JS (x) >> >> >>")).isFalse();
     assertThat(accepted("<< /Font << /F1 2 0 R >> /OpenAction 5 0 R >>")).isFalse();
-  }
-
-  @Test
-  void aNameAsTheValueOfAnotherKeyOrInAnArrayIsNotActiveContent() {
-    assertThat(accepted("<< /BaseFont /JS /Subtype /Type1 /Name /AA >>")).isTrue();
-    assertThat(accepted("<< /Filter [/JS /Launch] /Kids [ 1 0 R 2 0 R ] >>")).isTrue();
-    assertThat(accepted("<< /Type /Font /Subtype /JavaScript >>")).isTrue();
   }
 
   @Test
@@ -190,17 +185,6 @@ class VoucherFileTest {
   }
 
   @Test
-  void aNameInsideAStringACommentOrAStreamIsNotActiveContent() {
-    assertThat(accepted("<< /T (/JS) >>")).isTrue();
-    assertThat(accepted("<< /T (text (nested /JavaScript) more) >>")).isTrue();
-    assertThat(accepted("<< /T (an escaped paren \\) then /Launch) >>")).isTrue();
-    assertThat(accepted("% a comment about /OpenAction\n1 0 obj << /Type /Page >>")).isTrue();
-    assertThat(accepted("<< /Contents <2f4a53> >>")).isTrue();
-    assertThat(accepted("<< /Length 12 >>\nstream\nbinary /JS /AA data\nendstream\nendobj"))
-        .isTrue();
-  }
-
-  @Test
   void aNameThatFollowsAStringAStreamOrACommentIsStillFound() {
     assertThat(accepted("<< /T (text) /JS 5 0 R >>")).isFalse();
     assertThat(accepted("<< /T (text (nested)) /Launch 5 0 R >>")).isFalse();
@@ -212,17 +196,16 @@ class VoucherFileTest {
 
   @Test
   void anUnclosedStringStreamOrDictionaryDoesNotMakeTheScanFail() {
-    assertThat(accepted("(never closed /JS")).isTrue();
-    assertThat(accepted("<< >>\nstream\nnever ends /JS")).isTrue();
+    assertThat(accepted("(never closed")).isTrue();
+    assertThat(accepted("<< >>\nstream\nnever ends")).isTrue();
     assertThat(accepted("<2f4a53 never closed")).isTrue();
     assertThat(accepted("<< /Type /Catalog ")).isTrue();
-    assertThat(accepted(">> ] ] >> /JS")).isTrue();
+    assertThat(accepted(">> ] ] >>")).isTrue();
   }
 
   @Test
-  void aNestingNoRealVoucherHasIsRefusedBecauseItCouldHideAnEntry() {
+  void aDeepNestingDoesNotHideAnEntry() {
     assertThat(accepted("<< /A ".repeat(5000) + "<< /JS (x) >>")).isFalse();
-    assertThat(accepted("[ ".repeat(5000))).isFalse();
     assertThat(accepted("<< /A ".repeat(150) + ">> ".repeat(150))).isTrue();
   }
 

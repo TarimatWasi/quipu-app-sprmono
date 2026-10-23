@@ -1,285 +1,248 @@
 package com.tarimatwasi.quipu.shared.file;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.Arrays;
 import java.util.Set;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 /**
- * Looks for the entries that make a PDF run something: JavaScript, a launch action, an action on
- * open, additional actions or an embedded file. A voucher, a document of the onboarding or a
+ * Looks for the entries that make a PDF run something or carry something: JavaScript, a launch
+ * action, an action on open, additional actions, a form that submits or imports data, an XFA form,
+ * rich media, an embedded file or a file attachment. A voucher, a document of the onboarding or a
  * contract is uploaded by one person and opened by another, so it must be a document and not a
  * program.
  *
- * <p>It follows the structure of the file just far enough to tell an entry from a name that only
- * looks like one. A name counts when it is a <em>key</em> of a dictionary ({@code /OpenAction},
- * {@code /AA}, {@code /JS}, {@code /JavaScript} in the names tree...), or the value of {@code /S}
- * (the type of an action, as in {@code /S /Launch}) or of {@code /Type} (as in {@code /Type
- * /EmbeddedFile}). It does not count in the text of a string {@code (...)}, a hex string, a comment
- * or the body of a stream; in the values of other keys ({@code /BaseFont /JS}); in an array; or as
- * a key of a resource dictionary ({@code /Font << /JS 2 0 R >>}, where the keys are only the
- * identifiers a page gives its fonts, images and graphics states). The {@code #hh} escapes of a
- * name are decoded, so {@code /J#61vaScript} is found. A file that nests more than 200 levels is
- * refused.
+ * <p>The scan <strong>fails closed</strong>. It does not try to follow the structure of the file,
+ * because a file can be built so that the scan and a viewer read it differently (a {@code stream}
+ * keyword that is never ended, a {@code (} that is never closed, a viewer that jumps by the xref
+ * into what looked like the body of a stream). Instead:
  *
- * <p>This is defense in depth and best effort, not a PDF parser: it cannot see inside a compressed
- * object stream, and a file built to be read differently by a viewer and by this scan can get
- * through. The voucher is also served as a download and never inline.
+ * <ul>
+ *   <li>Every name in the bytes of the file counts, wherever it stands: in a dictionary, in a
+ *       string, in a comment or in the body of a stream. The {@code #hh} escapes are decoded, so
+ *       {@code /J#61vaScript} is found; only a whole name counts, so {@code /JSON} is not {@code
+ *       /JS}. A legitimate PDF that writes {@code /JavaScript} in a text, or names a font {@code
+ *       /JS}, is refused: that is the price of a stricter check. High-entropy binary data (a JPEG
+ *       image, compressed data) can by chance hold a short name such as {@code /JS} followed by a
+ *       delimiter; that is rare (about one in 10<sup>8</sup> bytes) and also refuses the file.
+ *   <li>Every stream whose body starts with a zlib header is inflated with {@link Inflater} and the
+ *       inflated bytes are scanned for the same names. That reaches the object streams ({@code
+ *       /ObjStm}), where a modern PDF keeps its dictionaries compressed. A stream that the
+ *       dictionary before it marks {@code /FlateDecode} must inflate cleanly to its end; if it does
+ *       not (corrupt, cut, or encrypted with {@code /Encrypt}) the file is refused, because what a
+ *       viewer would read there cannot be checked. An encrypted PDF with compressed streams is
+ *       therefore refused.
+ *   <li>At most {@link #MAX_INFLATED} bytes are inflated over the whole file (more than six times
+ *       the 5 MB upload limit); a file that needs more is refused, so a decompression bomb costs a
+ *       bounded time. There is no separate ratio limit: the total bounds the work, and a blank page
+ *       compressed with Flate legitimately reaches a ratio near 1000:1.
+ *   <li>The filters that could hide names from both passes ({@code /ASCIIHexDecode}, {@code
+ *       /ASCII85Decode}, {@code /LZWDecode}, {@code /RunLengthDecode} and their short forms) refuse
+ *       the file, as does an object stream with {@code /DecodeParms}, whose predictor would change
+ *       the bytes after inflating.
+ * </ul>
+ *
+ * <p>The cost is linear in the size of the file plus the inflated bytes, and nothing recurses. This
+ * is defense in depth, not a PDF parser; the file is also served as a download and never inline.
+ * Known limits: a stream whose dictionary is separated from its body by a decoy {@code stream}
+ * keyword hidden in a string is judged by the names after the decoy only (its body is still
+ * inflated if it starts with a zlib header); a filter for images ({@code /DCTDecode}...) is not
+ * decoded.
  */
 final class PdfActiveContent {
 
   private static final Set<String> NAMES =
-      Set.of("JavaScript", "JS", "Launch", "OpenAction", "AA", "EmbeddedFile");
+      Set.of(
+          "JavaScript",
+          "JS",
+          "Launch",
+          "OpenAction",
+          "AA",
+          "EmbeddedFile",
+          "EmbeddedFiles",
+          "EF",
+          "FileAttachment",
+          "XFA",
+          "RichMedia",
+          "SubmitForm",
+          "ImportData",
+          "GoToE");
 
-  /** The keys whose value names the kind of the object, so a name there says what it is. */
-  private static final Set<String> KIND_KEYS = Set.of("S", "Type");
-
-  /** The dictionaries whose keys are identifiers chosen by the page, not entries of the format. */
-  private static final Set<String> RESOURCE_KEYS =
-      Set.of("Font", "XObject", "ExtGState", "ColorSpace", "Pattern", "Shading", "Properties");
+  /** Filters whose output this scan does not decode and that could hold names a viewer reads. */
+  private static final Set<String> HIDING_FILTERS =
+      Set.of(
+          "ASCIIHexDecode",
+          "AHx",
+          "ASCII85Decode",
+          "A85",
+          "LZWDecode",
+          "LZW",
+          "RunLengthDecode",
+          "RL");
 
   private static final byte[] STREAM = "stream".getBytes(StandardCharsets.US_ASCII);
-  private static final byte[] END_STREAM = "endstream".getBytes(StandardCharsets.US_ASCII);
 
   /** The longest name worth comparing; a longer one cannot be any of the above. */
   private static final int MAX_NAME = 16;
 
-  /**
-   * A voucher never nests dictionaries and arrays this deep. A file that does is refused: the depth
-   * could hide an entry from the scan, and the scan keeps a frame for each level.
-   */
-  private static final int MAX_DEPTH = 200;
+  /** The bytes kept from one inflated chunk to the next, so a name cut between them is whole. */
+  private static final int OVERLAP = 3 * MAX_NAME + 2;
+
+  /** The most bytes inflated over the whole file. */
+  static final int MAX_INFLATED = 32 * 1024 * 1024;
+
+  /** The bytes inflated and scanned at a time. */
+  static final int CHUNK = 64 * 1024;
 
   private PdfActiveContent() {}
 
-  /** A dictionary or an array that is open, with what the next name in it is. */
-  private static final class Frame {
-    private final boolean array;
-    private final boolean resource;
-    private boolean expectKey = true;
-    private String key = "";
+  /** What the dictionary before a stream says about it, as far as its names show. */
+  private static final class Window {
+    private boolean flate;
+    private boolean objectStream;
+    private boolean decodeParms;
 
-    Frame(boolean array, boolean resource) {
-      this.array = array;
-      this.resource = resource;
-    }
-  }
-
-  /** The open dictionaries and arrays. */
-  private static final class Nesting {
-    private final Deque<Frame> open = new ArrayDeque<>();
-    private boolean tooDeep;
-
-    Frame top() {
-      return open.peek();
-    }
-
-    void openArray() {
-      push(new Frame(true, false));
-    }
-
-    void openDictionary() {
-      Frame parent = open.peek();
-      boolean resource =
-          parent != null
-              && !parent.array
-              && !parent.expectKey
-              && RESOURCE_KEYS.contains(parent.key);
-      push(new Frame(false, resource));
-    }
-
-    private void push(Frame frame) {
-      if (open.size() >= MAX_DEPTH) {
-        tooDeep = true;
-      } else {
-        open.push(frame);
-      }
-    }
-
-    /** Closes the innermost level; what was closed was the value of the key before it. */
-    void close() {
-      open.poll();
-      valueDone();
-    }
-
-    /** The value of the current key is complete, so the next name in the dictionary is a key. */
-    void valueDone() {
-      Frame top = open.peek();
-      if (top != null && !top.array && !top.expectKey) {
-        top.expectKey = true;
-        top.key = "";
+    void see(String name) {
+      switch (name) {
+        case "FlateDecode", "Fl" -> flate = true;
+        case "ObjStm" -> objectStream = true;
+        case "DecodeParms", "DP" -> decodeParms = true;
+        default -> {
+          // other names say nothing about how the stream is encoded
+        }
       }
     }
   }
 
-  /** Whether the file has an active entry outside strings, comments and streams. */
+  /** Whether the file has, or could hide, an active entry. */
   static boolean found(byte[] content) {
-    Nesting nesting = new Nesting();
+    Window window = new Window();
+    long[] budget = {MAX_INFLATED};
     int i = 0;
     while (i < content.length) {
       byte b = content[i];
-      if (b == '%') {
-        i = endOfComment(content, i);
-      } else if (b == '(') {
-        i = endOfString(content, i);
-        nesting.valueDone();
-      } else if (b == '<') {
-        i = afterOpenAngle(content, i, nesting);
-        if (nesting.tooDeep) {
+      if (b == '/') {
+        int end = endOfToken(content, i + 1, content.length);
+        String name = decodedName(content, i + 1, end);
+        if (NAMES.contains(name) || HIDING_FILTERS.contains(name)) {
           return true;
         }
-      } else if (b == '>') {
-        if (i + 1 < content.length && content[i + 1] == '>') {
-          nesting.close();
-          i += 2;
-        } else {
-          i++;
-        }
-      } else if (b == '[') {
-        nesting.openArray();
-        if (nesting.tooDeep) {
-          return true;
-        }
-        i++;
-      } else if (b == ']') {
-        nesting.close();
-        i++;
-      } else if (b == '/') {
-        int end = endOfToken(content, i + 1);
-        if (isActive(nesting, decodedName(content, i + 1, end))) {
-          return true;
-        }
+        window.see(name);
         i = end;
       } else if (delimiter(b)) {
         i++;
       } else {
-        i = afterRegularToken(content, i, nesting);
+        int end = endOfToken(content, i, content.length);
+        if (isStreamKeyword(content, i, end)) {
+          if (streamIsActive(content, end, window, budget)) {
+            return true;
+          }
+          window = new Window();
+        }
+        i = end;
       }
     }
     return false;
   }
 
-  /** A {@code <<} opens a dictionary; a single {@code <} starts a hex string, which is skipped. */
-  private static int afterOpenAngle(byte[] content, int from, Nesting nesting) {
-    if (from + 1 < content.length && content[from + 1] == '<') {
-      nesting.openDictionary();
-      return from + 2;
+  /** Inflates the body after a {@code stream} keyword when it is (or claims to be) Flate. */
+  private static boolean streamIsActive(
+      byte[] content, int afterKeyword, Window window, long[] budget) {
+    if (window.objectStream && window.decodeParms) {
+      return true;
     }
-    nesting.valueDone();
-    return endOfHexString(content, from);
+    int body = skipSpace(content, afterKeyword);
+    if (!zlibHeader(content, body)) {
+      return window.flate;
+    }
+    return switch (inflate(content, body, budget)) {
+      case CLEAN -> false;
+      case ACTIVE, TOO_BIG -> true;
+      // Not Flate after all, unless its dictionary said it is.
+      case BROKEN -> window.flate;
+    };
   }
 
-  /** Reads a name; true if it is an entry of active content where it stands. */
-  private static boolean isActive(Nesting nesting, String name) {
-    Frame frame = nesting.top();
-    if (frame == null || frame.array) {
-      return false;
-    }
-    boolean named = NAMES.contains(name);
-    if (frame.expectKey) {
-      frame.key = name;
-      frame.expectKey = false;
-      return named && !frame.resource;
-    }
-    boolean active = named && KIND_KEYS.contains(frame.key);
-    nesting.valueDone();
-    return active;
+  private enum Inflated {
+    CLEAN,
+    ACTIVE,
+    BROKEN,
+    TOO_BIG
   }
 
-  /** A number, a keyword or a reference; a stream keyword skips the body of the stream. */
-  private static int afterRegularToken(byte[] content, int from, Nesting nesting) {
-    int end = endOfToken(content, from);
-    if (isKeyword(content, from, end, STREAM)) {
-      return endOfStream(content, end);
+  private static Inflated inflate(byte[] content, int from, long[] budget) {
+    Inflater inflater = new Inflater();
+    try {
+      inflater.setInput(content, from, content.length - from);
+      byte[] buffer = new byte[OVERLAP + CHUNK];
+      int kept = 0;
+      while (!inflater.finished()) {
+        int read = inflater.inflate(buffer, kept, CHUNK);
+        if (read == 0 && !inflater.finished()) {
+          return Inflated.BROKEN;
+        }
+        budget[0] -= read;
+        if (budget[0] < 0) {
+          return Inflated.TOO_BIG;
+        }
+        int length = kept + read;
+        if (hasActiveName(buffer, length, inflater.finished())) {
+          return Inflated.ACTIVE;
+        }
+        kept = Math.min(OVERLAP, length);
+        System.arraycopy(buffer, length - kept, buffer, 0, kept);
+      }
+      return Inflated.CLEAN;
+    } catch (DataFormatException e) {
+      return Inflated.BROKEN;
+    } finally {
+      inflater.end();
     }
-    Frame top = nesting.top();
-    if (top == null || top.array || top.expectKey) {
-      return end;
-    }
-    // A value that is a number, true, false or null; "5 0 R" is a reference of three tokens.
-    int next = isNumber(content, from, end) ? endOfReference(content, end) : end;
-    nesting.valueDone();
-    return next;
   }
 
   /**
-   * The end of {@code 0 R} after a first number, or the end of that number if it is not a
-   * reference.
+   * Whether the inflated bytes name an active entry. A name that runs to the end of a chunk that is
+   * not the last is left for the next chunk, which starts with the end of this one.
    */
-  private static int endOfReference(byte[] content, int afterNumber) {
-    int generationStart = skipSpace(content, afterNumber);
-    int generationEnd = endOfToken(content, generationStart);
-    if (generationEnd == generationStart || !isNumber(content, generationStart, generationEnd)) {
-      return afterNumber;
+  private static boolean hasActiveName(byte[] buffer, int length, boolean last) {
+    for (int i = 0; i < length; i++) {
+      if (buffer[i] == '/') {
+        int end = endOfToken(buffer, i + 1, length);
+        if ((last || end < length) && NAMES.contains(decodedName(buffer, i + 1, end))) {
+          return true;
+        }
+      }
     }
-    int markerStart = skipSpace(content, generationEnd);
-    int markerEnd = endOfToken(content, markerStart);
-    return markerEnd - markerStart == 1 && content[markerStart] == 'R' ? markerEnd : afterNumber;
+    return false;
+  }
+
+  /** RFC 1950: method 8 (deflate), a window of at most 32 KB, and a header check that holds. */
+  private static boolean zlibHeader(byte[] content, int at) {
+    if (at + 1 >= content.length) {
+      return false;
+    }
+    int cmf = content[at] & 0xFF;
+    int flg = content[at + 1] & 0xFF;
+    return (cmf & 0x0F) == 8 && (cmf >> 4) <= 7 && ((cmf << 8) | flg) % 31 == 0;
+  }
+
+  private static boolean isStreamKeyword(byte[] content, int from, int end) {
+    return end - from == STREAM.length
+        && Arrays.equals(content, from, end, STREAM, 0, STREAM.length);
   }
 
   private static int skipSpace(byte[] content, int from) {
     int i = from;
-    while (i < content.length
-        && (content[i] == 0
-            || content[i] == 9
-            || content[i] == 10
-            || content[i] == 12
-            || content[i] == 13
-            || content[i] == 32)) {
+    while (i < content.length && whiteSpace(content[i])) {
       i++;
     }
     return i;
   }
 
-  private static boolean isNumber(byte[] content, int from, int end) {
-    if (end == from) {
-      return false;
-    }
-    for (int i = from; i < end; i++) {
-      byte b = content[i];
-      if (!(b >= '0' && b <= '9') && b != '.' && b != '-' && b != '+') {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static int endOfComment(byte[] content, int from) {
+  private static int endOfToken(byte[] content, int from, int limit) {
     int i = from;
-    while (i < content.length && content[i] != '\n' && content[i] != '\r') {
-      i++;
-    }
-    return i;
-  }
-
-  /** The text of a string runs to the parenthesis that closes it; inner pairs nest. */
-  private static int endOfString(byte[] content, int from) {
-    int depth = 1;
-    int i = from + 1;
-    while (i < content.length && depth > 0) {
-      if (content[i] == '\\') {
-        i++;
-      } else if (content[i] == '(') {
-        depth++;
-      } else if (content[i] == ')') {
-        depth--;
-      }
-      i++;
-    }
-    return Math.min(i, content.length);
-  }
-
-  private static int endOfHexString(byte[] content, int from) {
-    int i = from + 1;
-    while (i < content.length && content[i] != '>') {
-      i++;
-    }
-    return Math.min(i + 1, content.length);
-  }
-
-  private static int endOfToken(byte[] content, int from) {
-    int i = from;
-    while (i < content.length && !delimiter(content[i])) {
+    while (i < limit && !delimiter(content[i])) {
       i++;
     }
     return i;
@@ -298,26 +261,8 @@ final class PdfActiveContent {
     return name.toString();
   }
 
-  private static boolean isKeyword(byte[] content, int from, int end, byte[] keyword) {
-    if (end - from != keyword.length) {
-      return false;
-    }
-    for (int i = 0; i < keyword.length; i++) {
-      if (content[from + i] != keyword[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /** The body of a stream runs to {@code endstream}, or to the end of the file. */
-  private static int endOfStream(byte[] content, int from) {
-    for (int i = from; i + END_STREAM.length <= content.length; i++) {
-      if (isKeyword(content, i, i + END_STREAM.length, END_STREAM)) {
-        return i + END_STREAM.length;
-      }
-    }
-    return content.length;
+  private static boolean whiteSpace(byte b) {
+    return b == 0 || b == 9 || b == 10 || b == 12 || b == 13 || b == 32;
   }
 
   /** White space and the delimiters of PDF syntax end a name or a token. */
