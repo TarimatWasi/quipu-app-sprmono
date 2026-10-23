@@ -32,7 +32,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 final class RateLimitFilter extends OncePerRequestFilter {
 
   private static final Set<String> LIMITED =
-      Set.of("/bff/auth/login", "/bff/auth/forgot-password", "/bff/auth/reset-password");
+      Set.of(
+          "/bff/auth/login",
+          "/bff/auth/activate",
+          "/bff/auth/forgot-password",
+          "/bff/auth/reset-password");
   private static final int MAX_TRACKED_CLIENTS = 10_000;
   private static final Pattern ADDRESS = Pattern.compile("[0-9a-fA-F:.]{1,45}");
   private static final String BODY =

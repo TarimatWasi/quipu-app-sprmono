@@ -7,11 +7,19 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 public interface UserRepositoryPort {
   Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber);
 
   Optional<UserAccount> findById(Long id);
+
+  /**
+   * The guest of the account, read as a single value: no account is kept by the persistence
+   * context, so a later read under a lock is fresh. Empty for an unknown account or one of no
+   * guest.
+   */
+  Optional<Long> findGuestIdOf(Long id);
 
   /**
    * The accounts that belong to the guests with those ids; the ids without an account add nothing.
@@ -71,6 +79,32 @@ public interface UserRepositoryPort {
 
   /** Forgets the failed logins and the lock of the account (a successful login). */
   void clearFailedLogins(Long id);
+
+  /**
+   * Creates the account of a guest: role GUEST, ACTIVE, pending its first password. The hash is of
+   * a random value nobody knows, so the account cannot log in until the guest uses an access. If
+   * another request created it meanwhile nothing changes; if only the email was taken meanwhile the
+   * account is created without email.
+   *
+   * @throws AccountAlreadyExistsException if another account has the document
+   */
+  void insertGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash);
+
+  /**
+   * The document the guest account logs in with follows the document of the guest (RN-36); nothing
+   * if the guest has no account.
+   *
+   * @throws AccountAlreadyExistsException if another account has that document
+   */
+  void changeGuestDocument(Long guestId, DocumentType documentType, String documentNumber);
+
+  /** The account of the guest, its row locked until the transaction ends. Needs a transaction. */
+  Optional<UserAccount> findByGuestIdForUpdate(Long guestId);
 
   /** The account a recovery code belongs to and when the code expires. */
   record PendingReset(UserAccount account, Instant expiresAt) {}

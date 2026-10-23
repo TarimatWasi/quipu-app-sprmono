@@ -1,13 +1,18 @@
 package com.tarimatwasi.quipu.auth.port.in;
 
-/** The new password breaks the length rule (RNF-08: at least 8; bcrypt hashes at most 72 bytes). */
+/**
+ * The new password breaks the length rule (RNF-08: at least 8; bcrypt hashes at most 72 bytes) or
+ * is the single-use credential presented to set it.
+ */
 public class WeakPasswordException extends RuntimeException {
   private static final long serialVersionUID = 1L;
 
-  /** Which side of the length rule was broken. */
+  /** Which rule was broken. */
   public enum Reason {
     TOO_SHORT,
-    TOO_LONG
+    TOO_LONG,
+    /** It is the single-use link token or recovery code that was presented with it (TAR-36). */
+    SINGLE_USE_CREDENTIAL
   }
 
   private final Reason reason;

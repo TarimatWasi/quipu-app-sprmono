@@ -10,7 +10,8 @@ public interface GuestAccountUseCase {
   /**
    * The state of one guest's account.
    *
-   * @param canLogIn the account exists and is not disabled
+   * @param canLogIn the account is not disabled and has a usable credential: a password the guest
+   *     chose or a live, unexpired temporary password (a link does not log in)
    * @param passwordChosen the guest chose its own password: no temporary one is pending (RF-12)
    */
   record GuestAccountState(boolean canLogIn, boolean passwordChosen) {}

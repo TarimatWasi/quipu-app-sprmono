@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.guest.port.out;
 
+import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
@@ -27,6 +28,22 @@ public interface GuestRepositoryPort {
    */
   CursorPage<Guest> findAll(
       @Nullable Collection<GuestStatus> statuses, @Nullable GuestType type, PageQuery page);
+
+  /** The guest with that document, whatever its state (RN-18). */
+  Optional<Guest> findByDocument(DocumentType documentType, String documentNumber);
+
+  /**
+   * Stores a new guest pending activation (RN-31, RN-36).
+   *
+   * @throws GuestDocumentAlreadyExistsException if another guest has its document
+   * @throws GuestEmailAlreadyExistsException if another guest has its email
+   */
+  Guest create(
+      DocumentType documentType,
+      String documentNumber,
+      GuestType type,
+      @Nullable String phone,
+      @Nullable String email);
 
   /**
    * Stores the guest as given; it must already exist.

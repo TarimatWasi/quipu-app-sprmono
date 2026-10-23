@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.auth.adapter.out.security;
 
 import com.tarimatwasi.quipu.auth.port.out.SessionTokenPort;
+import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import java.time.Clock;
@@ -37,12 +38,27 @@ public class JwtTokenProvider implements SessionTokenPort {
   @Override
   public String issue(String userId) {
     Instant now = clock.instant();
-    JwtClaimsSet claims =
-        JwtClaimsSet.builder()
-            .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
-            .issuedAt(now)
-            .expiresAt(now.plus(expiration))
-            .build();
+    return encode(builder(userId, now).expiresAt(now.plus(expiration)).build());
+  }
+
+  /** The access id is signed like the rest of the token, so the client cannot swap it. */
+  @Override
+  public String issueTemporary(String userId, Long grantId, Instant expiresAt) {
+    Instant now = clock.instant();
+    return encode(
+        builder(userId, now)
+            .expiresAt(expiresAt)
+            .claim(AccessSessions.TEMPORARY_CLAIM, grantId.toString())
+            .build());
+  }
+
+  private JwtClaimsSet.Builder builder(String userId, Instant now) {
+    return JwtClaimsSet.builder()
+        .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
+        .issuedAt(now);
+  }
+
+  private String encode(JwtClaimsSet claims) {
     return encoder
         .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
         .getTokenValue();
