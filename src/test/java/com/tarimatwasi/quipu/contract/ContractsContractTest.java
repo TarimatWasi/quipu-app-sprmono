@@ -323,6 +323,41 @@ class ContractsContractTest {
     upload(room, second, PDF, "c2.pdf", "2026-12-01", null).andExpect(status().isCreated());
   }
 
+  /** TAR-200: an inactive environment takes no contract, and nothing reaches the bucket. */
+  @Test
+  void anInactiveEnvironmentCannotTakeAContract() throws Exception {
+    Long closed = insertEnvironment("301", "INACTIVE");
+    upload(closed, contractGuest, PDF, "c.pdf", "2026-11-01", null)
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("ENVIRONMENT_INACTIVE"))
+        .andExpect(jsonPath("$.message").isNotEmpty());
+    verify(files, never()).store(any());
+    assertThat(count("contracts")).isZero();
+  }
+
+  /** TAR-200: guest state, guest type and debt are answered before the state of the environment. */
+  @Test
+  void theGuestAndItsDebtAreCheckedBeforeTheEnvironmentIsInactive() throws Exception {
+    Long closed = insertEnvironment("301", "INACTIVE");
+    Long pending = insertGuest("87654321", "CONTRACT", "PENDING_ACTIVATION");
+    upload(closed, pending, PDF, "c.pdf", "2026-11-01", null)
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"));
+    Long temporary = insertGuest("87654322", "TEMPORARY", "ACTIVE");
+    upload(closed, temporary, PDF, "c.pdf", "2026-11-01", null)
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("GUEST_NOT_CONTRACT"));
+    // An expired contract in another room left July to September unpaid.
+    insertContract(contractGuest, room, "2026-07-01", "2026-09-15", "ACTIVE");
+    upload(closed, contractGuest, PDF, "c.pdf", "2026-11-01", null)
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("GUEST_HAS_PENDING_DEBT"));
+    verify(files, never()).store(any());
+  }
+
   @Test
   void anExpiredContractLeavesTheEnvironmentFree() throws Exception {
     insertContract(contractGuest, room, "2020-01-01", "2020-12-31", "ACTIVE");

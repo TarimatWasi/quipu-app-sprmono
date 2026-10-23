@@ -225,6 +225,17 @@ class EnvironmentServiceTest {
     assertThatThrownBy(() -> service().lock(ID)).isInstanceOf(EnvironmentNotFoundException.class);
   }
 
+  /** TAR-200: the lock tells whether the locked environment is active. */
+  @Test
+  void lockingAnswersWhetherTheEnvironmentIsActive() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
+    assertThat(service().lock(ID)).isTrue();
+
+    var inactive = new Environment(ID, "201", EnvironmentType.ROOM, EnvironmentStatus.INACTIVE);
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(inactive));
+    assertThat(service().lock(ID)).isFalse();
+  }
+
   @Test
   void theListingFilterBecomesTheStatusOfTheQuery() {
     PageQuery page = PageQuery.first();
