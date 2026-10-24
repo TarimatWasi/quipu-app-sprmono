@@ -15,7 +15,8 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
  * @param secretAccessKey {@code app.r2.secret-access-key}
  * @param endpoint {@code app.r2.endpoint}
  * @param bucketName {@code app.r2.bucket-name}
- * @param apiCallTimeout {@code app.r2.api-call-timeout}: the whole call, retries included (TAR-204)
+ * @param apiCallTimeout {@code app.r2.api-call-timeout}: the whole call, retries included; below
+ *     the lock_timeout of the database (15 s), since some uploads hold row locks (TAR-204)
  * @param apiCallAttemptTimeout {@code app.r2.api-call-attempt-timeout}: each try of the call
  */
 @ConfigurationProperties("app.r2")
