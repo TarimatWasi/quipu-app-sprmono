@@ -43,6 +43,7 @@
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
     <download-maven-plugin.version>2.1.0</download-maven-plugin.version>
     <bucket4j.version>8.21.0</bucket4j.version>
+    <pdfbox.version>3.0.8</pdfbox.version>
 
     <!-- Contrato del BFF (TAR-23): tag de quipu-lib-contracts y sha256 de su openapi/bff.yaml.
          Para subir de versión se cambian los dos juntos: el hash se obtiene con
@@ -137,6 +138,11 @@
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>s3</artifactId>
       <version>${awssdk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>${pdfbox.version}</version>
     </dependency>
     <dependency>
       <groupId>org.jspecify</groupId>
