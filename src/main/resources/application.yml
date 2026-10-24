@@ -11,7 +11,8 @@ spring:
   # TAR-204: una conexión de la aplicación espera un bloqueo de fila 15 s como mucho; al vencer,
   # Postgres corta la sentencia (55P03) y el BFF responde CONCURRENT_MODIFICATION, sin 500. Es más
   # que app.r2.api-call-timeout (10 s): quien sube a R2 con filas bloqueadas termina antes de que
-  # venza la espera de otro. Las migraciones van sin límite (spring.flyway.init-sqls).
+  # venza la espera de otro. Las migraciones esperan hasta 60 s (spring.flyway.init-sqls,
+  # FlywayConfig).
   datasource:
     hikari:
       connection-init-sql: SET lock_timeout = '15s'
@@ -21,7 +22,7 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    init-sqls: SET lock_timeout = 0
+    init-sqls: SET lock_timeout = '60s'
   mvc:
     problemdetails:
       enabled: true

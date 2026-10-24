@@ -37,6 +37,9 @@ class LockBoundariesTest {
 
   private static final String APPLICATION_LOCK_TIMEOUT = "15s";
 
+  /** spring.flyway.init-sqls sets 60s; Postgres shows it as 1min. */
+  private static final String MIGRATION_LOCK_TIMEOUT = "1min";
+
   @Autowired LockGuestUseCase locks;
   @Autowired JdbcTemplate jdbc;
   @Autowired HikariDataSource pool;
@@ -77,14 +80,36 @@ class LockBoundariesTest {
   }
 
   /**
-   * A migration waits for a lock as long as it takes (spring.flyway.init-sqls: a deploy is not cut
-   * by the limit of the requests), and the connections it borrowed do not go back to the pool
-   * without the limit. In dev and prod Flyway migrates over the pool of the application; here the
+   * A migration waits for a lock longer than a request (spring.flyway.init-sqls: 60 s, so a deploy
+   * is not cut by the limit of the requests, yet an ACCESS EXCLUSIVE behind an idle transaction
+   * does not hold the table forever), and the connections it borrowed do not go back to the pool
+   * with that limit. In dev and prod Flyway migrates over the pool of the application; here the
    * service connection gives it its own, so the probe is pointed at the pool to migrate as there.
    */
   @Test
-  void migrationsRunWithoutTheLockTimeoutAndLeaveThePoolWithIt() throws SQLException {
+  void migrationsRunWithTheirOwnLockTimeoutAndLeaveThePoolWithTheApplicationOne()
+      throws SQLException {
     List<String> seen = new CopyOnWriteArrayList<>();
+
+    migrateAProbe(new LockTimeoutProbe(seen, false));
+
+    assertThat(seen).isNotEmpty().containsOnly(MIGRATION_LOCK_TIMEOUT);
+    assertThatEveryPooledConnectionHasTheApplicationLockTimeout();
+  }
+
+  /** A migration that fails does not leave the pool with the limit of the migrations either. */
+  @Test
+  void aMigrationThatFailsLeavesThePoolWithTheApplicationLockTimeout() throws SQLException {
+    List<String> seen = new CopyOnWriteArrayList<>();
+
+    assertThatThrownBy(() -> migrateAProbe(new LockTimeoutProbe(seen, true)))
+        .isInstanceOf(RuntimeException.class);
+
+    assertThat(seen).containsOnly(MIGRATION_LOCK_TIMEOUT);
+    assertThatEveryPooledConnectionHasTheApplicationLockTimeout();
+  }
+
+  private void migrateAProbe(Callback callback) {
     String schema = "lock_probe_" + TestIds.next();
     Flyway probe =
         Flyway.configure()
@@ -92,17 +117,17 @@ class LockBoundariesTest {
             .dataSource(pool)
             .schemas(schema)
             .createSchemas(true)
-            .callbacks(new LockTimeoutProbe(seen))
+            .callbacks(callback)
             .load();
-
     try {
       strategy.migrate(probe);
     } finally {
       // Other tests read the catalog: the copy of the tables does not stay.
       jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
     }
+  }
 
-    assertThat(seen).isNotEmpty().containsOnly("0");
+  private void assertThatEveryPooledConnectionHasTheApplicationLockTimeout() throws SQLException {
     List<Connection> all = new ArrayList<>();
     try {
       for (int i = 0; i < pool.getMaximumPoolSize(); i++) {
@@ -127,7 +152,7 @@ class LockBoundariesTest {
   }
 
   /** Reads lock_timeout on the connection Flyway migrates with. */
-  private record LockTimeoutProbe(List<String> seen) implements Callback {
+  private record LockTimeoutProbe(List<String> seen, boolean failAfterReading) implements Callback {
 
     @Override
     public boolean supports(Event event, Context context) {
@@ -145,6 +170,9 @@ class LockBoundariesTest {
         seen.add(lockTimeoutOf(context.getConnection()));
       } catch (SQLException e) {
         throw new IllegalStateException(e);
+      }
+      if (failAfterReading) {
+        throw new IllegalStateException("the migration fails on purpose");
       }
     }
 
