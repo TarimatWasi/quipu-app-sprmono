@@ -126,17 +126,45 @@ class AccountJwtAuthenticationConverterTest {
     assertThat(authenticate(old)).isEmpty();
   }
 
+  /** TAR-201 (D-20): the second of the JWT is not enough; a token of that same second is ended. */
   @Test
-  void aTokenIssuedInTheSameSecondOrAfterThePasswordChangeStillWorks() {
+  void aTokenIssuedInTheSameSecondButBeforeThePasswordChangeOpensNoSession() {
+    clock.advance(Duration.ofMillis(100));
+    String old = provider.issue(id.toString());
     Instant changedAt = NOW.plusMillis(900);
     when(users.findById(id))
         .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
 
-    // The change replaces the session cookie in the same request: the new token carries the
-    // second of the change itself.
+    assertThat(authenticate(old)).isEmpty();
+  }
+
+  @Test
+  void aTokenIssuedAtOrAfterThePasswordChangeStillWorks() {
+    Instant changedAt = NOW.plusNanos(900_000_123);
+    when(users.findById(id))
+        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
+
+    // The change replaces the session cookie in the same request, with the clock read after it.
+    clock.advance(Duration.between(NOW, changedAt));
     assertThat(authenticate(provider.issue(id.toString()))).isPresent();
     clock.advance(Duration.ofSeconds(30));
     assertThat(authenticate(provider.issue(id.toString()))).isPresent();
+  }
+
+  /**
+   * Tokens issued before TAR-201 have only the second: they keep the old rule until they expire.
+   */
+  @Test
+  void aTokenWithoutThePreciseIssueTimeIsJudgedByItsSecond() {
+    Instant changedAt = NOW.plusMillis(900);
+    when(users.findById(id))
+        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
+    String sub = masker.mask(IdKind.USER, id).toString();
+
+    assertThat(authenticate(signed(Map.of("sub", sub)))).isPresent();
+    when(users.findById(id))
+        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, NOW.plusSeconds(1))));
+    assertThat(authenticate(signed(Map.of("sub", sub)))).isEmpty();
   }
 
   @Test

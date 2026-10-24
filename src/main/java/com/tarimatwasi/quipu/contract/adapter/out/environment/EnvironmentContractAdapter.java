@@ -15,7 +15,7 @@ public class EnvironmentContractAdapter implements ContractEnvironmentPort {
   }
 
   @Override
-  public void lock(Long environmentId) {
-    environments.lock(environmentId);
+  public boolean lock(Long environmentId) {
+    return environments.lock(environmentId);
   }
 }

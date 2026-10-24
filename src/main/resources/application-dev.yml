@@ -74,4 +74,4 @@ springdoc:
 logging:
   level:
     root: INFO
-    com.tarimatwasi: DEBUG
+    com.tarimatwasi: INFO

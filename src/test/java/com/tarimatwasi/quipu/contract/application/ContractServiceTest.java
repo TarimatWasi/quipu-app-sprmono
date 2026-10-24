@@ -26,6 +26,7 @@ import com.tarimatwasi.quipu.contract.port.out.ContractGuestPort;
 import com.tarimatwasi.quipu.contract.port.out.ContractGuestPort.GuestProfile;
 import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort.Draft;
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentInactiveException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
@@ -77,6 +78,8 @@ class ContractServiceTest {
   @BeforeEach
   void setUp() {
     service = new ContractService(contracts, files, environments, guests, debts, clock);
+    // The environment exists and is active unless a test says otherwise.
+    org.mockito.Mockito.lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }
 
   private static NewContract request(byte[] content, String name, @Nullable String end) {
@@ -212,6 +215,31 @@ class ContractServiceTest {
     verify(contracts, never()).existsInForce(any(), any());
     verifyNoInteractions(files);
     verify(contracts, never()).insert(any());
+  }
+
+  /** TAR-200: the state of the environment comes after the debt and before the occupancy. */
+  @Test
+  void anInactiveEnvironmentRejectsTheContractAfterTheDebtAndBeforeTheOccupancy() {
+    when(environments.lock(ENVIRONMENT_ID)).thenReturn(false);
+    when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
+
+    assertThatThrownBy(() -> service.create(request()))
+        .isInstanceOf(EnvironmentInactiveException.class);
+    verify(debts).owedPeriods(GUEST_ID);
+    verify(contracts, never()).existsInForce(any(), any());
+    verifyNoInteractions(files);
+    verify(contracts, never()).insert(any());
+  }
+
+  @Test
+  void aGuestThatOwesIsAnsweredBeforeTheEnvironmentIsInactive() {
+    when(environments.lock(ENVIRONMENT_ID)).thenReturn(false);
+    when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
+    when(debts.owedPeriods(GUEST_ID)).thenReturn(List.of(YearMonth.of(2026, 9)));
+
+    assertThatThrownBy(() -> service.create(request()))
+        .isInstanceOf(GuestHasPendingDebtException.class);
+    verifyNoInteractions(files);
   }
 
   @Test
