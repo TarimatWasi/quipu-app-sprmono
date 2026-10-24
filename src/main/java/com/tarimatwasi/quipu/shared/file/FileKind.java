@@ -40,6 +40,16 @@ public enum FileKind {
     return Optional.empty();
   }
 
+  /**
+   * Inspects the content now when it is a PDF, before the caller opens a transaction or locks a row
+   * (TAR-39); {@link #of} on the same array then reuses the verdict instead of parsing it again.
+   */
+  public static void inspectAhead(byte[] content) {
+    if (startsWith(content, PDF_MAGIC)) {
+      PdfActiveContent.inspectAhead(content);
+    }
+  }
+
   private static boolean startsWith(byte[] content, byte[] magic) {
     return content.length >= magic.length
         && Arrays.equals(content, 0, magic.length, magic, 0, magic.length);

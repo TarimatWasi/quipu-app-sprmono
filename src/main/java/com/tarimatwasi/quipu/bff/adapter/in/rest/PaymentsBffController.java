@@ -13,6 +13,7 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.PaymentView;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.QueueItemView;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.Resolution;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
+import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
@@ -302,10 +303,14 @@ public class PaymentsBffController {
   }
 
   static byte[] content(MultipartFile file) {
+    byte[] content;
     try {
-      return file.getBytes();
+      content = file.getBytes();
     } catch (IOException unreadable) {
       throw new InvalidVoucherFileException();
     }
+    // TAR-39: the PDF is inspected here, before the use case opens its transaction and locks rows.
+    FileKind.inspectAhead(content);
+    return content;
   }
 }

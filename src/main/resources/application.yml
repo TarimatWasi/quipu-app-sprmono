@@ -98,3 +98,8 @@ springdoc:
   swagger-ui:
     enabled: false
     path: /swagger-ui.html
+
+# TAR-39: PDFBox logs tokens of the files it parses; uploads must not reach the logs.
+logging:
+  level:
+    org.apache.pdfbox: OFF
