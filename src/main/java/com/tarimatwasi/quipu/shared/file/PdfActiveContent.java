@@ -3,10 +3,14 @@ package com.tarimatwasi.quipu.shared.file;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +88,15 @@ final class PdfActiveContent {
   /** The most memory the parser may use to cache streams, which it does when it decrypts them. */
   private static final long MAX_CACHE = 12L * 1024 * 1024;
 
+  /** The most references followed one after another before a value is reached. */
+  static final int MAX_HOPS = 32;
+
+  /**
+   * How long one inspection may take before the file is refused, not kept; tests lower it. A file
+   * that is slow to parse is no verdict on the file but must not keep the others waiting.
+   */
+  static volatile long deadlineMillis = 2_000;
+
   /** How long a file waits for the inspection of another one before it is turned away. */
   static final long WAIT_SECONDS = 3;
 
@@ -93,10 +106,13 @@ final class PdfActiveContent {
   /**
    * Verdicts of files inspected ahead (see {@link #inspectAhead}), by the identity of the array of
    * bytes, which arrays use for {@code equals}; an entry goes with its array. Only verdicts are
-   * kept: a file turned away while busy is not.
+   * kept: a file turned away while busy or past the deadline is not. Invariant: nobody changes the
+   * array between {@link #inspectAhead} and {@link #found}; the digest kept with the verdict checks
+   * it, and a changed array is inspected again.
    */
-  private static final Map<Object, Boolean> AHEAD =
-      Collections.synchronizedMap(new WeakHashMap<>());
+  private static final Map<Object, Ahead> AHEAD = Collections.synchronizedMap(new WeakHashMap<>());
+
+  private record Ahead(boolean active, String digest) {}
 
   private static final COSName TYPE = name("Type");
   private static final COSName FILTER = name("Filter");
@@ -124,7 +140,10 @@ final class PdfActiveContent {
    * @throws FileInspectionBusyException if another file kept the inspection too long
    */
   static void inspectAhead(byte[] content) {
-    AHEAD.put(content, inspect(content));
+    Boolean active = inspect(content);
+    if (active != null) {
+      AHEAD.put(content, new Ahead(active, digest(content)));
+    }
   }
 
   /**
@@ -133,11 +152,23 @@ final class PdfActiveContent {
    * @throws FileInspectionBusyException if another file kept the inspection too long
    */
   static boolean found(byte[] content) {
-    Boolean ahead = AHEAD.get(content);
-    return ahead != null ? ahead : inspect(content);
+    Ahead ahead = AHEAD.get(content);
+    if (ahead != null && ahead.digest().equals(digest(content))) {
+      return ahead.active();
+    }
+    return !Boolean.FALSE.equals(inspect(content));
   }
 
-  private static boolean inspect(byte[] content) {
+  private static String digest(byte[] content) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is in every Java", e);
+    }
+  }
+
+  /** The verdict, or null if the inspection ran past its deadline: no verdict to keep. */
+  private static @Nullable Boolean inspect(byte[] content) {
     if (content.length > MAX_FILE) {
       return true;
     }
@@ -156,7 +187,7 @@ final class PdfActiveContent {
     }
   }
 
-  private static boolean parseAndInspect(byte[] content) {
+  private static @Nullable Boolean parseAndInspect(byte[] content) {
     try {
       return parse(content);
     } finally {
@@ -164,11 +195,13 @@ final class PdfActiveContent {
     }
   }
 
-  private static boolean parse(byte[] content) {
+  private static @Nullable Boolean parse(byte[] content) {
+    BoundedParser parser = null;
+    boolean active;
     try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(content)) {
-      BoundedParser parser = new BoundedParser(source);
+      parser = new BoundedParser(source);
       try (PDDocument document = parser.parse(false)) {
-        return hasActiveObject(parser, document.getDocument()) || parser.refused;
+        active = hasActiveObject(parser, document.getDocument()) || parser.refused;
       }
     } catch (IOException
         | UncheckedIOException
@@ -177,15 +210,19 @@ final class PdfActiveContent {
         | ClassCastException
         | IndexOutOfBoundsException
         | NegativeArraySizeException
+        | ArrayStoreException
         | NoSuchElementException
+        | ConcurrentModificationException
         | NullPointerException
         | ArithmeticException
         | UnsupportedOperationException
         | StackOverflowError e) {
       // The inspection boundary: whatever a malformed file makes the parser throw refuses it, and
-      // nothing of the file is logged.
-      return true;
+      // nothing of the file nor the message of PDFBox is logged. BE-SPR-COD-05 forbids catching
+      // RuntimeException itself, so the unchecked exceptions of the JDK are listed.
+      active = true;
     }
+    return (parser != null && parser.isLate()) ? null : active;
   }
 
   /**
@@ -221,28 +258,47 @@ final class PdfActiveContent {
       }
     }
     Set<COSDictionary> structure = structureElements(trailer);
-    return structure == null || reachesAnActiveDictionary(pending, structure) || parser.refused;
+    return structure == null
+        || reachesAnActiveDictionary(parser, pending, structure)
+        || parser.refused;
+  }
+
+  /**
+   * The value a reference leads to, following at most {@link #MAX_HOPS} references in a row: a
+   * cycle of references, or a longer chain, refuses the file.
+   */
+  static @Nullable COSBase dereference(COSObject reference) throws IOException {
+    COSBase target = reference.getObject();
+    for (int hops = 1; target instanceof COSObject next; hops++) {
+      if (hops >= MAX_HOPS) {
+        throw new IOException("Too many references in a row");
+      }
+      target = next.getObject();
+    }
+    return target;
   }
 
   private static boolean reachesAnActiveDictionary(
-      Deque<COSBase> pending, Set<COSDictionary> structure) {
+      BoundedParser parser, Deque<COSBase> pending, Set<COSDictionary> structure)
+      throws IOException {
     // Every value once: references are resolved and arrays opened, direct or indirect alike.
     // The walk keeps its own stack, so a deep file costs memory bounded by the values, not depth.
     Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
     while (!pending.isEmpty()) {
       COSBase value = pending.pop();
+      // a reference is a node too: visited once and counted, so a cycle cannot spin
+      if (!visited.add(value)) {
+        continue;
+      }
+      if (visited.size() > 2 * MAX_VALUES || parser.isLate()) {
+        return true;
+      }
       if (value instanceof COSObject reference) {
-        COSBase target = reference.getObject();
+        COSBase target = dereference(reference);
         if (target != null) {
           pending.push(target);
         }
         continue;
-      }
-      if (!visited.add(value)) {
-        continue;
-      }
-      if (visited.size() > 2 * MAX_VALUES) {
-        return true;
       }
       if (value instanceof COSDictionary dictionary) {
         if (ActiveEntries.isActive(dictionary, structure)) {
@@ -260,7 +316,8 @@ final class PdfActiveContent {
    * The dictionaries reached through {@code /K} from the {@code /StructTreeRoot} of the catalog,
    * resolved and opened as any other value; null if there are more than the file may have values.
    */
-  private static @Nullable Set<COSDictionary> structureElements(COSDictionary trailer) {
+  private static @Nullable Set<COSDictionary> structureElements(COSDictionary trailer)
+      throws IOException {
     Set<COSDictionary> elements = Collections.newSetFromMap(new IdentityHashMap<>());
     Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
     Deque<COSBase> pending = new ArrayDeque<>();
@@ -274,7 +331,7 @@ final class PdfActiveContent {
     while (!pending.isEmpty()) {
       COSBase value = pending.pop();
       if (value instanceof COSObject reference) {
-        value = reference.getObject();
+        value = dereference(reference);
       }
       if (value == null || !visited.add(value)) {
         continue;
@@ -309,6 +366,8 @@ final class PdfActiveContent {
     private boolean readingTable;
     private int tableLines;
     private boolean refused;
+    private final long deadline = System.nanoTime() + deadlineMillis * 1_000_000;
+    private boolean late;
 
     BoundedParser(RandomAccessRead source) throws IOException {
       super(source, "", null, null, MemoryUsageSetting.setupMainMemoryOnly(MAX_CACHE).streamCache);
@@ -330,6 +389,15 @@ final class PdfActiveContent {
       if (++values > MAX_VALUES) {
         refuse("Too many values");
       }
+      if (isLate()) {
+        refuse("Past the deadline");
+      }
+    }
+
+    /** Whether the inspection ran past its deadline; once late, it stays late. */
+    boolean isLate() {
+      late = late || System.nanoTime() - deadline >= 0;
+      return late;
     }
 
     /** Each entry of a classic table is one line, read before PDFBox keeps it. */

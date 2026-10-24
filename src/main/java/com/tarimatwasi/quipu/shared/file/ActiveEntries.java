@@ -7,8 +7,6 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.cos.COSObject;
-import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 import org.jspecify.annotations.Nullable;
 
@@ -25,16 +23,11 @@ import org.jspecify.annotations.Nullable;
  *       group, a soft mask, an output intent), or is a known style ({@link #NOT_ACTIONS}). Only
  *       {@code /GoTo} and {@code /URI} are accepted, and a {@code /URI} only to {@code http:},
  *       {@code https:} or {@code mailto:}: any other name, a vendor's too, is refused.
- *   <li>A <strong>map of named resources</strong> ({@code /Font << /JS 5 0 R >>}) has keys that the
- *       producer chose, so they are not taken for active keys. A dictionary counts as one only when
- *       it says nothing of what it is ({@code /Type}, {@code /Subtype}, {@code /S}) and every value
- *       is a typed resource: a stream, a dictionary of {@code /Type} or {@code /Subtype} Font,
- *       XObject, ExtGState, Pattern, Shading or Properties, or a colour space array. Even then a
- *       {@code /JS} or {@code /XFA} whose value is a stream is active, since a script and an XFA
- *       form are streams too.
- *   <li>Any other dictionary is active if it has a key of {@link #ACTIVE_KEYS} (so every {@code
- *       /AA}, whatever actions it holds), or an {@code /OpenAction} that is not a destination or a
- *       {@code /GoTo}.
+ *   <li>Every dictionary is active if it has a key of {@link #ACTIVE_KEYS} (so every {@code /AA},
+ *       whatever actions it holds), an {@code /OpenAction} that is not a destination or a {@code
+ *       /GoTo}, or a {@code /Base} of the links that is not on the web. No dictionary is exempt:
+ *       not even a map of resources, whose names the producer chooses, since a writer never names a
+ *       font {@code /JS} and a dictionary can always pretend to be such a map.
  * </ul>
  */
 final class ActiveEntries {
@@ -45,6 +38,7 @@ final class ActiveEntries {
   private static final COSName OPEN_ACTION = name("OpenAction");
   private static final COSName GO_TO = name("GoTo");
   private static final COSName URI = name("URI");
+  private static final COSName BASE = name("Base");
   private static final COSName ACTION = name("Action");
   private static final COSName STRUCT_ELEM = name("StructElem");
   private static final COSName PARENT = name("P");
@@ -69,9 +63,6 @@ final class ActiveEntries {
           name("RichMedia"),
           name("AA"),
           name("OnInstantiate"));
-
-  /** Keys whose real value may be a stream, so a resource of that name is still suspect. */
-  private static final Set<COSName> STREAM_KEYS = Set.of(name("JS"), name("XFA"));
 
   /** The action types of the PDF specification (2.0, and the obsolete ones of 1.2). */
   private static final Set<COSName> ACTION_TYPES =
@@ -105,28 +96,12 @@ final class ActiveEntries {
   /** The schemes a link may open. */
   private static final List<String> ALLOWED_SCHEMES = List.of("http:", "https:", "mailto:");
 
+  /** The schemes a base of the links may have. */
+  private static final List<String> WEB_SCHEMES = List.of("http:", "https:");
+
   /** Values of {@code /Type} or {@code /Subtype} that carry a file, media or 3D. */
   private static final Set<COSName> ACTIVE_TYPES =
       names("EmbeddedFile", "FileAttachment", "RichMedia", "3D", "Movie", "Sound", "Screen");
-
-  /** Values of {@code /Type} or {@code /Subtype} of a dictionary that is a named resource. */
-  private static final Set<COSName> RESOURCE_TYPES =
-      names("Font", "XObject", "ExtGState", "Pattern", "Shading", "Properties");
-
-  /** The families of colour space that start the array of a colour space resource. */
-  private static final Set<COSName> COLOUR_SPACES =
-      names(
-          "CalGray",
-          "CalRGB",
-          "Lab",
-          "ICCBased",
-          "Indexed",
-          "Pattern",
-          "Separation",
-          "DeviceN",
-          "DeviceGray",
-          "DeviceRGB",
-          "DeviceCMYK");
 
   private ActiveEntries() {}
 
@@ -157,8 +132,8 @@ final class ActiveEntries {
         return true;
       }
     }
-    if (isResourceMap(dictionary)) {
-      return hasStreamUnderAStreamKey(dictionary);
+    if (dictionary.containsKey(BASE) && !isWebLink(dictionary.getDictionaryObject(BASE))) {
+      return true;
     }
     for (COSName key : ACTIVE_KEYS) {
       if (dictionary.containsKey(key)) {
@@ -181,59 +156,30 @@ final class ActiveEntries {
     return !structureElement && type == null && !NOT_ACTIONS.contains(s);
   }
 
-  /** A link only to the web or to an e-mail address; spaces and control characters do not hide. */
+  /** A link only to the web or to an e-mail address, with no space or control character. */
   static boolean isAllowedLink(@Nullable COSBase uri) {
+    return hasScheme(uri, ALLOWED_SCHEMES);
+  }
+
+  /** A base of the links only on the web. */
+  private static boolean isWebLink(@Nullable COSBase uri) {
+    return hasScheme(uri, WEB_SCHEMES);
+  }
+
+  private static boolean hasScheme(@Nullable COSBase uri, List<String> schemes) {
     if (!(uri instanceof COSString text)) {
       return false;
     }
-    StringBuilder visible = new StringBuilder();
-    text.getString()
-        .codePoints()
-        .filter(c -> c > ' ' && c != 0x7F && !Character.isISOControl(c))
-        .forEach(visible::appendCodePoint);
-    String link = visible.toString().toLowerCase(Locale.ROOT);
-    return ALLOWED_SCHEMES.stream().anyMatch(link::startsWith);
-  }
-
-  private static boolean isResourceMap(COSDictionary dictionary) {
-    if (dictionary instanceof COSStream
-        || dictionary.containsKey(TYPE)
-        || dictionary.containsKey(SUBTYPE)
-        || dictionary.containsKey(S)) {
+    String link = text.getString();
+    if (link.codePoints().anyMatch(c -> c <= ' ' || c == 0x7F || Character.isISOControl(c))) {
       return false;
     }
-    for (COSBase value : dictionary.getValues()) {
-      if (!isTypedResource(resolve(value))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static boolean isTypedResource(@Nullable COSBase value) {
-    if (value instanceof COSStream) {
-      return true;
-    }
-    if (value instanceof COSDictionary dictionary) {
-      return in(RESOURCE_TYPES, dictionary.getCOSName(TYPE))
-          || in(RESOURCE_TYPES, dictionary.getCOSName(SUBTYPE));
-    }
-    return value instanceof COSArray array
-        && array.size() > 0
-        && resolve(array.get(0)) instanceof COSName family
-        && COLOUR_SPACES.contains(family);
-  }
-
-  private static boolean hasStreamUnderAStreamKey(COSDictionary map) {
-    return STREAM_KEYS.stream().anyMatch(key -> map.getDictionaryObject(key) instanceof COSStream);
+    String lower = link.toLowerCase(Locale.ROOT);
+    return schemes.stream().anyMatch(lower::startsWith);
   }
 
   private static boolean isGoTo(COSBase action) {
     return action instanceof COSDictionary dictionary && GO_TO.equals(dictionary.getCOSName(S));
-  }
-
-  private static @Nullable COSBase resolve(@Nullable COSBase value) {
-    return value instanceof COSObject reference ? reference.getObject() : value;
   }
 
   private static boolean in(Set<COSName> names, @Nullable COSName name) {

@@ -28,46 +28,6 @@ class ActiveEntriesTest {
   }
 
   @Test
-  void theResourcesOfAPageMayUseTheseWordsAsIdentifiers() {
-    // objects: 4 font, 5 form XObject
-    assertThat(pageFound("/Resources << /Font << /JS 4 0 R /F1 4 0 R >> >>", FONT, FORM))
-        .as("a font named /JS")
-        .isFalse();
-    assertThat(pageFound("/Resources << /XObject << /AA 5 0 R /Launch 5 0 R >> >>", FONT, FORM))
-        .as("an XObject named /AA")
-        .isFalse();
-    assertThat(
-            pageFound(
-                "/Resources << /ExtGState << /JS << /Type /ExtGState /CA 1 >> >>"
-                    + " /ColorSpace << /OpenAction [/ICCBased 5 0 R] >> /Pattern << /AA 5 0 R >>"
-                    + " /Shading << /EF 4 0 R >>"
-                    + " /Properties << /EmbeddedFile 4 0 R /JavaScript 4 0 R >> >>",
-                FONT,
-                FORM))
-        .isFalse();
-    // the resources and the map may be indirect objects too: 6 resources, 7 map of fonts
-    assertThat(
-            pageFound(
-                "/Resources 6 0 R",
-                FONT,
-                FORM,
-                ascii("<< /Font 7 0 R /ProcSet [/PDF] >>"),
-                ascii("<< /JS 4 0 R /AA 4 0 R >>")))
-        .isFalse();
-  }
-
-  @Test
-  void theResourcesOfAFormXObjectAreAResourceMapToo() {
-    byte[] form =
-        stream(
-            "<< /Type /XObject /Subtype /Form /BBox [0 0 1 1]"
-                + " /Resources << /Font << /JS 4 0 R >> >> >>",
-            ascii("0 0 m"));
-
-    assertThat(pageFound("/Resources << /XObject << /X1 5 0 R >> >>", FONT, form)).isFalse();
-  }
-
-  @Test
   void anActiveKeyNextToAResourceDictionaryIsStillFound() {
     assertThat(pageFound("/Resources << /Font << /F1 4 0 R >> >> /JS (x)", FONT))
         .as("/JS beside the resources")
@@ -283,12 +243,7 @@ class ActiveEntriesTest {
 
   @ParameterizedTest
   @ValueSource(
-      strings = {
-        "https://example.com/pago",
-        "HTTP://example.com",
-        "mailto:pagos@example.com",
-        " https://example.com"
-      })
+      strings = {"https://example.com/pago", "HTTP://example.com", "mailto:pagos@example.com"})
   void aLinkToTheWebOrToAnEmailIsAccepted(String uri) {
     assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (" + uri + ") >>")).isFalse();
   }
@@ -404,5 +359,88 @@ class ActiveEntriesTest {
                         + " /OutputConditionIdentifier (sRGB) >>]",
                     "")))
         .isFalse();
+  }
+
+  // ---- review of 9a54771: no exemption ever hides an active key
+
+  @Test
+  void anEmbeddedFileBehindFakeFontsIsRefused() {
+    // HIGH: /Names -> /EmbeddedFiles X, X and the file specification pretend to be fonts
+    assertThat(
+            PdfActiveContent.found(
+                handMadeDocument(
+                    "/Type /Catalog /Names 4 0 R",
+                    "",
+                    ascii("<< /EmbeddedFiles 5 0 R >>"),
+                    ascii("<< /Subtype /Font /Names [(x.pdf) 6 0 R] >>"),
+                    ascii("<< /EF 7 0 R >>"),
+                    ascii("<< /Subtype /Font /F 8 0 R >>"),
+                    stream("<< >>", ascii("%PDF-1.7")))))
+        .isTrue();
+  }
+
+  @Test
+  void anOpenActionOfACatalogWithFakeFontsIsRefused() {
+    // MEDIUM 1: a catalog with no /Type whose values all say /Subtype /Font
+    byte[] pdf =
+        objects(
+            ascii("<< /Pages 2 0 R /OpenAction 4 0 R >>"),
+            ascii("<< /Type /Pages /Subtype /Font /Kids [3 0 R] /Count 1 >>"),
+            ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"),
+            ascii("<< /S /URI /URI (https://example.com) /Subtype /Font >>"));
+
+    assertThat(PdfActiveContent.found(pdf)).isTrue();
+  }
+
+  @Test
+  void additionalActionsOfAPageWithFakeFontsAreRefused() {
+    // MEDIUM 1: a page with no /Type and no /MediaBox whose values all say /Subtype /Font
+    byte[] pdf =
+        objects(
+            ascii("<< /Type /Catalog /Pages 2 0 R >>"),
+            ascii(
+                "<< /Type /Pages /Subtype /Font /Kids [3 0 R] /Count 1 /MediaBox [0 0 612 792] >>"),
+            ascii("<< /Parent 2 0 R /AA 4 0 R >>"),
+            ascii("<< /Subtype /Font /O 5 0 R >>"),
+            ascii("<< /S /GoTo /D [3 0 R /Fit] /Subtype /Font >>"));
+
+    assertThat(PdfActiveContent.found(pdf)).isTrue();
+  }
+
+  @Test
+  void aResourceNamedAsAnActiveKeyIsRefused() {
+    // the names of resources get no exemption: no writer names a font /JS or an XObject /AA
+    assertThat(pageFound("/Resources << /Font << /JS 4 0 R >> >>", FONT)).isTrue();
+    assertThat(pageFound("/Resources << /XObject << /AA 5 0 R >> >>", FONT, FORM)).isTrue();
+    assertThat(
+            pageFound(
+                "/Resources << /Font << /F1 4 0 R >> /XObject << /X1 5 0 R >> >>", FONT, FORM))
+        .as("control: the usual names")
+        .isFalse();
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {" https://example.com", "https://example.com/a b", "https://ex\001ample.com"})
+  void aLinkWithSpacesOrControlCharactersIsRefused(String uri) {
+    assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (" + uri + ") >>"))
+        .as(uri)
+        .isTrue();
+  }
+
+  @Test
+  void theBaseOfTheLinksMustBeOnTheWeb() {
+    assertThat(
+            PdfActiveContent.found(
+                handMadeDocument("/Type /Catalog /URI << /Base (https://example.com/) >>", "")))
+        .isFalse();
+    assertThat(
+            PdfActiveContent.found(
+                handMadeDocument("/Type /Catalog /URI << /Base (file:///C:/) >>", "")))
+        .isTrue();
+    assertThat(
+            PdfActiveContent.found(
+                handMadeDocument("/Type /Catalog /URI << /Base (mailto:a@b.c) >>", "")))
+        .isTrue();
   }
 }

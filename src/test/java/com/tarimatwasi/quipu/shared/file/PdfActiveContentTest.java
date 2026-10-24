@@ -20,6 +20,7 @@ import java.util.function.Consumer;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -39,6 +40,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationFileAttachme
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -581,5 +583,60 @@ class PdfActiveContentTest {
     // L-C: the startxref offset stays right, since the table only grows after it starts
     assertThat(PdfActiveContent.found(withFreeEntries(100))).as("control").isFalse();
     assertThat(PdfActiveContent.found(withFreeEntries(PdfActiveContent.MAX_OBJECTS))).isTrue();
+  }
+
+  // ---- review of 9a54771
+
+  @Test
+  @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+  void aCycleOfReferencesIsRefusedInBoundedTime() {
+    // CRITICAL: 4 0 obj 5 0 R / 5 0 obj 4 0 R, and an object that is a reference to itself; the
+    // strict parser already refuses an object that is only a reference
+    assertThat(PdfActiveContent.found(handMade(ascii("5 0 R"), ascii("4 0 R")))).isTrue();
+    assertThat(PdfActiveContent.found(handMade(ascii("4 0 R")))).as("itself").isTrue();
+    assertThat(PdfActiveContent.INSPECTION.availablePermits()).isEqualTo(1);
+  }
+
+  @Test
+  void aChainOfReferencesLongerThanTheLimitIsRefused() throws IOException {
+    // PDFBox reads "5 0 R" alone in an object as a number, so this chain is built in memory
+    assertThat(PdfActiveContent.dereference(chain(PdfActiveContent.MAX_HOPS)))
+        .isInstanceOf(COSDictionary.class);
+    assertThatThrownBy(() -> PdfActiveContent.dereference(chain(PdfActiveContent.MAX_HOPS + 1)))
+        .isInstanceOf(IOException.class);
+  }
+
+  private static COSObject chain(int references) {
+    COSObject reference = new COSObject(new COSDictionary());
+    for (int i = 1; i < references; i++) {
+      reference = new COSObject(reference);
+    }
+    return reference;
+  }
+
+  @Test
+  void anInspectionPastItsDeadlineIsRefusedAndNotKept() {
+    // MEDIUM 2
+    byte[] plain = TestPdfs.plain();
+    long deadline = PdfActiveContent.deadlineMillis;
+    PdfActiveContent.deadlineMillis = 0;
+    try {
+      PdfActiveContent.inspectAhead(plain);
+      assertThat(PdfActiveContent.found(plain)).isTrue();
+    } finally {
+      PdfActiveContent.deadlineMillis = deadline;
+    }
+    assertThat(PdfActiveContent.found(plain)).as("nothing was kept").isFalse();
+  }
+
+  @Test
+  void aVerdictGivenAheadIsNotReusedForAChangedArray() {
+    // LOW 3
+    byte[] content = TestPdfs.plain();
+    PdfActiveContent.inspectAhead(content);
+    byte[] active = TestPdfs.withJavaScript();
+    System.arraycopy(active, 0, content, 0, Math.min(active.length, content.length));
+    // the same array now holds another file: it is inspected again
+    assertThat(PdfActiveContent.found(content)).isTrue();
   }
 }
