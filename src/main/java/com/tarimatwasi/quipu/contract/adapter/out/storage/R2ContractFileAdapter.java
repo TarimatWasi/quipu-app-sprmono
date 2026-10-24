@@ -114,6 +114,8 @@ public class R2ContractFileAdapter implements ContractFilePort {
     requireConfigured();
     return S3Client.builder()
         .endpointOverride(URI.create(properties.endpoint()))
+        // TAR-204: a bucket that hangs ends the call; the failure is the 503 of the storage.
+        .overrideConfiguration(properties.clientOverrides())
         .region(Region.of("auto"))
         .credentialsProvider(credentials())
         .serviceConfiguration(pathStyle())

@@ -8,6 +8,11 @@ spring:
   # explícitamente en el despliegue.
   profiles:
     default: local
+  # TAR-204: una conexión de la aplicación espera un bloqueo de fila 5 s como mucho; al vencer,
+  # Postgres corta la sentencia (55P03) y el BFF responde CONCURRENT_MODIFICATION, sin 500.
+  datasource:
+    hikari:
+      connection-init-sql: SET lock_timeout = '5s'
   jpa:
     hibernate:
       ddl-auto: validate

@@ -251,6 +251,53 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_RESOLVED"));
   }
 
+  /**
+   * TAR-204: the contract is read again, locked, when the voucher is approved. A period it no
+   * longer charges is a 409 with a code of the contract and the payment stays pending; rejecting it
+   * still works.
+   */
+  @Test
+  void approvingAPeriodTheContractNoLongerChargesIsAConflictAndThePaymentStaysPending()
+      throws Exception {
+    Long id =
+        insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
+    jdbc.update(
+        "UPDATE contracts SET status = 'TERMINATED', terminated_at = '2026-08-20T15:00:00Z'"
+            + " WHERE id = ?",
+        contract);
+
+    resolve(id, "{\"status\":\"APPROVED\"}")
+        .andExpect(status().isConflict())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_RESOLVED"));
+    assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
+        .isEqualTo("PENDING");
+
+    resolve(id, "{\"status\":\"REJECTED\",\"reason\":\"Contrato finalizado\"}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("REJECTED"));
+  }
+
+  /** A month owed of a contract finished later is still approved (D-31); a stay has no contract. */
+  @Test
+  void approvingAMonthOwedOfAFinishedContractOrAStayStillWorks() throws Exception {
+    Long period =
+        insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
+    Long ofStay =
+        insertPayment(temporaryGuest, null, stay, null, "PENDING", "2026-10-02T10:00:00Z");
+    jdbc.update(
+        "UPDATE contracts SET status = 'TERMINATED', terminated_at = '2026-10-12T15:00:00Z'"
+            + " WHERE id = ?",
+        contract);
+
+    resolve(period, "{\"status\":\"APPROVED\"}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("APPROVED"));
+    resolve(ofStay, "{\"status\":\"APPROVED\"}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("APPROVED"));
+  }
+
   @Test
   void resolvingAnUnknownPaymentIsNotFound() throws Exception {
     mockMvc

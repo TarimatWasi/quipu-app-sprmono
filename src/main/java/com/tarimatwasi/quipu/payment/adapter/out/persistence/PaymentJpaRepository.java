@@ -9,6 +9,8 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 interface PaymentJpaRepository
     extends JpaRepository<PaymentJpaEntity, Long>, JpaSpecificationExecutor<PaymentJpaEntity> {
@@ -16,6 +18,10 @@ interface PaymentJpaRepository
   /** Locked until the commit: two simultaneous resolutions of one payment run one by one. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<PaymentJpaEntity> findWithLockById(Long id);
+
+  /** A scalar, so no entity enters the persistence context before the lock is taken. */
+  @Query("SELECT p.guestId FROM PaymentJpaEntity p WHERE p.id = :id AND p.contractId IS NOT NULL")
+  Optional<Long> findContractGuestIdById(@Param("id") Long id);
 
   Optional<PaymentJpaEntity> findFirstByContractIdAndPeriodAndStatusIn(
       Long contractId, LocalDate period, Collection<PaymentStatus> statuses);

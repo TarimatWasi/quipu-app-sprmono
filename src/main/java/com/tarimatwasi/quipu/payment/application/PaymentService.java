@@ -13,6 +13,7 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort.ContractInfo;
@@ -36,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -161,6 +163,14 @@ public class PaymentService implements ManagePaymentsUseCase {
   @Override
   @Transactional
   public PaymentView resolve(Long id, Resolution resolution) {
+    boolean approving = resolution.decision() == Decision.APPROVED;
+    // TAR-204: an approval reads the terms again with the contracts locked before the payment
+    // (lock order: contract, payment), so a termination that commits first is seen.
+    // The guest of a payment never changes, so it is read before any lock; a stay has none.
+    Optional<List<ContractInfo>> lockedContracts =
+        approving
+            ? payments.findContractGuestId(id).map(contracts::lockedContractsOf)
+            : Optional.empty();
     // The row stays locked until the commit: two reviewers of one voucher are decided one by one.
     StoredPayment stored =
         payments.findByIdForUpdate(id).orElseThrow(PaymentNotFoundException::new);
@@ -169,11 +179,28 @@ public class PaymentService implements ManagePaymentsUseCase {
       throw new PaymentAlreadyResolvedException();
     }
     Instant now = clock.instant();
+    lockedContracts.ifPresent(found -> requireCharged(payment, found));
     Payment resolved =
-        resolution.decision() == Decision.APPROVED
+        approving
             ? payment.approve(resolution.reviewerId(), now)
             : reject(payment, resolution, now);
     return VoucherRecorder.view(payments.save(resolved));
+  }
+
+  /** The contract of a period payment still charges its month (RN-27 after D-31). */
+  private void requireCharged(Payment payment, List<ContractInfo> lockedContracts) {
+    Long contractId = payment.contractId();
+    YearMonth period = payment.period();
+    if (contractId == null || period == null) {
+      return;
+    }
+    LocalDate today = BusinessDay.today(clock);
+    boolean charged =
+        lockedContracts.stream()
+            .anyMatch(c -> c.id().equals(contractId) && c.terms().acceptsPayment(period, today));
+    if (!charged) {
+      throw new PaymentPeriodNotPayableException();
+    }
   }
 
   /**
