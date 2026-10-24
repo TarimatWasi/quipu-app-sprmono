@@ -10,12 +10,12 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.YearMonth;
@@ -54,7 +54,7 @@ class GuestDeactivationConcurrencyTest {
   private static final Instant TODAY = Instant.parse("2026-10-14T15:00:00Z");
 
   private static final YearMonth OCTOBER = YearMonth.of(2026, 10);
-  private static final byte[] PDF = "%PDF-1.7\n%race".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
 
   @TestConfiguration
   static class FourteenthOfOctober {

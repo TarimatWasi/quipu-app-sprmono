@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.Optional;
 
 /**
- * The kinds of file a guest may upload (RF-15, RN-22, RN-37), told by their first bytes: the type
+ * The kinds of file that may be uploaded (RF-15, RN-22, RN-37), told by their first bytes: the type
  * the client declares and the extension of its name are never read. A PDF that names JavaScript, a
  * launch action, an action on open, additional actions or an embedded file is none of them (see
  * {@link PdfActiveContent}).
@@ -38,6 +38,16 @@ public enum FileKind {
       return PdfActiveContent.found(content) ? Optional.empty() : Optional.of(PDF);
     }
     return Optional.empty();
+  }
+
+  /**
+   * Inspects the content now when it is a PDF, before the caller opens a transaction or locks a row
+   * (TAR-39); {@link #of} on the same array then reuses the verdict instead of parsing it again.
+   */
+  public static void inspectAhead(byte[] content) {
+    if (startsWith(content, PDF_MAGIC)) {
+      PdfActiveContent.inspectAhead(content);
+    }
   }
 
   private static boolean startsWith(byte[] content, byte[] magic) {

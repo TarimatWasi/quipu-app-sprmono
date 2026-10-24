@@ -1,333 +1,529 @@
 package com.tarimatwasi.quipu.shared.file;
 
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSNull;
+import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSObjectKey;
+import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.io.MemoryUsageSetting;
+import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
+import org.apache.pdfbox.pdfparser.PDFObjectStreamParser;
+import org.apache.pdfbox.pdfparser.PDFParser;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Looks for the entries that make a PDF run something: JavaScript, a launch action, an action on
- * open, additional actions or an embedded file. A voucher or a document of the onboarding is
- * uploaded by a guest and opened by the administrator, so it must be a document and not a program.
+ * Looks for the entries that make a PDF run something or carry something (see {@link
+ * ActiveEntries}). A voucher, a document of the onboarding or a contract is uploaded by one person
+ * and opened by another, so it must be a document and not a program (D-52).
  *
- * <p>It follows the structure of the file just far enough to tell an entry from a name that only
- * looks like one. A name counts when it is a <em>key</em> of a dictionary ({@code /OpenAction},
- * {@code /AA}, {@code /JS}, {@code /JavaScript} in the names tree...), or the value of {@code /S}
- * (the type of an action, as in {@code /S /Launch}) or of {@code /Type} (as in {@code /Type
- * /EmbeddedFile}). It does not count in the text of a string {@code (...)}, a hex string, a comment
- * or the body of a stream; in the values of other keys ({@code /BaseFont /JS}); in an array; or as
- * a key of a resource dictionary ({@code /Font << /JS 2 0 R >>}, where the keys are only the
- * identifiers a page gives its fonts, images and graphics states). The {@code #hh} escapes of a
- * name are decoded, so {@code /J#61vaScript} is found. A file that nests more than 200 levels is
- * refused.
+ * <p>The file is parsed with PDFBox in strict mode, from memory only. Every value reachable from
+ * the trailer, from every object the cross-reference table lists and from every object an object
+ * stream holds is visited once, whatever the key, the array or the reference that leads to it, and
+ * every dictionary among them is judged by {@link ActiveEntries#isActive} on its own content. The
+ * parser decodes the names, so {@code /J#61vaScript} is {@code /JavaScript}.
  *
- * <p>This is defense in depth and best effort, not a PDF parser: it cannot see inside a compressed
- * object stream, and a file built to be read differently by a viewer and by this scan can get
- * through. The voucher is also served as a download and never inline.
+ * <p>It <strong>fails closed</strong>: a file that does not parse, that lists an object the parser
+ * cannot read, that has a direct {@code /Root}, that needs a password to open or that is over a
+ * limit is refused, and so is any failure of the parser. A file with only an owner password (a bank
+ * voucher, typically) opens with the empty password and is inspected as any other.
+ *
+ * <p>The memory is bounded: content streams and images are never decoded; the streams that the
+ * parser must decode (cross-reference and object streams) may only use Flate, with at most a PNG
+ * predictor of {@value #MAX_COLUMNS} columns, and inflate to at most {@link #MAX_INFLATED} bytes
+ * together, measured before PDFBox decodes them; the objects (also the lines of a classic table,
+ * before they are kept) and the values parsed are counted; the cache of decrypted streams lives in
+ * memory up to a limit. PDFBox keeps every name it parses in a global table, which is emptied after
+ * each file.
+ *
+ * <p><strong>Invariant</strong>: PDFBox is used only by this class and {@link ActiveEntries} (an
+ * ArchUnit rule says so) and only under {@link #INSPECTION}, one file at a time; emptying the
+ * global table of names relies on it. A file that waits too long for its turn is not judged and its
+ * verdict is not kept: {@link FileInspectionBusyException}. The callers check the limit of their
+ * route (5 MB, 10 MB for a contract) before they read the bytes, so a larger file never gets here.
  */
 final class PdfActiveContent {
 
-  private static final Set<String> NAMES =
-      Set.of("JavaScript", "JS", "Launch", "OpenAction", "AA", "EmbeddedFile");
+  /** The most bytes the cross-reference and object streams of one file may inflate to. */
+  static final long MAX_INFLATED = 8L * 1024 * 1024;
 
-  /** The keys whose value names the kind of the object, so a name there says what it is. */
-  private static final Set<String> KIND_KEYS = Set.of("S", "Type");
+  /** The most objects a file may list, and the most its object streams may hold together. */
+  static final int MAX_OBJECTS = 20_000;
 
-  /** The dictionaries whose keys are identifiers chosen by the page, not entries of the format. */
-  private static final Set<String> RESOURCE_KEYS =
-      Set.of("Font", "XObject", "ExtGState", "ColorSpace", "Pattern", "Shading", "Properties");
+  /** The most values (numbers, names, strings, arrays, dictionaries...) parsed in one file. */
+  static final int MAX_VALUES = 250_000;
 
-  private static final byte[] STREAM = "stream".getBytes(StandardCharsets.US_ASCII);
-  private static final byte[] END_STREAM = "endstream".getBytes(StandardCharsets.US_ASCII);
+  /** The most columns of the PNG predictor of a stream the parser decodes. */
+  static final int MAX_COLUMNS = 64;
 
-  /** The longest name worth comparing; a longer one cannot be any of the above. */
-  private static final int MAX_NAME = 16;
+  /** The largest file inspected; every upload route has a smaller or equal limit. */
+  private static final int MAX_FILE = 10 * 1024 * 1024;
+
+  /** The most memory the parser may use to cache streams, which it does when it decrypts them. */
+  private static final long MAX_CACHE = 12L * 1024 * 1024;
+
+  /** How long a file waits for the inspection of another one before it is turned away. */
+  static final long WAIT_SECONDS = 3;
+
+  /** One file at a time: an inspection may take tens of megabytes of a small heap. */
+  static final Semaphore INSPECTION = new Semaphore(1, true);
 
   /**
-   * A voucher never nests dictionaries and arrays this deep. A file that does is refused: the depth
-   * could hide an entry from the scan, and the scan keeps a frame for each level.
+   * Verdicts of files inspected ahead (see {@link #inspectAhead}), by the identity of the array of
+   * bytes, which arrays use for {@code equals}; an entry goes with its array. Only verdicts are
+   * kept: a file turned away while busy is not.
    */
-  private static final int MAX_DEPTH = 200;
+  private static final Map<Object, Boolean> AHEAD =
+      Collections.synchronizedMap(new WeakHashMap<>());
+
+  private static final COSName TYPE = name("Type");
+  private static final COSName FILTER = name("Filter");
+  private static final COSName DECODE_PARMS = name("DecodeParms");
+  private static final COSName DECODE_PARMS_SHORT = name("DP");
+  private static final COSName OBJECT_STREAM = name("ObjStm");
+  private static final COSName ROOT = name("Root");
+  private static final COSName STRUCT_TREE_ROOT = name("StructTreeRoot");
+  private static final COSName KIDS = name("K");
+  private static final COSName SIZE = name("Size");
+  private static final COSName INDEX = name("Index");
+  private static final COSName OBJECT_COUNT = name("N");
+  private static final Set<COSName> FLATE = Set.of(name("FlateDecode"), name("Fl"));
 
   private PdfActiveContent() {}
 
-  /** A dictionary or an array that is open, with what the next name in it is. */
-  private static final class Frame {
-    private final boolean array;
-    private final boolean resource;
-    private boolean expectKey = true;
-    private String key = "";
-
-    Frame(boolean array, boolean resource) {
-      this.array = array;
-      this.resource = resource;
-    }
+  private static COSName name(String name) {
+    return COSName.getPDFName(name);
   }
 
-  /** The open dictionaries and arrays. */
-  private static final class Nesting {
-    private final Deque<Frame> open = new ArrayDeque<>();
-    private boolean tooDeep;
-
-    Frame top() {
-      return open.peek();
-    }
-
-    void openArray() {
-      push(new Frame(true, false));
-    }
-
-    void openDictionary() {
-      Frame parent = open.peek();
-      boolean resource =
-          parent != null
-              && !parent.array
-              && !parent.expectKey
-              && RESOURCE_KEYS.contains(parent.key);
-      push(new Frame(false, resource));
-    }
-
-    private void push(Frame frame) {
-      if (open.size() >= MAX_DEPTH) {
-        tooDeep = true;
-      } else {
-        open.push(frame);
-      }
-    }
-
-    /** Closes the innermost level; what was closed was the value of the key before it. */
-    void close() {
-      open.poll();
-      valueDone();
-    }
-
-    /** The value of the current key is complete, so the next name in the dictionary is a key. */
-    void valueDone() {
-      Frame top = open.peek();
-      if (top != null && !top.array && !top.expectKey) {
-        top.expectKey = true;
-        top.key = "";
-      }
-    }
+  /**
+   * Inspects the file now, before the caller opens a transaction or locks a row (TAR-39): {@link
+   * #found} on the same array then gives this verdict without parsing it again.
+   *
+   * @throws FileInspectionBusyException if another file kept the inspection too long
+   */
+  static void inspectAhead(byte[] content) {
+    AHEAD.put(content, inspect(content));
   }
 
-  /** Whether the file has an active entry outside strings, comments and streams. */
+  /**
+   * Whether the file has an active entry, or cannot be read well enough to tell.
+   *
+   * @throws FileInspectionBusyException if another file kept the inspection too long
+   */
   static boolean found(byte[] content) {
-    Nesting nesting = new Nesting();
-    int i = 0;
-    while (i < content.length) {
-      byte b = content[i];
-      if (b == '%') {
-        i = endOfComment(content, i);
-      } else if (b == '(') {
-        i = endOfString(content, i);
-        nesting.valueDone();
-      } else if (b == '<') {
-        i = afterOpenAngle(content, i, nesting);
-        if (nesting.tooDeep) {
+    Boolean ahead = AHEAD.get(content);
+    return ahead != null ? ahead : inspect(content);
+  }
+
+  private static boolean inspect(byte[] content) {
+    if (content.length > MAX_FILE) {
+      return true;
+    }
+    try {
+      if (!INSPECTION.tryAcquire(WAIT_SECONDS, TimeUnit.SECONDS)) {
+        throw new FileInspectionBusyException();
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new FileInspectionBusyException();
+    }
+    try {
+      return parseAndInspect(content);
+    } finally {
+      INSPECTION.release();
+    }
+  }
+
+  private static boolean parseAndInspect(byte[] content) {
+    try {
+      return parse(content);
+    } finally {
+      forgetNames();
+    }
+  }
+
+  private static boolean parse(byte[] content) {
+    try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(content)) {
+      BoundedParser parser = new BoundedParser(source);
+      try (PDDocument document = parser.parse(false)) {
+        return hasActiveObject(parser, document.getDocument()) || parser.refused;
+      }
+    } catch (IOException
+        | UncheckedIOException
+        | IllegalArgumentException
+        | IllegalStateException
+        | ClassCastException
+        | IndexOutOfBoundsException
+        | NegativeArraySizeException
+        | NoSuchElementException
+        | NullPointerException
+        | ArithmeticException
+        | UnsupportedOperationException
+        | StackOverflowError e) {
+      // The inspection boundary: whatever a malformed file makes the parser throw refuses it, and
+      // nothing of the file is logged.
+      return true;
+    }
+  }
+
+  /**
+   * PDFBox 3.0.8 keeps every name it parses in a static table that nothing empties, so the names of
+   * every file would stay in the heap. Names are compared by their bytes, so emptying the table
+   * only costs the names being created again.
+   */
+  @SuppressWarnings("deprecation") // the only way to empty the table of PDFBox
+  private static void forgetNames() {
+    COSName.clearResources();
+  }
+
+  private static boolean hasActiveObject(BoundedParser parser, COSDocument document)
+      throws IOException {
+    COSDictionary trailer = document.getTrailer();
+    Map<COSObjectKey, Long> table = document.getXrefTable();
+    if (trailer == null
+        || !(trailer.getItem(ROOT) instanceof COSObject)
+        || table.size() > MAX_OBJECTS
+        || trailer.getLong(SIZE) > MAX_OBJECTS) {
+      return true;
+    }
+    Deque<COSBase> pending = new ArrayDeque<>();
+    pending.push(trailer);
+    for (COSObjectKey key : List.copyOf(table.keySet())) {
+      COSBase object = document.getObjectFromPool(key).getObject();
+      if (object == null || parser.refused) {
+        return true;
+      }
+      pending.push(object);
+      if (object instanceof COSStream stream && OBJECT_STREAM.equals(stream.getCOSName(TYPE))) {
+        pending.addAll(parser.objectStream(key.getNumber()).values());
+      }
+    }
+    Set<COSDictionary> structure = structureElements(trailer);
+    return structure == null || reachesAnActiveDictionary(pending, structure) || parser.refused;
+  }
+
+  private static boolean reachesAnActiveDictionary(
+      Deque<COSBase> pending, Set<COSDictionary> structure) {
+    // Every value once: references are resolved and arrays opened, direct or indirect alike.
+    // The walk keeps its own stack, so a deep file costs memory bounded by the values, not depth.
+    Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    while (!pending.isEmpty()) {
+      COSBase value = pending.pop();
+      if (value instanceof COSObject reference) {
+        COSBase target = reference.getObject();
+        if (target != null) {
+          pending.push(target);
+        }
+        continue;
+      }
+      if (!visited.add(value)) {
+        continue;
+      }
+      if (visited.size() > 2 * MAX_VALUES) {
+        return true;
+      }
+      if (value instanceof COSDictionary dictionary) {
+        if (ActiveEntries.isActive(dictionary, structure)) {
           return true;
         }
-      } else if (b == '>') {
-        if (i + 1 < content.length && content[i + 1] == '>') {
-          nesting.close();
-          i += 2;
-        } else {
-          i++;
-        }
-      } else if (b == '[') {
-        nesting.openArray();
-        if (nesting.tooDeep) {
-          return true;
-        }
-        i++;
-      } else if (b == ']') {
-        nesting.close();
-        i++;
-      } else if (b == '/') {
-        int end = endOfToken(content, i + 1);
-        if (isActive(nesting, decodedName(content, i + 1, end))) {
-          return true;
-        }
-        i = end;
-      } else if (delimiter(b)) {
-        i++;
-      } else {
-        i = afterRegularToken(content, i, nesting);
+        pending.addAll(dictionary.getValues());
+      } else if (value instanceof COSArray array) {
+        array.forEach(pending::push);
       }
     }
     return false;
   }
 
-  /** A {@code <<} opens a dictionary; a single {@code <} starts a hex string, which is skipped. */
-  private static int afterOpenAngle(byte[] content, int from, Nesting nesting) {
-    if (from + 1 < content.length && content[from + 1] == '<') {
-      nesting.openDictionary();
-      return from + 2;
+  /**
+   * The dictionaries reached through {@code /K} from the {@code /StructTreeRoot} of the catalog,
+   * resolved and opened as any other value; null if there are more than the file may have values.
+   */
+  private static @Nullable Set<COSDictionary> structureElements(COSDictionary trailer) {
+    Set<COSDictionary> elements = Collections.newSetFromMap(new IdentityHashMap<>());
+    Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    Deque<COSBase> pending = new ArrayDeque<>();
+    if (trailer.getDictionaryObject(ROOT) instanceof COSDictionary catalog
+        && catalog.getDictionaryObject(STRUCT_TREE_ROOT) instanceof COSDictionary tree) {
+      COSBase kids = tree.getItem(KIDS);
+      if (kids != null) {
+        pending.push(kids);
+      }
     }
-    nesting.valueDone();
-    return endOfHexString(content, from);
-  }
-
-  /** Reads a name; true if it is an entry of active content where it stands. */
-  private static boolean isActive(Nesting nesting, String name) {
-    Frame frame = nesting.top();
-    if (frame == null || frame.array) {
-      return false;
+    while (!pending.isEmpty()) {
+      COSBase value = pending.pop();
+      if (value instanceof COSObject reference) {
+        value = reference.getObject();
+      }
+      if (value == null || !visited.add(value)) {
+        continue;
+      }
+      if (visited.size() > MAX_VALUES) {
+        return null;
+      }
+      if (value instanceof COSDictionary element) {
+        elements.add(element);
+        COSBase kids = element.getItem(KIDS);
+        if (kids != null) {
+          pending.push(kids);
+        }
+      } else if (value instanceof COSArray array) {
+        array.forEach(pending::push);
+      }
     }
-    boolean named = NAMES.contains(name);
-    if (frame.expectKey) {
-      frame.key = name;
-      frame.expectKey = false;
-      return named && !frame.resource;
-    }
-    boolean active = named && KIND_KEYS.contains(frame.key);
-    nesting.valueDone();
-    return active;
-  }
-
-  /** A number, a keyword or a reference; a stream keyword skips the body of the stream. */
-  private static int afterRegularToken(byte[] content, int from, Nesting nesting) {
-    int end = endOfToken(content, from);
-    if (isKeyword(content, from, end, STREAM)) {
-      return endOfStream(content, end);
-    }
-    Frame top = nesting.top();
-    if (top == null || top.array || top.expectKey) {
-      return end;
-    }
-    // A value that is a number, true, false or null; "5 0 R" is a reference of three tokens.
-    int next = isNumber(content, from, end) ? endOfReference(content, end) : end;
-    nesting.valueDone();
-    return next;
+    return elements;
   }
 
   /**
-   * The end of {@code 0 R} after a first number, or the end of that number if it is not a
-   * reference.
+   * A strict parser that counts what it parses and measures every stream it has to decode before
+   * PDFBox decodes it, and reads each object stream once.
    */
-  private static int endOfReference(byte[] content, int afterNumber) {
-    int generationStart = skipSpace(content, afterNumber);
-    int generationEnd = endOfToken(content, generationStart);
-    if (generationEnd == generationStart || !isNumber(content, generationStart, generationEnd)) {
-      return afterNumber;
-    }
-    int markerStart = skipSpace(content, generationEnd);
-    int markerEnd = endOfToken(content, markerStart);
-    return markerEnd - markerStart == 1 && content[markerStart] == 'R' ? markerEnd : afterNumber;
-  }
+  private static final class BoundedParser extends PDFParser {
 
-  private static int skipSpace(byte[] content, int from) {
-    int i = from;
-    while (i < content.length
-        && (content[i] == 0
-            || content[i] == 9
-            || content[i] == 10
-            || content[i] == 12
-            || content[i] == 13
-            || content[i] == 32)) {
-      i++;
-    }
-    return i;
-  }
+    private final Map<Long, Map<COSObjectKey, COSBase>> objectStreams = new HashMap<>();
+    private long inflated;
+    private int values;
+    private int compressedObjects;
+    private boolean readingTrailer;
+    private boolean readingTable;
+    private int tableLines;
+    private boolean refused;
 
-  private static boolean isNumber(byte[] content, int from, int end) {
-    if (end == from) {
-      return false;
+    BoundedParser(RandomAccessRead source) throws IOException {
+      super(source, "", null, null, MemoryUsageSetting.setupMainMemoryOnly(MAX_CACHE).streamCache);
     }
-    for (int i = from; i < end; i++) {
-      byte b = content[i];
-      if (!(b >= '0' && b <= '9') && b != '.' && b != '-' && b != '+') {
+
+    @Override
+    protected COSBase parseDirObject() throws IOException {
+      count();
+      return super.parseDirObject();
+    }
+
+    @Override
+    protected COSName parseCOSName() throws IOException {
+      count();
+      return super.parseCOSName();
+    }
+
+    void count() throws IOException {
+      if (++values > MAX_VALUES) {
+        refuse("Too many values");
+      }
+    }
+
+    /** Each entry of a classic table is one line, read before PDFBox keeps it. */
+    @Override
+    protected boolean parseXrefTable(long startByteOffset) throws IOException {
+      readingTable = true;
+      try {
+        return super.parseXrefTable(startByteOffset);
+      } finally {
+        readingTable = false;
+      }
+    }
+
+    @Override
+    protected String readLine() throws IOException {
+      if (readingTable && ++tableLines > MAX_OBJECTS + 1) {
+        refuse("Too many entries in the table");
+      }
+      return super.readLine();
+    }
+
+    @Override
+    protected COSDictionary retrieveTrailer() throws IOException {
+      readingTrailer = true;
+      try {
+        return super.retrieveTrailer();
+      } finally {
+        readingTrailer = false;
+      }
+    }
+
+    /** While the trailer is read, the streams parsed are cross-reference streams, decoded next. */
+    @Override
+    protected COSStream parseCOSStream(COSDictionary dictionary) throws IOException {
+      COSStream stream = super.parseCOSStream(dictionary);
+      if (readingTrailer) {
+        limitEntries(stream);
+        measure(stream);
+      }
+      return stream;
+    }
+
+    /** Replaces the lookup of PDFBox, which decodes the object stream again on every miss. */
+    @Override
+    protected @Nullable COSBase parseObjectStreamObject(long objectStream, COSObjectKey key)
+        throws IOException {
+      return objectStream(objectStream).get(key);
+    }
+
+    Map<COSObjectKey, COSBase> objectStream(long number) throws IOException {
+      Map<COSObjectKey, COSBase> objects = objectStreams.get(number);
+      if (objects == null) {
+        objects = Map.of();
+        objectStreams.put(number, objects); // a stream that holds itself finds it empty
+        try {
+          COSBase stream = document.getObjectFromPool(new COSObjectKey(number, 0)).getObject();
+          if (!(stream instanceof COSStream objectStream)) {
+            throw new IOException("Not an object stream");
+          }
+          compressedObjects += Math.max(0, objectStream.getInt(OBJECT_COUNT));
+          if (compressedObjects > MAX_OBJECTS) {
+            refuse("Too many compressed objects");
+          }
+          measure(objectStream);
+          objects = new CountingObjectStreamParser(objectStream, document, this).parseAllObjects();
+          objectStreams.put(number, objects);
+        } catch (IOException e) {
+          refused = true; // PDFBox logs and swallows an IOException inside a lookup
+          throw e;
+        }
+      }
+      return objects;
+    }
+
+    /** A cross-reference stream may not list more than {@link #MAX_OBJECTS} entries. */
+    private void limitEntries(COSStream stream) throws IOException {
+      long entries = stream.getLong(SIZE);
+      if (stream.getDictionaryObject(INDEX) instanceof COSArray index) {
+        entries = 0;
+        for (int i = 1; i < index.size(); i += 2) {
+          entries += Math.max(0, index.getInt(i));
+        }
+      }
+      if (entries > MAX_OBJECTS) {
+        refuse("Too many entries");
+      }
+    }
+
+    /**
+     * Inflates the stream as PDFBox would, counting, and refuses it past the limit. PDFBox stops at
+     * the end of the first deflate stream, at an error or at the end of the data, and so does this.
+     */
+    private void measure(COSStream stream) throws IOException {
+      // PDFBox decodes by /Filter and reads the parameters from /DP or else /DecodeParms.
+      COSBase filter = single(stream, FILTER);
+      COSBase parameters = single(stream, DECODE_PARMS_SHORT);
+      COSBase longParameters = single(stream, DECODE_PARMS);
+      if (filter == null) {
+        if (parameters != null || longParameters != null) {
+          refuse("Decode parameters without a filter");
+        }
+        return; // stored as is: no larger than the file
+      }
+      if (!FLATE.contains(filter)) {
+        refuse("A stream the parser decodes must use Flate");
+      }
+      if ((parameters != null && !isSmallPngPredictor(parameters))
+          || (longParameters != null && !isSmallPngPredictor(longParameters))) {
+        refuse("Unexpected decode parameters");
+      }
+      Inflater inflater = new Inflater(true);
+      try (InputStream raw = stream.createRawInputStream()) {
+        // PDFBox skips the two bytes of the zlib header and inflates raw deflate data.
+        raw.skipNBytes(Math.min(2, stream.getLength()));
+        byte[] input = new byte[64 * 1024];
+        byte[] output = new byte[64 * 1024];
+        while (!inflater.finished()) {
+          if (inflater.needsInput()) {
+            int read = raw.read(input);
+            if (read < 0) {
+              return;
+            }
+            inflater.setInput(input, 0, read);
+          }
+          int produced = inflater.inflate(output);
+          if (produced == 0 && !inflater.needsInput()) {
+            return; // wants a dictionary or is stuck: PDFBox would stop here too
+          }
+          inflated += produced;
+          if (inflated > MAX_INFLATED) {
+            refuse("Inflates beyond the limit");
+          }
+        }
+      } catch (DataFormatException e) {
+        // PDFBox keeps what inflated before the error; that is already counted.
+      } finally {
+        inflater.end();
+      }
+    }
+
+    /** The value of the key, or the only element of an array of one. */
+    private static @Nullable COSBase single(COSStream stream, COSName key) throws IOException {
+      COSBase value = stream.getDictionaryObject(key);
+      if (value instanceof COSArray array) {
+        if (array.size() != 1) {
+          throw new IOException("More than one filter");
+        }
+        value = array.getObject(0);
+      }
+      return value == null || value instanceof COSNull ? null : value;
+    }
+
+    /** Predictor 10 to 15 (PNG), one colour of 8 bits, and few columns: the output shrinks. */
+    private static boolean isSmallPngPredictor(COSBase parameters) {
+      if (!(parameters instanceof COSDictionary dictionary)) {
         return false;
       }
+      int predictor = dictionary.getInt(name("Predictor"), 1);
+      int columns = dictionary.getInt(name("Columns"), 1);
+      return predictor >= 10
+          && predictor <= 15
+          && columns >= 1
+          && columns <= MAX_COLUMNS
+          && dictionary.getInt(name("Colors"), 1) == 1
+          && dictionary.getInt(name("BitsPerComponent"), 8) == 8;
     }
-    return true;
+
+    private void refuse(String reason) throws IOException {
+      refused = true;
+      throw new IOException(reason);
+    }
   }
 
-  private static int endOfComment(byte[] content, int from) {
-    int i = from;
-    while (i < content.length && content[i] != '\n' && content[i] != '\r') {
-      i++;
-    }
-    return i;
-  }
+  /** Parses an object stream counting its values against the budget of the file. */
+  private static final class CountingObjectStreamParser extends PDFObjectStreamParser {
 
-  /** The text of a string runs to the parenthesis that closes it; inner pairs nest. */
-  private static int endOfString(byte[] content, int from) {
-    int depth = 1;
-    int i = from + 1;
-    while (i < content.length && depth > 0) {
-      if (content[i] == '\\') {
-        i++;
-      } else if (content[i] == '(') {
-        depth++;
-      } else if (content[i] == ')') {
-        depth--;
-      }
-      i++;
-    }
-    return Math.min(i, content.length);
-  }
+    private final BoundedParser budget;
 
-  private static int endOfHexString(byte[] content, int from) {
-    int i = from + 1;
-    while (i < content.length && content[i] != '>') {
-      i++;
+    CountingObjectStreamParser(COSStream stream, COSDocument document, BoundedParser budget)
+        throws IOException {
+      super(stream, document);
+      this.budget = budget;
     }
-    return Math.min(i + 1, content.length);
-  }
 
-  private static int endOfToken(byte[] content, int from) {
-    int i = from;
-    while (i < content.length && !delimiter(content[i])) {
-      i++;
+    @Override
+    protected COSBase parseDirObject() throws IOException {
+      budget.count();
+      return super.parseDirObject();
     }
-    return i;
-  }
 
-  /** The name between the slash and its end, with the {@code #hh} escapes decoded. */
-  private static String decodedName(byte[] content, int from, int end) {
-    StringBuilder name = new StringBuilder();
-    int i = from;
-    while (i < end && name.length() <= MAX_NAME) {
-      int high = i + 2 < end && content[i] == '#' ? hex(content[i + 1]) : -1;
-      int low = high >= 0 ? hex(content[i + 2]) : -1;
-      name.append((char) (low >= 0 ? high * 16 + low : content[i] & 0xFF));
-      i += low >= 0 ? 3 : 1;
+    @Override
+    protected COSName parseCOSName() throws IOException {
+      budget.count();
+      return super.parseCOSName();
     }
-    return name.toString();
-  }
-
-  private static boolean isKeyword(byte[] content, int from, int end, byte[] keyword) {
-    if (end - from != keyword.length) {
-      return false;
-    }
-    for (int i = 0; i < keyword.length; i++) {
-      if (content[from + i] != keyword[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /** The body of a stream runs to {@code endstream}, or to the end of the file. */
-  private static int endOfStream(byte[] content, int from) {
-    for (int i = from; i + END_STREAM.length <= content.length; i++) {
-      if (isKeyword(content, i, i + END_STREAM.length, END_STREAM)) {
-        return i + END_STREAM.length;
-      }
-    }
-    return content.length;
-  }
-
-  /** White space and the delimiters of PDF syntax end a name or a token. */
-  private static boolean delimiter(byte b) {
-    return switch (b) {
-      case 0, 9, 10, 12, 13, 32, '(', ')', '<', '>', '[', ']', '{', '}', '/', '%' -> true;
-      default -> false;
-    };
-  }
-
-  private static int hex(byte b) {
-    return Character.digit((char) (b & 0xFF), 16);
   }
 }

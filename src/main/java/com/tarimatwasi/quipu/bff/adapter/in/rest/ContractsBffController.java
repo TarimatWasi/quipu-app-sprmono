@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractSta
 import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractSummaryView;
 import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractView;
 import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.NewContract;
+import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
@@ -187,10 +188,18 @@ public class ContractsBffController {
   }
 
   private static byte[] content(MultipartFile file) {
+    // RF-15: the declared size is checked before the bytes are read and inspected.
+    if (file.getSize() > ManageContractsUseCase.MAX_FILE_BYTES) {
+      throw new InvalidContractFileException();
+    }
+    byte[] content;
     try {
-      return file.getBytes();
+      content = file.getBytes();
     } catch (IOException unreadable) {
       throw new InvalidContractFileException();
     }
+    // TAR-39: the PDF is inspected here, before the use case opens its transaction and locks rows.
+    FileKind.inspectAhead(content);
+    return content;
   }
 }

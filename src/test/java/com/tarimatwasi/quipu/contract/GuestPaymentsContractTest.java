@@ -12,10 +12,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.support.TestIds;
 import jakarta.servlet.http.Cookie;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -325,9 +325,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   @Test
   void aFileThatIsNotAVoucherByItsContentIsRefused() throws Exception {
     byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3, 0, 0, 0};
-    byte[] active =
-        "%PDF-1.7\n<< /Type /Catalog /OpenAction << /S /JavaScript /JS (x) >> >>"
-            .getBytes(StandardCharsets.US_ASCII);
+    byte[] active = TestPdfs.withJavaScript();
 
     for (byte[] content : new byte[][] {exe, active, new byte[0]}) {
       send(form(GUEST_URL, content).param("period", "2026-10").param("amount", "800"), guest())

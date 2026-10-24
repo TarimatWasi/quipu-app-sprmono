@@ -10,6 +10,9 @@ import org.jspecify.annotations.Nullable;
 /** RF-03, RF-09: load, list, read and finish the contracts of the guests. */
 public interface ManageContractsUseCase {
 
+  /** RF-15: the PDF of a contract has at most 10 MB; the BFF checks it before it reads it. */
+  int MAX_FILE_BYTES = 10 * 1024 * 1024;
+
   /** What a contract is today; EXPIRED is derived from the end date, not stored (RN-07). */
   enum ContractState {
     ACTIVE,

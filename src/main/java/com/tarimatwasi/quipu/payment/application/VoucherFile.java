@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.payment.application;
 
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import java.util.Optional;
 
@@ -13,7 +14,7 @@ import java.util.Optional;
 public final class VoucherFile {
 
   /** The largest voucher (RF-15, RN-37 sets the same for the documents). */
-  public static final int MAX_BYTES = 5 * 1024 * 1024;
+  public static final int MAX_BYTES = ManagePaymentsUseCase.MAX_VOUCHER_BYTES;
 
   private VoucherFile() {}
 
