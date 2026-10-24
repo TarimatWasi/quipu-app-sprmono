@@ -66,9 +66,9 @@ public class BffUploadExceptionHandler {
   }
 
   /**
-   * TAR-39: another PDF kept the inspection too long. It is no verdict on this file, which may be
-   * sent again: 503 where the route declares it, and 429 for the documents of the onboarding, whose
-   * route declares no 503.
+   * TAR-39: the PDF could not be inspected in time (another one held the inspection, or its own ran
+   * past its deadline). It is no verdict on this file, which may be sent again: 503 where the route
+   * declares it, and 429 for the documents of the onboarding, whose route declares no 503.
    */
   @ExceptionHandler(FileInspectionBusyException.class)
   public ResponseEntity<BffErrorResponse> handleInspectionBusy(HttpServletRequest request) {

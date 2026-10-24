@@ -3,12 +3,16 @@ package com.tarimatwasi.quipu.shared.file;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.ProviderException;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.Deque;
+import java.util.EmptyStackException;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.IdentityHashMap;
@@ -137,13 +141,17 @@ final class PdfActiveContent {
    * Inspects the file now, before the caller opens a transaction or locks a row (TAR-39): {@link
    * #found} on the same array then gives this verdict without parsing it again.
    *
-   * @throws FileInspectionBusyException if another file kept the inspection too long
+   * @throws FileInspectionBusyException if another file kept the inspection too long, or this one
+   *     ran past its deadline: no verdict, so the caller stops before the use case, which would
+   *     parse the file again under its locks
    */
   static void inspectAhead(byte[] content) {
+    String digest = digest(content); // of the bytes inspected, should anyone change them after
     Boolean active = inspect(content);
-    if (active != null) {
-      AHEAD.put(content, new Ahead(active, digest(content)));
+    if (active == null) {
+      throw new FileInspectionBusyException();
     }
+    AHEAD.put(content, new Ahead(active, digest));
   }
 
   /**
@@ -211,12 +219,17 @@ final class PdfActiveContent {
         | IndexOutOfBoundsException
         | NegativeArraySizeException
         | ArrayStoreException
+        | BufferUnderflowException
+        | BufferOverflowException
+        | EmptyStackException
+        | ProviderException
         | NoSuchElementException
         | ConcurrentModificationException
         | NullPointerException
         | ArithmeticException
         | UnsupportedOperationException
-        | StackOverflowError e) {
+        | StackOverflowError
+        | OutOfMemoryError e) {
       // The inspection boundary: whatever a malformed file makes the parser throw refuses it, and
       // nothing of the file nor the message of PDFBox is logged. BE-SPR-COD-05 forbids catching
       // RuntimeException itself, so the unchecked exceptions of the JDK are listed.

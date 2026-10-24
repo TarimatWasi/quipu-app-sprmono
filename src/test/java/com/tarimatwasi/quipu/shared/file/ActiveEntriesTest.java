@@ -443,4 +443,38 @@ class ActiveEntriesTest {
                 handMadeDocument("/Type /Catalog /URI << /Base (mailto:a@b.c) >>", "")))
         .isTrue();
   }
+
+  // ---- review of 489aaf3
+
+  @Test
+  void anIndirectArrayOfNextActionsOnOpenIsRefused() {
+    // regression of 333730c: /OpenAction go-to whose /Next is an indirect array with /Named
+    assertThat(
+            PdfActiveContent.found(
+                handMadeDocument(
+                    "/Type /Catalog /OpenAction << /S /GoTo /D [3 0 R /Fit] /Next 4 0 R >>",
+                    "",
+                    ascii("[<< /S /Named /N /Print >>]"))))
+        .isTrue();
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "mailto:pagos@example.com?attach=C:/secret.txt",
+        "mailto:pagos@example.com?subject=x",
+        "mailto:pagos@example.com&attachment=x",
+        "MAILTO:a@b.c?Attach=x"
+      })
+  void anEmailLinkWithParametersIsRefused(String uri) {
+    assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (" + uri + ") >>"))
+        .as(uri)
+        .isTrue();
+  }
+
+  @Test
+  void aWebLinkMayHaveAQuery() {
+    assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (https://a.b/p?x=1&y=2) >>"))
+        .isFalse();
+  }
 }

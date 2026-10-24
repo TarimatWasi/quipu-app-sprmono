@@ -21,4 +21,15 @@ public final class PdfInspections {
       PdfActiveContent.INSPECTION.release();
     }
   }
+
+  /** Runs the action while every inspection runs past its deadline at once. */
+  public static void whilePastTheDeadline(Action action) throws Exception {
+    long deadline = PdfActiveContent.deadlineMillis;
+    PdfActiveContent.deadlineMillis = 0;
+    try {
+      action.run();
+    } finally {
+      PdfActiveContent.deadlineMillis = deadline;
+    }
+  }
 }

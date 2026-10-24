@@ -621,7 +621,9 @@ class PdfActiveContentTest {
     long deadline = PdfActiveContent.deadlineMillis;
     PdfActiveContent.deadlineMillis = 0;
     try {
-      PdfActiveContent.inspectAhead(plain);
+      // ahead, the request stops with no verdict; later, the use case refuses the file
+      assertThatThrownBy(() -> PdfActiveContent.inspectAhead(plain))
+          .isInstanceOf(FileInspectionBusyException.class);
       assertThat(PdfActiveContent.found(plain)).isTrue();
     } finally {
       PdfActiveContent.deadlineMillis = deadline;
@@ -638,5 +640,33 @@ class PdfActiveContentTest {
     System.arraycopy(active, 0, content, 0, Math.min(active.length, content.length));
     // the same array now holds another file: it is inspected again
     assertThat(PdfActiveContent.found(content)).isTrue();
+  }
+
+  // ---- review of 489aaf3
+
+  /** A one-page file with an empty user password and a string of the size in an object stream. */
+  private static byte[] encryptedWithString(int size) throws IOException {
+    PDDocument document = onePage();
+    COSDictionary note = new COSDictionary();
+    note.setItem(COSName.getPDFName("Note"), new COSString("a".repeat(size)));
+    note.setDirect(false);
+    document.getDocumentCatalog().getCOSObject().setItem(COSName.getPDFName("Note"), note);
+    StandardProtectionPolicy policy =
+        new StandardProtectionPolicy("owner-secret", "", new AccessPermission());
+    policy.setEncryptionKeyLength(256);
+    document.protect(policy);
+    byte[] pdf = save(document, Compression.OBJECT_STREAMS);
+    assertThat(contains(pdf, "/ObjStm")).as("the writer packs the note").isTrue();
+    assertThat(contains(pdf, "aaaaaaaa")).as("only encrypted").isFalse();
+    return pdf;
+  }
+
+  @Test
+  void anEncryptedObjectStreamIsMeasuredOnceDecrypted() throws IOException {
+    // the limit holds only if the bytes measured are the decrypted ones, not the encrypted ones
+    assertThat(PdfActiveContent.found(encryptedWithString(7 * 1024 * 1024)))
+        .as("control: just under the limit")
+        .isFalse();
+    assertThat(PdfActiveContent.found(encryptedWithString(9 * 1024 * 1024))).isTrue();
   }
 }
