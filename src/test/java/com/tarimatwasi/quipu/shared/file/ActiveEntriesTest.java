@@ -464,7 +464,9 @@ class ActiveEntriesTest {
         "mailto:pagos@example.com?attach=C:/secret.txt",
         "mailto:pagos@example.com?subject=x",
         "mailto:pagos@example.com&attachment=x",
-        "MAILTO:a@b.c?Attach=x"
+        "MAILTO:a@b.c?Attach=x",
+        "mailto:a@b.c%3Fattach=C:/x",
+        "mailto:a@b.c%26attachment=C:/x"
       })
   void anEmailLinkWithParametersIsRefused(String uri) {
     assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (" + uri + ") >>"))
@@ -475,6 +477,12 @@ class ActiveEntriesTest {
   @Test
   void aWebLinkMayHaveAQuery() {
     assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (https://a.b/p?x=1&y=2) >>"))
+        .isFalse();
+  }
+
+  @Test
+  void aPlainEmailLinkIsAccepted() {
+    assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (mailto:pagos@example.com) >>"))
         .isFalse();
   }
 }

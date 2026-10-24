@@ -158,14 +158,16 @@ final class ActiveEntries {
 
   /**
    * A link only to the web or to an e-mail address, with no space or control character; an e-mail
-   * link has no parameters, since {@code ?attach=} makes some mail clients attach a local file.
+   * link has no parameters, not even encoded ({@code %3F}), since {@code ?attach=} makes some mail
+   * clients attach a local file.
    */
   static boolean isAllowedLink(@Nullable COSBase uri) {
     if (!(uri instanceof COSString text) || !hasScheme(text, ALLOWED_SCHEMES)) {
       return false;
     }
     String link = text.getString().toLowerCase(Locale.ROOT);
-    return !link.startsWith("mailto:") || (link.indexOf('?') < 0 && link.indexOf('&') < 0);
+    return !link.startsWith("mailto:")
+        || link.chars().noneMatch(c -> c == '?' || c == '&' || c == '%');
   }
 
   /** A base of the links only on the web. */
