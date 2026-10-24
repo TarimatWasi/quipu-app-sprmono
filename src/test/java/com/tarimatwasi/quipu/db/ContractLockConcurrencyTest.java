@@ -14,12 +14,12 @@ import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,7 +64,7 @@ class ContractLockConcurrencyTest {
   private static final Instant LAST_SECOND_OF_OCTOBER = Instant.parse("2026-11-01T04:59:59Z");
 
   private static final YearMonth NOVEMBER = YearMonth.of(2026, 11);
-  private static final byte[] PDF = "%PDF-1.7\n%race".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
   private static final int ROUNDS = 5;
 
   @TestConfiguration

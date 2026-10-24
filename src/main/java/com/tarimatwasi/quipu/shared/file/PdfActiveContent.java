@@ -1,279 +1,283 @@
 package com.tarimatwasi.quipu.shared.file;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObjectKey;
+import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.io.MemoryUsageSetting;
+import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
+import org.apache.pdfbox.pdfparser.PDFObjectStreamParser;
+import org.apache.pdfbox.pdfparser.PDFParser;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Looks for the entries that make a PDF run something or carry something: JavaScript, a launch
- * action, an action on open, additional actions, a form that submits or imports data, an XFA form,
- * rich media, an embedded file or a file attachment. A voucher, a document of the onboarding or a
- * contract is uploaded by one person and opened by another, so it must be a document and not a
- * program.
+ * Looks for the entries that make a PDF run something or carry something: JavaScript, a launch or
+ * another action that leaves the document, additional actions, an action on open that is not a
+ * plain go-to, a form that submits or imports data, an XFA form, rich media, an embedded file or a
+ * file attachment. A voucher, a document of the onboarding or a contract is uploaded by one person
+ * and opened by another, so it must be a document and not a program (D-52).
  *
- * <p>The scan <strong>fails closed</strong>. It does not try to follow the structure of the file,
- * because a file can be built so that the scan and a viewer read it differently (a {@code stream}
- * keyword that is never ended, a {@code (} that is never closed, a viewer that jumps by the xref
- * into what looked like the body of a stream). Instead:
+ * <p>The file is parsed with PDFBox in strict mode, from memory only, and every object that the
+ * cross-reference table lists is read, wherever it lives: in the body, inside a compressed object
+ * stream, or not referenced from the catalog at all. Every object stream is read whole, so an
+ * object it holds that the table does not list is read too. The parser decodes the names, so {@code
+ * /J#61vaScript} is {@code /JavaScript}. A link to an address ({@code /URI}) is a document feature
+ * and is accepted.
  *
- * <ul>
- *   <li>Every name in the bytes of the file counts, wherever it stands: in a dictionary, in a
- *       string, in a comment or in the body of a stream. The {@code #hh} escapes are decoded, so
- *       {@code /J#61vaScript} is found; only a whole name counts, so {@code /JSON} is not {@code
- *       /JS}. A legitimate PDF that writes {@code /JavaScript} in a text, or names a font {@code
- *       /JS}, is refused: that is the price of a stricter check. High-entropy binary data (a JPEG
- *       image, compressed data) can by chance hold a short name such as {@code /JS} followed by a
- *       delimiter; that is rare (about one in 10<sup>8</sup> bytes) and also refuses the file.
- *   <li>Every stream whose body starts with a zlib header is inflated with {@link Inflater} and the
- *       inflated bytes are scanned for the same names. That reaches the object streams ({@code
- *       /ObjStm}), where a modern PDF keeps its dictionaries compressed. A stream that the
- *       dictionary before it marks {@code /FlateDecode} must inflate cleanly to its end; if it does
- *       not (corrupt, cut, or encrypted with {@code /Encrypt}) the file is refused, because what a
- *       viewer would read there cannot be checked. An encrypted PDF with compressed streams is
- *       therefore refused.
- *   <li>At most {@link #MAX_INFLATED} bytes are inflated over the whole file (more than six times
- *       the 5 MB upload limit); a file that needs more is refused, so a decompression bomb costs a
- *       bounded time. There is no separate ratio limit: the total bounds the work, and a blank page
- *       compressed with Flate legitimately reaches a ratio near 1000:1.
- *   <li>The filters that could hide names from both passes ({@code /ASCIIHexDecode}, {@code
- *       /ASCII85Decode}, {@code /LZWDecode}, {@code /RunLengthDecode} and their short forms) refuse
- *       the file, as does an object stream with {@code /DecodeParms}, whose predictor would change
- *       the bytes after inflating.
- * </ul>
+ * <p>It <strong>fails closed</strong>: a file that does not parse, that lists an object the parser
+ * cannot read, or that needs a password to open is refused. A file with only an owner password (a
+ * bank voucher, typically) opens with the empty password and is inspected as any other.
  *
- * <p>The cost is linear in the size of the file plus the inflated bytes, and nothing recurses. This
- * is defense in depth, not a PDF parser; the file is also served as a download and never inline.
- * Known limits: a stream whose dictionary is separated from its body by a decoy {@code stream}
- * keyword hidden in a string is judged by the names after the decoy only (its body is still
- * inflated if it starts with a zlib header); a filter for images ({@code /DCTDecode}...) is not
- * decoded.
+ * <p>The memory is bounded. Content streams and images are never decoded. The streams that the
+ * parser must decode, the cross-reference streams and the object streams, may only use Flate and
+ * may inflate to at most {@link #MAX_INFLATED} bytes together; they are measured before PDFBox
+ * decodes them. The streams that the parser caches (decrypted ones) live in memory up to a limit.
  */
 final class PdfActiveContent {
 
-  private static final Set<String> NAMES =
+  /** The most bytes the cross-reference and object streams of one file may inflate to. */
+  static final long MAX_INFLATED = 32L * 1024 * 1024;
+
+  /** The most memory the parser may use to cache streams, which it does when it decrypts them. */
+  private static final long MAX_CACHE = 32L * 1024 * 1024;
+
+  private static final COSName S = name("S");
+  private static final COSName TYPE = name("Type");
+  private static final COSName SUBTYPE = name("Subtype");
+  private static final COSName FILTER = name("Filter");
+  private static final COSName OPEN_ACTION = name("OpenAction");
+  private static final COSName GO_TO = name("GoTo");
+  private static final COSName OBJECT_STREAM = name("ObjStm");
+  private static final Set<COSName> FLATE = Set.of(name("FlateDecode"), name("Fl"));
+
+  /** Keys that are active whatever their value. */
+  private static final List<COSName> ACTIVE_KEYS =
+      List.of(
+          name("JS"),
+          name("JavaScript"),
+          name("EF"),
+          name("EmbeddedFiles"),
+          name("XFA"),
+          name("RichMedia"),
+          name("AA"));
+
+  /** Action types ({@code /S}) that run something or leave the document. */
+  private static final Set<COSName> ACTIVE_ACTIONS =
       Set.of(
-          "JavaScript",
-          "JS",
-          "Launch",
-          "OpenAction",
-          "AA",
-          "EmbeddedFile",
-          "EmbeddedFiles",
-          "EF",
-          "FileAttachment",
-          "XFA",
-          "RichMedia",
-          "SubmitForm",
-          "ImportData",
-          "GoToE");
+          name("JavaScript"),
+          name("Launch"),
+          name("ImportData"),
+          name("SubmitForm"),
+          name("GoToE"),
+          name("GoToR"),
+          name("RichMediaExecute"),
+          name("Rendition"));
 
-  /** Filters whose output this scan does not decode and that could hold names a viewer reads. */
-  private static final Set<String> HIDING_FILTERS =
-      Set.of(
-          "ASCIIHexDecode",
-          "AHx",
-          "ASCII85Decode",
-          "A85",
-          "LZWDecode",
-          "LZW",
-          "RunLengthDecode",
-          "RL");
-
-  private static final byte[] STREAM = "stream".getBytes(StandardCharsets.US_ASCII);
-
-  /** The longest name worth comparing; a longer one cannot be any of the above. */
-  private static final int MAX_NAME = 16;
-
-  /** The bytes kept from one inflated chunk to the next, so a name cut between them is whole. */
-  private static final int OVERLAP = 3 * MAX_NAME + 2;
-
-  /** The most bytes inflated over the whole file. */
-  static final int MAX_INFLATED = 32 * 1024 * 1024;
-
-  /** The bytes inflated and scanned at a time. */
-  static final int CHUNK = 64 * 1024;
+  /** Values of {@code /Type} or {@code /Subtype} that carry a file or rich media. */
+  private static final Set<COSName> ACTIVE_TYPES =
+      Set.of(name("EmbeddedFile"), name("FileAttachment"), name("RichMedia"));
 
   private PdfActiveContent() {}
 
-  /** What the dictionary before a stream says about it, as far as its names show. */
-  private static final class Window {
-    private boolean flate;
-    private boolean objectStream;
-    private boolean decodeParms;
+  private static COSName name(String name) {
+    return COSName.getPDFName(name);
+  }
 
-    void see(String name) {
-      switch (name) {
-        case "FlateDecode", "Fl" -> flate = true;
-        case "ObjStm" -> objectStream = true;
-        case "DecodeParms", "DP" -> decodeParms = true;
-        default -> {
-          // other names say nothing about how the stream is encoded
-        }
+  /** Whether the file has an active entry, or cannot be read well enough to tell. */
+  static boolean found(byte[] content) {
+    try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(content)) {
+      BoundedParser parser = new BoundedParser(source);
+      try (PDDocument document = parser.parse(false)) {
+        return hasActiveObject(parser, document.getDocument()) || parser.refused;
       }
+    } catch (IOException
+        | IllegalArgumentException
+        | IllegalStateException
+        | ClassCastException
+        | IndexOutOfBoundsException
+        | NullPointerException
+        | ArithmeticException
+        | UnsupportedOperationException e) {
+      // Not a PDF that parses, a wrong password, or over a limit: refused, without logging it.
+      // The unchecked ones are how PDFBox fails on some malformed files.
+      return true;
     }
   }
 
-  /** Whether the file has, or could hide, an active entry. */
-  static boolean found(byte[] content) {
-    Window window = new Window();
-    long[] budget = {MAX_INFLATED};
-    int i = 0;
-    while (i < content.length) {
-      byte b = content[i];
-      if (b == '/') {
-        int end = endOfToken(content, i + 1, content.length);
-        String name = decodedName(content, i + 1, end);
-        if (NAMES.contains(name) || HIDING_FILTERS.contains(name)) {
+  private static boolean hasActiveObject(BoundedParser parser, COSDocument document)
+      throws IOException {
+    Deque<COSBase> pending = new ArrayDeque<>();
+    for (COSObjectKey key : List.copyOf(document.getXrefTable().keySet())) {
+      COSBase object = document.getObjectFromPool(key).getObject();
+      if (object == null || parser.refused) {
+        return true;
+      }
+      pending.push(object);
+      if (object instanceof COSStream stream && OBJECT_STREAM.equals(stream.getCOSName(TYPE))) {
+        pending.addAll(parser.objectStream(key.getNumber()).values());
+      }
+    }
+    // References are not followed: every indirect object is in the loop above.
+    while (!pending.isEmpty()) {
+      COSBase object = pending.pop();
+      if (object instanceof COSDictionary dictionary) {
+        if (isActive(dictionary)) {
           return true;
         }
-        window.see(name);
-        i = end;
-      } else if (delimiter(b)) {
-        i++;
-      } else {
-        int end = endOfToken(content, i, content.length);
-        if (isStreamKeyword(content, i, end)) {
-          if (streamIsActive(content, end, window, budget)) {
-            return true;
-          }
-          window = new Window();
-        }
-        i = end;
+        pending.addAll(dictionary.getValues());
+      } else if (object instanceof COSArray array) {
+        array.forEach(pending::push);
       }
     }
     return false;
   }
 
-  /** Inflates the body after a {@code stream} keyword when it is (or claims to be) Flate. */
-  private static boolean streamIsActive(
-      byte[] content, int afterKeyword, Window window, long[] budget) {
-    if (window.objectStream && window.decodeParms) {
+  private static boolean isActive(COSDictionary dictionary) {
+    for (COSName key : ACTIVE_KEYS) {
+      if (dictionary.containsKey(key)) {
+        return true;
+      }
+    }
+    if (in(ACTIVE_ACTIONS, dictionary.getCOSName(S))
+        || in(ACTIVE_TYPES, dictionary.getCOSName(TYPE))
+        || in(ACTIVE_TYPES, dictionary.getCOSName(SUBTYPE))) {
       return true;
     }
-    int body = skipSpace(content, afterKeyword);
-    if (!zlibHeader(content, body)) {
-      return window.flate;
-    }
-    return switch (inflate(content, body, budget)) {
-      case CLEAN -> false;
-      case ACTIVE, TOO_BIG -> true;
-      // Not Flate after all, unless its dictionary said it is.
-      case BROKEN -> window.flate;
-    };
+    COSBase open = dictionary.getDictionaryObject(OPEN_ACTION);
+    return open != null && !(open instanceof COSArray) && !isGoTo(open);
   }
 
-  private enum Inflated {
-    CLEAN,
-    ACTIVE,
-    BROKEN,
-    TOO_BIG
+  private static boolean isGoTo(COSBase action) {
+    return action instanceof COSDictionary dictionary && GO_TO.equals(dictionary.getCOSName(S));
   }
 
-  private static Inflated inflate(byte[] content, int from, long[] budget) {
-    Inflater inflater = new Inflater();
-    try {
-      inflater.setInput(content, from, content.length - from);
-      byte[] buffer = new byte[OVERLAP + CHUNK];
-      int kept = 0;
-      while (!inflater.finished()) {
-        int read = inflater.inflate(buffer, kept, CHUNK);
-        if (read == 0 && !inflater.finished()) {
-          return Inflated.BROKEN;
-        }
-        budget[0] -= read;
-        if (budget[0] < 0) {
-          return Inflated.TOO_BIG;
-        }
-        int length = kept + read;
-        if (hasActiveName(buffer, length, inflater.finished())) {
-          return Inflated.ACTIVE;
-        }
-        kept = Math.min(OVERLAP, length);
-        System.arraycopy(buffer, length - kept, buffer, 0, kept);
-      }
-      return Inflated.CLEAN;
-    } catch (DataFormatException e) {
-      return Inflated.BROKEN;
-    } finally {
-      inflater.end();
-    }
+  private static boolean in(Set<COSName> names, @Nullable COSName name) {
+    return name != null && names.contains(name);
   }
 
   /**
-   * Whether the inflated bytes name an active entry. A name that runs to the end of a chunk that is
-   * not the last is left for the next chunk, which starts with the end of this one.
+   * A strict parser that measures every stream it has to decode before PDFBox decodes it, and reads
+   * each object stream once.
    */
-  private static boolean hasActiveName(byte[] buffer, int length, boolean last) {
-    for (int i = 0; i < length; i++) {
-      if (buffer[i] == '/') {
-        int end = endOfToken(buffer, i + 1, length);
-        if ((last || end < length) && NAMES.contains(decodedName(buffer, i + 1, end))) {
-          return true;
-        }
+  private static final class BoundedParser extends PDFParser {
+
+    private final Map<Long, Map<COSObjectKey, COSBase>> objectStreams = new HashMap<>();
+    private long inflated;
+    private boolean readingTrailer;
+    private boolean refused;
+
+    BoundedParser(RandomAccessRead source) throws IOException {
+      super(source, "", null, null, MemoryUsageSetting.setupMainMemoryOnly(MAX_CACHE).streamCache);
+    }
+
+    @Override
+    protected COSDictionary retrieveTrailer() throws IOException {
+      readingTrailer = true;
+      try {
+        return super.retrieveTrailer();
+      } finally {
+        readingTrailer = false;
       }
     }
-    return false;
-  }
 
-  /** RFC 1950: method 8 (deflate), a window of at most 32 KB, and a header check that holds. */
-  private static boolean zlibHeader(byte[] content, int at) {
-    if (at + 1 >= content.length) {
-      return false;
+    /** While the trailer is read, the streams parsed are cross-reference streams, decoded next. */
+    @Override
+    protected COSStream parseCOSStream(COSDictionary dictionary) throws IOException {
+      COSStream stream = super.parseCOSStream(dictionary);
+      if (readingTrailer) {
+        measure(stream);
+      }
+      return stream;
     }
-    int cmf = content[at] & 0xFF;
-    int flg = content[at + 1] & 0xFF;
-    return (cmf & 0x0F) == 8 && (cmf >> 4) <= 7 && ((cmf << 8) | flg) % 31 == 0;
-  }
 
-  private static boolean isStreamKeyword(byte[] content, int from, int end) {
-    return end - from == STREAM.length
-        && Arrays.equals(content, from, end, STREAM, 0, STREAM.length);
-  }
-
-  private static int skipSpace(byte[] content, int from) {
-    int i = from;
-    while (i < content.length && whiteSpace(content[i])) {
-      i++;
+    /** Replaces the lookup of PDFBox, which decodes the object stream again on every miss. */
+    @Override
+    protected @Nullable COSBase parseObjectStreamObject(long objectStream, COSObjectKey key)
+        throws IOException {
+      return objectStream(objectStream).get(key);
     }
-    return i;
-  }
 
-  private static int endOfToken(byte[] content, int from, int limit) {
-    int i = from;
-    while (i < limit && !delimiter(content[i])) {
-      i++;
+    Map<COSObjectKey, COSBase> objectStream(long number) throws IOException {
+      Map<COSObjectKey, COSBase> objects = objectStreams.get(number);
+      if (objects == null) {
+        objects = Map.of();
+        objectStreams.put(number, objects); // a stream that holds itself finds it empty
+        try {
+          COSBase stream = document.getObjectFromPool(new COSObjectKey(number, 0)).getObject();
+          if (!(stream instanceof COSStream objectStream)) {
+            throw new IOException("Not an object stream");
+          }
+          measure(objectStream);
+          objects = new PDFObjectStreamParser(objectStream, document).parseAllObjects();
+          objectStreams.put(number, objects);
+        } catch (IOException e) {
+          refused = true; // PDFBox logs and swallows an IOException inside a lookup
+          throw e;
+        }
+      }
+      return objects;
     }
-    return i;
-  }
 
-  /** The name between the slash and its end, with the {@code #hh} escapes decoded. */
-  private static String decodedName(byte[] content, int from, int end) {
-    StringBuilder name = new StringBuilder();
-    int i = from;
-    while (i < end && name.length() <= MAX_NAME) {
-      int high = i + 2 < end && content[i] == '#' ? hex(content[i + 1]) : -1;
-      int low = high >= 0 ? hex(content[i + 2]) : -1;
-      name.append((char) (low >= 0 ? high * 16 + low : content[i] & 0xFF));
-      i += low >= 0 ? 3 : 1;
+    /** Inflates the stream as PDFBox would, counting, and refuses it past the limit. */
+    private void measure(COSStream stream) throws IOException {
+      COSBase filter = stream.getDictionaryObject(FILTER);
+      if (filter instanceof COSArray array && array.size() == 1) {
+        filter = array.getObject(0);
+      }
+      if (filter == null) {
+        return; // stored as is: no larger than the file
+      }
+      if (!FLATE.contains(filter)) {
+        refuse("A stream the parser decodes must use Flate");
+      }
+      Inflater inflater = new Inflater(true);
+      try (InputStream raw = stream.createRawInputStream()) {
+        // PDFBox skips the two bytes of the zlib header and inflates raw deflate data.
+        raw.skipNBytes(Math.min(2, stream.getLength()));
+        byte[] input = new byte[64 * 1024];
+        byte[] output = new byte[64 * 1024];
+        while (!inflater.finished()) {
+          if (inflater.needsInput()) {
+            int read = raw.read(input);
+            if (read < 0) {
+              return;
+            }
+            inflater.setInput(input, 0, read);
+          }
+          int produced = inflater.inflate(output);
+          if (produced == 0 && !inflater.needsInput()) {
+            return; // wants a dictionary or is stuck: PDFBox would stop here too
+          }
+          inflated += produced;
+          if (inflated > MAX_INFLATED) {
+            refuse("Inflates beyond the limit");
+          }
+        }
+      } catch (DataFormatException e) {
+        // PDFBox keeps what inflated before the error; that is already counted.
+      } finally {
+        inflater.end();
+      }
     }
-    return name.toString();
-  }
 
-  private static boolean whiteSpace(byte b) {
-    return b == 0 || b == 9 || b == 10 || b == 12 || b == 13 || b == 32;
-  }
-
-  /** White space and the delimiters of PDF syntax end a name or a token. */
-  private static boolean delimiter(byte b) {
-    return switch (b) {
-      case 0, 9, 10, 12, 13, 32, '(', ')', '<', '>', '[', ']', '{', '}', '/', '%' -> true;
-      default -> false;
-    };
-  }
-
-  private static int hex(byte b) {
-    return Character.digit((char) (b & 0xFF), 16);
+    private void refuse(String reason) throws IOException {
+      refused = true;
+      throw new IOException(reason);
+    }
   }
 }

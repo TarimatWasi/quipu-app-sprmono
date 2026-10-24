@@ -24,6 +24,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
@@ -76,7 +77,7 @@ class GuestOnboardingContractTest {
   private static final String CONSENT = ONBOARDING + "/consent";
   private static final String KEY = "guest-documents/fake";
   private static final String SIGNED = "https://r2.test/guest-documents/fake?X-Amz-Signature=s";
-  private static final byte[] PDF = "%PDF-1.7\n%id".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
   private static final byte[] PNG = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1};
   private static final String SECRET_NAME = "dni-ana-quispe.pdf";
 

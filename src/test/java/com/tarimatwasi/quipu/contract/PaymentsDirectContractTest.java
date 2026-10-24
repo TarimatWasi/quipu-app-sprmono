@@ -13,8 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFileStorageException;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -77,9 +77,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3, 0, 0, 0};
     byte[] big = new byte[5 * 1024 * 1024 + 1];
     System.arraycopy(PDF, 0, big, 0, PDF.length);
-    byte[] active =
-        "%PDF-1.7\n<< /Type /Catalog /OpenAction << /S /JavaScript /JS (x) >> >>"
-            .getBytes(StandardCharsets.US_ASCII);
+    byte[] active = TestPdfs.withJavaScript();
 
     for (byte[] content : new byte[][] {exe, big, active, new byte[0]}) {
       post(contractGuest, "period", "2026-10", "800", content, "v.pdf")

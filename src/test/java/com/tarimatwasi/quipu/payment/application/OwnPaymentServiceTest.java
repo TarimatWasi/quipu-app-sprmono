@@ -42,12 +42,12 @@ import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.StoredPayment;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.VoucherDraft;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -71,8 +71,7 @@ class OwnPaymentServiceTest {
   private static final Long OLD_CONTRACT = TestIds.next();
   private static final Long STAY = TestIds.next();
   private static final Long PAYMENT = TestIds.next();
-  private static final byte[] PDF =
-      "%PDF-1.7\n<< /Type /Catalog >>".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
   private static final String KEY = "vouchers/abc";
   private static final YearMonth OCTOBER = YearMonth.of(2026, 10);
   private static final Instant CREATED = Instant.parse("2026-10-14T15:00:00Z");

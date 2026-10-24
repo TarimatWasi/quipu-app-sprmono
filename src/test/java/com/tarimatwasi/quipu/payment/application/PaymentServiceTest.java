@@ -46,12 +46,12 @@ import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.DirectDraft;
 import com.tarimatwasi.quipu.payment.port.out.PaymentRepositoryPort.StoredPayment;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort.StayInfo;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -76,8 +76,7 @@ class PaymentServiceTest {
   private static final Long ENVIRONMENT = TestIds.next();
   private static final Long STAY = TestIds.next();
   private static final Long PAYMENT = TestIds.next();
-  private static final byte[] PDF =
-      "%PDF-1.7\n<< /Type /Catalog >>".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
   private static final String KEY = "vouchers/abc";
   private static final String URL = "https://r2.test/vouchers/abc?X-Amz-Signature=s";
   private static final YearMonth OCTOBER = YearMonth.of(2026, 10);
@@ -579,8 +578,7 @@ class PaymentServiceTest {
   void registerDirect_theFileIsCheckedByItsContentAfterThePeriodAndBeforeTheLivePayment() {
     contractGuestWithOpenContract();
     byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3};
-    byte[] active =
-        "%PDF-1.7\n<< /Type /Catalog /OpenAction 5 0 R >>".getBytes(StandardCharsets.US_ASCII);
+    byte[] active = TestPdfs.withJavaScript();
     byte[] tooBig = new byte[5 * 1024 * 1024 + 1];
     System.arraycopy(PDF, 0, tooBig, 0, PDF.length);
 

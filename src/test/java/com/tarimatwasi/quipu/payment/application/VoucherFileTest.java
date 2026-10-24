@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.payment.application;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
@@ -41,8 +42,7 @@ class VoucherFileTest {
 
   @Test
   void aPdfIsKnownByItsHeader() {
-    assertThat(VoucherFile.typeOf("%PDF-1.7\n".getBytes(StandardCharsets.US_ASCII)))
-        .contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(TestPdfs.plain())).contains(VoucherType.PDF);
     assertThat(VoucherType.PDF.contentType()).isEqualTo("application/pdf");
   }
 
@@ -71,10 +71,12 @@ class VoucherFileTest {
 
   @Test
   void theFileMayHaveFiveMegabytesButNotOneByteMore() {
-    byte[] pdf = "%PDF-1.7".getBytes(StandardCharsets.US_ASCII);
+    byte[] png = bytes(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
 
-    assertThat(VoucherFile.typeOf(padded(pdf, VoucherFile.MAX_BYTES))).contains(VoucherType.PDF);
-    assertThat(VoucherFile.typeOf(padded(pdf, VoucherFile.MAX_BYTES + 1))).isEmpty();
+    assertThat(VoucherFile.typeOf(padded(png, VoucherFile.MAX_BYTES))).contains(VoucherType.PNG);
+    assertThat(VoucherFile.typeOf(padded(png, VoucherFile.MAX_BYTES + 1))).isEmpty();
+    assertThat(VoucherFile.typeOf(TestPdfs.ofSize(VoucherFile.MAX_BYTES)))
+        .contains(VoucherType.PDF);
     assertThat(VoucherFile.MAX_BYTES).isEqualTo(5 * 1024 * 1024);
   }
 
@@ -86,132 +88,12 @@ class VoucherFileTest {
         .hasSize(3);
   }
 
-  private static byte[] pdf(String body) {
-    return ("%PDF-1.7\n" + body + "\n%%EOF").getBytes(StandardCharsets.ISO_8859_1);
-  }
-
-  private static boolean accepted(String body) {
-    return VoucherFile.typeOf(pdf(body)).isPresent();
-  }
-
   @Test
-  void aPlainPdfIsAccepted() {
-    assertThat(
-            accepted(
-                "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 3 0 obj << /Length 4 /Filter /FlateDecode >>"))
-        .isTrue();
-    assertThat(VoucherFile.typeOf(pdf("<< /Type /Catalog >>"))).contains(VoucherType.PDF);
-  }
-
-  @Test
-  void aPdfWithAnActiveEntryAsAKeyIsNotAVoucher() {
-    for (String key :
-        new String[] {"/JavaScript", "/JS", "/Launch", "/OpenAction", "/AA", "/EmbeddedFile"}) {
-      assertThat(accepted("1 0 obj << /Type /Catalog " + key + " 5 0 R >> endobj"))
-          .as(key)
-          .isFalse();
-      assertThat(accepted("<< /Pages 1 0 R " + key + " (x) >>")).as(key).isFalse();
-    }
-  }
-
-  @Test
-  void theTypeOfAnActionAndTheKindOfAFileAreAsActiveAsTheirKeys() {
-    assertThat(accepted("<< /Type /Action /S /JavaScript /JS (app.alert(1)) >>")).isFalse();
-    assertThat(accepted("<< /S /Launch /F (cmd.exe) >>")).isFalse();
-    assertThat(accepted("<< /Type /EmbeddedFile /Length 3 >>")).isFalse();
-    assertThat(accepted("<< /Type /Action /S /URI /URI (https://example.com) >>")).isTrue();
-  }
-
-  @Test
-  void theNamesAreFoundWhateverFollowsThem() {
-    assertThat(accepted("<</S/JavaScript/JS(app.alert(1))>>")).isFalse();
-    assertThat(accepted("<< /Names << /JavaScript 5 0 R >> >>")).isFalse();
-    assertThat(accepted("<</OpenAction<</S/URI>>>>")).isFalse();
-    assertThat(accepted("<< /Pages 1 0 R /AA<</O 5 0 R>> >>")).isFalse();
-  }
-
-  @Test
-  void anEscapedNameIsDecodedBeforeItIsComparedSoItCannotHideTheToken() {
-    assertThat(accepted("<< /J#61vaScript 5 0 R >>")).isFalse();
-    assertThat(accepted("<< /#4A#53 5 0 R >>")).isFalse();
-    assertThat(accepted("<< /Open#41ction 5 0 R >>")).isFalse();
-    assertThat(accepted("<< /S /L#61unch >>")).isFalse();
-  }
-
-  @Test
-  void aNameThatMerelyStartsLikeOneOfThemIsNotActiveContent() {
-    assertThat(accepted("<< /JSON 1 /AAPL 2 /Launcher 3 /JavaScripts 4 /Actions 5 >>")).isTrue();
-  }
-
-  @Test
-  void theScanFailsClosedSoAnActiveNameIsRefusedWhereverItStands() {
-    // TAR-39: the scan no longer follows the structure; these were accepted before.
-    assertThat(accepted("<< /Resources << /Font << /JS 2 0 R /AA 3 0 R >> >> >>")).isFalse();
-    assertThat(accepted("<< /Properties << /EmbeddedFile 7 0 R >> >>")).isFalse();
-    assertThat(accepted("<< /BaseFont /JS /Subtype /Type1 >>")).isFalse();
-    assertThat(accepted("<< /Filter [/JS /Launch] >>")).isFalse();
-    assertThat(accepted("<< /T (/JS) >>")).isFalse();
-    assertThat(accepted("% a comment about /OpenAction\n1 0 obj << /Type /Page >>")).isFalse();
-    assertThat(accepted("<< /Length 12 >>\nstream\nbinary /JS /AA data\nendstream\nendobj"))
-        .isFalse();
-    assertThat(accepted("(never closed /JS")).isFalse();
-    assertThat(accepted("<< >>\nstream\nnever ends /JS")).isFalse();
-    assertThat(accepted(">> ] ] >> /JS")).isFalse();
-  }
-
-  @Test
-  void anActiveKeyNextToAResourceDictionaryIsStillFound() {
-    assertThat(accepted("<< /Resources << /Font << /F1 2 0 R >> >> /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Font << /F1 << /Type /Font /JS (x) >> >> >>")).isFalse();
-    assertThat(accepted("<< /Font << /F1 2 0 R >> /OpenAction 5 0 R >>")).isFalse();
-  }
-
-  @Test
-  void anActiveKeyAfterAnyKindOfValueIsFound() {
-    assertThat(accepted("<< /Subtype /Foo /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Count 5 /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Parent 5 0 R /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Kids [ 1 0 R 2 0 R ] /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /A << /B 1 >> /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Flag true /Next null /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Foo (text) /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Foo <2f4a53> /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /Matrix [1 0 0 1 0 0] /Rect [0 0 1 1] /AA << >> >>")).isFalse();
-  }
-
-  @Test
-  void theWordsInsideTheTextOfThePageAreNotNames() {
-    assertThat(accepted("BT (Pago por JavaScript, Launch y OpenAction) Tj ET")).isTrue();
-  }
-
-  @Test
-  void aNameThatFollowsAStringAStreamOrACommentIsStillFound() {
-    assertThat(accepted("<< /T (text) /JS 5 0 R >>")).isFalse();
-    assertThat(accepted("<< /T (text (nested)) /Launch 5 0 R >>")).isFalse();
-    assertThat(accepted("<< /Length 4 >>\nstream\nabcd\nendstream\n<< /OpenAction 1 0 R >>"))
-        .isFalse();
-    assertThat(accepted("% a comment\n<< /AA << >> >>")).isFalse();
-    assertThat(accepted("<< /X <2f4a53> /EmbeddedFile 1 0 R >>")).isFalse();
-  }
-
-  @Test
-  void anUnclosedStringStreamOrDictionaryDoesNotMakeTheScanFail() {
-    assertThat(accepted("(never closed")).isTrue();
-    assertThat(accepted("<< >>\nstream\nnever ends")).isTrue();
-    assertThat(accepted("<2f4a53 never closed")).isTrue();
-    assertThat(accepted("<< /Type /Catalog ")).isTrue();
-    assertThat(accepted(">> ] ] >>")).isTrue();
-  }
-
-  @Test
-  void aDeepNestingDoesNotHideAnEntry() {
-    assertThat(accepted("<< /A ".repeat(5000) + "<< /JS (x) >>")).isFalse();
-    assertThat(accepted("<< /A ".repeat(150) + ">> ".repeat(150))).isTrue();
-  }
-
-  @Test
-  void aVeryLongNameIsNotMistakenForAShortOne() {
-    assertThat(accepted("<< /" + "A".repeat(5000) + " 1 >>")).isTrue();
+  void aPdfIsReadForActiveContent() {
+    // TAR-39 (D-52): the detection itself is tested in PdfActiveContentTest.
+    assertThat(VoucherFile.typeOf(TestPdfs.plain())).contains(VoucherType.PDF);
+    assertThat(VoucherFile.typeOf(TestPdfs.withJavaScript())).isEmpty();
+    assertThat(VoucherFile.typeOf("%PDF-1.7\n%fake".getBytes(StandardCharsets.US_ASCII))).isEmpty();
   }
 
   @Test

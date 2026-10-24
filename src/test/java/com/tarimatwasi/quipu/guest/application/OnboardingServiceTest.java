@@ -24,7 +24,7 @@ import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
-import java.nio.charset.StandardCharsets;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -43,7 +43,7 @@ class OnboardingServiceTest {
   private static final Long GUEST = 7L;
   private static final Instant NOW = Instant.parse("2026-10-14T15:00:00Z");
   private static final Clock CLOCK = Clock.fixed(NOW, ZoneId.of("America/Lima"));
-  private static final byte[] PDF = "%PDF-1.7\n%x".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
 
   @Mock GuestRepositoryPort guests;
   @Mock OnboardingRepositoryPort records;
