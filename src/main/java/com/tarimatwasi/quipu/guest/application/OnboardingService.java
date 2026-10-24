@@ -169,13 +169,13 @@ public class OnboardingService implements OnboardingUseCase {
     if (guest.personalDataCompletedAt() == null || guest.documentsStepCompletedAt() == null) {
       throw new OnboardingConflictException(Reason.STEP_OUT_OF_ORDER);
     }
-    // RN-14, RN-36: the record of the consent and the activation commit together.
-    records.addConsent(
-        new GuestConsent(
-            guestId,
-            consents.current(),
-            clock.instant(),
-            ConsentTexts.sha256(consents.currentText())));
+    // RN-14, RN-36: the record of the consent and the activation commit together. D-49: one record
+    // per version; the lock on the guest keeps two requests from both inserting it.
+    if (!records.hasConsent(guestId, version)) {
+      records.addConsent(
+          new GuestConsent(
+              guestId, version, clock.instant(), ConsentTexts.sha256(consents.currentText())));
+    }
     return view(guests.save(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
   }
 

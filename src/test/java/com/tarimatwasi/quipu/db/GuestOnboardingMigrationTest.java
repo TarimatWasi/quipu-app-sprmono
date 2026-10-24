@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.db;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
@@ -14,7 +15,10 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** TAR-137 (V16): a consent and a document are evidence; the database refuses to change them. */
+/**
+ * TAR-137 (V16): a consent and a document are evidence; the database refuses to change them. (V17,
+ * D-49): a guest accepts each version of the text once.
+ */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
 class GuestOnboardingMigrationTest {
@@ -61,5 +65,31 @@ class GuestOnboardingMigrationTest {
         .hasMessageContaining("guest_documents");
     assertThatThrownBy(() -> jdbc.update("DELETE FROM guest_documents"))
         .isInstanceOf(DataAccessException.class);
+  }
+
+  @Test
+  void aGuestAcceptsEachVersionOnce() {
+    assertThatThrownBy(() -> insertConsent(2L, "v1"))
+        .isInstanceOf(DataAccessException.class)
+        .hasMessageContaining("uq_guest_consents_guest_version");
+  }
+
+  @Test
+  void anotherVersionIsAcceptedAgain() {
+    insertConsent(2L, "v2");
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM guest_consents WHERE guest_id = ?", Long.class, guest))
+        .isEqualTo(2L);
+  }
+
+  private void insertConsent(Long id, String version) {
+    jdbc.update(
+        "INSERT INTO guest_consents (id, guest_id, consent_version, accepted_at, text_sha256)"
+            + " VALUES (?, ?, ?, now(), repeat('a', 64))",
+        id,
+        guest,
+        version);
   }
 }

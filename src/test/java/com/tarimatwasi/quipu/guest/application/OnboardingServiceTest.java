@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -119,6 +120,19 @@ class OnboardingServiceTest {
         .isEqualTo(
             new GuestConsent(
                 GUEST, consents.current(), NOW, ConsentTexts.sha256(consents.currentText())));
+    verify(guests).save(eq(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
+  }
+
+  @Test
+  void aVersionAlreadyAcceptedIsNotRecordedTwiceAndStillActivatesTheGuest() {
+    Guest guest = onboarding(NOW, NOW);
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest));
+    when(guests.save(any())).thenAnswer(call -> call.getArgument(0));
+    when(records.hasConsent(GUEST, consents.current())).thenReturn(true);
+
+    service().acceptConsent(GUEST, true, consents.current());
+
+    verify(records, never()).addConsent(any());
     verify(guests).save(eq(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
   }
 

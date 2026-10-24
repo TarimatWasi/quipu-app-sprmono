@@ -49,6 +49,11 @@ public class OnboardingRepositoryAdapter implements OnboardingRepositoryPort {
   }
 
   @Override
+  public boolean hasConsent(Long guestId, String version) {
+    return consents.existsByGuestIdAndVersion(guestId, version);
+  }
+
+  @Override
   public void addConsent(GuestConsent consent) {
     consents.saveAndFlush(new GuestConsentJpaEntity(consent));
   }

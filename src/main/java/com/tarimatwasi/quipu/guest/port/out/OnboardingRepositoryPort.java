@@ -20,5 +20,8 @@ public interface OnboardingRepositoryPort {
   /** The last consent the guest accepted, if any. */
   Optional<GuestConsent> lastConsentOf(Long guestId);
 
+  /** Whether the guest already accepted this version of the text (one consent per version). */
+  boolean hasConsent(Long guestId, String version);
+
   void addConsent(GuestConsent consent);
 }
