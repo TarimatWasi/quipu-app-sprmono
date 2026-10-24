@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,8 +18,11 @@ import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentUnavailableException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
+import com.tarimatwasi.quipu.guest.port.in.OnboardingConflictException;
+import com.tarimatwasi.quipu.guest.port.in.OnboardingConflictException.Reason;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.DocumentUpload;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.PersonalData;
+import com.tarimatwasi.quipu.guest.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
@@ -124,16 +128,49 @@ class OnboardingServiceTest {
   }
 
   @Test
-  void aVersionAlreadyAcceptedIsNotRecordedTwiceAndStillActivatesTheGuest() {
+  void aVersionAlreadyAcceptedWithTheSameTextIsNotRecordedTwiceAndStillActivatesTheGuest() {
     Guest guest = onboarding(NOW, NOW);
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest));
     when(guests.save(any())).thenAnswer(call -> call.getArgument(0));
-    when(records.hasConsent(GUEST, consents.current())).thenReturn(true);
+    when(records.consentOf(GUEST, consents.current()))
+        .thenReturn(Optional.of(accepted(ConsentTexts.sha256(consents.currentText()))));
 
     service().acceptConsent(GUEST, true, consents.current());
 
     verify(records, never()).addConsent(any());
     verify(guests).save(eq(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
+  }
+
+  @Test
+  void aVersionAlreadyAcceptedWithAnotherTextIsAConflictAndDoesNotActivate() {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(NOW, NOW)));
+    when(records.consentOf(GUEST, consents.current()))
+        .thenReturn(Optional.of(accepted("0".repeat(64))));
+
+    assertThatThrownBy(() -> service().acceptConsent(GUEST, true, consents.current()))
+        .isInstanceOfSatisfying(
+            OnboardingConflictException.class,
+            e -> assertThat(e.reason()).isEqualTo(Reason.ALREADY_COMPLETED));
+    verify(records, never()).addConsent(any());
+    verify(guests, never()).save(any());
+  }
+
+  @Test
+  void aConsentRecordedMeanwhileIsAConflictAndDoesNotActivate() {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(NOW, NOW)));
+    doThrow(new GuestConsentAlreadyExistsException(new IllegalStateException("unique")))
+        .when(records)
+        .addConsent(any());
+
+    assertThatThrownBy(() -> service().acceptConsent(GUEST, true, consents.current()))
+        .isInstanceOfSatisfying(
+            OnboardingConflictException.class,
+            e -> assertThat(e.reason()).isEqualTo(Reason.ALREADY_COMPLETED));
+    verify(guests, never()).save(any());
+  }
+
+  private GuestConsent accepted(String textSha256) {
+    return new GuestConsent(GUEST, consents.current(), NOW, textSha256);
   }
 
   @Test
