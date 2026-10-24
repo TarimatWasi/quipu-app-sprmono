@@ -377,6 +377,21 @@ final class ArchitectureRules {
 
   // --- Reglas propias de Quipu ---
 
+  /**
+   * TAR-39 (D-52): PDFBox is used only by the inspection of uploaded PDFs (PdfActiveContent and the
+   * ActiveEntries it calls), which runs one file at a time under its semaphore and empties the
+   * global table of names of PDFBox after each file.
+   */
+  @ArchTest
+  static final ArchRule TAR_39_PDFBOX_ONLY_IN_THE_PDF_INSPECTION =
+      noClasses()
+          .that()
+          .haveNameNotMatching(ROOT + "\\.shared\\.file\\.(PdfActiveContent|ActiveEntries)(\\$.*)?")
+          .should()
+          .dependOnClassesThat()
+          .resideInAPackage("org.apache.pdfbox..")
+          .because("PDFBox runs only inside the inspection of uploads, under its semaphore");
+
   @ArchTest
   static final ArchRule QP_SPRMONO_API_02 = ArchitectureConditions.routesUseTheSurfacePrefix();
 

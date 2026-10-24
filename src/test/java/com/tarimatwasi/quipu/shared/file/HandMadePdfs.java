@@ -66,14 +66,19 @@ final class HandMadePdfs {
     objects.add(
         ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " + pageEntries + " >>"));
     objects.addAll(List.of(extra));
+    return objects(objects.toArray(byte[][]::new));
+  }
+
+  /** The given objects numbered from 1, the first being the catalog, with a classic table. */
+  static byte[] objects(byte[]... objects) {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     out.writeBytes(ascii("%PDF-1.7\n"));
-    StringBuilder xref = new StringBuilder("xref\n0 " + (objects.size() + 1) + "\n");
+    StringBuilder xref = new StringBuilder("xref\n0 " + (objects.length + 1) + "\n");
     xref.append("0000000000 65535 f \n");
-    for (int i = 0; i < objects.size(); i++) {
+    for (int i = 0; i < objects.length; i++) {
       xref.append(String.format("%010d 00000 n \n", out.size()));
       out.writeBytes(ascii((i + 1) + " 0 obj\n"));
-      out.writeBytes(objects.get(i));
+      out.writeBytes(objects[i]);
       out.writeBytes(ascii("\nendobj\n"));
     }
     int start = out.size();
@@ -81,7 +86,7 @@ final class HandMadePdfs {
     out.writeBytes(
         ascii(
             "trailer\n<< /Size "
-                + (objects.size() + 1)
+                + (objects.length + 1)
                 + " /Root 1 0 R >>\nstartxref\n"
                 + start
                 + "\n%%EOF\n"));

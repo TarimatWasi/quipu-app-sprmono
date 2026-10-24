@@ -24,6 +24,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
+import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -661,5 +662,28 @@ class GuestOnboardingContractTest {
         type,
         status);
     return id;
+  }
+
+  @Test
+  void aDocumentThatCannotBeInspectedInTimeIsTooManyRequests() throws Exception {
+    // TAR-39: the route declares 429 and no 503
+    PdfInspections.whileBusy(
+        () ->
+            upload(guest(), TestPdfs.plain(), "dni.pdf")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(answersTheContract())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED")));
+  }
+
+  @Test
+  void aDocumentOverFiveMegabytesIsRefusedBeforeItIsInspected() throws Exception {
+    // TAR-39: with the inspection busy, a file read and inspected would answer 429
+    savePersonalData();
+    PdfInspections.whileBusy(
+        () ->
+            upload(guest(), TestPdfs.ofSize(6 * 1024 * 1024), "dni.pdf")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_INVALID_FILE")));
+    verify(files, never()).store(any(), any());
   }
 }

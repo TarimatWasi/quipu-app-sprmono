@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -36,31 +35,34 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Looks for the entries that make a PDF run something or carry something: JavaScript, an action
- * that is not a go-to or a link, additional actions, an action on open that is not a plain go-to, a
- * form that submits or imports data, an XFA form, rich media, 3D, sound or movies, an embedded file
- * or a file attachment. A voucher, a document of the onboarding or a contract is uploaded by one
- * person and opened by another, so it must be a document and not a program (D-52).
+ * Looks for the entries that make a PDF run something or carry something (see {@link
+ * ActiveEntries}). A voucher, a document of the onboarding or a contract is uploaded by one person
+ * and opened by another, so it must be a document and not a program (D-52).
  *
- * <p>The file is parsed with PDFBox in strict mode, from memory only, and every object that the
- * cross-reference table lists is read, wherever it lives: in the body, inside a compressed object
- * stream, or not referenced from the catalog at all; so is the trailer. Every object stream is read
- * whole, so an object it holds that the table does not list is read too. The parser decodes the
- * names, so {@code /J#61vaScript} is {@code /JavaScript}. The keys of a map of named resources
- * ({@code /Resources /Font << /JS 5 0 R >>}) are names the producer chose, not entries: they are
- * not taken for active keys, and what they point to is inspected like anything else.
+ * <p>The file is parsed with PDFBox in strict mode, from memory only. Every value reachable from
+ * the trailer, from every object the cross-reference table lists and from every object an object
+ * stream holds is visited once, whatever the key, the array or the reference that leads to it, and
+ * every dictionary among them is judged by {@link ActiveEntries#isActive} on its own content. The
+ * parser decodes the names, so {@code /J#61vaScript} is {@code /JavaScript}.
  *
  * <p>It <strong>fails closed</strong>: a file that does not parse, that lists an object the parser
- * cannot read, that needs a password to open or that is over a limit is refused, and so is any
- * failure of the parser. A file with only an owner password (a bank voucher, typically) opens with
- * the empty password and is inspected as any other.
+ * cannot read, that has a direct {@code /Root}, that needs a password to open or that is over a
+ * limit is refused, and so is any failure of the parser. A file with only an owner password (a bank
+ * voucher, typically) opens with the empty password and is inspected as any other.
  *
  * <p>The memory is bounded: content streams and images are never decoded; the streams that the
  * parser must decode (cross-reference and object streams) may only use Flate, with at most a PNG
  * predictor of {@value #MAX_COLUMNS} columns, and inflate to at most {@link #MAX_INFLATED} bytes
- * together, measured before PDFBox decodes them; the objects and the values parsed are counted; the
- * cache of decrypted streams lives in memory up to a limit; and one file is inspected at a time.
- * PDFBox keeps every name it parses in a global table, which is emptied after each file.
+ * together, measured before PDFBox decodes them; the objects (also the lines of a classic table,
+ * before they are kept) and the values parsed are counted; the cache of decrypted streams lives in
+ * memory up to a limit. PDFBox keeps every name it parses in a global table, which is emptied after
+ * each file.
+ *
+ * <p><strong>Invariant</strong>: PDFBox is used only by this class and {@link ActiveEntries} (an
+ * ArchUnit rule says so) and only under {@link #INSPECTION}, one file at a time; emptying the
+ * global table of names relies on it. A file that waits too long for its turn is not judged and its
+ * verdict is not kept: {@link FileInspectionBusyException}. The callers check the limit of their
+ * route (5 MB, 10 MB for a contract) before they read the bytes, so a larger file never gets here.
  */
 final class PdfActiveContent {
 
@@ -82,88 +84,32 @@ final class PdfActiveContent {
   /** The most memory the parser may use to cache streams, which it does when it decrypts them. */
   private static final long MAX_CACHE = 12L * 1024 * 1024;
 
-  /** How long a file waits for the inspection of another one before it is refused. */
-  private static final long WAIT_SECONDS = 3;
+  /** How long a file waits for the inspection of another one before it is turned away. */
+  static final long WAIT_SECONDS = 3;
 
   /** One file at a time: an inspection may take tens of megabytes of a small heap. */
   static final Semaphore INSPECTION = new Semaphore(1, true);
 
   /**
    * Verdicts of files inspected ahead (see {@link #inspectAhead}), by the identity of the array of
-   * bytes, which arrays use for {@code equals}; an entry goes with its array.
+   * bytes, which arrays use for {@code equals}; an entry goes with its array. Only verdicts are
+   * kept: a file turned away while busy is not.
    */
   private static final Map<Object, Boolean> AHEAD =
       Collections.synchronizedMap(new WeakHashMap<>());
 
-  private static final COSName S = name("S");
   private static final COSName TYPE = name("Type");
-  private static final COSName SUBTYPE = name("Subtype");
   private static final COSName FILTER = name("Filter");
   private static final COSName DECODE_PARMS = name("DecodeParms");
   private static final COSName DECODE_PARMS_SHORT = name("DP");
-  private static final COSName OPEN_ACTION = name("OpenAction");
-  private static final COSName GO_TO = name("GoTo");
-  private static final COSName ACTION = name("Action");
-  private static final COSName NEXT = name("Next");
   private static final COSName OBJECT_STREAM = name("ObjStm");
   private static final COSName ROOT = name("Root");
+  private static final COSName STRUCT_TREE_ROOT = name("StructTreeRoot");
+  private static final COSName KIDS = name("K");
   private static final COSName SIZE = name("Size");
   private static final COSName INDEX = name("Index");
   private static final COSName OBJECT_COUNT = name("N");
-  private static final COSName RESOURCES = name("Resources");
   private static final Set<COSName> FLATE = Set.of(name("FlateDecode"), name("Fl"));
-
-  /** The entries of a {@code /Resources} dictionary that map names to resources. */
-  private static final Set<COSName> RESOURCE_KINDS =
-      Set.of(
-          name("Font"),
-          name("XObject"),
-          name("ExtGState"),
-          name("ColorSpace"),
-          name("Pattern"),
-          name("Shading"),
-          name("Properties"));
-
-  /** Keys that are active whatever their value. */
-  private static final List<COSName> ACTIVE_KEYS =
-      List.of(
-          name("JS"),
-          name("JavaScript"),
-          name("EF"),
-          name("EmbeddedFiles"),
-          name("XFA"),
-          name("RichMedia"),
-          name("AA"),
-          name("OnInstantiate"));
-
-  /** Action types ({@code /S}) refused in any dictionary. */
-  private static final Set<COSName> ACTIVE_ACTIONS =
-      Set.of(
-          name("JavaScript"),
-          name("Launch"),
-          name("ImportData"),
-          name("SubmitForm"),
-          name("GoToE"),
-          name("GoToR"),
-          name("RichMediaExecute"),
-          name("Rendition"));
-
-  /** The only action types an action may have: go to a place of the document, or open a link. */
-  private static final Set<COSName> ALLOWED_ACTIONS = Set.of(GO_TO, name("URI"));
-
-  /** The keys whose value is an action. */
-  private static final Set<COSName> ACTION_KEYS = Set.of(name("A"), NEXT, OPEN_ACTION);
-
-  /** Values of {@code /Type} or {@code /Subtype} that carry a file, media or 3D. */
-  private static final Set<COSName> ACTIVE_TYPES =
-      Set.of(
-          name("EmbeddedFile"),
-          name("FileAttachment"),
-          name("RichMedia"),
-          name("3D"),
-          name("Movie"),
-          name("Sound"),
-          name("Screen"));
 
   private PdfActiveContent() {}
 
@@ -174,12 +120,18 @@ final class PdfActiveContent {
   /**
    * Inspects the file now, before the caller opens a transaction or locks a row (TAR-39): {@link
    * #found} on the same array then gives this verdict without parsing it again.
+   *
+   * @throws FileInspectionBusyException if another file kept the inspection too long
    */
   static void inspectAhead(byte[] content) {
     AHEAD.put(content, inspect(content));
   }
 
-  /** Whether the file has an active entry, or cannot be read well enough to tell. */
+  /**
+   * Whether the file has an active entry, or cannot be read well enough to tell.
+   *
+   * @throws FileInspectionBusyException if another file kept the inspection too long
+   */
   static boolean found(byte[] content) {
     Boolean ahead = AHEAD.get(content);
     return ahead != null ? ahead : inspect(content);
@@ -191,21 +143,28 @@ final class PdfActiveContent {
     }
     try {
       if (!INSPECTION.tryAcquire(WAIT_SECONDS, TimeUnit.SECONDS)) {
-        return true; // busy: refused with the error of the route, as an invalid file
+        throw new FileInspectionBusyException();
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return true;
+      throw new FileInspectionBusyException();
     }
     try {
       return parseAndInspect(content);
     } finally {
-      forgetNames();
       INSPECTION.release();
     }
   }
 
   private static boolean parseAndInspect(byte[] content) {
+    try {
+      return parse(content);
+    } finally {
+      forgetNames();
+    }
+  }
+
+  private static boolean parse(byte[] content) {
     try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(content)) {
       BoundedParser parser = new BoundedParser(source);
       try (PDDocument document = parser.parse(false)) {
@@ -261,130 +220,79 @@ final class PdfActiveContent {
         pending.addAll(parser.objectStream(key.getNumber()).values());
       }
     }
-    // References are not followed: every indirect object is in the loop above.
-    List<COSDictionary> dictionaries = new ArrayList<>();
-    int visited = 0;
+    Set<COSDictionary> structure = structureElements(trailer);
+    return structure == null || reachesAnActiveDictionary(pending, structure) || parser.refused;
+  }
+
+  private static boolean reachesAnActiveDictionary(
+      Deque<COSBase> pending, Set<COSDictionary> structure) {
+    // Every value once: references are resolved and arrays opened, direct or indirect alike.
+    // The walk keeps its own stack, so a deep file costs memory bounded by the values, not depth.
+    Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
     while (!pending.isEmpty()) {
-      if (++visited > 2 * MAX_VALUES) {
+      COSBase value = pending.pop();
+      if (value instanceof COSObject reference) {
+        COSBase target = reference.getObject();
+        if (target != null) {
+          pending.push(target);
+        }
+        continue;
+      }
+      if (!visited.add(value)) {
+        continue;
+      }
+      if (visited.size() > 2 * MAX_VALUES) {
         return true;
       }
-      COSBase object = pending.pop();
-      if (object instanceof COSDictionary dictionary) {
-        dictionaries.add(dictionary);
+      if (value instanceof COSDictionary dictionary) {
+        if (ActiveEntries.isActive(dictionary, structure)) {
+          return true;
+        }
         pending.addAll(dictionary.getValues());
-      } else if (object instanceof COSArray array) {
+      } else if (value instanceof COSArray array) {
         array.forEach(pending::push);
-      }
-    }
-    Roles roles = new Roles(dictionaries);
-    for (COSDictionary dictionary : dictionaries) {
-      if (isActive(dictionary, roles)) {
-        return true;
       }
     }
     return false;
   }
 
-  private static boolean isActive(COSDictionary dictionary, Roles roles) {
-    if (in(ACTIVE_ACTIONS, dictionary.getCOSName(S))
-        || in(ACTIVE_TYPES, dictionary.getCOSName(TYPE))
-        || in(ACTIVE_TYPES, dictionary.getCOSName(SUBTYPE))) {
-      return true;
-    }
-    boolean action =
-        ACTION.equals(dictionary.getCOSName(TYPE))
-            || (roles.actions.contains(dictionary) && dictionary.containsKey(S));
-    if (action && !in(ALLOWED_ACTIONS, dictionary.getCOSName(S))) {
-      return true;
-    }
-    if (roles.isResourceMap(dictionary)) {
-      return false; // its keys are names of resources; what they point to is inspected apart
-    }
-    for (COSName key : ACTIVE_KEYS) {
-      if (dictionary.containsKey(key)) {
-        return true;
-      }
-    }
-    COSBase open = dictionary.getDictionaryObject(OPEN_ACTION);
-    return open != null && !(open instanceof COSArray) && !isGoTo(open);
-  }
-
-  private static boolean isGoTo(COSBase action) {
-    return action instanceof COSDictionary dictionary && GO_TO.equals(dictionary.getCOSName(S));
-  }
-
-  private static boolean in(Set<COSName> names, @Nullable COSName name) {
-    return name != null && names.contains(name);
-  }
-
   /**
-   * How each dictionary is reached, by the key that points to it. A map of named resources is the
-   * value of {@code /Font}, {@code /XObject}... in a {@code /Resources} dictionary (of a page, a
-   * page tree node, a form XObject, a Type 3 font, a pattern); it counts as one only when nothing
-   * reaches it by any other key, it says nothing of what it is ({@code /Type}, {@code /Subtype} or
-   * {@code /S} with a name) and it is not a stream. An action is the value of {@code /A}, {@code
-   * /Next} or {@code /OpenAction}.
+   * The dictionaries reached through {@code /K} from the {@code /StructTreeRoot} of the catalog,
+   * resolved and opened as any other value; null if there are more than the file may have values.
    */
-  private static final class Roles {
-
-    private final Set<COSDictionary> resources = identitySet();
-    private final Set<COSDictionary> asResourceMap = identitySet();
-    private final Set<COSDictionary> otherwise = identitySet();
-    private final Set<COSDictionary> actions = identitySet();
-
-    Roles(List<COSDictionary> dictionaries) {
-      for (COSDictionary dictionary : dictionaries) {
-        if (dictionary.getDictionaryObject(RESOURCES) instanceof COSDictionary found) {
-          resources.add(found);
+  private static @Nullable Set<COSDictionary> structureElements(COSDictionary trailer) {
+    Set<COSDictionary> elements = Collections.newSetFromMap(new IdentityHashMap<>());
+    Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    Deque<COSBase> pending = new ArrayDeque<>();
+    if (trailer.getDictionaryObject(ROOT) instanceof COSDictionary catalog
+        && catalog.getDictionaryObject(STRUCT_TREE_ROOT) instanceof COSDictionary tree) {
+      COSBase kids = tree.getItem(KIDS);
+      if (kids != null) {
+        pending.push(kids);
+      }
+    }
+    while (!pending.isEmpty()) {
+      COSBase value = pending.pop();
+      if (value instanceof COSObject reference) {
+        value = reference.getObject();
+      }
+      if (value == null || !visited.add(value)) {
+        continue;
+      }
+      if (visited.size() > MAX_VALUES) {
+        return null;
+      }
+      if (value instanceof COSDictionary element) {
+        elements.add(element);
+        COSBase kids = element.getItem(KIDS);
+        if (kids != null) {
+          pending.push(kids);
         }
-      }
-      for (COSDictionary dictionary : dictionaries) {
-        boolean inResources = resources.contains(dictionary);
-        for (Map.Entry<COSName, COSBase> entry : dictionary.entrySet()) {
-          COSName key = entry.getKey();
-          List<COSDictionary> targets = new ArrayList<>();
-          collect(entry.getValue(), targets, 0);
-          boolean map = inResources && RESOURCE_KINDS.contains(key);
-          (map ? asResourceMap : otherwise).addAll(targets);
-          if (ACTION_KEYS.contains(key)) {
-            COSBase value = resolve(entry.getValue());
-            if (value instanceof COSDictionary single) {
-              actions.add(single);
-            } else if (value instanceof COSArray && NEXT.equals(key)) {
-              actions.addAll(targets); // a chain of actions
-            }
-          }
-        }
+      } else if (value instanceof COSArray array) {
+        array.forEach(pending::push);
       }
     }
-
-    boolean isResourceMap(COSDictionary dictionary) {
-      return asResourceMap.contains(dictionary)
-          && !otherwise.contains(dictionary)
-          && !(dictionary instanceof COSStream)
-          && dictionary.getCOSName(TYPE) == null
-          && dictionary.getCOSName(SUBTYPE) == null
-          && dictionary.getCOSName(S) == null;
-    }
-
-    /** The dictionaries a value is or points to, inside arrays too. */
-    private static void collect(@Nullable COSBase value, List<COSDictionary> targets, int depth) {
-      COSBase resolved = resolve(value);
-      if (resolved instanceof COSDictionary dictionary) {
-        targets.add(dictionary);
-      } else if (resolved instanceof COSArray array && depth < 8 && !(value instanceof COSObject)) {
-        // a direct array: an indirect one is an object of its own, reached from the table
-        array.forEach(element -> collect(element, targets, depth + 1));
-      }
-    }
-
-    private static @Nullable COSBase resolve(@Nullable COSBase value) {
-      return value instanceof COSObject reference ? reference.getObject() : value;
-    }
-
-    private static Set<COSDictionary> identitySet() {
-      return Collections.newSetFromMap(new IdentityHashMap<>());
-    }
+    return elements;
   }
 
   /**
@@ -398,6 +306,8 @@ final class PdfActiveContent {
     private int values;
     private int compressedObjects;
     private boolean readingTrailer;
+    private boolean readingTable;
+    private int tableLines;
     private boolean refused;
 
     BoundedParser(RandomAccessRead source) throws IOException {
@@ -420,6 +330,25 @@ final class PdfActiveContent {
       if (++values > MAX_VALUES) {
         refuse("Too many values");
       }
+    }
+
+    /** Each entry of a classic table is one line, read before PDFBox keeps it. */
+    @Override
+    protected boolean parseXrefTable(long startByteOffset) throws IOException {
+      readingTable = true;
+      try {
+        return super.parseXrefTable(startByteOffset);
+      } finally {
+        readingTable = false;
+      }
+    }
+
+    @Override
+    protected String readLine() throws IOException {
+      if (readingTable && ++tableLines > MAX_OBJECTS + 1) {
+        refuse("Too many entries in the table");
+      }
+      return super.readLine();
     }
 
     @Override

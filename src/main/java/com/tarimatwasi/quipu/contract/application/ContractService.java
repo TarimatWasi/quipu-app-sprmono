@@ -41,9 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
 public class ContractService implements ManageContractsUseCase {
 
-  /** RF-15: the PDF of a contract has at most 10 MB. */
-  static final int MAX_FILE_BYTES = 10 * 1024 * 1024;
-
   private static final Logger LOGGER = LoggerFactory.getLogger(ContractService.class);
 
   private static final String DEFAULT_NAME = "contrato.pdf";

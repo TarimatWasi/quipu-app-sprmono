@@ -303,6 +303,10 @@ public class PaymentsBffController {
   }
 
   static byte[] content(MultipartFile file) {
+    // RF-15: the declared size is checked before the bytes are read and inspected.
+    if (file.getSize() > ManagePaymentsUseCase.MAX_VOUCHER_BYTES) {
+      throw new InvalidVoucherFileException();
+    }
     byte[] content;
     try {
       content = file.getBytes();

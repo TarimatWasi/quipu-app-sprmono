@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFileStorageException;
+import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import java.util.Map;
@@ -340,5 +341,30 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
             .andReturn();
 
     assertThat(result.getResponse().getContentAsString()).contains("\"amount\":800.00");
+  }
+
+  @Test
+  void aVoucherOverFiveMegabytesIsRefusedBeforeItIsInspected() throws Exception {
+    // TAR-39: with the inspection busy, a file read and inspected would answer 503
+    byte[] big = TestPdfs.ofSize(6 * 1024 * 1024);
+
+    PdfInspections.whileBusy(
+        () ->
+            post(contractGuest, "period", "2026-10", "800", big, "v.pdf")
+                .andExpect(status().isBadRequest())
+                .andExpect(answersTheContract())
+                .andExpect(jsonPath("$.code").value("VOUCHER_INVALID_FILE")));
+    verify(files, never()).store(any(), any());
+  }
+
+  @Test
+  void aVoucherThatCannotBeInspectedInTimeIsAServiceUnavailable() throws Exception {
+    PdfInspections.whileBusy(
+        () ->
+            post(contractGuest, "period", "2026-10", "800", TestPdfs.plain(), "v.pdf")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(answersTheContract())
+                .andExpect(jsonPath("$.code").value("FILE_STORAGE_UNAVAILABLE")));
+    verify(files, never()).store(any(), any());
   }
 }

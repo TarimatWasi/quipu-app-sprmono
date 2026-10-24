@@ -188,6 +188,10 @@ public class ContractsBffController {
   }
 
   private static byte[] content(MultipartFile file) {
+    // RF-15: the declared size is checked before the bytes are read and inspected.
+    if (file.getSize() > ManageContractsUseCase.MAX_FILE_BYTES) {
+      throw new InvalidContractFileException();
+    }
     byte[] content;
     try {
       content = file.getBytes();

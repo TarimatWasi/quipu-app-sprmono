@@ -254,6 +254,11 @@ public class GuestOnboardingBffController {
   }
 
   private static byte[] content(MultipartFile file) {
+    // RF-15: the declared size is checked before the bytes are read and inspected.
+    if (file.getSize() > OnboardingUseCase.MAX_DOCUMENT_BYTES) {
+      throw new InvalidOnboardingInputException(
+          InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
+    }
     byte[] content;
     try {
       content = file.getBytes();

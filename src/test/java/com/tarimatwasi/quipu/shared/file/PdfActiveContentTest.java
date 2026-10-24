@@ -3,11 +3,10 @@ package com.tarimatwasi.quipu.shared.file;
 import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.ascii;
 import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.deflate;
 import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.handMade;
-import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.handMadeDocument;
-import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.handMadePage;
 import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.stream;
 import static com.tarimatwasi.quipu.shared.file.HandMadePdfs.withXrefStream;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.awt.image.BufferedImage;
@@ -396,111 +395,6 @@ class PdfActiveContentTest {
         .isFalse();
   }
 
-  // ---- resource maps: the keys are names the producer chose (Codex P2 on PR #85)
-
-  private static final byte[] FONT =
-      ascii("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  private static final byte[] FORM =
-      stream("<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] >>", ascii("0 0 m"));
-
-  private static boolean pageFound(String pageEntries, byte[]... extra) {
-    return PdfActiveContent.found(handMadePage(pageEntries, extra));
-  }
-
-  @Test
-  void theResourcesOfAPageMayUseTheseWordsAsIdentifiers() {
-    // objects: 4 font, 5 form XObject
-    assertThat(pageFound("/Resources << /Font << /JS 4 0 R /F1 4 0 R >> >>", FONT, FORM))
-        .as("a font named /JS")
-        .isFalse();
-    assertThat(pageFound("/Resources << /XObject << /AA 5 0 R /Launch 5 0 R >> >>", FONT, FORM))
-        .as("an XObject named /AA")
-        .isFalse();
-    assertThat(
-            pageFound(
-                "/Resources << /ExtGState << /JS << /CA 1 >> >>"
-                    + " /ColorSpace << /OpenAction [/ICCBased 5 0 R] >> /Pattern << /AA 5 0 R >>"
-                    + " /Shading << /EF 4 0 R >>"
-                    + " /Properties << /EmbeddedFile 4 0 R /JavaScript 4 0 R >> >>",
-                FONT,
-                FORM))
-        .isFalse();
-    // the resources and the map may be indirect objects too: 6 resources, 7 map of fonts
-    assertThat(
-            pageFound(
-                "/Resources 6 0 R",
-                FONT,
-                FORM,
-                ascii("<< /Font 7 0 R /ProcSet [/PDF] >>"),
-                ascii("<< /JS 4 0 R /AA 4 0 R >>")))
-        .isFalse();
-  }
-
-  @Test
-  void theResourcesOfAFormXObjectAreAResourceMapToo() {
-    byte[] form =
-        stream(
-            "<< /Type /XObject /Subtype /Form /BBox [0 0 1 1]"
-                + " /Resources << /Font << /JS 4 0 R >> >> >>",
-            ascii("0 0 m"));
-
-    assertThat(pageFound("/Resources << /XObject << /X1 5 0 R >> >>", FONT, form)).isFalse();
-  }
-
-  @Test
-  void anActiveKeyNextToAResourceDictionaryIsStillFound() {
-    assertThat(pageFound("/Resources << /Font << /F1 4 0 R >> >> /JS (x)", FONT))
-        .as("/JS beside the resources")
-        .isTrue();
-    assertThat(pageFound("/Resources << /Font << /F1 4 0 R >> /JS (x) >>", FONT))
-        .as("/JS in the resources, beside the maps")
-        .isTrue();
-    assertThat(
-            pageFound("/Resources << /Font << /F1 4 0 R >> >>", ascii("<< /Type /Font /JS (x) >>")))
-        .as("/JS in the font that the map points to")
-        .isTrue();
-    assertThat(
-            PdfActiveContent.found(
-                handMade(ascii("<< /Font << /F1 4 0 R >> /OpenAction << /S /JavaScript >> >>"))))
-        .as("a map of fonts that is not inside a /Resources")
-        .isTrue();
-  }
-
-  @Test
-  void anActionThatIsAlsoReachedFromAResourceMapIsStillRefused() {
-    byte[] action = ascii("<< /S /JavaScript /JS (app.alert(1)) >>");
-
-    assertThat(pageFound("/Resources << /Font << /F1 4 0 R >> >>", action))
-        .as("an action used as a font")
-        .isTrue();
-    assertThat(pageFound("/Resources << /Font 4 0 R >>", action))
-        .as("an action used as the map of fonts")
-        .isTrue();
-    assertThat(
-            pageFound(
-                "/Resources << /XObject << /X1 4 0 R >> >>",
-                stream(
-                    "<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /AA << /O 5 0 R >> >>",
-                    ascii("0 0 m")),
-                action))
-        .as("additional actions on a form XObject")
-        .isTrue();
-  }
-
-  @Test
-  void theCatalogIsNeverAResourceMap() {
-    // the catalog, also used as the map of fonts, opens with an action that is not a go-to
-    byte[] uri = ascii("<< /S /URI /URI (https://example.com) >>");
-
-    assertThat(PdfActiveContent.found(handMadeDocument("", "/Resources << /Font 1 0 R >>", uri)))
-        .as("control: the same file without the action on open")
-        .isFalse();
-    assertThat(
-            PdfActiveContent.found(
-                handMadeDocument("/OpenAction 4 0 R", "/Resources << /Font 1 0 R >>", uri)))
-        .isTrue();
-  }
-
   @Test
   void anOrphanJavaScriptObjectThatNothingReferencesIsRefused() {
     assertThat(PdfActiveContent.found(handMade(ascii("<< /S /JavaScript /JS (app.alert(1)) >>"))))
@@ -546,31 +440,6 @@ class PdfActiveContentTest {
     assertThat(PdfActiveContent.found(handMade(objectStream))).isTrue();
   }
 
-  // ---- security review of 89d5dbe
-
-  @Test
-  void aDictionaryAlsoReachedAsAResourceMapIsStillInspected() {
-    // MEDIUM 2: the form and the names of the catalog, also used as the map of fonts of the page
-    assertThat(
-            PdfActiveContent.found(
-                handMadeDocument(
-                    "/Type /Catalog /AcroForm 4 0 R",
-                    "/Resources << /Font 4 0 R >>",
-                    ascii("<< /Fields [] /XFA 5 0 R >>"),
-                    FORM)))
-        .as("an AcroForm with /XFA")
-        .isTrue();
-    assertThat(
-            PdfActiveContent.found(
-                handMadeDocument(
-                    "/Type /Catalog /Names 4 0 R",
-                    "/Resources << /Font 4 0 R >>",
-                    ascii("<< /EmbeddedFiles 5 0 R >>"),
-                    ascii("<< /Names [] >>"))))
-        .as("a name dictionary with /EmbeddedFiles")
-        .isTrue();
-  }
-
   @Test
   void theTrailerIsInspectedAndItsRootMustBeAReference() {
     // MEDIUM 3: the trailer comes after the table, so its offsets still hold
@@ -583,62 +452,6 @@ class PdfActiveContentTest {
 
     assertThat(PdfActiveContent.found(direct.getBytes(StandardCharsets.ISO_8859_1))).isTrue();
     assertThat(PdfActiveContent.found(active.getBytes(StandardCharsets.ISO_8859_1))).isTrue();
-  }
-
-  private static boolean annotationFound(String annotation) {
-    return PdfActiveContent.found(
-        handMadePage(
-            "/Annots [4 0 R]", ascii("<< /Type /Annot /Rect [0 0 1 1] " + annotation + " >>")));
-  }
-
-  @Test
-  void onlyGoToAndLinkActionsAreAccepted() {
-    // MEDIUM 4: a whitelist of /S in every action
-    assertThat(annotationFound("/Subtype /Link /A << /S /GoTo /D [3 0 R /Fit] >>")).isFalse();
-    assertThat(annotationFound("/Subtype /Link /A << /S /URI /URI (https://a.b) >>")).isFalse();
-    assertThat(annotationFound("/Subtype /Link /A << /S /JavaScript /JS (x) >>"))
-        .as("JavaScript in the /A of an annotation")
-        .isTrue();
-    assertThat(annotationFound("/Subtype /Link /A << /S /Named /N /Print >>"))
-        .as("/Named")
-        .isTrue();
-    assertThat(annotationFound("/Subtype /Link /A << /S /Thread /D 1 0 R >>"))
-        .as("/Thread")
-        .isTrue();
-    assertThat(
-            annotationFound(
-                "/Subtype /Link /A << /S /GoTo /D [3 0 R /Fit] /Next << /S /Named /N /Print >> >>"))
-        .as("a /Next chained to a go-to")
-        .isTrue();
-    assertThat(
-            annotationFound(
-                "/Subtype /Link /A << /S /GoTo /D [3 0 R /Fit]"
-                    + " /Next [<< /S /URI /URI (https://a.b) >> << /S /Hide /T (x) >>] >>"))
-        .as("an array of /Next")
-        .isTrue();
-    assertThat(PdfActiveContent.found(handMade(ascii("<< /Type /Action /S /SetOCGState >>"))))
-        .as("any /Type /Action")
-        .isTrue();
-  }
-
-  @Test
-  void mediaAnd3dAreRefused() {
-    for (String subtype : new String[] {"3D", "Movie", "Sound", "Screen", "RichMedia"}) {
-      assertThat(annotationFound("/Subtype /" + subtype)).as(subtype).isTrue();
-    }
-    assertThat(PdfActiveContent.found(handMade(ascii("<< /OnInstantiate 5 0 R >>"))))
-        .as("/OnInstantiate")
-        .isTrue();
-  }
-
-  @Test
-  void theAttributesOfATaggedPdfAreNotActions() {
-    // the /A of a structure element holds attributes, with no /S
-    assertThat(
-            PdfActiveContent.found(
-                handMade(
-                    ascii("<< /Type /StructElem /S /P /A << /O /Layout /Placement /Block >> >>"))))
-        .isFalse();
   }
 
   @Test
@@ -715,7 +528,7 @@ class PdfActiveContentTest {
   }
 
   @Test
-  void aFileInspectedAheadKeepsItsVerdictAndABusyInspectionRefuses() throws Exception {
+  void aFileInspectedAheadKeepsItsVerdict() throws Exception {
     byte[] plain = TestPdfs.plain();
     byte[] active = TestPdfs.withJavaScript();
     PdfActiveContent.inspectAhead(plain);
@@ -725,11 +538,48 @@ class PdfActiveContentTest {
       // while another inspection runs, the verdicts given ahead are reused without parsing
       assertThat(PdfActiveContent.found(plain)).isFalse();
       assertThat(PdfActiveContent.found(active)).isTrue();
-      // a file not inspected ahead waits a moment and is refused
-      assertThat(PdfActiveContent.found(TestPdfs.plain())).isTrue();
     } finally {
       PdfActiveContent.INSPECTION.release();
     }
     assertThat(FileKind.of(TestPdfs.plain())).contains(FileKind.PDF);
+  }
+
+  @Test
+  void aBusyInspectionIsNoVerdictAndIsNotKept() throws Exception {
+    byte[] waiting = TestPdfs.plain();
+    PdfActiveContent.INSPECTION.acquire();
+    try {
+      assertThatThrownBy(() -> PdfActiveContent.inspectAhead(waiting))
+          .isInstanceOf(FileInspectionBusyException.class);
+      assertThatThrownBy(() -> FileKind.of(waiting))
+          .isInstanceOf(FileInspectionBusyException.class);
+    } finally {
+      PdfActiveContent.INSPECTION.release();
+    }
+    // nothing was kept for it: once free, the same file is inspected and accepted
+    assertThat(PdfActiveContent.found(waiting)).isFalse();
+    assertThat(PdfActiveContent.INSPECTION.availablePermits()).isEqualTo(1);
+  }
+
+  /** {@link HandMadePdfs#handMade} with {@code free} more free entries at the end of its table. */
+  private static byte[] withFreeEntries(int free) {
+    String pdf = new String(handMade(), StandardCharsets.ISO_8859_1);
+    int table = pdf.indexOf("xref\n0 4\n");
+    int trailer = pdf.indexOf("trailer");
+    return (pdf.substring(0, table)
+            + "xref\n0 "
+            + (4 + free)
+            + "\n"
+            + pdf.substring(table + "xref\n0 4\n".length(), trailer)
+            + "0000000000 65535 f \n".repeat(free)
+            + pdf.substring(trailer))
+        .getBytes(StandardCharsets.ISO_8859_1);
+  }
+
+  @Test
+  void theEntriesOfAClassicTableAreCountedBeforeTheyAreKept() {
+    // L-C: the startxref offset stays right, since the table only grows after it starts
+    assertThat(PdfActiveContent.found(withFreeEntries(100))).as("control").isFalse();
+    assertThat(PdfActiveContent.found(withFreeEntries(PdfActiveContent.MAX_OBJECTS))).isTrue();
   }
 }

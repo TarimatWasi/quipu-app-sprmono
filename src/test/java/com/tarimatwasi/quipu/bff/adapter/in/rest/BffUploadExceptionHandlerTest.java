@@ -38,4 +38,21 @@ class BffUploadExceptionHandlerTest {
   private static MockHttpServletRequest post(String uri) {
     return new MockHttpServletRequest("POST", uri);
   }
+
+  @ParameterizedTest
+  @CsvSource({
+    UploadRoutes.CONTRACTS + ", 503, FILE_STORAGE_UNAVAILABLE",
+    UploadRoutes.ADMIN_PAYMENTS + ", 503, FILE_STORAGE_UNAVAILABLE",
+    UploadRoutes.GUEST_PAYMENTS + ", 503, FILE_STORAGE_UNAVAILABLE",
+    UploadRoutes.TEMPORARY_GUEST_PAYMENTS + ", 503, FILE_STORAGE_UNAVAILABLE",
+    UploadRoutes.GUEST_ONBOARDING_DOCUMENTS + ", 429, RATE_LIMITED"
+  })
+  void aBusyInspectionIsNoVerdictOnTheFile(String uri, int status, String code) {
+    // TAR-39: 503 where the route declares it; the documents declare 429 and no 503
+    var response = handler.handleInspectionBusy(post(uri));
+
+    assertThat(response.getStatusCode().value()).isEqualTo(status);
+    assertThat(response.getBody()).extracting(BffErrorResponse::code).isEqualTo(code);
+    assertThat(response.getHeaders().getFirst("Retry-After")).isNotBlank();
+  }
 }
