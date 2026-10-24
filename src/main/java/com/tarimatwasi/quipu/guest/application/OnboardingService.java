@@ -13,6 +13,7 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.EmergencyContactV
 import com.tarimatwasi.quipu.guest.port.in.OnboardingConflictException;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingConflictException.Reason;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase;
+import com.tarimatwasi.quipu.guest.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
@@ -169,13 +170,20 @@ public class OnboardingService implements OnboardingUseCase {
     if (guest.personalDataCompletedAt() == null || guest.documentsStepCompletedAt() == null) {
       throw new OnboardingConflictException(Reason.STEP_OUT_OF_ORDER);
     }
-    // RN-14, RN-36: the record of the consent and the activation commit together.
-    records.addConsent(
-        new GuestConsent(
-            guestId,
-            consents.current(),
-            clock.instant(),
-            ConsentTexts.sha256(consents.currentText())));
+    // RN-14, RN-36: the record of the consent and the activation commit together. D-49: one record
+    // per version; the lock on the guest keeps two requests from both inserting it.
+    String textSha256 = ConsentTexts.sha256(consents.currentText());
+    GuestConsent recorded = records.consentOf(guestId, version).orElse(null);
+    if (recorded == null) {
+      try {
+        records.addConsent(new GuestConsent(guestId, version, clock.instant(), textSha256));
+      } catch (GuestConsentAlreadyExistsException e) {
+        throw new OnboardingConflictException(Reason.ALREADY_COMPLETED);
+      }
+    } else if (!recorded.textSha256().equals(textSha256)) {
+      // The text of the version changed after it was accepted: the record cannot prove this one.
+      throw new OnboardingConflictException(Reason.ALREADY_COMPLETED);
+    }
     return view(guests.save(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
   }
 
