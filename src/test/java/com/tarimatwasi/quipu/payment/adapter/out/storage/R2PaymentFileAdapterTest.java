@@ -7,9 +7,11 @@ import com.sun.net.httpserver.HttpServer;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
+import com.tarimatwasi.quipu.support.SilentServer;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -56,7 +58,9 @@ class R2PaymentFileAdapterTest {
             "test-access-key",
             "test-secret-key",
             "http://127.0.0.1:" + server.getAddress().getPort(),
-            "bucket"));
+            "bucket",
+            Duration.ofSeconds(10),
+            Duration.ofSeconds(5)));
   }
 
   @Test
@@ -115,7 +119,9 @@ class R2PaymentFileAdapterTest {
 
   @Test
   void withoutCredentialsTheApplicationStartsAndUsingTheBucketFailsCleanly() {
-    var adapter = new R2PaymentFileAdapter(new R2Properties("", "", "", "", ""));
+    var adapter =
+        new R2PaymentFileAdapter(
+            new R2Properties("", "", "", "", "", Duration.ofSeconds(10), Duration.ofSeconds(5)));
 
     assertThatThrownBy(() -> adapter.store(new byte[] {1}, VoucherType.PDF))
         .isInstanceOf(PaymentFileStorageException.class)
@@ -124,5 +130,30 @@ class R2PaymentFileAdapterTest {
     assertThatThrownBy(() -> adapter.signedUrl("k", VoucherType.PDF))
         .isInstanceOf(PaymentFileStorageException.class);
     adapter.close();
+  }
+
+  /**
+   * TAR-204: a bucket that never answers is a storage failure once the timeout of the call ends.
+   */
+  @Test
+  void aBucketThatNeverAnswersIsAStorageFailureAfterTheTimeout() throws Exception {
+    try (var silent = new SilentServer()) {
+      var adapter =
+          new R2PaymentFileAdapter(
+              new R2Properties(
+                  "account",
+                  "test-access-key",
+                  "test-secret-key",
+                  silent.endpoint(),
+                  "bucket",
+                  Duration.ofMillis(500),
+                  Duration.ofMillis(300)));
+
+      long start = System.nanoTime();
+      assertThatThrownBy(() -> adapter.store(new byte[] {1}, VoucherType.PDF))
+          .isInstanceOf(PaymentFileStorageException.class);
+      assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
+      adapter.close();
+    }
   }
 }

@@ -39,6 +39,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -106,7 +107,8 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   }
 
   @Override
-  @Transactional
+  // TAR-204: the lock ends with the transaction of the caller; without one it would end at once.
+  @Transactional(propagation = Propagation.MANDATORY)
   public void lock(Long id) {
     if (guests.findByIdForUpdate(id).isEmpty()) {
       throw new GuestNotFoundException();
@@ -178,6 +180,9 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
             ? GuestStatus.PENDING_ACTIVATION
             : guest.statusBeforeInactive();
     Guest saved = guests.save(withStatus(guest, before, null));
+    // D-45.2a, known limit: this only enables the account again. The access revoked on the
+    // deactivation is not handed back, so a guest that had not chosen its password yet cannot log
+    // in until the administrator issues a new access.
     accounts.setActive(id, true);
     return summary(saved, stateOf(saved));
   }

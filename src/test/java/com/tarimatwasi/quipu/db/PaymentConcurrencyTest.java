@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.PeriodVoucher;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
@@ -23,6 +24,7 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Objects;
@@ -30,7 +32,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -169,6 +174,63 @@ class PaymentConcurrencyTest {
 
   private static long succeeded(List<Optional<Throwable>> outcomes) {
     return outcomes.stream().filter(Optional::isEmpty).count();
+  }
+
+  /**
+   * TAR-204: the approval locks the contract before the payment, so a termination that holds the
+   * contract is waited for and, once committed, is seen: a month it no longer charges is refused
+   * and the voucher stays pending.
+   */
+  @Test
+  void anApprovalWaitsForATerminationThatHoldsTheContractAndRefusesTheMonthItNoLongerCharges()
+      throws Exception {
+    Long id = insertPending();
+    var locked = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    var termination =
+        CompletableFuture.runAsync(
+            () ->
+                transaction.executeWithoutResult(
+                    status -> {
+                      jdbc.update(
+                          "UPDATE contracts SET status = 'TERMINATED',"
+                              + " terminated_at = '2025-12-20T15:00:00Z' WHERE id = ?",
+                          contract);
+                      locked.countDown();
+                      awaitLatch(release);
+                    }));
+    awaitLatch(locked);
+
+    var approval = start(new CyclicBarrier(1), () -> approveNow(id));
+    long deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
+    while (!approval.isDone() && waitingForALock() == 0 && System.nanoTime() < deadline) {
+      LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
+    }
+    assertThat(approval.isDone()).as("the approval waits for the contract").isFalse();
+    release.countDown();
+    termination.join();
+
+    assertThat(approval.join()).containsInstanceOf(PaymentPeriodNotPayableException.class);
+    assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
+        .isEqualTo("PENDING");
+  }
+
+  private int waitingForALock() {
+    Integer waiting =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM pg_stat_activity"
+                + " WHERE wait_event_type = 'Lock' AND datname = current_database()",
+            Integer.class);
+    return waiting == null ? 0 : waiting;
+  }
+
+  private static void awaitLatch(CountDownLatch latch) {
+    try {
+      assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
   }
 
   @Test

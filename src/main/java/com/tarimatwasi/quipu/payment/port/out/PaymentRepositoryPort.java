@@ -64,6 +64,13 @@ public interface PaymentRepositoryPort {
   Optional<StoredPayment> findById(Long id);
 
   /**
+   * The guest of the payment when it is for a period of a contract; empty for the payment of a stay
+   * or an unknown id. Reads a column, not the row, so a later {@link #findByIdForUpdate} in the
+   * same transaction still sees the row as committed when its lock is granted (TAR-204).
+   */
+  Optional<Long> findContractGuestId(Long id);
+
+  /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so two requests
    * that resolve the same payment are decided one after the other. Needs a transaction.
    */
