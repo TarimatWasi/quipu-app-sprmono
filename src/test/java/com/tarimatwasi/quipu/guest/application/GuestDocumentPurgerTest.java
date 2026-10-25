@@ -3,9 +3,13 @@ package com.tarimatwasi.quipu.guest.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
@@ -26,14 +30,18 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 /**
  * TAR-187 (RN-37): what an action left halfway stays recorded until a round finishes it: objects
@@ -89,25 +97,113 @@ class GuestDocumentPurgerTest {
   @Test
   void theRecordsAreWrittenEachInItsOwnTransaction() {
     purger().schedule(KEY);
-    purger().begin(PENDING);
-    purger().cancel(DOCUMENT);
+
+    assertThat(purger().begin(PENDING)).isSameAs(PENDING);
 
     verify(records).addPurge(KEY);
     verify(records).addPendingDeletion(PENDING);
+  }
+
+  @Test
+  void aDeletionAlreadyRecordedKeepsItsFirstRecord() {
+    PendingDeletion first =
+        new PendingDeletion(GUEST, DOCUMENT, WHY, "application/pdf", 10, 9L, NOW);
+    when(records.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.of(first));
+
+    assertThat(purger().begin(PENDING)).isSameAs(first);
+
+    verify(records, never()).addPendingDeletion(any());
+  }
+
+  @Test
+  void aDeletionRecordedAtTheSameTimeByAnotherRequestKeepsThatRecord() {
+    PendingDeletion other =
+        new PendingDeletion(GUEST, DOCUMENT, WHY, "application/pdf", 10, 9L, NOW);
+    when(records.pendingDeletionOf(DOCUMENT))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(other));
+    doThrow(new DataIntegrityViolationException("uq")).when(records).addPendingDeletion(PENDING);
+
+    assertThat(purger().begin(PENDING)).isSameAs(other);
+  }
+
+  @Test
+  void completingADeletionWritesTheEvidenceOfWhoAskedAndRemovesTheRow() {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
+    when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
+
+    assertThat(purger().complete(PENDING)).isTrue();
+
+    InOrder order = inOrder(guests, records);
+    order.verify(guests).findByIdForUpdate(GUEST);
+    order.verify(records).findDocumentForUpdate(GUEST, DOCUMENT);
+    order.verify(records).addAction(Kind.DELETE, ROW, null, WHY, 3L, ASKED);
+    order.verify(records).removeDocument(ROW);
+    order.verify(records).removePendingDeletion(DOCUMENT);
+    verify(files, never()).delete(any());
+  }
+
+  @Test
+  void completingADeletionWhoseRowIsGoneOnlyForgetsIt() {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
+    when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.empty());
+
+    assertThat(purger().complete(PENDING)).isFalse();
+
+    verify(records, never()).addAction(any(), any(), any(), any(), any(), any());
     verify(records).removePendingDeletion(DOCUMENT);
   }
 
   @Test
-  void anObjectNoRowUsesIsRemovedAndForgottenAndOneTheStoreKeepsStaysPending() {
-    when(records.pendingPurges(100)).thenReturn(List.of(KEY, OTHER));
+  void anObjectNoRowUsesIsRemovedAndForgotten() {
+    when(records.pendingPurges(100)).thenReturn(List.of(KEY));
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of());
+
+    assertThat(purger().purgePending(100)).isZero();
+
+    verify(files).delete(KEY);
+    verify(records).removePurge(KEY);
+  }
+
+  @Test
+  void aStoreThatFailsEndsTheRoundAndLeavesTheRestPending() {
+    when(records.pendingPurges(100)).thenReturn(List.of(KEY, OTHER));
+    when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
     doThrow(new GuestDocumentStorageException("down")).when(files).delete(KEY);
 
-    assertThat(purger().purgePending(100)).isOne();
+    assertThat(purger().purgePending(100)).isEqualTo(3);
 
-    verify(files).delete(OTHER);
-    verify(records).removePurge(OTHER);
-    verify(records, never()).removePurge(KEY);
+    verify(files, never()).delete(OTHER);
+    verify(records, never()).removePurge(any());
+    verifyNoInteractions(guests);
+  }
+
+  @Test
+  void theStoreIsNeverCalledInsideATransaction() {
+    when(records.pendingPurges(100)).thenReturn(List.of(KEY));
+    when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
+    when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
+    when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
+    AtomicInteger open = new AtomicInteger();
+    when(transactions.getTransaction(any()))
+        .thenAnswer(
+            call -> {
+              open.incrementAndGet();
+              return new SimpleTransactionStatus();
+            });
+    doAnswer(call -> open.decrementAndGet()).when(transactions).commit(any());
+    doAnswer(
+            call -> {
+              assertThat(open).hasValue(0);
+              return null;
+            })
+        .when(files)
+        .delete(any());
+
+    assertThat(purger().purgePending(100)).isZero();
+
+    verify(files, times(2)).delete(KEY);
   }
 
   @Test
@@ -127,21 +223,25 @@ class GuestDocumentPurgerTest {
     when(records.pendingPurges(100)).thenReturn(List.of());
     when(records.pendingDeletions(NOW.minus(GuestDocumentPurger.IN_COURSE), 100))
         .thenReturn(List.of(PENDING));
+    when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
     when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
 
     assertThat(purger().purgePending(100)).isZero();
 
-    verify(files).delete(KEY);
-    verify(records).addAction(Kind.DELETE, ROW, null, WHY, 3L, ASKED);
-    verify(records).removeDocument(ROW);
-    verify(records).removePendingDeletion(DOCUMENT);
+    InOrder order = inOrder(files, guests, records);
+    order.verify(files).delete(KEY);
+    order.verify(guests).findByIdForUpdate(GUEST);
+    order.verify(records).addAction(Kind.DELETE, ROW, null, WHY, 3L, ASKED);
+    order.verify(records).removeDocument(ROW);
+    order.verify(records).removePendingDeletion(DOCUMENT);
   }
 
   @Test
   void aPendingDeletionWhoseRowIsGoneIsOnlyForgotten() {
     when(records.pendingPurges(100)).thenReturn(List.of());
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
+    when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.empty());
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
     when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.empty());
 
@@ -172,12 +272,12 @@ class GuestDocumentPurgerTest {
   void aPendingDeletionWhoseStoreFailsStays() {
     when(records.pendingPurges(100)).thenReturn(List.of());
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
-    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
-    when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
+    when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
     doThrow(new GuestDocumentStorageException("down")).when(files).delete(KEY);
 
     assertThat(purger().purgePending(100)).isOne();
 
+    verifyNoInteractions(guests);
     verify(records, never()).removeDocument(any());
     verify(records, never()).removePendingDeletion(any());
   }

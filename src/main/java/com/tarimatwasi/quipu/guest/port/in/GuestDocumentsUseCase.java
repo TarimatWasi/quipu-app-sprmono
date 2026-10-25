@@ -135,7 +135,8 @@ public interface GuestDocumentsUseCase {
       Instant performedAt) {}
 
   /**
-   * The documents of the guest, oldest first, each with a freshly signed link.
+   * The documents of the guest, oldest first, each with a freshly signed link; a document whose
+   * deletion is in course is not listed.
    *
    * @throws GuestNotFoundException if there is no guest with that id
    * @throws GuestDocumentUnavailableException if the file store could not sign the links
@@ -150,7 +151,8 @@ public interface GuestDocumentsUseCase {
    *
    * @throws InvalidDocumentActionException if the reason breaks the rules of RN-37
    * @throws GuestDocumentNotFoundException if the document is not one of that guest
-   * @throws GuestDocumentUnavailableException if the store failed; nothing changed
+   * @throws GuestDocumentUnavailableException if the store failed; the deletion stays recorded and
+   *     is finished by the repeated action or by the purger
    * @throws GuestDocumentActionFailedException if the object left the store but the row did not
    */
   void delete(Long actorId, Long guestId, Long documentId, DocumentActionRequest request);
@@ -162,7 +164,8 @@ public interface GuestDocumentsUseCase {
    *
    * @throws InvalidDocumentActionException if the reason breaks the rules of RN-37
    * @throws InvalidOnboardingInputException if the file is not a JPG, PNG or PDF of up to 5 MB
-   * @throws GuestDocumentNotFoundException if the document is not one of that guest
+   * @throws GuestDocumentNotFoundException if the document is not one of that guest, or its
+   *     deletion is in course
    * @throws GuestDocumentUnavailableException if the store failed; nothing changed
    */
   GuestDocumentView replace(

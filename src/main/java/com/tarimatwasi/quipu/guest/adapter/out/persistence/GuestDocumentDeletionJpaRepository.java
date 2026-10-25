@@ -14,6 +14,9 @@ interface GuestDocumentDeletionJpaRepository
 
   Optional<GuestDocumentDeletionJpaEntity> findByDocumentId(Long documentId);
 
+  @Query("select d.documentId from GuestDocumentDeletionJpaEntity d where d.guestId = :guestId")
+  List<Long> findDocumentIdsByGuestId(@Param("guestId") Long guestId);
+
   @Query(
       "select d from GuestDocumentDeletionJpaEntity d where d.createdDate < :before"
           + " order by d.createdDate asc, d.id asc")

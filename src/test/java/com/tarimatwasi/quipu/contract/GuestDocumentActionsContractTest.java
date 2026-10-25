@@ -331,7 +331,7 @@ class GuestDocumentActionsContractTest {
   }
 
   @Test
-  void aStoreThatFailsChangesNothingAndTheRetryCompletes() throws Exception {
+  void aStoreThatFailsKeepsTheDeletionPendingAndTheRetryCompletes() throws Exception {
     doThrow(new GuestDocumentStorageException("down")).when(files).delete(OLD_KEY);
 
     delete(guestId, documentId, UPLOAD_ERROR)
@@ -340,12 +340,26 @@ class GuestDocumentActionsContractTest {
         .andExpect(jsonPath("$.code").value("FILE_STORAGE_UNAVAILABLE"));
     assertThat(documentsOf(guestId)).isOne();
     assertThat(count("guest_document_actions")).isZero();
+    // the store may have removed the object before failing: the deletion stays recorded and the
+    // document is no longer listed, so no link is signed for an object that may be gone
+    assertThat(count("guest_document_deletions")).isOne();
+    mockMvc
+        .perform(
+            get("/bff/admin/guests/" + masker.mask(IdKind.GUEST, guestId) + "/documents")
+                .cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(0));
+    // nor can it be replaced while its deletion is pending
+    replace(admin(), guestId, documentId, PDF, Map.of("reason", "UPLOAD_ERROR"))
+        .andExpect(status().isNotFound());
+    verify(files, never()).store(any(), any());
 
     // an object already missing counts as deleted: the store answers as for any removal
     reset(files);
     delete(guestId, documentId, UPLOAD_ERROR).andExpect(status().isNoContent());
     assertThat(documentsOf(guestId)).isZero();
     assertThat(count("guest_document_actions")).isOne();
+    assertThat(count("guest_document_deletions")).isZero();
 
     delete(guestId, documentId, UPLOAD_ERROR)
         .andExpect(status().isNotFound())

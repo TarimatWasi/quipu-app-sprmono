@@ -17,6 +17,8 @@ interface GuestDocumentJpaRepository extends JpaRepository<GuestDocumentJpaEntit
 
   boolean existsByStorageKey(String storageKey);
 
+  Optional<GuestDocumentJpaEntity> findByIdAndGuestId(Long id, Long guestId);
+
   /** The document of that guest, locked until the commit (RN-37). */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<GuestDocumentJpaEntity> findWithLockByIdAndGuestId(Long id, Long guestId);

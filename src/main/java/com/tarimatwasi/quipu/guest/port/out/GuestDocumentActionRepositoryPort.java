@@ -26,6 +26,9 @@ public interface GuestDocumentActionRepositoryPort {
    */
   Optional<GuestDocument> findDocumentForUpdate(Long guestId, Long documentId);
 
+  /** The document of that guest, without a lock; empty if it is not one of that guest. */
+  Optional<GuestDocument> findDocument(Long guestId, Long documentId);
+
   /**
    * Inserts the evidence of the action on the document, by that administrator at that time.
    *
@@ -55,8 +58,11 @@ public interface GuestDocumentActionRepositoryPort {
   /** Records the deletion asked for, before its object leaves the store. */
   void addPendingDeletion(PendingDeletion deletion);
 
-  /** Forgets the deletion of the document: done, or its object never left the store. */
+  /** Forgets the deletion of the document: done, or the document is gone. */
   void removePendingDeletion(Long documentId);
+
+  /** The ids of the documents of the guest whose deletion is in course. */
+  List<Long> documentsBeingDeleted(Long guestId);
 
   /** The deletions asked for before that instant and still in course, oldest first. */
   List<PendingDeletion> pendingDeletions(Instant askedBefore, int limit);

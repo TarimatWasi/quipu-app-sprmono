@@ -54,6 +54,21 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
         .map(GuestDocumentJpaEntity::toDomain);
   }
 
+  /**
+   * Detached once read: the row is read-only, so a later lock on it in the same transaction must
+   * load it again instead of finding it managed.
+   */
+  @Override
+  public Optional<GuestDocument> findDocument(Long guestId, Long documentId) {
+    return documents
+        .findByIdAndGuestId(documentId, guestId)
+        .map(
+            row -> {
+              entityManager.detach(row);
+              return row.toDomain();
+            });
+  }
+
   /** Flushes, so that a second action on the document surfaces here as what it is. */
   @Override
   public GuestDocumentAction addAction(
@@ -124,6 +139,11 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   @Override
   public void removePendingDeletion(Long documentId) {
     deletions.deleteByDocument(documentId);
+  }
+
+  @Override
+  public List<Long> documentsBeingDeleted(Long guestId) {
+    return deletions.findDocumentIdsByGuestId(guestId);
   }
 
   @Override

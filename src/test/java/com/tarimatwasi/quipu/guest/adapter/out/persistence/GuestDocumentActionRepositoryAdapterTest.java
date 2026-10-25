@@ -184,6 +184,35 @@ class GuestDocumentActionRepositoryAdapterTest {
   }
 
   @Test
+  void theDocumentsBeingDeletedAreThoseOfThatGuestOnly() {
+    Instant asked = Instant.parse("2026-10-01T12:00:00Z");
+    transaction.executeWithoutResult(
+        status -> {
+          adapter.addPendingDeletion(
+              new PendingDeletion(guest, 5L, ARCO, "image/png", 42, admin, asked));
+          adapter.addPendingDeletion(
+              new PendingDeletion(guest + 1, 6L, ARCO, "image/png", 42, admin, asked));
+        });
+
+    assertThat(adapter.documentsBeingDeleted(guest)).containsExactly(5L);
+  }
+
+  @Test
+  void aDocumentIsFoundOnlyUnderItsOwnGuest() {
+    Long id = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guest_documents (id, guest_id, storage_key, original_name, content_type,"
+            + " size_bytes) VALUES (?, ?, 'guest-documents/mine', 'd.pdf', 'application/pdf', 10)",
+        id,
+        guest);
+
+    assertThat(adapter.findDocument(guest, id))
+        .map(GuestDocument::storageKey)
+        .contains("guest-documents/mine");
+    assertThat(adapter.findDocument(guest + 1, id)).isEmpty();
+  }
+
+  @Test
   void aKeyIsReferencedWhileARowUsesIt() {
     jdbc.update(
         "INSERT INTO guest_documents (id, guest_id, storage_key, original_name, content_type,"

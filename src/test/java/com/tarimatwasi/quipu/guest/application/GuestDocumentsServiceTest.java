@@ -136,6 +136,12 @@ class GuestDocumentsServiceTest {
   }
 
   private void theDocumentIsThere() {
+    when(guests.findById(GUEST)).thenReturn(Optional.of(guest()));
+    when(actions.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(OLD));
+  }
+
+  private void theDocumentIsLocked() {
+    theDocumentIsThere();
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
     when(actions.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(OLD));
   }
@@ -145,46 +151,41 @@ class GuestDocumentsServiceTest {
   private static final PendingDeletion PENDING =
       new PendingDeletion(GUEST, DOCUMENT, WHY, "application/pdf", 10, ACTOR, NOW);
 
+  private void theDeletionIsRecorded() {
+    theDocumentIsThere();
+    when(purger.begin(PENDING)).thenReturn(PENDING);
+  }
+
   @Test
   void aDeletionIsRecordedThenTheObjectGoesThenTheEvidenceAndTheRow() {
-    theDocumentIsThere();
+    theDeletionIsRecorded();
+    when(purger.complete(PENDING)).thenReturn(true);
 
     service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR);
 
-    InOrder order = inOrder(guests, actions, files, purger);
-    order.verify(guests).findByIdForUpdate(GUEST);
-    order.verify(actions).findDocumentForUpdate(GUEST, DOCUMENT);
+    InOrder order = inOrder(guests, actions, transactions, files, purger);
+    order.verify(guests).findById(GUEST);
+    order.verify(actions).findDocument(GUEST, DOCUMENT);
+    // the read ends before the store is called: no row stays locked while R2 answers
+    order.verify(transactions).commit(any());
     order.verify(purger).begin(PENDING);
     order.verify(files).delete(OLD_KEY);
-    order.verify(actions).addAction(Kind.DELETE, OLD, null, WHY, ACTOR, NOW);
-    order.verify(actions).removeDocument(OLD);
-    order.verify(actions).removePendingDeletion(DOCUMENT);
-    // after the commit, what earlier actions left pending is retried, in a small round
-    verify(purger, never()).purge(anyInt());
-    complete(TransactionSynchronization.STATUS_COMMITTED);
-    verify(purger).purge(GuestDocumentPurger.AFTER_AN_ACTION);
+    order.verify(purger).complete(PENDING);
+    // then what earlier actions left pending is retried, in a small round
+    order.verify(purger).purge(GuestDocumentPurger.AFTER_AN_ACTION);
+    verify(guests, never()).findByIdForUpdate(any());
   }
 
   @Test
-  void aDeletionWhoseStoreFailsChangesNothingAndForgetsItsRecord() {
-    theDocumentIsThere();
+  void aDeletionWhoseStoreFailsKeepsItsRecordSoThatItIsFinishedLater() {
+    theDeletionIsRecorded();
     doThrow(new GuestDocumentStorageException("down")).when(files).delete(OLD_KEY);
 
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentUnavailableException.class);
-    verify(purger).cancel(DOCUMENT);
-    verify(actions, never()).addAction(any(), any(), any(), any(), any(), any());
-    verify(actions, never()).removeDocument(any());
-  }
-
-  @Test
-  void aRecordThatCannotBeForgottenStillAnswersTheStoreFailure() {
-    theDocumentIsThere();
-    doThrow(new GuestDocumentStorageException("down")).when(files).delete(OLD_KEY);
-    doThrow(new QueryTimeoutException("db")).when(purger).cancel(DOCUMENT);
-
-    assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
-        .isInstanceOf(GuestDocumentUnavailableException.class);
+    // the store may have removed the object before failing: the record stays for the purger
+    verify(purger, never()).complete(any());
+    verify(actions, never()).removePendingDeletion(any());
   }
 
   @Test
@@ -203,42 +204,31 @@ class GuestDocumentsServiceTest {
             10,
             99L,
             NOW.minusSeconds(3600));
-    when(actions.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.of(first));
+    when(purger.begin(PENDING)).thenReturn(first);
+    when(purger.complete(first)).thenReturn(true);
 
     service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR);
 
-    verify(purger, never()).begin(any());
-    verify(actions).addAction(Kind.DELETE, OLD, null, first.why(), 99L, NOW.minusSeconds(3600));
-  }
-
-  @Test
-  void aRepeatedDeletionWhoseStoreFailsKeepsItsRecord() {
-    theDocumentIsThere();
-    when(actions.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.of(PENDING));
-    doThrow(new GuestDocumentStorageException("down")).when(files).delete(OLD_KEY);
-
-    assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
-        .isInstanceOf(GuestDocumentUnavailableException.class);
-    verify(purger, never()).cancel(any());
+    verify(purger).complete(first);
   }
 
   @Test
   void onlyAFailureAfterTheObjectLeftIsTheFailedAction(CapturedOutput output) {
-    theDocumentIsThere();
-    doThrow(new QueryTimeoutException("SELECT secret")).when(actions).removeDocument(OLD);
+    theDeletionIsRecorded();
+    when(purger.complete(PENDING)).thenThrow(new QueryTimeoutException("SELECT secret"));
 
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentActionFailedException.class);
     assertThat(output)
         .contains("guest document 70 asked by user 3")
         .doesNotContain(OLD_KEY, "SELECT secret");
-    verify(actions, never()).removePendingDeletion(any());
+    verify(purger, never()).purge(anyInt());
   }
 
   @Test
   void aCommitThatFailsAfterTheObjectLeftIsTheFailedAction() {
-    theDocumentIsThere();
-    doThrow(new TransactionSystemException("commit failed")).when(transactions).commit(any());
+    theDeletionIsRecorded();
+    when(purger.complete(PENDING)).thenThrow(new TransactionSystemException("commit failed"));
 
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentActionFailedException.class);
@@ -246,8 +236,8 @@ class GuestDocumentsServiceTest {
 
   @Test
   void aFailureBeforeTheObjectLeftIsAnsweredAsUsual() {
-    when(guests.findByIdForUpdate(GUEST))
-        .thenThrow(new PessimisticLockingFailureException("lock_timeout"));
+    theDocumentIsThere();
+    when(purger.begin(PENDING)).thenThrow(new PessimisticLockingFailureException("lock_timeout"));
 
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(PessimisticLockingFailureException.class);
@@ -256,12 +246,12 @@ class GuestDocumentsServiceTest {
 
   @Test
   void aMissingGuestOrADocumentOfAnotherGuestIsTheSameNotFound() {
-    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.empty());
+    when(guests.findById(GUEST)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentNotFoundException.class);
 
-    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
-    when(actions.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.empty());
+    when(guests.findById(GUEST)).thenReturn(Optional.of(guest()));
+    when(actions.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentNotFoundException.class);
     verifyNoInteractions(files, purger);
@@ -269,13 +259,28 @@ class GuestDocumentsServiceTest {
 
   @Test
   void anActionThatLostTheRaceForTheDocumentFindsItGone() {
-    theDocumentIsThere();
-    when(actions.addAction(Kind.DELETE, OLD, null, WHY, ACTOR, NOW))
-        .thenThrow(new GuestDocumentActionExistsException(new DataIntegrityViolationException("")));
-
+    theDeletionIsRecorded();
+    when(purger.complete(PENDING)).thenReturn(false);
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentNotFoundException.class);
-    verify(actions, never()).removeDocument(any());
+
+    when(purger.complete(PENDING))
+        .thenThrow(new GuestDocumentActionExistsException(new DataIntegrityViolationException("")));
+    assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
+        .isInstanceOf(GuestDocumentNotFoundException.class);
+  }
+
+  @Test
+  void aDocumentBeingDeletedIsNotListedSoThatNoUrlIsSignedForAGoneObject() {
+    GuestDocument kept =
+        new GuestDocument(72L, GUEST, "guest-documents/kept", "a.pdf", "application/pdf", 9, NOW);
+    when(guests.findById(GUEST)).thenReturn(Optional.of(guest()));
+    when(records.documentsOf(GUEST)).thenReturn(List.of(OLD, kept));
+    when(actions.documentsBeingDeleted(GUEST)).thenReturn(List.of(DOCUMENT));
+    when(files.signedUrl("guest-documents/kept", FileKind.PDF)).thenReturn("https://r2.test/k");
+
+    assertThat(service().documents(GUEST)).extracting(v -> v.id()).containsExactly(72L);
+    verify(files, never()).signedUrl(OLD_KEY, FileKind.PDF);
   }
 
   @Test
@@ -295,7 +300,7 @@ class GuestDocumentsServiceTest {
   // ------------------------------------------------------------------ replacement
 
   private void theNewObjectIsStored() {
-    theDocumentIsThere();
+    theDocumentIsLocked();
     when(files.store(PDF, FileKind.PDF)).thenReturn(NEW_KEY);
     when(files.signedUrl(NEW_KEY, FileKind.PDF)).thenReturn("https://r2.test/signed");
   }
@@ -312,8 +317,11 @@ class GuestDocumentsServiceTest {
 
     assertThat(view.id()).isEqualTo(71L);
     assertThat(view.url()).isEqualTo("https://r2.test/signed");
-    InOrder order = inOrder(files, records, actions);
+    InOrder order = inOrder(guests, files, records, actions);
+    // the new file goes to the store before any row is locked
     order.verify(files).store(PDF, FileKind.PDF);
+    order.verify(guests).findByIdForUpdate(GUEST);
+    order.verify(actions).findDocumentForUpdate(GUEST, DOCUMENT);
     order.verify(records).addDocument(GUEST, NEW_KEY, "nuevo.pdf", "application/pdf", PDF.length);
     order.verify(actions).addAction(Kind.REPLACE, OLD, 71L, WHY, ACTOR, NOW);
     order.verify(actions).removeDocument(OLD);
@@ -395,7 +403,7 @@ class GuestDocumentsServiceTest {
 
   @Test
   void aNewObjectThatCannotBeSignedIsRemovedWithTheRollback() {
-    theDocumentIsThere();
+    theDocumentIsLocked();
     when(files.store(PDF, FileKind.PDF)).thenReturn(NEW_KEY);
     when(files.signedUrl(NEW_KEY, FileKind.PDF)).thenThrow(new GuestDocumentStorageException("x"));
 
@@ -424,16 +432,55 @@ class GuestDocumentsServiceTest {
 
   @Test
   void aReplacementOfAMissingDocumentStoresNothing() {
+    when(guests.findById(GUEST)).thenReturn(Optional.of(guest()));
+    when(actions.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(this::replaceIt).isInstanceOf(GuestDocumentNotFoundException.class);
+    verifyNoInteractions(files);
+  }
+
+  @Test
+  void aDocumentBeingDeletedIsNotReplacedAndNothingIsStored() {
+    theDocumentIsThere();
+    when(actions.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.of(PENDING));
+
+    assertThatThrownBy(this::replaceIt).isInstanceOf(GuestDocumentNotFoundException.class);
+    verifyNoInteractions(files);
+  }
+
+  @Test
+  void aDocumentDeletedWhileTheNewFileWasStoredIsNotFoundAndTheNewObjectGoes() {
+    theDocumentIsThere();
+    when(files.store(PDF, FileKind.PDF)).thenReturn(NEW_KEY);
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
+    when(actions.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(OLD));
+    when(actions.pendingDeletionOf(DOCUMENT))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(PENDING));
+
+    assertThatThrownBy(this::replaceIt).isInstanceOf(GuestDocumentNotFoundException.class);
+    complete(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+    verify(files).delete(NEW_KEY);
+    verify(records, never())
+        .addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong());
+  }
+
+  @Test
+  void aDocumentGoneWhileTheNewFileWasStoredIsNotFoundAndTheNewObjectGoes() {
+    theDocumentIsThere();
+    when(files.store(PDF, FileKind.PDF)).thenReturn(NEW_KEY);
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
     when(actions.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.empty());
 
-    assertThatThrownBy(
-            () ->
-                service()
-                    .replace(
-                        ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR, new DocumentUpload("nuevo.pdf", PDF)))
-        .isInstanceOf(GuestDocumentNotFoundException.class);
-    verifyNoInteractions(files);
+    assertThatThrownBy(this::replaceIt).isInstanceOf(GuestDocumentNotFoundException.class);
+    complete(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+    verify(files).delete(NEW_KEY);
+  }
+
+  private void replaceIt() {
+    service().replace(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR, new DocumentUpload("nuevo.pdf", PDF));
   }
 
   // ------------------------------------------------------------------ evidence

@@ -26,7 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,8 +85,11 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       throw new GuestNotFoundException();
     }
     Instant expiresAt = clock.instant().plus(GuestDocument.URL_VALIDITY);
+    // A document whose deletion is in course may have lost its object: no link is signed for it.
+    List<Long> leaving = actions.documentsBeingDeleted(guestId);
     try {
       return records.documentsOf(guestId).stream()
+          .filter(document -> !leaving.contains(document.id()))
           .map(document -> view(document, expiresAt))
           .toList();
     } catch (GuestDocumentStorageException e) {
@@ -95,23 +98,39 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
   }
 
   /**
-   * The order of the contract: the object first, then the row and the evidence in one transaction.
-   * Before the object leaves the store the deletion is recorded on its own (who, when, why), so a
-   * transaction that fails afterwards loses neither: the repeated action or the purger finish it
-   * with that same evidence. Only a failure after the object left is the 500 of the contract; one
-   * before it (a lock that could not be taken) is answered as usual.
+   * The order of the contract: the object first, then the row and the evidence. Before the object
+   * leaves the store the deletion is recorded on its own (who, when, why), and the store is called
+   * with no row locked. A store that fails may still have removed the object, so the record stays:
+   * the document is no longer listed, and the repeated action or the purger finish it with that
+   * same evidence. Only a failure after the object left is the 500 of the contract; one before it
+   * is answered as usual.
    */
   @Override
   public void delete(Long actorId, Long guestId, Long documentId, DocumentActionRequest request) {
     Why why = request.why(LocalDate.now(clock));
-    AtomicBoolean objectGone = new AtomicBoolean();
+    GuestDocument document =
+        Objects.requireNonNull(transaction.execute(status -> current(guestId, documentId)));
+    PendingDeletion pending =
+        purger.begin(
+            new PendingDeletion(
+                guestId,
+                document.id(),
+                why,
+                document.contentType(),
+                document.sizeBytes(),
+                actorId,
+                clock.instant()));
     try {
-      transaction.executeWithoutResult(
-          status -> deleteLocked(actorId, guestId, documentId, why, objectGone));
+      files.delete(document.storageKey());
+    } catch (GuestDocumentStorageException e) {
+      throw new GuestDocumentUnavailableException(e);
+    }
+    boolean found;
+    try {
+      found = purger.complete(pending);
+    } catch (GuestDocumentActionExistsException e) {
+      throw new GuestDocumentNotFoundException();
     } catch (DataAccessException | TransactionException e) {
-      if (!objectGone.get()) {
-        throw e;
-      }
       // Internal ids only: never the key, the cause or a personal datum.
       LOGGER.error(
           "The deletion of the guest document {} asked by user {} did not finish; it stays pending",
@@ -119,48 +138,11 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
           actorId);
       throw new GuestDocumentActionFailedException(e);
     }
-  }
-
-  private void deleteLocked(
-      Long actorId, Long guestId, Long documentId, Why why, AtomicBoolean objectGone) {
-    GuestDocument document = locked(guestId, documentId);
-    // A deletion repeated after a failure keeps the evidence of the first request.
-    PendingDeletion pending = actions.pendingDeletionOf(document.id()).orElse(null);
-    boolean fresh = pending == null;
-    if (pending == null) {
-      pending =
-          new PendingDeletion(
-              guestId,
-              document.id(),
-              why,
-              document.contentType(),
-              document.sizeBytes(),
-              actorId,
-              clock.instant());
-      purger.begin(pending);
+    if (!found) {
+      // Another action got the document first.
+      throw new GuestDocumentNotFoundException();
     }
-    try {
-      files.delete(document.storageKey());
-    } catch (GuestDocumentStorageException e) {
-      if (fresh) {
-        forget(document.id());
-      }
-      throw new GuestDocumentUnavailableException(e);
-    }
-    objectGone.set(true);
-    record(Kind.DELETE, document, null, pending.why(), pending.actorId(), pending.requestedOn());
-    actions.removeDocument(document);
-    actions.removePendingDeletion(document.id());
-    afterCommit(() -> purger.purge(GuestDocumentPurger.AFTER_AN_ACTION));
-  }
-
-  /** The object never left the store: nothing changed, so nothing stays pending. */
-  private void forget(Long documentId) {
-    try {
-      purger.cancel(documentId);
-    } catch (DataAccessException | TransactionException e) {
-      LOGGER.warn("The cancelled deletion of the guest document {} stays pending", documentId);
-    }
+    purger.purge(GuestDocumentPurger.AFTER_AN_ACTION);
   }
 
   @Override
@@ -179,16 +161,18 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       throw new InvalidOnboardingInputException(
           InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
     }
-    GuestDocument old = locked(guestId, documentId);
+    notBeingDeleted(current(guestId, documentId));
     String key;
     String url;
+    // The new file goes to the store before any row is locked.
     try {
       key = files.store(content, kind);
     } catch (GuestDocumentStorageException e) {
       throw new GuestDocumentUnavailableException(e);
     }
     // From here on, an object that no committed row references is removed, or left pending.
-    afterRollback(key, old.id());
+    afterRollback(key, documentId);
+    GuestDocument old = notBeingDeleted(locked(guestId, documentId));
     try {
       url = files.signedUrl(key, kind);
     } catch (GuestDocumentStorageException e) {
@@ -223,6 +207,24 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       throw new GuestNotFoundException();
     }
     return actions.actionsOf(guestId, page).map(GuestDocumentsService::view);
+  }
+
+  /** The guest and then its document, unlocked; one answer when either is missing. */
+  private GuestDocument current(Long guestId, Long documentId) {
+    if (guests.findById(guestId).isEmpty()) {
+      throw new GuestDocumentNotFoundException();
+    }
+    return actions
+        .findDocument(guestId, documentId)
+        .orElseThrow(GuestDocumentNotFoundException::new);
+  }
+
+  /** A document whose deletion is in course is, for a replacement, a document that is gone. */
+  private GuestDocument notBeingDeleted(GuestDocument document) {
+    if (actions.pendingDeletionOf(document.id()).isPresent()) {
+      throw new GuestDocumentNotFoundException();
+    }
+    return document;
   }
 
   /** The guest and then its document, both locked; one answer when either is missing. */

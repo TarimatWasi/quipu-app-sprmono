@@ -12,31 +12,33 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionException;
-import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Finishes what an action on a guest document left halfway (RN-37): the objects of the store that
  * no row references any more (the old file of a replacement, or the new one of a replacement that
- * did not commit) and the deletions whose object left the store but whose row and evidence did not
- * commit. Both are recorded in the database first, so nothing is lost across a failure or a
- * restart. Each unit runs in a transaction of its own, so it may run after the caller's has ended.
- * Removing an object twice is harmless, so two requests may race for one. Neither a key nor a
- * personal datum is ever logged: only counts.
+ * did not commit) and the deletions whose row and evidence did not commit. Both are recorded in the
+ * database first, so nothing is lost across a failure or a restart. Each step runs in a transaction
+ * of its own and the store is only ever called between them, never with a row locked. Removing an
+ * object twice is harmless, so two requests may race for one. Neither a key nor a personal datum is
+ * ever logged: only counts.
  *
- * <p>Limit: there is no timer, because the architecture rules keep {@code @EnableScheduling} out
- * (BE-SPR-CON-01). A round runs when the application starts and after every committed deletion or
- * replacement; in between, what is pending waits. A job outside the application can read {@code
- * guest_document_purges} and {@code guest_document_deletions} if that becomes too slow.
+ * <p>Limit: there is no timer, because a scheduled task needs an ADR (BE-SPR-CON-01). A round runs
+ * when the application starts and after every deletion or replacement; in between, what is pending
+ * waits, and the deletions in course are hidden from the list of documents meanwhile. A job outside
+ * the application can read {@code guest_document_purges} and {@code guest_document_deletions} if
+ * that becomes too slow.
  */
 @Component
 public class GuestDocumentPurger {
@@ -44,14 +46,14 @@ public class GuestDocumentPurger {
   private static final Logger LOGGER = LoggerFactory.getLogger(GuestDocumentPurger.class);
 
   /** A round after an action: small, so that it does not hold the answer for long. */
-  public static final int AFTER_AN_ACTION = 20;
+  public static final int AFTER_AN_ACTION = 5;
 
   /** A round when the application starts. */
   static final int AT_STARTUP = 100;
 
   /**
-   * A deletion younger than this may still be running in its own request (its R2 call and its row
-   * locks end well within it), so a round leaves it alone.
+   * A deletion younger than this may still be running in its own request (its R2 call ends well
+   * within it), so a round leaves it alone.
    */
   static final Duration IN_COURSE = Duration.ofMinutes(1);
 
@@ -80,14 +82,61 @@ public class GuestDocumentPurger {
     separate.executeWithoutResult(status -> records.addPurge(storageKey));
   }
 
-  /** Records the deletion asked for, committed before its object leaves the store. */
-  public void begin(PendingDeletion deletion) {
-    separate.executeWithoutResult(status -> records.addPendingDeletion(deletion));
+  /**
+   * Records the deletion asked for, committed before its object leaves the store. A deletion
+   * already recorded (a repeated request) keeps its first record: who asked first, and when.
+   *
+   * @return the deletion as recorded
+   */
+  public PendingDeletion begin(PendingDeletion asked) {
+    try {
+      return Objects.requireNonNull(
+          separate.execute(
+              status ->
+                  records
+                      .pendingDeletionOf(asked.documentId())
+                      .orElseGet(
+                          () -> {
+                            records.addPendingDeletion(asked);
+                            return asked;
+                          })));
+    } catch (DataIntegrityViolationException raced) {
+      // Another request recorded it at the same time: its record is the one kept.
+      return Objects.requireNonNull(
+              separate.execute(status -> records.pendingDeletionOf(asked.documentId())))
+          .orElseThrow(() -> raced);
+    }
   }
 
-  /** Forgets a deletion whose object never left the store. */
-  public void cancel(Long documentId) {
-    separate.executeWithoutResult(status -> records.removePendingDeletion(documentId));
+  /**
+   * Finishes a deletion whose object already left the store, in a transaction of its own: guest and
+   * document locked (in that order), the evidence written with the administrator who asked and
+   * when, the row removed and the record forgotten.
+   *
+   * @return whether the document was still there; if not, the record is only forgotten
+   */
+  public boolean complete(PendingDeletion deletion) {
+    return Boolean.TRUE.equals(
+        separate.execute(
+            status -> {
+              Optional<GuestDocument> document =
+                  guests.findByIdForUpdate(deletion.guestId()).isPresent()
+                      ? records.findDocumentForUpdate(deletion.guestId(), deletion.documentId())
+                      : Optional.empty();
+              document.ifPresent(
+                  row -> {
+                    records.addAction(
+                        Kind.DELETE,
+                        row,
+                        null,
+                        deletion.why(),
+                        deletion.actorId(),
+                        deletion.requestedOn());
+                    records.removeDocument(row);
+                  });
+              records.removePendingDeletion(deletion.documentId());
+              return document.isPresent();
+            }));
   }
 
   /** The round when the application starts; a store or a database that fails does not stop it. */
@@ -101,7 +150,7 @@ public class GuestDocumentPurger {
     int left;
     try {
       left = purgePending(limit);
-    } catch (DataAccessException | TransactionException | GuestDocumentStorageException e) {
+    } catch (DataAccessException | TransactionException e) {
       LOGGER.warn("The pending guest document actions could not be read; retried later");
       return;
     }
@@ -111,36 +160,37 @@ public class GuestDocumentPurger {
   }
 
   /**
-   * Removes the pending objects and finishes the pending deletions, oldest first.
+   * Removes the pending objects and finishes the pending deletions, oldest first. A store that
+   * fails ends the round: the rest waits for the next one instead of holding the caller.
    *
-   * @return how many of those tried are still pending
+   * @return how many of those read are still pending
    */
   int purgePending(int limit) {
-    int left = 0;
     List<String> keys = Objects.requireNonNull(separate.execute(s -> records.pendingPurges(limit)));
-    for (String key : keys) {
-      if (!attempt(status -> purgeObject(key))) {
-        left++;
-      }
-    }
     List<PendingDeletion> deletions =
         Objects.requireNonNull(
             separate.execute(
                 s -> records.pendingDeletions(clock.instant().minus(IN_COURSE), limit)));
-    for (PendingDeletion deletion : deletions) {
-      if (!attempt(status -> finish(deletion))) {
-        left++;
+    int done = 0;
+    try {
+      for (String key : keys) {
+        done += attempt(() -> purgeObject(key));
       }
+      for (PendingDeletion deletion : deletions) {
+        done += attempt(() -> finish(deletion));
+      }
+    } catch (GuestDocumentStorageException storeFailed) {
+      // The store is failing: what is left waits for the next round.
     }
-    return left;
+    return keys.size() + deletions.size() - done;
   }
 
-  /** One unit in its own transaction; one that fails stays pending and the round goes on. */
-  private boolean attempt(TransactionCallback<Boolean> unit) {
+  /** One unit; one whose database fails stays pending and the round goes on. */
+  private static int attempt(BooleanSupplier unit) {
     try {
-      return Boolean.TRUE.equals(separate.execute(unit));
+      return unit.getAsBoolean() ? 1 : 0;
     } catch (DataAccessException | TransactionException e) {
-      return false;
+      return 0;
     }
   }
 
@@ -149,43 +199,22 @@ public class GuestDocumentPurger {
    * not known may have committed after all.
    */
   private boolean purgeObject(String key) {
-    if (!records.isReferenced(key)) {
-      try {
-        files.delete(key);
-      } catch (GuestDocumentStorageException storeFailed) {
-        return false;
-      }
+    if (!Boolean.TRUE.equals(separate.execute(s -> records.isReferenced(key)))) {
+      files.delete(key);
     }
-    records.removePurge(key);
+    separate.executeWithoutResult(s -> records.removePurge(key));
     return true;
   }
 
   /**
-   * The deletion as its request would have finished it: guest and document locked, the object
-   * removed (one already missing counts as removed), the evidence written with the administrator
-   * who asked and when, and the row removed.
+   * The deletion as its request would have finished it: the object first (one already missing
+   * counts as removed), then the row and the evidence.
    */
   private boolean finish(PendingDeletion deletion) {
-    if (guests.findByIdForUpdate(deletion.guestId()).isPresent()) {
-      Optional<GuestDocument> document =
-          records.findDocumentForUpdate(deletion.guestId(), deletion.documentId());
-      if (document.isPresent()) {
-        try {
-          files.delete(document.get().storageKey());
-        } catch (GuestDocumentStorageException storeFailed) {
-          return false;
-        }
-        records.addAction(
-            Kind.DELETE,
-            document.get(),
-            null,
-            deletion.why(),
-            deletion.actorId(),
-            deletion.requestedOn());
-        records.removeDocument(document.get());
-      }
-    }
-    records.removePendingDeletion(deletion.documentId());
+    Objects.requireNonNull(
+            separate.execute(s -> records.findDocument(deletion.guestId(), deletion.documentId())))
+        .ifPresent(document -> files.delete(document.storageKey()));
+    complete(deletion);
     return true;
   }
 }
