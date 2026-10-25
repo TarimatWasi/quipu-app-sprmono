@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
@@ -27,6 +28,7 @@ import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -91,7 +93,7 @@ class GuestAreaFilter extends OncePerRequestFilter {
     String refusal;
     try {
       refusal = area == null ? null : refusal(area);
-    } catch (RuntimeException checkFailed) {
+    } catch (NumberFormatException | DataAccessException | TransactionException checkFailed) {
       // TAR-205: fail closed, in the BFF shape; the log carries neither the principal nor the
       // message, which may hold either the principal or internal details.
       LOGGER.error("The guest area check failed: {}", checkFailed.getClass().getName());

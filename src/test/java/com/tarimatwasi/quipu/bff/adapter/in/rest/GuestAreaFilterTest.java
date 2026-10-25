@@ -50,7 +50,9 @@ class GuestAreaFilterTest {
   void aFailureOfTheCheckAnswers500WithTheBffBodyAndFailsClosed() throws Exception {
     GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
     OwnGuestUseCase guests = mock(OwnGuestUseCase.class);
-    when(accounts.guestOf(1L)).thenThrow(new IllegalStateException("db down at jdbc://secret"));
+    when(accounts.guestOf(1L))
+        .thenThrow(
+            new org.springframework.dao.DataAccessResourceFailureException("down jdbc://secret"));
     for (String principal : List.of("1", "not-a-number")) {
       SecurityContextHolder.getContext()
           .setAuthentication(new TestingAuthenticationToken(principal, null));

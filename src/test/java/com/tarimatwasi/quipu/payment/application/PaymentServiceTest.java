@@ -658,7 +658,6 @@ class PaymentServiceTest {
 
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
-    // TAR-205: the log never carries the storage key.
     assertThat(output).contains("stays in the bucket").doesNotContain(KEY);
   }
 
