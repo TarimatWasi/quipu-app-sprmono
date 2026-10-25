@@ -40,6 +40,7 @@ public interface GuestDocumentsUseCase {
       @Nullable String requestChannel,
       @Nullable String note) {
 
+    /** Normalizes the fields: blank to absent, the rest stripped. */
     public DocumentActionRequest {
       reason = present(reason);
       requestedAt = present(requestedAt);
