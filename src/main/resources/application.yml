@@ -16,6 +16,10 @@ spring:
   datasource:
     hikari:
       connection-init-sql: SET lock_timeout = '15s'
+      # TAR-206: un pool fijo y una espera corta por conexión: con el pool agotado, la petición
+      # falla a los 5 s en vez de quedarse colgada. Ningún perfil los cambia.
+      maximum-pool-size: 10
+      connection-timeout: 5s
   jpa:
     hibernate:
       ddl-auto: validate
@@ -62,9 +66,12 @@ app:
   # venga de donde venga. client-ip-header: solo si la capa de delante sobrescribe ese encabezado con
   # la IP real del cliente (dev y prod: CF-Connecting-IP, que Cloudflare escribe y el cliente no puede
   # enviar).
+  # uploads-per-minute (TAR-206) cuenta las subidas de archivo por usuario de la sesión, en las seis
+  # rutas que reciben archivo; es independiente del límite por dirección.
   rate-limit:
     per-minute: 60
     per-account-per-minute: 10
+    uploads-per-minute: 10
   # Cookie de sesión (TAR-75): el navegador habla con el origen del frontend y el alojamiento
   # reescribe /bff hacia este backend, así que la cookie es del mismo sitio: SameSite=Lax. Max-Age
   # coincide con la vigencia del token. Con el frontend en otro dominio: same-site: none.

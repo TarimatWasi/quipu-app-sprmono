@@ -15,6 +15,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -42,7 +43,8 @@ class SecurityConfig {
       HttpSecurity http,
       JwtDecoder jwtDecoder,
       AccountJwtAuthenticationConverter sessionConverter,
-      RateLimitProperties rateLimit)
+      RateLimitProperties rateLimit,
+      UploadRateLimitProperties uploadRateLimit)
       throws Exception {
     // CSRF is disabled on purpose (ADR-006). Mitigation, in layers: the session cookie is
     // SameSite=Lax (the browser talks to the frontend origin and the hosting layer rewrites
@@ -84,7 +86,10 @@ class SecurityConfig {
                     .authenticated())
         // Both run before the session is read, so a flood of bad requests costs no account lookup.
         .addFilterBefore(new RateLimitFilter(rateLimit), BearerTokenAuthenticationFilter.class)
-        .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class);
+        .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class)
+        // TAR-206: counts the uploads of the session user once it is authorized, before the
+        // dispatcher reads the form.
+        .addFilterAfter(new UploadRateLimitFilter(uploadRateLimit), AuthorizationFilter.class);
     return http.build();
   }
 
