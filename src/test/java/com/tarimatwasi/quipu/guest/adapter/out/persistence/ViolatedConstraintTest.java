@@ -44,7 +44,12 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @ImportTestcontainers(ViolatedConstraintTest.SpanishPostgres.class)
 class ViolatedConstraintTest {
 
-  /** The Debian image carries the translations; LANGUAGE picks Spanish over the en_US locale. */
+  /**
+   * A server that answers in Spanish. The Debian image carries the Spanish catalogs but only the C
+   * and en_US locales, so lc_messages cannot name es_ES. GNU gettext gives the LANGUAGE variable
+   * priority over lc_messages whenever that is not C, so lc_messages=en_US.utf8 only switches the
+   * translations on and LANGUAGE=es picks Spanish; theServerAnswersInSpanish checks it.
+   */
   interface SpanishPostgres {
     @Container @ServiceConnection
     PostgreSQLContainer POSTGRES =
