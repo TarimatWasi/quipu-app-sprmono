@@ -3,13 +3,16 @@ package com.tarimatwasi.quipu.guest.adapter.out.persistence;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
+import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionRepositoryPort;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -28,14 +31,20 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   private final GuestDocumentJpaRepository documents;
   private final GuestDocumentActionJpaRepository actions;
   private final GuestDocumentPurgeJpaRepository purges;
+  private final GuestDocumentDeletionJpaRepository deletions;
+  private final EntityManager entityManager;
 
   GuestDocumentActionRepositoryAdapter(
       GuestDocumentJpaRepository documents,
       GuestDocumentActionJpaRepository actions,
-      GuestDocumentPurgeJpaRepository purges) {
+      GuestDocumentPurgeJpaRepository purges,
+      GuestDocumentDeletionJpaRepository deletions,
+      EntityManager entityManager) {
     this.documents = documents;
     this.actions = actions;
     this.purges = purges;
+    this.deletions = deletions;
+    this.entityManager = entityManager;
   }
 
   @Override
@@ -48,11 +57,17 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   /** Flushes, so that a second action on the document surfaces here as what it is. */
   @Override
   public GuestDocumentAction addAction(
-      Kind kind, GuestDocument document, @Nullable Long replacementDocumentId, Why why) {
+      Kind kind,
+      GuestDocument document,
+      @Nullable Long replacementDocumentId,
+      Why why,
+      Long actorId,
+      Instant performedAt) {
     try {
       return actions
           .saveAndFlush(
-              new GuestDocumentActionJpaEntity(kind, document, replacementDocumentId, why))
+              new GuestDocumentActionJpaEntity(
+                  kind, document, replacementDocumentId, why, actor(actorId), performedAt))
           .toDomain();
     } catch (DataIntegrityViolationException e) {
       throw conflict(e);
@@ -88,7 +103,39 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
 
   @Override
   public void removePurge(String storageKey) {
-    purges.findByStorageKey(storageKey).ifPresent(purges::delete);
+    purges.deleteByKey(storageKey);
+  }
+
+  @Override
+  public boolean isReferenced(String storageKey) {
+    return documents.existsByStorageKey(storageKey);
+  }
+
+  @Override
+  public Optional<PendingDeletion> pendingDeletionOf(Long documentId) {
+    return deletions.findByDocumentId(documentId).map(GuestDocumentDeletionJpaEntity::toDomain);
+  }
+
+  @Override
+  public void addPendingDeletion(PendingDeletion deletion) {
+    deletions.saveAndFlush(new GuestDocumentDeletionJpaEntity(deletion, actor(deletion.actorId())));
+  }
+
+  @Override
+  public void removePendingDeletion(Long documentId) {
+    deletions.deleteByDocument(documentId);
+  }
+
+  @Override
+  public List<PendingDeletion> pendingDeletions(Instant askedBefore, int limit) {
+    return deletions.findAskedBefore(askedBefore, Limit.of(limit)).stream()
+        .map(GuestDocumentDeletionJpaEntity::toDomain)
+        .toList();
+  }
+
+  /** The user by reference: no query, the column only needs the id. */
+  private AuditorJpaEntity actor(Long actorId) {
+    return entityManager.getReference(AuditorJpaEntity.class, actorId);
   }
 
   @Override

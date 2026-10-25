@@ -22,6 +22,7 @@ import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.guest.application.GuestDocumentPurger;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentStorageException;
@@ -93,6 +94,7 @@ class GuestDocumentActionsContractTest {
   @Autowired IdMasker masker;
   @MockitoBean GuestDocumentFilePort files;
   @MockitoSpyBean GuestDocumentActionRepositoryPort records;
+  @Autowired GuestDocumentPurger purger;
 
   private final Long adminId = TestIds.next();
   private final Long guestAccount = TestIds.next();
@@ -367,11 +369,42 @@ class GuestDocumentActionsContractTest {
         .doesNotContain("SELECT", "secret", OLD_KEY, "Exception");
     assertThat(documentsOf(guestId)).isOne();
     assertThat(count("guest_document_actions")).isZero();
+    // who asked and when is kept, so neither the evidence nor the deletion is lost
+    assertThat(count("guest_document_deletions")).isOne();
 
     reset(records);
     delete(guestId, documentId, UPLOAD_ERROR).andExpect(status().isNoContent());
     assertThat(documentsOf(guestId)).isZero();
     assertThat(count("guest_document_actions")).isOne();
+    assertThat(count("guest_document_deletions")).isZero();
+  }
+
+  @Test
+  void aDeletionNobodyRepeatsIsFinishedByThePurgerWithTheEvidenceOfWhoAsked(CapturedOutput output)
+      throws Exception {
+    doThrow(new QueryTimeoutException("db")).when(records).removeDocument(any());
+    delete(
+            guestId,
+            documentId,
+            "{\"reason\":\"ARCO_REQUEST\",\"requestedAt\":\"2026-01-15\","
+                + "\"requestChannel\":\"EMAIL\"}")
+        .andExpect(status().isInternalServerError());
+    reset(records);
+    // a deletion younger than a minute may still be running; this one is older
+    jdbc.update(
+        "UPDATE guest_document_deletions SET created_date = created_date - interval '2 minutes'");
+
+    purger.purge(GuestDocumentPurger.AFTER_AN_ACTION);
+
+    assertThat(documentsOf(guestId)).isZero();
+    assertThat(count("guest_document_deletions")).isZero();
+    actions(guestId)
+        .andExpect(jsonPath("$.content[0].action").value("DELETE"))
+        .andExpect(jsonPath("$.content[0].reason").value("ARCO_REQUEST"))
+        .andExpect(jsonPath("$.content[0].requestChannel").value("EMAIL"))
+        .andExpect(
+            jsonPath("$.content[0].actorId").value(masker.mask(IdKind.USER, adminId).toString()));
+    assertThat(output).contains("did not finish").doesNotContain(DNI, NAME, OLD_KEY);
   }
 
   @Test

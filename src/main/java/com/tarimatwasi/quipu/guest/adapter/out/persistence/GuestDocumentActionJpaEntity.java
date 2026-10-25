@@ -9,25 +9,25 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Objects;
 import org.hibernate.annotations.Immutable;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.AbstractAuditable;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 /**
  * Evidence of a deletion or replacement of a guest document (RN-37): inserted once, never updated
- * nor deleted. The actor is the auditor of the insert, the administrator of the session.
+ * nor deleted. The actor and the time are set here, not by the auditing listener: a deletion that
+ * is finished later keeps the administrator who asked for it and when, whoever is in session.
  */
 @Entity
 @Immutable
-@EntityListeners(AuditingEntityListener.class)
 @Table(name = "guest_document_actions")
 public class GuestDocumentActionJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
@@ -67,7 +67,12 @@ public class GuestDocumentActionJpaEntity extends AbstractAuditable<AuditorJpaEn
   protected GuestDocumentActionJpaEntity() {}
 
   GuestDocumentActionJpaEntity(
-      Kind action, GuestDocument document, @Nullable Long replacementDocumentId, Why why) {
+      Kind action,
+      GuestDocument document,
+      @Nullable Long replacementDocumentId,
+      Why why,
+      AuditorJpaEntity actor,
+      Instant performedAt) {
     this.guestId = document.guestId();
     this.documentId = document.id();
     this.replacementDocumentId = replacementDocumentId;
@@ -78,6 +83,11 @@ public class GuestDocumentActionJpaEntity extends AbstractAuditable<AuditorJpaEn
     this.note = why.note();
     this.contentType = document.contentType();
     this.sizeBytes = document.sizeBytes();
+    LocalDateTime at = LocalDateTime.ofInstant(performedAt, ZoneId.systemDefault());
+    setCreatedBy(actor);
+    setLastModifiedBy(actor);
+    setCreatedDate(at);
+    setLastModifiedDate(at);
   }
 
   GuestDocumentAction toDomain() {

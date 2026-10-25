@@ -143,14 +143,17 @@ public interface GuestDocumentsUseCase {
   List<GuestDocumentView> documents(Long guestId);
 
   /**
-   * Deletes the document: first its object from the store (one already missing counts as deleted),
-   * then, in one transaction, its row, writing the evidence of the deletion.
+   * Deletes the document on behalf of the administrator: the deletion is recorded first, then its
+   * object leaves the store (one already missing counts as deleted), then, in one transaction, its
+   * row, writing the evidence. If that transaction fails, the recorded deletion is finished by the
+   * repeated action or by the purger, with the same evidence.
    *
    * @throws InvalidDocumentActionException if the reason breaks the rules of RN-37
    * @throws GuestDocumentNotFoundException if the document is not one of that guest
    * @throws GuestDocumentUnavailableException if the store failed; nothing changed
+   * @throws GuestDocumentActionFailedException if the object left the store but the row did not
    */
-  void delete(Long guestId, Long documentId, DocumentActionRequest request);
+  void delete(Long actorId, Long guestId, Long documentId, DocumentActionRequest request);
 
   /**
    * Replaces the document with a new one (with a new id): the new object is stored, then the row is
@@ -163,7 +166,11 @@ public interface GuestDocumentsUseCase {
    * @throws GuestDocumentUnavailableException if the store failed; nothing changed
    */
   GuestDocumentView replace(
-      Long guestId, Long documentId, DocumentActionRequest request, DocumentUpload file);
+      Long actorId,
+      Long guestId,
+      Long documentId,
+      DocumentActionRequest request,
+      DocumentUpload file);
 
   /**
    * One page of the deletions and replacements of the documents of the guest, newest first.

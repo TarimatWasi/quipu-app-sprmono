@@ -53,4 +53,17 @@ public record GuestDocumentAction(
       @Nullable LocalDate requestedAt,
       @Nullable Channel requestChannel,
       @Nullable String note) {}
+
+  /**
+   * A deletion asked for and not finished yet: recorded before the object leaves the store, so the
+   * evidence of who asked and when survives a transaction that fails afterwards (RN-37).
+   */
+  public record PendingDeletion(
+      Long guestId,
+      Long documentId,
+      Why why,
+      String contentType,
+      long sizeBytes,
+      Long actorId,
+      Instant requestedOn) {}
 }

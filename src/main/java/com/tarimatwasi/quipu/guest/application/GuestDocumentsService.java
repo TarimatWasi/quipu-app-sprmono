@@ -3,7 +3,9 @@ package com.tarimatwasi.quipu.guest.application;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
+import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentActionFailedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentUnavailableException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase;
@@ -24,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +37,7 @@ import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * RN-37. A deletion or a replacement locks the row of the guest and then the one of the document
@@ -54,6 +58,7 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
   private final GuestDocumentActionRepositoryPort actions;
   private final GuestDocumentFilePort files;
   private final GuestDocumentPurger purger;
+  private final TransactionTemplate transaction;
   private final Clock clock;
 
   GuestDocumentsService(
@@ -62,12 +67,14 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       GuestDocumentActionRepositoryPort actions,
       GuestDocumentFilePort files,
       GuestDocumentPurger purger,
+      TransactionTemplate transaction,
       Clock clock) {
     this.guests = guests;
     this.records = records;
     this.actions = actions;
     this.files = files;
     this.purger = purger;
+    this.transaction = transaction;
     this.clock = clock;
   }
 
@@ -87,27 +94,83 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     }
   }
 
+  /**
+   * The order of the contract: the object first, then the row and the evidence in one transaction.
+   * Before the object leaves the store the deletion is recorded on its own (who, when, why), so a
+   * transaction that fails afterwards loses neither: the repeated action or the purger finish it
+   * with that same evidence. Only a failure after the object left is the 500 of the contract; one
+   * before it (a lock that could not be taken) is answered as usual.
+   */
   @Override
-  @Transactional
-  public void delete(Long guestId, Long documentId, DocumentActionRequest request) {
+  public void delete(Long actorId, Long guestId, Long documentId, DocumentActionRequest request) {
     Why why = request.why(LocalDate.now(clock));
+    AtomicBoolean objectGone = new AtomicBoolean();
+    try {
+      transaction.executeWithoutResult(
+          status -> deleteLocked(actorId, guestId, documentId, why, objectGone));
+    } catch (DataAccessException | TransactionException e) {
+      if (!objectGone.get()) {
+        throw e;
+      }
+      // Internal ids only: never the key, the cause or a personal datum.
+      LOGGER.error(
+          "The deletion of the guest document {} asked by user {} did not finish; it stays pending",
+          documentId,
+          actorId);
+      throw new GuestDocumentActionFailedException(e);
+    }
+  }
+
+  private void deleteLocked(
+      Long actorId, Long guestId, Long documentId, Why why, AtomicBoolean objectGone) {
     GuestDocument document = locked(guestId, documentId);
-    // The object first: if the store fails nothing changes. One already missing counts as removed,
-    // so an action repeated after a failed transaction goes on to the row.
+    // A deletion repeated after a failure keeps the evidence of the first request.
+    PendingDeletion pending = actions.pendingDeletionOf(document.id()).orElse(null);
+    boolean fresh = pending == null;
+    if (pending == null) {
+      pending =
+          new PendingDeletion(
+              guestId,
+              document.id(),
+              why,
+              document.contentType(),
+              document.sizeBytes(),
+              actorId,
+              clock.instant());
+      purger.begin(pending);
+    }
     try {
       files.delete(document.storageKey());
     } catch (GuestDocumentStorageException e) {
+      if (fresh) {
+        forget(document.id());
+      }
       throw new GuestDocumentUnavailableException(e);
     }
-    record(Kind.DELETE, document, null, why);
+    objectGone.set(true);
+    record(Kind.DELETE, document, null, pending.why(), pending.actorId(), pending.requestedOn());
     actions.removeDocument(document);
-    afterCommit(this::purgePending);
+    actions.removePendingDeletion(document.id());
+    afterCommit(() -> purger.purge(GuestDocumentPurger.AFTER_AN_ACTION));
+  }
+
+  /** The object never left the store: nothing changed, so nothing stays pending. */
+  private void forget(Long documentId) {
+    try {
+      purger.cancel(documentId);
+    } catch (DataAccessException | TransactionException e) {
+      LOGGER.warn("The cancelled deletion of the guest document {} stays pending", documentId);
+    }
   }
 
   @Override
   @Transactional
   public GuestDocumentView replace(
-      Long guestId, Long documentId, DocumentActionRequest request, DocumentUpload upload) {
+      Long actorId,
+      Long guestId,
+      Long documentId,
+      DocumentActionRequest request,
+      DocumentUpload upload) {
     Why why = request.why(LocalDate.now(clock));
     byte[] content = upload.content();
     FileKind kind =
@@ -125,7 +188,7 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       throw new GuestDocumentUnavailableException(e);
     }
     // From here on, an object that no committed row references is removed, or left pending.
-    afterRollback(() -> discard(key, old.id()));
+    afterRollback(key, old.id());
     try {
       url = files.signedUrl(key, kind);
     } catch (GuestDocumentStorageException e) {
@@ -138,11 +201,11 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
             FileNames.sanitized(upload.originalName(), DEFAULT_NAME),
             kind.contentType(),
             content.length);
-    record(Kind.REPLACE, old, replacement.id(), why);
+    record(Kind.REPLACE, old, replacement.id(), why, actorId, clock.instant());
     actions.removeDocument(old);
     // The old object is pending in the same transaction as the swap, and removed after the commit.
     actions.addPurge(old.storageKey());
-    afterCommit(this::purgePending);
+    afterCommit(() -> purger.purge(GuestDocumentPurger.AFTER_AN_ACTION));
     return new GuestDocumentView(
         replacement.id(),
         replacement.originalName(),
@@ -173,9 +236,15 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
   }
 
   /** Another action that got the document first is, for this one, a document that is gone. */
-  private void record(Kind kind, GuestDocument document, @Nullable Long replacement, Why why) {
+  private void record(
+      Kind kind,
+      GuestDocument document,
+      @Nullable Long replacement,
+      Why why,
+      Long actorId,
+      Instant performedAt) {
     try {
-      actions.addAction(kind, document, replacement, why);
+      actions.addAction(kind, document, replacement, why, actorId, performedAt);
     } catch (GuestDocumentActionExistsException e) {
       throw new GuestDocumentNotFoundException();
     }
@@ -209,22 +278,7 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
         action.performedAt());
   }
 
-  /**
-   * After a committed action, the objects left without a row: the old one of this replacement and
-   * any earlier one that failed. Those the store does not remove wait for the next action.
-   */
-  private void purgePending() {
-    try {
-      int left = purger.purgePending();
-      if (left > 0) {
-        LOGGER.warn("{} guest document objects are still in the bucket; retried later", left);
-      }
-    } catch (DataAccessException | TransactionException e) {
-      LOGGER.warn("The pending guest document objects could not be read; retried later");
-    }
-  }
-
-  /** The new object of a replacement that did not commit: removed, or else left pending. */
+  /** The new object of a replacement that rolled back: removed, or else left pending. */
   private void discard(String key, Long documentId) {
     try {
       files.delete(key);
@@ -232,6 +286,10 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     } catch (GuestDocumentStorageException storeFailed) {
       // Recorded below, so that the next round removes it.
     }
+    pend(key, documentId);
+  }
+
+  private void pend(String key, Long documentId) {
     try {
       purger.schedule(key);
     } catch (DataAccessException | TransactionException e) {
@@ -252,13 +310,19 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
         });
   }
 
-  private static void afterRollback(Runnable action) {
+  /**
+   * After a rollback the new object is removed. When the outcome is unknown the commit may have
+   * happened, so the object is only left pending: the purger removes it unless a row uses it.
+   */
+  private void afterRollback(String key, Long documentId) {
     TransactionSynchronizationManager.registerSynchronization(
         new TransactionSynchronization() {
           @Override
           public void afterCompletion(int status) {
-            if (status != STATUS_COMMITTED) {
-              action.run();
+            if (status == STATUS_ROLLED_BACK) {
+              discard(key, documentId);
+            } else if (status == STATUS_UNKNOWN) {
+              pend(key, documentId);
             }
           }
         });

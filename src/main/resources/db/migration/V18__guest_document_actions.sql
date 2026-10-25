@@ -12,6 +12,10 @@
 --    sobre él, solo una queda.
 --  * guest_document_purges guarda las claves de los objetos de R2 que ya no tienen fila (el archivo antiguo de un
 --    reemplazo) hasta que se borran del bucket; la aplicación reintenta los pendientes.
+--  * guest_document_deletions guarda la intención de un borrado (quién, cuándo, por qué) en su propia transacción
+--    antes de borrar el objeto de R2: si la transacción que borra la fila y escribe la evidencia falla después, la
+--    intención sigue ahí y el reintento del administrador o la purga de la aplicación terminan el borrado y
+--    escriben la evidencia con ese quién y ese cuándo. Al consolidarse en evidencia, la intención se borra.
 --  * TRUNCATE no activa los disparadores de fila y queda solo para las pruebas.
 
 DROP TRIGGER trg_guest_documents_immutable ON guest_documents;
@@ -78,7 +82,7 @@ COMMENT ON COLUMN guest_document_actions.request_channel IS 'Canal de la solicit
 COMMENT ON COLUMN guest_document_actions.note IS 'Referencia opcional (ticket o canal), sin datos personales del titular; NULL si no hay. Nunca se registra en logs.';
 COMMENT ON COLUMN guest_document_actions.content_type IS 'Tipo del archivo borrado o reemplazado (image/jpeg, image/png o application/pdf).';
 COMMENT ON COLUMN guest_document_actions.size_bytes IS 'Tamaño en bytes del archivo borrado o reemplazado.';
-COMMENT ON COLUMN guest_document_actions.created_date IS 'Fecha y hora de la acción (auditoría).';
+COMMENT ON COLUMN guest_document_actions.created_date IS 'Fecha y hora de la acción (auditoría); en un borrado, cuándo lo pidió el administrador.';
 COMMENT ON COLUMN guest_document_actions.last_modified_date IS 'Fecha de la última modificación del registro (auditoría); igual a la de creación, el registro no cambia.';
 COMMENT ON COLUMN guest_document_actions.created_by_id IS 'Administrador que hizo la acción (actor, auditoría); obligatorio.';
 COMMENT ON COLUMN guest_document_actions.last_modified_by_id IS 'Usuario que modificó el registro por última vez (auditoría); igual al actor, el registro no cambia.';
@@ -102,3 +106,48 @@ COMMENT ON COLUMN guest_document_purges.created_date IS 'Fecha de creación del 
 COMMENT ON COLUMN guest_document_purges.last_modified_date IS 'Fecha de la última modificación del registro (auditoría).';
 COMMENT ON COLUMN guest_document_purges.created_by_id IS 'Usuario con sesión que dejó pendiente el borrado (auditoría); NULL si no hubo usuario.';
 COMMENT ON COLUMN guest_document_purges.last_modified_by_id IS 'Usuario con sesión que modificó el registro por última vez (auditoría); NULL si no hubo usuario.';
+
+CREATE SEQUENCE guest_document_deletions_seq START WITH 1 INCREMENT BY 50;
+
+-- Sin clave foránea a guests: la intención se inserta en una transacción propia mientras la del borrado tiene la
+-- fila del huésped bloqueada (FOR UPDATE), y la comprobación de la clave foránea esperaría ese bloqueo.
+CREATE TABLE guest_document_deletions (
+    id                    BIGINT PRIMARY KEY,
+    guest_id              BIGINT NOT NULL,
+    document_id           BIGINT NOT NULL,
+    reason                VARCHAR(20) NOT NULL,
+    requested_at          DATE NULL,
+    request_channel       VARCHAR(20) NULL,
+    note                  VARCHAR(500) NULL,
+    content_type          VARCHAR(100) NOT NULL,
+    size_bytes            BIGINT NOT NULL,
+    created_date          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_modified_date    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by_id         BIGINT NOT NULL REFERENCES users (id),
+    last_modified_by_id   BIGINT NULL REFERENCES users (id),
+    CONSTRAINT uq_guest_document_deletions_document UNIQUE (document_id),
+    CONSTRAINT ck_guest_document_deletions_reason CHECK (
+        (reason = 'ARCO_REQUEST' AND requested_at IS NOT NULL AND request_channel IS NOT NULL)
+        OR (reason = 'UPLOAD_ERROR' AND requested_at IS NULL AND request_channel IS NULL)),
+    CONSTRAINT ck_guest_document_deletions_channel CHECK (request_channel IN ('WHATSAPP', 'EMAIL', 'IN_PERSON', 'OTHER')),
+    CONSTRAINT ck_guest_document_deletions_note CHECK (note IS NULL OR btrim(note) <> ''),
+    CONSTRAINT ck_guest_document_deletions_content_type CHECK (content_type IN ('image/jpeg', 'image/png', 'application/pdf')),
+    CONSTRAINT ck_guest_document_deletions_size_bytes CHECK (size_bytes > 0 AND size_bytes <= 5242880)
+);
+
+CREATE INDEX ix_guest_document_deletions_created ON guest_document_deletions (created_date, id);
+
+COMMENT ON TABLE guest_document_deletions IS 'Borrados de documentos del huésped en curso (RN-37): la intención se guarda antes de borrar el objeto de R2 y se consolida en guest_document_actions cuando la fila del documento se borra; si queda, la aplicación termina el borrado. Nunca guarda el nombre, la clave ni el contenido del archivo.';
+COMMENT ON COLUMN guest_document_deletions.id IS 'Identificador de la intención (BIGINT de la secuencia guest_document_deletions_seq); interno, el BFF no lo muestra.';
+COMMENT ON COLUMN guest_document_deletions.guest_id IS 'Huésped dueño del documento; sin clave foránea (ver la migración).';
+COMMENT ON COLUMN guest_document_deletions.document_id IS 'Documento que se borra; uno por documento.';
+COMMENT ON COLUMN guest_document_deletions.reason IS 'ARCO_REQUEST (solicitud ARCO del titular) o UPLOAD_ERROR (error de carga).';
+COMMENT ON COLUMN guest_document_deletions.requested_at IS 'Fecha de la solicitud ARCO (America/Lima); obligatoria con ARCO_REQUEST, NULL con UPLOAD_ERROR.';
+COMMENT ON COLUMN guest_document_deletions.request_channel IS 'Canal de la solicitud ARCO; obligatorio con ARCO_REQUEST, NULL con UPLOAD_ERROR.';
+COMMENT ON COLUMN guest_document_deletions.note IS 'Referencia opcional (ticket o canal), sin datos personales; nunca se registra en logs.';
+COMMENT ON COLUMN guest_document_deletions.content_type IS 'Tipo del archivo que se borra.';
+COMMENT ON COLUMN guest_document_deletions.size_bytes IS 'Tamaño en bytes del archivo que se borra.';
+COMMENT ON COLUMN guest_document_deletions.created_date IS 'Cuándo pidió el administrador el borrado; es la fecha de la evidencia.';
+COMMENT ON COLUMN guest_document_deletions.last_modified_date IS 'Fecha de la última modificación del registro; igual a la de creación.';
+COMMENT ON COLUMN guest_document_deletions.created_by_id IS 'Administrador que pidió el borrado (actor de la evidencia); obligatorio.';
+COMMENT ON COLUMN guest_document_deletions.last_modified_by_id IS 'Usuario que modificó el registro por última vez; igual al actor.';

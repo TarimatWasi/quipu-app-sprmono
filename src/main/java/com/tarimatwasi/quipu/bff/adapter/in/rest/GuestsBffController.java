@@ -2,7 +2,6 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.tarimatwasi.quipu.guest.port.in.GuestDocumentActionFailedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase.DocumentActionRequest;
@@ -38,12 +37,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.TransactionException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -274,13 +272,14 @@ public class GuestsBffController {
   /**
    * RN-37: deletes a document on an ARCO request or an upload error, with evidence. The body is
    * checked before the ids are unmasked. If the file left the store but the row could not, the
-   * answer is a 500 and repeating the action completes it.
+   * answer is a 500; the deletion stays recorded and is finished by repeating it or by the purger.
    */
   @PostMapping(UploadRoutes.GUEST_DOCUMENT_DELETION)
   public ResponseEntity<Void> deleteDocument(
       @PathVariable UUID id,
       @PathVariable UUID documentId,
-      @Valid @RequestBody DocumentActionBody body) {
+      @Valid @RequestBody DocumentActionBody body,
+      Authentication authentication) {
     UnknownFieldException.rejectAny(body.unknown());
     DocumentActionRequest request =
         new DocumentActionRequest(
@@ -288,11 +287,7 @@ public class GuestsBffController {
     request.check(LocalDate.now(clock));
     Long guestId = guestOf(id);
     Long document = documentOf(documentId);
-    try {
-      documents.delete(guestId, document, request);
-    } catch (DataAccessException | TransactionException e) {
-      throw new GuestDocumentActionFailedException(e);
-    }
+    documents.delete(actorOf(authentication), guestId, document, request);
     return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
   }
 
@@ -308,7 +303,8 @@ public class GuestsBffController {
       @PathVariable UUID id,
       @PathVariable UUID documentId,
       @Valid DocumentReplacementForm form,
-      MultipartHttpServletRequest multipart) {
+      MultipartHttpServletRequest multipart,
+      Authentication authentication) {
     boolean unknownPart =
         Stream.concat(
                 multipart.getParameterMap().keySet().stream(),
@@ -336,6 +332,7 @@ public class GuestsBffController {
     String name = file.getOriginalFilename();
     GuestDocumentView replaced =
         documents.replace(
+            actorOf(authentication),
             guestOf(id),
             documentOf(documentId),
             request,
@@ -358,6 +355,11 @@ public class GuestsBffController {
             PagedResponse.of(
                 documents.actions(ids.unmask(IdKind.GUEST, id), page),
                 action -> DocumentActionResponse.of(action, ids)));
+  }
+
+  /** The administrator of the session, for the evidence (RN-37). */
+  private static Long actorOf(Authentication authentication) {
+    return Long.valueOf(authentication.getName());
   }
 
   /** A guest id that was never issued is, for a document, a document that does not exist. */

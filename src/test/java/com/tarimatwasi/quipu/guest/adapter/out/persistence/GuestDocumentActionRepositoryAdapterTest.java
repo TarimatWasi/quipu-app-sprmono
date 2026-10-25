@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Channel;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
+import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
@@ -76,7 +77,9 @@ class GuestDocumentActionRepositoryAdapterTest {
   private GuestDocumentAction add(Long documentId) {
     return Objects.requireNonNull(
         transaction.execute(
-            status -> adapter.addAction(Kind.DELETE, document(documentId), null, ARCO)));
+            status ->
+                adapter.addAction(
+                    Kind.DELETE, document(documentId), null, ARCO, admin, Instant.now())));
   }
 
   @Test
@@ -107,7 +110,9 @@ class GuestDocumentActionRepositoryAdapterTest {
                             Kind.REPLACE,
                             document(1L),
                             null,
-                            new Why(Reason.UPLOAD_ERROR, null, null, null))))
+                            new Why(Reason.UPLOAD_ERROR, null, null, null),
+                            admin,
+                            Instant.now())))
         .isInstanceOf(DataIntegrityViolationException.class);
   }
 
@@ -140,8 +145,53 @@ class GuestDocumentActionRepositoryAdapterTest {
     transaction.executeWithoutResult(status -> adapter.addPurge("guest-documents/b"));
 
     assertThat(adapter.pendingPurges(10)).containsExactly("guest-documents/a", "guest-documents/b");
-    adapter.removePurge("guest-documents/a");
-    adapter.removePurge("guest-documents/unknown");
+    transaction.executeWithoutResult(status -> adapter.removePurge("guest-documents/a"));
+    transaction.executeWithoutResult(status -> adapter.removePurge("guest-documents/unknown"));
     assertThat(adapter.pendingPurges(10)).containsExactly("guest-documents/b");
+  }
+
+  @Test
+  void theActorAndTheTimeOfTheEvidenceAreTheOnesGivenNotTheSession() {
+    Long other = TestIds.next();
+    jdbc.update(
+        "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+            + " must_change_password, status)"
+            + " VALUES (?, NULL, 'DNI', '00000002', 'hash', 'ADMIN', FALSE, 'ACTIVE')",
+        other);
+    Instant asked = Instant.parse("2026-10-01T12:00:00Z");
+
+    GuestDocumentAction action =
+        Objects.requireNonNull(
+            transaction.execute(
+                status -> adapter.addAction(Kind.DELETE, document(9L), null, ARCO, other, asked)));
+
+    assertThat(action.actorId()).isEqualTo(other);
+    assertThat(action.performedAt()).isEqualTo(asked);
+  }
+
+  @Test
+  void aPendingDeletionIsKeptUntilItIsForgotten() {
+    Instant asked = Instant.parse("2026-10-01T12:00:00Z");
+    PendingDeletion pending = new PendingDeletion(guest, 5L, ARCO, "image/png", 42, admin, asked);
+    transaction.executeWithoutResult(status -> adapter.addPendingDeletion(pending));
+
+    assertThat(adapter.pendingDeletionOf(5L)).contains(pending);
+    assertThat(adapter.pendingDeletions(asked.plusSeconds(1), 10)).containsExactly(pending);
+    assertThat(adapter.pendingDeletions(asked, 10)).isEmpty();
+    transaction.executeWithoutResult(status -> adapter.removePendingDeletion(5L));
+    transaction.executeWithoutResult(status -> adapter.removePendingDeletion(5L));
+    assertThat(adapter.pendingDeletionOf(5L)).isEmpty();
+  }
+
+  @Test
+  void aKeyIsReferencedWhileARowUsesIt() {
+    jdbc.update(
+        "INSERT INTO guest_documents (id, guest_id, storage_key, original_name, content_type,"
+            + " size_bytes) VALUES (?, ?, 'guest-documents/used', 'd.pdf', 'application/pdf', 10)",
+        TestIds.next(),
+        guest);
+
+    assertThat(adapter.isReferenced("guest-documents/used")).isTrue();
+    assertThat(adapter.isReferenced("guest-documents/free")).isFalse();
   }
 }
