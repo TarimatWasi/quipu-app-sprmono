@@ -135,7 +135,13 @@ final class VoucherRecorder {
     try {
       files.delete(key);
     } catch (PaymentFileStorageException cleanupFailed) {
-      LOGGER.error("A voucher stays in the bucket without a payment", cleanupFailed);
+      // TAR-205: the class names only; the message and trace of the SDK name the R2 host
+      // (account and bucket) and may name the key.
+      Throwable cause = cleanupFailed.getCause();
+      LOGGER.error(
+          "A voucher stays in the bucket without a payment ({}, cause {})",
+          cleanupFailed.getClass().getName(),
+          cause == null ? "-" : cause.getClass().getName());
     }
   }
 

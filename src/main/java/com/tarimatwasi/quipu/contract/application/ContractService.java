@@ -149,10 +149,14 @@ public class ContractService implements ManageContractsUseCase {
     try {
       files.delete(key);
     } catch (ContractFileStorageException cleanupFailed) {
+      // TAR-205: the class names only; the message and trace of the SDK name the R2 host
+      // (account and bucket) and may name the key.
+      Throwable cause = cleanupFailed.getCause();
       LOGGER.error(
-          "A contract file of guest {} stays in the bucket without a contract",
+          "A contract file of guest {} stays in the bucket without a contract ({}, cause {})",
           guestId,
-          cleanupFailed);
+          cleanupFailed.getClass().getName(),
+          cause == null ? "-" : cause.getClass().getName());
     }
   }
 

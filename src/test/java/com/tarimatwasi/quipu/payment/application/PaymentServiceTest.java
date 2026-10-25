@@ -50,6 +50,7 @@ import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -649,16 +650,15 @@ class PaymentServiceTest {
 
   @Test
   void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt(CapturedOutput output) {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
     when(payments.insertApproved(any())).thenThrow(failure);
-    doThrow(new PaymentFileStorageException("down")).when(files).delete(KEY);
-
+    var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
+    doThrow(cleanup).when(files).delete(KEY);
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
-    assertThat(output).contains("stays in the bucket").doesNotContain(KEY);
+    assertThat(output).contains("SdkClientException").doesNotContain(KEY, R2Failures.HOST);
   }
 
   @Test

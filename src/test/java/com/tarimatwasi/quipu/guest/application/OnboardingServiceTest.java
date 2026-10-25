@@ -30,6 +30,7 @@ import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.support.R2Failures;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -97,7 +98,9 @@ class OnboardingServiceTest {
     when(files.store(PDF, FileKind.PDF)).thenReturn("guest-documents/k");
     when(records.addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong()))
         .thenThrow(new IllegalStateException("insert failed"));
-    org.mockito.Mockito.doThrow(new GuestDocumentStorageException("down"))
+    org.mockito.Mockito.doThrow(
+            new GuestDocumentStorageException(
+                "down", R2Failures.clientFailure("guest-documents/k")))
         .when(files)
         .delete("guest-documents/k");
 
@@ -106,7 +109,9 @@ class OnboardingServiceTest {
     assertThat(output)
         .contains("stays in the bucket")
         .contains("guest " + GUEST)
-        .doesNotContain("guest-documents/k");
+        .contains("SdkClientException")
+        .doesNotContain("guest-documents/k")
+        .doesNotContain(R2Failures.HOST);
   }
 
   @Test

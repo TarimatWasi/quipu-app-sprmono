@@ -285,8 +285,14 @@ public class OnboardingService implements OnboardingUseCase {
     try {
       files.delete(key);
     } catch (GuestDocumentStorageException cleanupFailed) {
+      // TAR-205: the class names only; the message and trace of the SDK name the R2 host
+      // (account and bucket) and may name the key.
+      Throwable cause = cleanupFailed.getCause();
       LOGGER.error(
-          "A document of guest {} stays in the bucket without a row", guestId, cleanupFailed);
+          "A document of guest {} stays in the bucket without a row ({}, cause {})",
+          guestId,
+          cleanupFailed.getClass().getName(),
+          cause == null ? "-" : cause.getClass().getName());
     }
   }
 }

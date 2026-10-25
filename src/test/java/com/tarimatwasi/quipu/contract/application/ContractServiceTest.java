@@ -38,6 +38,7 @@ import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -283,14 +284,18 @@ class ContractServiceTest {
     freeEnvironmentAndActiveContractGuest();
     when(files.store(PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
-    var cleanup = new ContractFileStorageException("down");
+    var cleanup = new ContractFileStorageException("down", R2Failures.clientFailure(KEY));
     when(contracts.insert(any())).thenThrow(failure);
     org.mockito.Mockito.doThrow(cleanup).when(files).delete(KEY);
 
     assertThatThrownBy(() -> service.create(request())).isSameAs(failure);
     verify(files).delete(KEY);
     // TAR-205: the log names the guest, never the storage key.
-    assertThat(output).contains("stays in the bucket").doesNotContain(KEY);
+    assertThat(output)
+        .contains("stays in the bucket")
+        .contains("SdkClientException")
+        .doesNotContain(KEY)
+        .doesNotContain(R2Failures.HOST);
   }
 
   @Test
