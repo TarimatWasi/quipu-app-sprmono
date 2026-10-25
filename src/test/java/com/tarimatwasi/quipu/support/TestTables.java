@@ -14,7 +14,7 @@ public final class TestTables {
   /** Removes every row of users, guests, stays, contracts, payments, environments and expenses. */
   public static void clear(JdbcTemplate jdbc) {
     jdbc.execute(
-        "TRUNCATE TABLE guest_documents, guest_consents, access_grants, users, guests, environments,"
+        "TRUNCATE TABLE guest_document_actions, guest_document_deletions, guest_document_purges, guest_documents, guest_consents, access_grants, users, guests, environments,"
             + " expenses, stays, contracts, payments");
   }
 }

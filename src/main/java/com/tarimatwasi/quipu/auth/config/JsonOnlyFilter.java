@@ -9,9 +9,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -29,10 +32,24 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * SecurityContractTest.bodyless_cross_site_request_is_stopped_by_cors} and {@code
  * AuthBffControllerTest.crossSiteBodilessPostIsStoppedByCors} (enforced by {@code
  * TestConventionsTest}).
+ *
+ * <p>The uploads, and the deletion of a document of a guest (JSON, but irreversible, RN-37), must
+ * also say where they come from: {@code Origin} or {@code Sec-Fetch-Site: same-origin}, else 403.
  */
 final class JsonOnlyFilter extends OncePerRequestFilter {
 
   private static final Set<String> STATE_CHANGING = Set.of("POST", "PUT", "PATCH", "DELETE");
+
+  private static final PathPatternRequestMatcher.Builder PATHS =
+      PathPatternRequestMatcher.withDefaults();
+
+  /** The replacement of a document of a guest: the only upload by PUT (RN-37). */
+  private static final RequestMatcher DOCUMENT_REPLACEMENT =
+      PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT);
+
+  /** The deletion of a document of a guest: JSON, under the check of the uploads (RN-37). */
+  private static final RequestMatcher DOCUMENT_DELETION =
+      PATHS.matcher(HttpMethod.POST, UploadRoutes.GUEST_DOCUMENT_DELETION);
 
   /** The same body the security layer writes for a refused request. */
   private static final String FORBIDDEN_BODY =
@@ -58,7 +75,8 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       response.getWriter().write(BODY);
       return;
     }
-    if (isFileUpload(request) && !declaresItsOrigin(request)) {
+    if ((isFileUpload(request) || DOCUMENT_DELETION.matches(request))
+        && !declaresItsOrigin(request)) {
       response.setStatus(HttpStatus.FORBIDDEN.value());
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -82,12 +100,16 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
     return request.getHeader(HttpHeaders.ORIGIN) != null || "same-origin".equals(fetchSite);
   }
 
-  /** A multipart POST to one of the exact routes that take a file (ADR-006). */
+  /**
+   * A multipart POST to one of the exact routes that take a file, or a multipart PUT that replaces
+   * a document of a guest (ADR-006).
+   */
   private static boolean isFileUpload(HttpServletRequest request) {
     String contentType = request.getContentType();
-    if (!"POST".equals(request.getMethod())
-        || !UploadRoutes.ALL.contains(request.getRequestURI())
-        || contentType == null) {
+    boolean route =
+        ("POST".equals(request.getMethod()) && UploadRoutes.ALL.contains(request.getRequestURI()))
+            || DOCUMENT_REPLACEMENT.matches(request);
+    if (!route || contentType == null) {
       return false;
     }
     try {

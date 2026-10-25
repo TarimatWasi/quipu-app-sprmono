@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.servlet.FilterChain;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -173,5 +174,78 @@ class JsonOnlyFilterTest {
 
     assertThat(run(bodyless).getStatus()).isEqualTo(200);
     assertThat(run(get).getStatus()).isEqualTo(200);
+  }
+
+  // ------------------------------------------------------------------ TAR-187 (RN-37)
+
+  private static final String REPLACEMENT = "/bff/admin/guests/g/documents/d";
+  private static final String DELETION = REPLACEMENT + "/deletion";
+
+  private static MockHttpServletRequest json(String method, String path, String type) {
+    var request = new MockHttpServletRequest(method, path);
+    request.setRequestURI(path);
+    request.setContentType(type);
+    request.setContent("{}".getBytes(StandardCharsets.UTF_8));
+    return request;
+  }
+
+  @Test
+  void the_replacement_of_a_document_is_an_upload_by_put_that_says_where_it_comes_from()
+      throws Exception {
+    var withOrigin = multipart("PUT", REPLACEMENT);
+    withOrigin.addHeader("Origin", ORIGIN);
+    assertThat(run(withOrigin).getStatus()).isEqualTo(200);
+    var sameOrigin = multipart("PUT", REPLACEMENT);
+    sameOrigin.addHeader("Sec-Fetch-Site", "same-origin");
+    assertThat(run(sameOrigin).getStatus()).isEqualTo(200);
+    assertThat(reached).hasValue(2);
+
+    var anonymous = run(multipart("PUT", REPLACEMENT));
+    assertThat(anonymous.getStatus()).isEqualTo(403);
+    assertThat(anonymous.getContentAsString()).contains("AUTH_FORBIDDEN");
+    var crossSite = multipart("PUT", REPLACEMENT);
+    crossSite.addHeader("Origin", ORIGIN);
+    crossSite.addHeader("Sec-Fetch-Site", "cross-site");
+    assertThat(run(crossSite).getStatus()).isEqualTo(403);
+    // neither another method nor another shape of the path is an upload
+    for (var other :
+        List.of(
+            multipart("POST", REPLACEMENT),
+            multipart("PUT", DELETION),
+            multipart("PUT", REPLACEMENT + "/"),
+            multipart("PUT", "/bff/admin/guests/g/documents"))) {
+      other.addHeader("Origin", ORIGIN);
+      assertThat(run(other).getStatus()).as(other.getRequestURI()).isEqualTo(415);
+    }
+    assertThat(reached).hasValue(2);
+  }
+
+  @Test
+  void the_deletion_of_a_document_takes_json_only_and_says_where_it_comes_from() throws Exception {
+    for (String type : List.of("application/json", "application/json;charset=UTF-8")) {
+      var withOrigin = json("POST", DELETION, type);
+      withOrigin.addHeader("Origin", ORIGIN);
+      assertThat(run(withOrigin).getStatus()).as(type).isEqualTo(200);
+    }
+    var sameOrigin = json("POST", DELETION, "application/json");
+    sameOrigin.addHeader("Sec-Fetch-Site", "same-origin");
+    assertThat(run(sameOrigin).getStatus()).isEqualTo(200);
+    assertThat(reached).hasValue(3);
+
+    var anonymous = run(json("POST", DELETION, "application/json"));
+    assertThat(anonymous.getStatus()).isEqualTo(403);
+    assertThat(anonymous.getContentAsString()).contains("AUTH_FORBIDDEN");
+    var bodyless = new MockHttpServletRequest("POST", DELETION);
+    bodyless.setRequestURI(DELETION);
+    assertThat(run(bodyless).getStatus()).isEqualTo(403);
+    for (String type :
+        List.of("text/plain", "application/x-www-form-urlencoded", "multipart/form-data; b=x")) {
+      var other = json("POST", DELETION, type);
+      other.addHeader("Origin", ORIGIN);
+      var response = run(other);
+      assertThat(response.getStatus()).as(type).isEqualTo(415);
+      assertThat(response.getContentAsString()).contains("UNSUPPORTED_MEDIA_TYPE");
+    }
+    assertThat(reached).hasValue(3);
   }
 }

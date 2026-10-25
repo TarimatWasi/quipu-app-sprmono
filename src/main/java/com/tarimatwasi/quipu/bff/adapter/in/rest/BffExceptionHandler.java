@@ -24,7 +24,9 @@ import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentActionFailedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentUnavailableException;
 import com.tarimatwasi.quipu.guest.port.in.GuestEmailTakenException;
@@ -34,6 +36,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotTemporaryException;
+import com.tarimatwasi.quipu.guest.port.in.InvalidDocumentActionException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestDocumentException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
@@ -265,6 +268,36 @@ public class BffExceptionHandler {
   public ResponseEntity<BffErrorResponse> handleUnknownField(UnknownFieldException e) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.field()));
+  }
+
+  /**
+   * RN-37: the guest does not exist, the document is not one of that guest, or another action on it
+   * won. One body for all, so the answer does not tell which.
+   */
+  @ExceptionHandler(GuestDocumentNotFoundException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestDocumentNotFound() {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new BffErrorResponse("RESOURCE_NOT_FOUND", "El documento no existe"));
+  }
+
+  /** RN-37: the reason of a deletion or replacement breaks a rule; the field says which. */
+  @ExceptionHandler(InvalidDocumentActionException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidDocumentAction(
+      InvalidDocumentActionException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", e.field()));
+  }
+
+  /**
+   * RN-37: the file of the document was deleted but its row and evidence were not; repeating the
+   * action completes it. Nothing internal is in the body.
+   */
+  @ExceptionHandler(GuestDocumentActionFailedException.class)
+  public ResponseEntity<BffErrorResponse> handleGuestDocumentActionFailed() {
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(
+            new BffErrorResponse(
+                "INTERNAL_ERROR", "No se pudo completar la acción; vuelve a intentarlo"));
   }
 
   @ExceptionHandler(GuestNotFoundException.class)
@@ -723,9 +756,10 @@ public class BffExceptionHandler {
       case PAYMENT -> handlePaymentNotFound();
       // The session reads the user id itself and refuses the token: no BFF path carries one.
       case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
-      // A document is only listed, never addressed by its id.
-      case GUEST_DOCUMENT ->
-          throw new IllegalStateException("A guest document id is never part of a BFF path");
+      case GUEST_DOCUMENT -> handleGuestDocumentNotFound();
+      // An action is only listed, never addressed by its id.
+      case GUEST_DOCUMENT_ACTION ->
+          throw new IllegalStateException("A document action id is never part of a BFF path");
     };
   }
 
