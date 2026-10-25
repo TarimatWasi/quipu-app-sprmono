@@ -66,8 +66,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class PaymentServiceTest {
 
   private static final Long ADMIN = TestIds.next();
@@ -646,7 +648,7 @@ class PaymentServiceTest {
   }
 
   @Test
-  void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt() {
+  void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt(CapturedOutput output) {
     contractGuestWithOpenContract();
     when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
@@ -656,6 +658,8 @@ class PaymentServiceTest {
 
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
+    // TAR-205: the log never carries the storage key.
+    assertThat(output).contains("stays in the bucket").doesNotContain(KEY);
   }
 
   @Test

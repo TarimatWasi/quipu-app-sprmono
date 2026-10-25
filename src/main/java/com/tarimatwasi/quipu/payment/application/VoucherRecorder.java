@@ -128,14 +128,14 @@ final class VoucherRecorder {
   }
 
   /**
-   * A failure to clean up must not hide the failure that made the cleanup necessary: it is logged
-   * with the key, so the orphan object can be removed by hand.
+   * A failure to clean up must not hide the failure that made the cleanup necessary. It is logged
+   * without the storage key (TAR-205).
    */
   private void discard(String key) {
     try {
       files.delete(key);
     } catch (PaymentFileStorageException cleanupFailed) {
-      LOGGER.error("The voucher {} stays in the bucket without a payment", key, cleanupFailed);
+      LOGGER.error("A voucher stays in the bucket without a payment", cleanupFailed);
     }
   }
 

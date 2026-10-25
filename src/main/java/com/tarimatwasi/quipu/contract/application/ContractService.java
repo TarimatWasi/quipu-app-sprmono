@@ -106,7 +106,7 @@ public class ContractService implements ManageContractsUseCase {
     // slow bucket delays other contracts on that same environment (one per upload, at most 10 MB);
     // upload before opening the transaction if that ever hurts. A failure of the commit itself
     // leaves
-    // the object orphan: it is rare and the key is in the logs of the failed request.
+    // the object orphan: it is rare and only the bucket listing finds it.
     String key = storeFile(contract.file().content());
     ContractView view = null;
     try {
@@ -128,7 +128,7 @@ public class ContractService implements ManageContractsUseCase {
       return view;
     } finally {
       if (view == null) {
-        discard(key);
+        discard(contract.guestId(), key);
       }
     }
   }
@@ -142,15 +142,17 @@ public class ContractService implements ManageContractsUseCase {
   }
 
   /**
-   * A failure to clean up must not hide the failure that made the cleanup necessary: it is logged
-   * with the key, so the orphan object can be removed by hand.
+   * A failure to clean up must not hide the failure that made the cleanup necessary. It is logged
+   * with the internal id of the guest, never the storage key (TAR-205).
    */
-  private void discard(String key) {
+  private void discard(Long guestId, String key) {
     try {
       files.delete(key);
     } catch (ContractFileStorageException cleanupFailed) {
       LOGGER.error(
-          "The contract file {} stays in the bucket without a contract", key, cleanupFailed);
+          "A contract file of guest {} stays in the bucket without a contract",
+          guestId,
+          cleanupFailed);
     }
   }
 
