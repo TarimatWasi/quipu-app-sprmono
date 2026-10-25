@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +28,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -298,6 +300,46 @@ class AccountJwtAuthenticationConverterTest {
             authenticate(
                 signed(Map.of("sub", masker.mask(IdKind.GUEST, id).toString(), "role", "ADMIN"))))
         .isEmpty();
+  }
+
+  /**
+   * TAR-205: the precise issue time must fall in the second of {@code iat}, in microseconds; a
+   * value out of it, not a whole number, or one that overflows is an invalid token, never a 500.
+   * The last microsecond of the second is in: the issuer rounds the instant up.
+   */
+  @Test
+  void aPreciseIssueTimeOutsideTheSecondOfIatIsAnInvalidToken() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    long iatMicros = NOW.getEpochSecond() * 1_000_000L;
+
+    for (Object good : List.<Object>of(iatMicros, iatMicros + 999_999L, iatMicros + 1_000_000L)) {
+      assertThat(converter.convert(jwt(NOW, good))).as(String.valueOf(good)).isNotNull();
+    }
+    for (Object bad :
+        List.<Object>of(
+            iatMicros - 1,
+            iatMicros + 1_000_001L,
+            Long.MAX_VALUE,
+            Long.MIN_VALUE,
+            1.5e300,
+            (double) iatMicros,
+            "1")) {
+      assertThatThrownBy(() -> converter.convert(jwt(NOW, bad)))
+          .as(String.valueOf(bad))
+          .isInstanceOf(InvalidBearerTokenException.class);
+    }
+    // An iat so far ahead that it overflows in microseconds.
+    assertThatThrownBy(() -> converter.convert(jwt(Instant.MAX, 0L)))
+        .isInstanceOf(InvalidBearerTokenException.class);
+  }
+
+  private Jwt jwt(Instant issuedAt, Object preciseIssuedAt) {
+    return Jwt.withTokenValue("t")
+        .header("alg", "HS256")
+        .subject(masker.mask(IdKind.USER, id).toString())
+        .issuedAt(issuedAt)
+        .claim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM, preciseIssuedAt)
+        .build();
   }
 
   /**
