@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.guest.adapter.out.persistence;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
@@ -18,10 +20,14 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
@@ -118,16 +124,21 @@ class ViolatedConstraintTest {
   void anEmailOfAnotherGuestIsReportedAsTheEmail() {
     Guest found = guests.findById(other).orElseThrow();
 
-    assertThatThrownBy(() -> save(found, "ANA@example.test", found.documentNumber(), null))
-        .isInstanceOf(GuestEmailAlreadyExistsException.class);
+    Throwable failure = catchThrowable(() -> save(found, "ANA@example.test", "87654321", null));
+
+    assertThat(failure).isInstanceOf(GuestEmailAlreadyExistsException.class);
+    assertThat(messagesOf(failure))
+        .noneMatch(m -> m.toLowerCase(Locale.ROOT).contains("ana@example.test"));
   }
 
   @Test
   void theDocumentOfAnotherGuestIsReportedAsTheDocument() {
     Guest found = guests.findById(other).orElseThrow();
 
-    assertThatThrownBy(() -> save(found, found.email(), "12345678", null))
-        .isInstanceOf(GuestDocumentAlreadyExistsException.class);
+    Throwable failure = catchThrowable(() -> save(found, found.email(), "12345678", null));
+
+    assertThat(failure).isInstanceOf(GuestDocumentAlreadyExistsException.class);
+    assertThat(messagesOf(failure)).noneMatch(m -> m.contains("12345678"));
   }
 
   /** LOW of the security review: a CHECK is neither a repeated document nor a repeated email. */
@@ -135,11 +146,30 @@ class ViolatedConstraintTest {
   void anotherRuleKeepsTheFailure() {
     Guest found = guests.findById(other).orElseThrow();
 
-    assertThatThrownBy(
-            () -> save(found, found.email(), found.documentNumber(), GuestStatus.INACTIVE))
+    Throwable failure =
+        catchThrowable(() -> save(found, found.email(), "87654321", GuestStatus.INACTIVE));
+
+    assertThat(failure)
         .isInstanceOf(DataIntegrityViolationException.class)
         .isNotInstanceOf(GuestDocumentAlreadyExistsException.class)
         .isNotInstanceOf(GuestEmailAlreadyExistsException.class);
+    assertThat(ViolatedConstraint.is(failure, "ck_guests_status_before_inactive")).isTrue();
+    // The failing row would carry the document number and the statuses.
+    assertThat(messagesOf(failure)).noneMatch(m -> m.contains("87654321"));
+  }
+
+  /**
+   * TAR-207: the driver leaves the detail of the server (the key and the failing row, personal
+   * data) out of every message, so no log of the failure carries it; the constraint name stays.
+   */
+  private static List<String> messagesOf(Throwable failure) {
+    List<String> messages = new ArrayList<>();
+    for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+      messages.add(String.valueOf(cause.getMessage()));
+      messages.add(cause.toString());
+    }
+    assertThat(failure).hasRootCauseInstanceOf(PSQLException.class);
+    return messages;
   }
 
   private void save(
