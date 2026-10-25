@@ -250,6 +250,38 @@ class UploadRateLimitFilterTest {
     assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(200);
   }
 
+  /**
+   * TAR-205: the container may end an async upload twice (a timeout or an error, then complete).
+   * The second end must not take away the permit of the next upload of the same user.
+   */
+  @Test
+  void anAsyncUploadEndedTwiceReleasesOnlyItsOwnPermit() throws Exception {
+    var filter = limitedTo(10);
+    signIn("7");
+    var first = new MockHttpServletRequest("POST", ROUTE);
+    first.setAsyncSupported(true);
+    var started = new java.util.concurrent.atomic.AtomicReference<AsyncContext>();
+    filter.doFilter(
+        first, new MockHttpServletResponse(), (req, res) -> started.set(req.startAsync()));
+    var context = (org.springframework.mock.web.MockAsyncContext) started.get();
+    var event = new jakarta.servlet.AsyncEvent(context);
+    for (var listener : context.getListeners()) {
+      listener.onTimeout(event);
+    }
+
+    var answers = new java.util.ArrayList<MockHttpServletResponse>();
+    filter.doFilter(
+        new MockHttpServletRequest("POST", ROUTE),
+        new MockHttpServletResponse(),
+        (req, res) -> {
+          // the first upload now completes too, while the second one is in progress
+          context.complete();
+          answers.add(send(filter, "POST", ROUTE));
+        });
+
+    assertThat(answers.getFirst().getStatus()).isEqualTo(429);
+  }
+
   @Test
   void theAllowanceAndTheBurstAreBounded() {
     for (int[] wrong : new int[][] {{0, 1}, {61, 3}, {10, 0}, {10, 11}}) {

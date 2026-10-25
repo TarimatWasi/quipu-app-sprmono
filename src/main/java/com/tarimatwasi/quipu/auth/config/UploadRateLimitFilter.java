@@ -8,8 +8,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -51,7 +51,12 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
               .toArray(RequestMatcher[]::new));
 
   private final RateLimitBuckets buckets;
-  private final Set<String> inProgress = ConcurrentHashMap.newKeySet();
+
+  /**
+   * The upload in progress of each user, with the token of its request: a request releases only its
+   * own token, so ending twice (a timeout, then complete) never frees the next upload (TAR-205).
+   */
+  private final ConcurrentMap<String, Object> inProgress = new ConcurrentHashMap<>();
 
   UploadRateLimitFilter(UploadRateLimitProperties properties) {
     this.buckets = new RateLimitBuckets(properties.uploadsPerMinute(), properties.uploadBurst());
@@ -70,7 +75,8 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
       return;
     }
     String user = session.getName();
-    if (!inProgress.add(user)) {
+    Object token = new Object();
+    if (inProgress.putIfAbsent(user, token) != null) {
       RateLimitBuckets.reject(response, 1);
       return;
     }
@@ -81,13 +87,13 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
         if (request.isAsyncStarted()) {
           // The container fires the listener once this dispatch has returned, even if the async
           // work already ended: the upload stays in progress until then.
-          request.getAsyncContext().addListener(new Release(user));
+          request.getAsyncContext().addListener(new Release(user, token));
           handedToAsync = true;
         }
       }
     } finally {
       if (!handedToAsync) {
-        inProgress.remove(user);
+        inProgress.remove(user, token);
       }
     }
   }
@@ -96,24 +102,26 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
   private final class Release implements AsyncListener {
 
     private final String user;
+    private final Object token;
 
-    Release(String user) {
+    Release(String user, Object token) {
       this.user = user;
+      this.token = token;
     }
 
     @Override
     public void onComplete(AsyncEvent event) {
-      inProgress.remove(user);
+      inProgress.remove(user, token);
     }
 
     @Override
     public void onTimeout(AsyncEvent event) {
-      inProgress.remove(user);
+      inProgress.remove(user, token);
     }
 
     @Override
     public void onError(AsyncEvent event) {
-      inProgress.remove(user);
+      inProgress.remove(user, token);
     }
 
     /** A new async cycle of the same request drops the listeners: register again. */
