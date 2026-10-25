@@ -13,6 +13,8 @@ interface GuestDocumentActionJpaRepository
   List<GuestDocumentActionJpaEntity> findByGuestIdOrderByCreatedDateDescIdDesc(
       Long guestId, Limit limit);
 
+  // createdDate is mapped as an Instant (the field of AbstractAuditable; only its getter is a
+  // LocalDateTime), so the instant is bound as it is and the margin does not move with the zone.
   /** The page after (date, id), in the order of the listing: newest first. */
   @Query(
       "select a from GuestDocumentActionJpaEntity a where a.guestId = :guestId"

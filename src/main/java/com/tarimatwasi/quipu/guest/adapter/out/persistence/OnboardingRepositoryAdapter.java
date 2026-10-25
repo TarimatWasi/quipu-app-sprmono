@@ -26,14 +26,14 @@ public class OnboardingRepositoryAdapter implements OnboardingRepositoryPort {
 
   @Override
   public List<GuestDocument> documentsOf(Long guestId) {
-    return documents.findAllByGuestIdOrderByCreatedDateAscIdAsc(guestId).stream()
+    return documents.findListedByGuestId(guestId).stream()
         .map(GuestDocumentJpaEntity::toDomain)
         .toList();
   }
 
   @Override
   public int countDocuments(Long guestId) {
-    return documents.countByGuestId(guestId);
+    return documents.countListedByGuestId(guestId);
   }
 
   /** Flushes, so that a failed insert surfaces here and the stored object can be removed. */

@@ -3,12 +3,14 @@ package com.tarimatwasi.quipu.guest.application;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
+import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -52,8 +54,8 @@ public class GuestDocumentPurger {
   static final int AT_STARTUP = 100;
 
   /**
-   * A deletion younger than this may still be running in its own request (its R2 call ends well
-   * within it), so a round leaves it alone.
+   * A deletion or a pending object younger than this may still belong to a request in course (its
+   * R2 call and its commit end well within it), so a round leaves it alone.
    */
   static final Duration IN_COURSE = Duration.ofMinutes(1);
 
@@ -113,9 +115,20 @@ public class GuestDocumentPurger {
    * document locked (in that order), the evidence written with the administrator who asked and
    * when, the row removed and the record forgotten.
    *
-   * @return whether the document was still there; if not, the record is only forgotten
+   * @return whether the document was still there; if not, or if its evidence was already written,
+   *     the record is only forgotten
    */
   public boolean complete(PendingDeletion deletion) {
+    try {
+      return completeLocked(deletion);
+    } catch (GuestDocumentActionExistsException alreadyDone) {
+      // Another action wrote the evidence of the document: this deletion has nothing left to do.
+      separate.executeWithoutResult(s -> records.removePendingDeletion(deletion.documentId()));
+      return false;
+    }
+  }
+
+  private boolean completeLocked(PendingDeletion deletion) {
     return Boolean.TRUE.equals(
         separate.execute(
             status -> {
@@ -137,6 +150,18 @@ public class GuestDocumentPurger {
               records.removePendingDeletion(deletion.documentId());
               return document.isPresent();
             }));
+  }
+
+  /**
+   * Removes at once the old object of a replacement that has just committed: no other request can
+   * still be committing a row that uses it. One the store keeps stays pending for a round.
+   */
+  public void purgeObjectNow(String storageKey) {
+    try {
+      attempt(() -> purgeObject(storageKey));
+    } catch (GuestDocumentStorageException storeFailed) {
+      LOGGER.warn("The old object of a guest document replacement stays pending; retried later");
+    }
   }
 
   /** The round when the application starts; a store or a database that fails does not stop it. */
@@ -166,11 +191,13 @@ public class GuestDocumentPurger {
    * @return how many of those read are still pending
    */
   int purgePending(int limit) {
-    List<String> keys = Objects.requireNonNull(separate.execute(s -> records.pendingPurges(limit)));
+    // What is younger than a request in course is left to it: a replacement whose commit is not
+    // known yet may still make its new object referenced.
+    Instant margin = clock.instant().minus(IN_COURSE);
+    List<String> keys =
+        Objects.requireNonNull(separate.execute(s -> records.pendingPurges(margin, limit)));
     List<PendingDeletion> deletions =
-        Objects.requireNonNull(
-            separate.execute(
-                s -> records.pendingDeletions(clock.instant().minus(IN_COURSE), limit)));
+        Objects.requireNonNull(separate.execute(s -> records.pendingDeletions(margin, limit)));
     int done = 0;
     try {
       for (String key : keys) {

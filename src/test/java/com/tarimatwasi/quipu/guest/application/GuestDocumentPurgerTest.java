@@ -21,6 +21,7 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentStorageException;
@@ -53,6 +54,7 @@ class GuestDocumentPurgerTest {
   private static final Instant NOW = Instant.parse("2026-10-24T15:00:00Z");
   private static final Instant ASKED = NOW.minusSeconds(3600);
   private static final Clock CLOCK = Clock.fixed(NOW, ZoneId.of("America/Lima"));
+  private static final Instant MARGIN = NOW.minus(GuestDocumentPurger.IN_COURSE);
   private static final String KEY = "guest-documents/secret-a";
   private static final String OTHER = "guest-documents/secret-b";
   private static final Long GUEST = 7L;
@@ -73,7 +75,7 @@ class GuestDocumentPurgerTest {
   }
 
   private void nothingPending() {
-    when(records.pendingPurges(100)).thenReturn(List.of());
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of());
     when(records.pendingDeletions(NOW.minus(GuestDocumentPurger.IN_COURSE), 100))
         .thenReturn(List.of());
   }
@@ -144,6 +146,45 @@ class GuestDocumentPurgerTest {
   }
 
   @Test
+  void completingADeletionWhoseEvidenceIsAlreadyWrittenOnlyForgetsIt() {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
+    when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
+    when(records.addAction(Kind.DELETE, ROW, null, WHY, 3L, ASKED))
+        .thenThrow(new GuestDocumentActionExistsException(new DataIntegrityViolationException("")));
+
+    assertThat(purger().complete(PENDING)).isFalse();
+
+    verify(records, never()).removeDocument(any());
+    verify(records).removePendingDeletion(DOCUMENT);
+  }
+
+  @Test
+  void aRoundWhoseDeletionHasItsEvidenceAlreadyEndsItAndDoesNotThrow(CapturedOutput output) {
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of());
+    when(records.pendingDeletions(MARGIN, 100)).thenReturn(List.of(PENDING));
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
+    when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
+    when(records.addAction(any(), any(), any(), any(), any(), any()))
+        .thenThrow(new GuestDocumentActionExistsException(new DataIntegrityViolationException("")));
+
+    purger().purgeAtStartup();
+
+    verify(records).removePendingDeletion(DOCUMENT);
+    assertThat(output).doesNotContain("still pending");
+  }
+
+  @Test
+  void theOldObjectOfAReplacementIsTriedAtOnceAndStaysPendingIfTheStoreFails() {
+    purger().purgeObjectNow(KEY);
+    verify(files).delete(KEY);
+    verify(records).removePurge(KEY);
+
+    doThrow(new GuestDocumentStorageException("down")).when(files).delete(OTHER);
+    purger().purgeObjectNow(OTHER);
+    verify(records, never()).removePurge(OTHER);
+  }
+
+  @Test
   void completingADeletionWhoseRowIsGoneOnlyForgetsIt() {
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
     when(records.findDocumentForUpdate(GUEST, DOCUMENT)).thenReturn(Optional.empty());
@@ -156,7 +197,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void anObjectNoRowUsesIsRemovedAndForgotten() {
-    when(records.pendingPurges(100)).thenReturn(List.of(KEY));
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of(KEY));
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of());
 
     assertThat(purger().purgePending(100)).isZero();
@@ -167,7 +208,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void aStoreThatFailsEndsTheRoundAndLeavesTheRestPending() {
-    when(records.pendingPurges(100)).thenReturn(List.of(KEY, OTHER));
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of(KEY, OTHER));
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
     doThrow(new GuestDocumentStorageException("down")).when(files).delete(KEY);
 
@@ -180,7 +221,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void theStoreIsNeverCalledInsideATransaction() {
-    when(records.pendingPurges(100)).thenReturn(List.of(KEY));
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of(KEY));
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
     when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
@@ -208,7 +249,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void anObjectARowStillUsesIsForgottenButNeverRemoved() {
-    when(records.pendingPurges(100)).thenReturn(List.of(KEY));
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of(KEY));
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of());
     when(records.isReferenced(KEY)).thenReturn(true);
 
@@ -220,7 +261,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void aPendingDeletionIsFinishedWithTheEvidenceOfWhoAskedAndWhen() {
-    when(records.pendingPurges(100)).thenReturn(List.of());
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of());
     when(records.pendingDeletions(NOW.minus(GuestDocumentPurger.IN_COURSE), 100))
         .thenReturn(List.of(PENDING));
     when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
@@ -239,7 +280,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void aPendingDeletionWhoseRowIsGoneIsOnlyForgotten() {
-    when(records.pendingPurges(100)).thenReturn(List.of());
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of());
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
     when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.empty());
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(guest()));
@@ -255,7 +296,7 @@ class GuestDocumentPurgerTest {
   @Test
   void aPendingDeletionThatFailsStaysAndTheRoundGoesOn() {
     PendingDeletion second = new PendingDeletion(GUEST, 71L, WHY, "image/png", 5, 3L, ASKED);
-    when(records.pendingPurges(100)).thenReturn(List.of());
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of());
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING, second));
     when(guests.findByIdForUpdate(GUEST))
         .thenThrow(new QueryTimeoutException("db"))
@@ -270,7 +311,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void aPendingDeletionWhoseStoreFailsStays() {
-    when(records.pendingPurges(100)).thenReturn(List.of());
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of());
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of(PENDING));
     when(records.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.of(ROW));
     doThrow(new GuestDocumentStorageException("down")).when(files).delete(KEY);
@@ -284,7 +325,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void theRoundAtStartupWarnsWithTheCountOnly(CapturedOutput output) {
-    when(records.pendingPurges(100)).thenReturn(List.of(KEY));
+    when(records.pendingPurges(MARGIN, 100)).thenReturn(List.of(KEY));
     when(records.pendingDeletions(any(), anyInt())).thenReturn(List.of());
     doThrow(new GuestDocumentStorageException("R2 is not configured " + KEY))
         .when(files)
@@ -306,7 +347,7 @@ class GuestDocumentPurgerTest {
 
   @Test
   void aRoundThatCannotReadTheDatabaseDoesNotStopTheApplication(CapturedOutput output) {
-    when(records.pendingPurges(100)).thenThrow(new QueryTimeoutException("db"));
+    when(records.pendingPurges(MARGIN, 100)).thenThrow(new QueryTimeoutException("db"));
 
     purger().purgeAtStartup();
 

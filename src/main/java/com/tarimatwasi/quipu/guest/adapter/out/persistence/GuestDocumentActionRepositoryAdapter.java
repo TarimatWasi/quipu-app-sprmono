@@ -142,11 +142,6 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   }
 
   @Override
-  public List<Long> documentsBeingDeleted(Long guestId) {
-    return deletions.findDocumentIdsByGuestId(guestId);
-  }
-
-  @Override
   public List<PendingDeletion> pendingDeletions(Instant askedBefore, int limit) {
     return deletions.findAskedBefore(askedBefore, Limit.of(limit)).stream()
         .map(GuestDocumentDeletionJpaEntity::toDomain)
@@ -159,8 +154,8 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   }
 
   @Override
-  public List<String> pendingPurges(int limit) {
-    return purges.findAllByOrderByIdAsc(Limit.of(limit)).stream()
+  public List<String> pendingPurges(Instant addedBefore, int limit) {
+    return purges.findAddedBefore(addedBefore, Limit.of(limit)).stream()
         .map(GuestDocumentPurgeJpaEntity::storageKey)
         .toList();
   }

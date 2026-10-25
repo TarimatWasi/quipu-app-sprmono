@@ -11,12 +11,14 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
+import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
@@ -41,6 +43,7 @@ class GuestDocumentActionRepositoryAdapterTest {
       new Why(Reason.ARCO_REQUEST, LocalDate.parse("2026-01-15"), Channel.OTHER, "ticket");
 
   @Autowired GuestDocumentActionRepositoryAdapter adapter;
+  @Autowired OnboardingRepositoryPort onboarding;
   @Autowired JdbcTemplate jdbc;
   @Autowired TransactionTemplate transaction;
 
@@ -144,10 +147,42 @@ class GuestDocumentActionRepositoryAdapterTest {
     transaction.executeWithoutResult(status -> adapter.addPurge("guest-documents/a"));
     transaction.executeWithoutResult(status -> adapter.addPurge("guest-documents/b"));
 
-    assertThat(adapter.pendingPurges(10)).containsExactly("guest-documents/a", "guest-documents/b");
+    Instant later = Instant.now().plusSeconds(60);
+    assertThat(adapter.pendingPurges(later, 10))
+        .containsExactly("guest-documents/a", "guest-documents/b");
     transaction.executeWithoutResult(status -> adapter.removePurge("guest-documents/a"));
     transaction.executeWithoutResult(status -> adapter.removePurge("guest-documents/unknown"));
-    assertThat(adapter.pendingPurges(10)).containsExactly("guest-documents/b");
+    assertThat(adapter.pendingPurges(later, 10)).containsExactly("guest-documents/b");
+  }
+
+  /**
+   * The real queries, with the zone of this JVM (not UTC on the machines of the team): only what is
+   * older than the margin of a request in course is returned.
+   */
+  @Test
+  void onlyWhatIsOlderThanTheMarginIsPending() {
+    Instant asked = Instant.now();
+    transaction.executeWithoutResult(
+        status -> {
+          adapter.addPurge("guest-documents/old");
+          adapter.addPurge("guest-documents/new");
+          adapter.addPendingDeletion(
+              new PendingDeletion(guest, 5L, ARCO, "image/png", 42, admin, asked));
+          adapter.addPendingDeletion(
+              new PendingDeletion(guest, 6L, ARCO, "image/png", 42, admin, asked));
+        });
+    jdbc.update(
+        "UPDATE guest_document_purges SET created_date = now() - interval '2 minutes'"
+            + " WHERE storage_key = 'guest-documents/old'");
+    jdbc.update(
+        "UPDATE guest_document_deletions SET created_date = now() - interval '2 minutes'"
+            + " WHERE document_id = 5");
+    Instant margin = Instant.now().minus(Duration.ofMinutes(1));
+
+    assertThat(adapter.pendingPurges(margin, 10)).containsExactly("guest-documents/old");
+    assertThat(adapter.pendingDeletions(margin, 10))
+        .extracting(PendingDeletion::documentId)
+        .containsExactly(5L);
   }
 
   @Test
@@ -184,17 +219,24 @@ class GuestDocumentActionRepositoryAdapterTest {
   }
 
   @Test
-  void theDocumentsBeingDeletedAreThoseOfThatGuestOnly() {
-    Instant asked = Instant.parse("2026-10-01T12:00:00Z");
+  void aDocumentBeingDeletedIsNeitherListedNorCountedForItsGuest() {
+    Long kept = TestIds.next();
+    Long leaving = TestIds.next();
+    for (Long id : new Long[] {kept, leaving}) {
+      jdbc.update(
+          "INSERT INTO guest_documents (id, guest_id, storage_key, original_name, content_type,"
+              + " size_bytes) VALUES (?, ?, ?, 'd.pdf', 'application/pdf', 10)",
+          id,
+          guest,
+          "guest-documents/" + id);
+    }
     transaction.executeWithoutResult(
-        status -> {
-          adapter.addPendingDeletion(
-              new PendingDeletion(guest, 5L, ARCO, "image/png", 42, admin, asked));
-          adapter.addPendingDeletion(
-              new PendingDeletion(guest + 1, 6L, ARCO, "image/png", 42, admin, asked));
-        });
+        status ->
+            adapter.addPendingDeletion(
+                new PendingDeletion(guest, leaving, ARCO, "image/png", 42, admin, Instant.now())));
 
-    assertThat(adapter.documentsBeingDeleted(guest)).containsExactly(5L);
+    assertThat(onboarding.documentsOf(guest)).extracting(GuestDocument::id).containsExactly(kept);
+    assertThat(onboarding.countDocuments(guest)).isOne();
   }
 
   @Test

@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,11 +86,9 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       throw new GuestNotFoundException();
     }
     Instant expiresAt = clock.instant().plus(GuestDocument.URL_VALIDITY);
-    // A document whose deletion is in course may have lost its object: no link is signed for it.
-    List<Long> leaving = actions.documentsBeingDeleted(guestId);
     try {
+      // A document whose deletion is in course is not among them: no link for a gone object.
       return records.documentsOf(guestId).stream()
-          .filter(document -> !leaving.contains(document.id()))
           .map(document -> view(document, expiresAt))
           .toList();
     } catch (GuestDocumentStorageException e) {
@@ -128,8 +127,6 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     boolean found;
     try {
       found = purger.complete(pending);
-    } catch (GuestDocumentActionExistsException e) {
-      throw new GuestDocumentNotFoundException();
     } catch (DataAccessException | TransactionException e) {
       // Internal ids only: never the key, the cause or a personal datum.
       LOGGER.error(
@@ -145,8 +142,12 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     purger.purge(GuestDocumentPurger.AFTER_AN_ACTION);
   }
 
+  /**
+   * The new file goes to the store with no transaction open; then the row is swapped and the
+   * evidence written in one transaction, with the rows locked. A new object that no committed row
+   * references is removed, or left pending; the old one is removed after the commit.
+   */
   @Override
-  @Transactional
   public GuestDocumentView replace(
       Long actorId,
       Long guestId,
@@ -161,18 +162,49 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
       throw new InvalidOnboardingInputException(
           InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
     }
-    notBeingDeleted(current(guestId, documentId));
+    transaction.executeWithoutResult(status -> notBeingDeleted(current(guestId, documentId)));
     String key;
-    String url;
-    // The new file goes to the store before any row is locked.
     try {
       key = files.store(content, kind);
     } catch (GuestDocumentStorageException e) {
       throw new GuestDocumentUnavailableException(e);
     }
-    // From here on, an object that no committed row references is removed, or left pending.
-    afterRollback(key, documentId);
+    AtomicBoolean watched = new AtomicBoolean();
+    Swap swap = null;
+    try {
+      swap =
+          transaction.execute(
+              status -> {
+                // From here on the outcome of the transaction decides what happens to the object.
+                afterRollback(key, documentId);
+                watched.set(true);
+                return swap(actorId, guestId, documentId, why, upload, kind, key);
+              });
+    } finally {
+      if (swap == null && !watched.get()) {
+        // The transaction never started: no row can reference the new object.
+        discard(key, documentId);
+      }
+    }
+    Swap done = Objects.requireNonNull(swap);
+    purger.purgeObjectNow(done.oldKey());
+    purger.purge(GuestDocumentPurger.AFTER_AN_ACTION);
+    return done.view();
+  }
+
+  /** What a committed replacement leaves: the answer, and the old object to remove. */
+  private record Swap(GuestDocumentView view, String oldKey) {}
+
+  private Swap swap(
+      Long actorId,
+      Long guestId,
+      Long documentId,
+      Why why,
+      DocumentUpload upload,
+      FileKind kind,
+      String key) {
     GuestDocument old = notBeingDeleted(locked(guestId, documentId));
+    String url;
     try {
       url = files.signedUrl(key, kind);
     } catch (GuestDocumentStorageException e) {
@@ -184,20 +216,21 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
             key,
             FileNames.sanitized(upload.originalName(), DEFAULT_NAME),
             kind.contentType(),
-            content.length);
+            upload.content().length);
     record(Kind.REPLACE, old, replacement.id(), why, actorId, clock.instant());
     actions.removeDocument(old);
-    // The old object is pending in the same transaction as the swap, and removed after the commit.
+    // The old object is pending in the same transaction as the swap, so a crash cannot lose it.
     actions.addPurge(old.storageKey());
-    afterCommit(() -> purger.purge(GuestDocumentPurger.AFTER_AN_ACTION));
-    return new GuestDocumentView(
-        replacement.id(),
-        replacement.originalName(),
-        replacement.contentType(),
-        replacement.sizeBytes(),
-        replacement.uploadedAt(),
-        url,
-        clock.instant().plus(GuestDocument.URL_VALIDITY));
+    return new Swap(
+        new GuestDocumentView(
+            replacement.id(),
+            replacement.originalName(),
+            replacement.contentType(),
+            replacement.sizeBytes(),
+            replacement.uploadedAt(),
+            url,
+            clock.instant().plus(GuestDocument.URL_VALIDITY)),
+        old.storageKey());
   }
 
   @Override
@@ -300,16 +333,6 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
               + " without a row",
           documentId);
     }
-  }
-
-  private static void afterCommit(Runnable action) {
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCommit() {
-            action.run();
-          }
-        });
   }
 
   /**

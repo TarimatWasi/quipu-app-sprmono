@@ -61,9 +61,6 @@ public interface GuestDocumentActionRepositoryPort {
   /** Forgets the deletion of the document: done, or the document is gone. */
   void removePendingDeletion(Long documentId);
 
-  /** The ids of the documents of the guest whose deletion is in course. */
-  List<Long> documentsBeingDeleted(Long guestId);
-
   /** The deletions asked for before that instant and still in course, oldest first. */
   List<PendingDeletion> pendingDeletions(Instant askedBefore, int limit);
 
@@ -73,8 +70,11 @@ public interface GuestDocumentActionRepositoryPort {
   /** Forgets the object under the key: it was removed from the store, or a row still uses it. */
   void removePurge(String storageKey);
 
-  /** The keys of the objects still to remove, oldest first, at most {@code limit}. */
-  List<String> pendingPurges(int limit);
+  /**
+   * The keys of the objects still to remove that were recorded before that instant, oldest first,
+   * at most {@code limit}.
+   */
+  List<String> pendingPurges(Instant addedBefore, int limit);
 
   /** Whether a document row stores its file under the key. */
   boolean isReferenced(String storageKey);

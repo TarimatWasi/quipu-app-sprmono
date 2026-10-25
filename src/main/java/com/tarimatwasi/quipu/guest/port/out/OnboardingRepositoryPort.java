@@ -8,9 +8,10 @@ import java.util.Optional;
 /** The documents and the consents of the onboarding; both are only ever inserted. */
 public interface OnboardingRepositoryPort {
 
-  /** The documents of the guest, oldest first. */
+  /** The documents of the guest, oldest first, without those whose deletion is in course. */
   List<GuestDocument> documentsOf(Long guestId);
 
+  /** How many of those there are: a document whose deletion is in course no longer counts. */
   int countDocuments(Long guestId);
 
   /** Inserts the document row; the store sets its id and its time. */

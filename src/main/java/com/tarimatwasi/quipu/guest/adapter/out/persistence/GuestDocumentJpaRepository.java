@@ -11,9 +11,18 @@ import org.springframework.data.repository.query.Param;
 
 interface GuestDocumentJpaRepository extends JpaRepository<GuestDocumentJpaEntity, Long> {
 
-  List<GuestDocumentJpaEntity> findAllByGuestIdOrderByCreatedDateAscIdAsc(Long guestId);
+  /** Without the documents whose deletion is in course: their object may already be gone. */
+  @Query(
+      "select g from GuestDocumentJpaEntity g where g.guestId = :guestId and not exists"
+          + " (select 1 from GuestDocumentDeletionJpaEntity d where d.documentId = g.id)"
+          + " order by g.createdDate asc, g.id asc")
+  List<GuestDocumentJpaEntity> findListedByGuestId(@Param("guestId") Long guestId);
 
-  int countByGuestId(Long guestId);
+  /** As {@link #findListedByGuestId}: a document being deleted no longer counts. */
+  @Query(
+      "select count(g) from GuestDocumentJpaEntity g where g.guestId = :guestId and not exists"
+          + " (select 1 from GuestDocumentDeletionJpaEntity d where d.documentId = g.id)")
+  int countListedByGuestId(@Param("guestId") Long guestId);
 
   boolean existsByStorageKey(String storageKey);
 

@@ -422,6 +422,24 @@ class GuestDocumentActionsContractTest {
   }
 
   @Test
+  void aRoundFinishesOnlyWhatIsOlderThanARequestInCourse() {
+    for (String key : new String[] {"guest-documents/old-left", "guest-documents/new-left"}) {
+      jdbc.update(
+          "INSERT INTO guest_document_purges (id, storage_key) VALUES (?, ?)", TestIds.next(), key);
+    }
+    jdbc.update(
+        "UPDATE guest_document_purges SET created_date = created_date - interval '2 minutes'"
+            + " WHERE storage_key = 'guest-documents/old-left'");
+
+    purger.purge(GuestDocumentPurger.AFTER_AN_ACTION);
+
+    verify(files).delete("guest-documents/old-left");
+    verify(files, never()).delete("guest-documents/new-left");
+    assertThat(jdbc.queryForObject("SELECT storage_key FROM guest_document_purges", String.class))
+        .isEqualTo("guest-documents/new-left");
+  }
+
+  @Test
   void theEvidenceCannotBeChangedNorRemoved() throws Exception {
     delete(guestId, documentId, UPLOAD_ERROR).andExpect(status().isNoContent());
 
@@ -487,7 +505,10 @@ class GuestDocumentActionsContractTest {
     assertThat(jdbc.queryForObject("SELECT storage_key FROM guest_document_purges", String.class))
         .isEqualTo(OLD_KEY);
 
-    // the store is back: the next committed action retries what was left pending
+    // the store is back: the next committed action retries what was left pending, once it is
+    // older than a request in course
+    jdbc.update(
+        "UPDATE guest_document_purges SET created_date = created_date - interval '2 minutes'");
     reset(files);
     Long replacement =
         masker.unmask(

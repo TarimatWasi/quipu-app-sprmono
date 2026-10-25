@@ -31,7 +31,6 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidDocumentActionException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.DocumentUpload;
-import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentStorageException;
@@ -54,9 +53,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -263,24 +262,6 @@ class GuestDocumentsServiceTest {
     when(purger.complete(PENDING)).thenReturn(false);
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentNotFoundException.class);
-
-    when(purger.complete(PENDING))
-        .thenThrow(new GuestDocumentActionExistsException(new DataIntegrityViolationException("")));
-    assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
-        .isInstanceOf(GuestDocumentNotFoundException.class);
-  }
-
-  @Test
-  void aDocumentBeingDeletedIsNotListedSoThatNoUrlIsSignedForAGoneObject() {
-    GuestDocument kept =
-        new GuestDocument(72L, GUEST, "guest-documents/kept", "a.pdf", "application/pdf", 9, NOW);
-    when(guests.findById(GUEST)).thenReturn(Optional.of(guest()));
-    when(records.documentsOf(GUEST)).thenReturn(List.of(OLD, kept));
-    when(actions.documentsBeingDeleted(GUEST)).thenReturn(List.of(DOCUMENT));
-    when(files.signedUrl("guest-documents/kept", FileKind.PDF)).thenReturn("https://r2.test/k");
-
-    assertThat(service().documents(GUEST)).extracting(v -> v.id()).containsExactly(72L);
-    verify(files, never()).signedUrl(OLD_KEY, FileKind.PDF);
   }
 
   @Test
@@ -317,20 +298,36 @@ class GuestDocumentsServiceTest {
 
     assertThat(view.id()).isEqualTo(71L);
     assertThat(view.url()).isEqualTo("https://r2.test/signed");
-    InOrder order = inOrder(guests, files, records, actions);
-    // the new file goes to the store before any row is locked
+    InOrder order = inOrder(transactions, guests, files, records, actions, purger);
+    // the new file goes to the store between transactions, before any row is locked
+    order.verify(transactions).commit(any());
     order.verify(files).store(PDF, FileKind.PDF);
+    order.verify(transactions).getTransaction(any());
     order.verify(guests).findByIdForUpdate(GUEST);
     order.verify(actions).findDocumentForUpdate(GUEST, DOCUMENT);
     order.verify(records).addDocument(GUEST, NEW_KEY, "nuevo.pdf", "application/pdf", PDF.length);
     order.verify(actions).addAction(Kind.REPLACE, OLD, 71L, WHY, ACTOR, NOW);
     order.verify(actions).removeDocument(OLD);
     order.verify(actions).addPurge(OLD_KEY);
-    verify(purger, never()).purge(anyInt());
-
-    complete(TransactionSynchronization.STATUS_COMMITTED);
-    verify(purger).purge(GuestDocumentPurger.AFTER_AN_ACTION);
+    order.verify(transactions).commit(any());
+    // after the commit: its own old object at once, then what earlier actions left pending
+    order.verify(purger).purgeObjectNow(OLD_KEY);
+    order.verify(purger).purge(GuestDocumentPurger.AFTER_AN_ACTION);
     verify(files, never()).delete(NEW_KEY);
+  }
+
+  @Test
+  void aNewObjectIsRemovedWhenTheTransactionOfTheSwapCannotEvenStart() {
+    theDocumentIsThere();
+    when(files.store(PDF, FileKind.PDF)).thenReturn(NEW_KEY);
+    when(transactions.getTransaction(any()))
+        .thenReturn(null)
+        .thenThrow(new CannotCreateTransactionException("pool"));
+
+    assertThatThrownBy(this::replaceIt).isInstanceOf(CannotCreateTransactionException.class);
+
+    verify(files).delete(NEW_KEY);
+    verify(purger, never()).purge(anyInt());
   }
 
   @Test

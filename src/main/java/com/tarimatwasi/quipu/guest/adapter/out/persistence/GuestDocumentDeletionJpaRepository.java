@@ -14,9 +14,8 @@ interface GuestDocumentDeletionJpaRepository
 
   Optional<GuestDocumentDeletionJpaEntity> findByDocumentId(Long documentId);
 
-  @Query("select d.documentId from GuestDocumentDeletionJpaEntity d where d.guestId = :guestId")
-  List<Long> findDocumentIdsByGuestId(@Param("guestId") Long guestId);
-
+  // createdDate is mapped as an Instant (the field of AbstractAuditable; only its getter is a
+  // LocalDateTime), so the instant is bound as it is and the margin does not move with the zone.
   @Query(
       "select d from GuestDocumentDeletionJpaEntity d where d.createdDate < :before"
           + " order by d.createdDate asc, d.id asc")
