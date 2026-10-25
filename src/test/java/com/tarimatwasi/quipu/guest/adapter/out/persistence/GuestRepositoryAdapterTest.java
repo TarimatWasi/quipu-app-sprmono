@@ -142,8 +142,8 @@ class GuestRepositoryAdapterTest {
         .isInstanceOf(GuestEmailAlreadyExistsException.class);
     assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x", other)))
         .isInstanceOf(GuestDocumentAlreadyExistsException.class);
-    assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x")))
-        .isInstanceOf(GuestDocumentAlreadyExistsException.class);
+    var unknown = new DataIntegrityViolationException("x");
+    assertThat(GuestRepositoryAdapter.conflict(unknown)).isSameAs(unknown);
   }
 
   private Long idOf(String documentType, String number) {

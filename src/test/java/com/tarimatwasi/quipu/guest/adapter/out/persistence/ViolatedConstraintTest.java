@@ -9,13 +9,16 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Channel;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
+import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentActionExistsException;
+import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Instant;
 import java.time.LocalDate;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -109,23 +112,51 @@ class ViolatedConstraintTest {
   @Test
   void anEmailOfAnotherGuestIsReportedAsTheEmail() {
     Guest found = guests.findById(other).orElseThrow();
+
+    assertThatThrownBy(() -> save(found, "ANA@example.test", found.documentNumber(), null))
+        .isInstanceOf(GuestEmailAlreadyExistsException.class);
+  }
+
+  @Test
+  void theDocumentOfAnotherGuestIsReportedAsTheDocument() {
+    Guest found = guests.findById(other).orElseThrow();
+
+    assertThatThrownBy(() -> save(found, found.email(), "12345678", null))
+        .isInstanceOf(GuestDocumentAlreadyExistsException.class);
+  }
+
+  /** LOW of the security review: a CHECK is neither a repeated document nor a repeated email. */
+  @Test
+  void anotherRuleKeepsTheFailure() {
+    Guest found = guests.findById(other).orElseThrow();
+
+    assertThatThrownBy(
+            () -> save(found, found.email(), found.documentNumber(), GuestStatus.INACTIVE))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .isNotInstanceOf(GuestDocumentAlreadyExistsException.class)
+        .isNotInstanceOf(GuestEmailAlreadyExistsException.class);
+  }
+
+  private void save(
+      Guest found,
+      @Nullable String email,
+      String documentNumber,
+      @Nullable GuestStatus statusBeforeInactive) {
     Guest changed =
         new Guest(
             found.id(),
             found.documentType(),
-            found.documentNumber(),
+            documentNumber,
             found.fullName(),
-            "ANA@example.test",
+            email,
             found.phone(),
             found.type(),
             found.status(),
-            found.statusBeforeInactive(),
+            statusBeforeInactive,
             found.personalDataCompletedAt(),
             found.documentsStepCompletedAt(),
             found.emergencyContact());
-
-    assertThatThrownBy(() -> transaction.execute(status -> guests.save(changed)))
-        .isInstanceOf(GuestEmailAlreadyExistsException.class);
+    transaction.execute(status -> guests.save(changed));
   }
 
   @Test
