@@ -23,6 +23,7 @@ import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -76,6 +77,19 @@ class PasswordRecoveryServiceTest {
             null);
     repository.save(user);
     return user;
+  }
+
+  /** TAR-205: stored as TIMESTAMPTZ keeps it, so no rounding of the database can move it. */
+  @Test
+  void theResetIsMarkedToTheMicrosecond() {
+    UserAccount user = savedUser("ACTIVE");
+    service.requestReset(EMAIL);
+    clock.advance(Duration.ofNanos(1_999));
+
+    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD);
+
+    assertThat(repository.find(user.id()).passwordChangedAt())
+        .isEqualTo(clock.instant().truncatedTo(ChronoUnit.MICROS));
   }
 
   @Test

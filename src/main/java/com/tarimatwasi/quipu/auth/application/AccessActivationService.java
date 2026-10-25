@@ -10,6 +10,7 @@ import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,7 +70,10 @@ public class AccessActivationService implements ActivateAccessUseCase {
       throw new AccountDisabledException();
     }
     guests.accessUsed(guestId);
-    users.changePassword(account.id(), passwordEncoder.encode(newPassword), clock.instant());
+    // TAR-205: the mark of the change, to the microsecond as TIMESTAMPTZ stores it.
+    String passwordHash = passwordEncoder.encode(newPassword);
+    users.changePassword(
+        account.id(), passwordHash, clock.instant().truncatedTo(ChronoUnit.MICROS));
     return new ActivationResult(guestId, sessionTokens.issue(account.id().toString()));
   }
 }

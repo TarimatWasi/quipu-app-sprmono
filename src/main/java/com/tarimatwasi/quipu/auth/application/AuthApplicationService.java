@@ -23,6 +23,7 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -168,7 +169,8 @@ public class AuthApplicationService
     PasswordPolicy.requireNotALiveAccess(grants, guestId, command.newPassword(), clock.instant());
     // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
     String newHash = passwordEncoder.encode(command.newPassword());
-    Instant now = clock.instant();
+    // TAR-205: to the microsecond, as TIMESTAMPTZ stores it, so the database rounds nothing.
+    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     userRepository.changePassword(user.id(), newHash, now);
     if (guestId != null) {
       // D-30: the temporary password is used up when the guest chooses its own, and the guest

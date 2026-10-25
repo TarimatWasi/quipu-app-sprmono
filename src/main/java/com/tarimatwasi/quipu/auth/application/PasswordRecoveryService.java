@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.port.out.UserRepositoryPort;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,7 +99,8 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     // Checked after the code and before consuming it: a weak password can be corrected.
     PasswordPolicy.require(newPassword);
     PasswordPolicy.requireNotTheCredential(newPassword, code);
-    Instant now = clock.instant();
+    // TAR-205: to the microsecond, as TIMESTAMPTZ stores it, so the database rounds nothing.
+    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     PasswordPolicy.requireNotALiveAccess(grants, pending.account().guestId(), newPassword, now);
     userRepository.resetPassword(pending.account().id(), passwordEncoder.encode(newPassword), now);
     Long guestId = pending.account().guestId();
