@@ -18,7 +18,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -29,6 +28,7 @@ import org.springframework.stereotype.Component;
 public class GuestRepositoryAdapter implements GuestRepositoryPort {
 
   private static final String EMAIL_CONSTRAINT = "uq_guests_email_lower";
+  private static final String DOCUMENT_CONSTRAINT = "uq_guests_document";
 
   private final GuestJpaRepository jpaRepository;
 
@@ -135,15 +135,15 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
 
   /**
    * Which unique rule broke is read from the name of the constraint, not guessed: a repeated email
-   * must not be reported as a repeated document. Anything else keeps the document answer.
+   * must not be reported as a repeated document. Any other failure stays as it is (TAR-207).
    */
   static RuntimeException conflict(DataIntegrityViolationException e) {
-    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-      if (cause instanceof ConstraintViolationException violation
-          && EMAIL_CONSTRAINT.equals(violation.getConstraintName())) {
-        return new GuestEmailAlreadyExistsException(e);
-      }
+    if (ViolatedConstraint.is(e, EMAIL_CONSTRAINT)) {
+      return new GuestEmailAlreadyExistsException(e);
     }
-    return new GuestDocumentAlreadyExistsException(e);
+    if (ViolatedConstraint.is(e, DOCUMENT_CONSTRAINT)) {
+      return new GuestDocumentAlreadyExistsException(e);
+    }
+    return e;
   }
 }

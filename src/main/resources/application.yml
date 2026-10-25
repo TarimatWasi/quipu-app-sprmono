@@ -20,6 +20,12 @@ spring:
       # falla a los 5 s en vez de quedarse colgada. Ningún perfil los cambia.
       maximum-pool-size: 10
       connection-timeout: 5000 # ms: HikariConfig la enlaza como número, no como Duration
+      # TAR-207: el driver deja fuera de sus mensajes el detalle del servidor (la clave repetida o
+      # la fila que falla, datos personales), así que ningún log de un error lo lleva; el nombre de
+      # la restricción sigue en ServerErrorMessage. Va al driver con cualquier URL (también la de
+      # DATABASE_URL) y ningún perfil lo cambia.
+      data-source-properties:
+        logServerErrorDetail: false
   jpa:
     hibernate:
       ddl-auto: validate

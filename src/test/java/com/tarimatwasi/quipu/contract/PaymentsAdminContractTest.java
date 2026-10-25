@@ -253,8 +253,8 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
 
   /**
    * TAR-204: the contract is read again, locked, when the voucher is approved. A period it no
-   * longer charges is a 409 with a code of the contract and the payment stays pending; rejecting it
-   * still works.
+   * longer charges is a 409 PAYMENT_PERIOD_NOT_PAYABLE (TAR-207, contract v0.9.2) and the payment
+   * stays pending; rejecting it still works.
    */
   @Test
   void approvingAPeriodTheContractNoLongerChargesIsAConflictAndThePaymentStaysPending()
@@ -269,7 +269,8 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
     resolve(id, "{\"status\":\"APPROVED\"}")
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_RESOLVED"));
+        .andExpect(jsonPath("$.code").value("PAYMENT_PERIOD_NOT_PAYABLE"))
+        .andExpect(jsonPath("$.field").doesNotExist());
     assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
         .isEqualTo("PENDING");
 

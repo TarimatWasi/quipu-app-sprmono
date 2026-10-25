@@ -17,7 +17,6 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
-import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Limit;
@@ -162,13 +161,9 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
 
   /** Only the rule of one action per document is translated; any other failure stays as it is. */
   static RuntimeException conflict(DataIntegrityViolationException e) {
-    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-      if (cause instanceof ConstraintViolationException violation
-          && ONE_ACTION_CONSTRAINT.equals(violation.getConstraintName())) {
-        return new GuestDocumentActionExistsException(e);
-      }
-    }
-    return e;
+    return ViolatedConstraint.is(e, ONE_ACTION_CONSTRAINT)
+        ? new GuestDocumentActionExistsException(e)
+        : e;
   }
 
   private static Instant date(String text) {
