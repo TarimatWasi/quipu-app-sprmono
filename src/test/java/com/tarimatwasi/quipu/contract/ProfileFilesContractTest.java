@@ -145,6 +145,25 @@ class ProfileFilesContractTest {
 
     assertThat(base.get("app.rate-limit.per-minute")).isEqualTo(60);
     assertThat(base.get("app.rate-limit.per-account-per-minute")).isEqualTo(10);
+    assertThat(base.get("app.rate-limit.uploads-per-minute")).isEqualTo(10);
+    assertThat(base.get("app.rate-limit.upload-burst")).isEqualTo(3);
+  }
+
+  /** TAR-206: a fixed pool and a short wait for a connection, set once for every profile. */
+  @Test
+  void base_boundsTheConnectionPool() throws IOException {
+    var base = load("application.yml");
+
+    assertThat(base.get("spring.datasource.hikari.maximum-pool-size")).isEqualTo(10);
+    assertThat(base.get("spring.datasource.hikari.connection-timeout")).isEqualTo(5000);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"application-local.yml", "application-dev.yml", "application-prod.yml"})
+  void noProfileOverridesThePoolOrTheUploadLimit(String file) throws IOException {
+    assertThat(load(file).keySet())
+        .noneMatch(key -> key.startsWith("spring.datasource.hikari."))
+        .doesNotContain("app.rate-limit.uploads-per-minute", "app.rate-limit.upload-burst");
   }
 
   @Test
