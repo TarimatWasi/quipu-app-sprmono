@@ -11,6 +11,9 @@ import org.jspecify.annotations.Nullable;
 /** RF-05, CU-05, CU-14: review the vouchers and register a payment by hand. */
 public interface ManagePaymentsUseCase {
 
+  /** RF-15: the largest voucher; the BFF checks it before it reads the bytes. */
+  int MAX_VOUCHER_BYTES = 5 * 1024 * 1024;
+
   /** Where a voucher is in its review (RN-04). */
   enum PaymentState {
     PENDING,

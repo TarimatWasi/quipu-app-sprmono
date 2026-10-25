@@ -19,11 +19,11 @@ import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.YearMonth;
 import java.util.List;
@@ -57,7 +57,7 @@ class PaymentConcurrencyTest {
 
   private static final int ROUNDS = 5;
   private static final YearMonth JANUARY = YearMonth.of(2026, 1);
-  private static final byte[] PDF = "%PDF-1.7\n%race".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
 
   @Autowired ManagePaymentsUseCase payments;
   @Autowired OwnPaymentsUseCase ownPayments;

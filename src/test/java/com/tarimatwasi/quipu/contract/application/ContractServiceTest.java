@@ -34,6 +34,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -59,7 +60,7 @@ class ContractServiceTest {
   private static final Long ENVIRONMENT_ID = TestIds.next();
   private static final Long GUEST_ID = TestIds.next();
   private static final Long CONTRACT_ID = TestIds.next();
-  private static final byte[] PDF = "%PDF-1.7\n%fake".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
   private static final String KEY = "contracts/abc.pdf";
   private static final String URL = "https://r2.example/contracts/abc.pdf?X-Amz-Signature=s";
 
@@ -319,8 +320,7 @@ class ContractServiceTest {
 
   @Test
   void theFileMayHaveTenMegabytesButNotOneByteMore() {
-    byte[] limit = new byte[ContractService.MAX_FILE_BYTES];
-    System.arraycopy(PDF, 0, limit, 0, PDF.length);
+    byte[] limit = TestPdfs.ofSize(ContractService.MAX_FILE_BYTES);
     byte[] over = new byte[ContractService.MAX_FILE_BYTES + 1];
     System.arraycopy(PDF, 0, over, 0, PDF.length);
     freeEnvironmentAndActiveContractGuest();

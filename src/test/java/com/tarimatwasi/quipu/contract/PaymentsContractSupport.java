@@ -14,13 +14,13 @@ import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +54,7 @@ abstract class PaymentsContractSupport {
       java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
   protected static final String URL = "/bff/admin/payments";
   protected static final String ORIGIN = "http://localhost:3000";
-  protected static final byte[] PDF = "%PDF-1.7\n%test voucher".getBytes(StandardCharsets.US_ASCII);
+  protected static final byte[] PDF = TestPdfs.plain();
   protected static final String KEY = "vouchers/fake";
   protected static final String SIGNED = "https://r2.test/vouchers/fake?X-Amz-Signature=s";
 

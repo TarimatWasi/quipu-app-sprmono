@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.contract.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
@@ -130,7 +131,7 @@ class UploadLimitTest {
         upload(
             UploadRoutes.GUEST_ONBOARDING_DOCUMENTS,
             onboardingAccount,
-            pdf(TWO_MEGABYTES),
+            TestPdfs.ofSize(TWO_MEGABYTES),
             Map.of());
 
     assertThat(response.statusCode()).as(response.body()).isEqualTo(201);

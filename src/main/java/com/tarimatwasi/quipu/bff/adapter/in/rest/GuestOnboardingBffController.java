@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.DocumentView;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.OnboardingView;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.PersonalData;
 import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
+import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
@@ -253,11 +254,20 @@ public class GuestOnboardingBffController {
   }
 
   private static byte[] content(MultipartFile file) {
+    // RF-15: the declared size is checked before the bytes are read and inspected.
+    if (file.getSize() > OnboardingUseCase.MAX_DOCUMENT_BYTES) {
+      throw new InvalidOnboardingInputException(
+          InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
+    }
+    byte[] content;
     try {
-      return file.getBytes();
+      content = file.getBytes();
     } catch (IOException unreadable) {
       throw new InvalidOnboardingInputException(
           InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
     }
+    // TAR-39: the PDF is inspected here, before the use case opens its transaction and locks rows.
+    FileKind.inspectAhead(content);
+    return content;
   }
 }

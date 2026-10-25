@@ -22,6 +22,7 @@ import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.contract.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.contract.port.out.ContractFileStorageException;
+import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -65,7 +66,7 @@ class ContractsContractTest {
   private static final String SPEC =
       java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
   private static final String URL = "/bff/admin/contracts";
-  private static final byte[] PDF = "%PDF-1.7\n%test contract".getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] PDF = TestPdfs.plain();
   private static final String KEY = "contracts/fake.pdf";
   private static final String SIGNED = "https://r2.test/contracts/fake.pdf?X-Amz-Signature=s";
 
@@ -171,28 +172,22 @@ class ContractsContractTest {
   }
 
   @Test
-  void aProgramRenamedToPdfIsRefusedByItsContent() throws Exception {
+  void aProgramAPdfThatRunsSomethingOrAFileOverTenMegabytesIsRefused() throws Exception {
     byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3, 0, 0, 0};
+    byte[] unreadable = "%PDF-1.7%fake".getBytes(StandardCharsets.US_ASCII);
+    byte[] overTenMegabytes = java.util.Arrays.copyOf(PDF, 10 * 1024 * 1024 + 1);
 
-    upload(room, contractGuest, exe, "contrato.pdf", "2026-11-01", null)
-        .andExpect(status().isBadRequest())
-        .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("CONTRACT_INVALID_FILE"));
+    for (byte[] content :
+        new byte[][] {exe, TestPdfs.withJavaScript(), unreadable, overTenMegabytes}) {
+      upload(room, contractGuest, content, "contrato.pdf", "2026-11-01", null)
+          .andExpect(status().isBadRequest())
+          .andExpect(answersTheContract())
+          .andExpect(jsonPath("$.code").value("CONTRACT_INVALID_FILE"))
+          .andExpect(jsonPath("$.field").value("file"));
+    }
 
     verify(files, never()).store(any());
     assertThat(count("contracts")).isZero();
-  }
-
-  @Test
-  void aFileOverTenMegabytesIsRefused() throws Exception {
-    byte[] big = new byte[10 * 1024 * 1024 + 1];
-    System.arraycopy(PDF, 0, big, 0, PDF.length);
-
-    upload(room, contractGuest, big, "big.pdf", "2026-11-01", null)
-        .andExpect(status().isBadRequest())
-        .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("CONTRACT_INVALID_FILE"));
-    verify(files, never()).store(any());
   }
 
   @Test
@@ -627,10 +622,12 @@ class ContractsContractTest {
     mockMvc
         .perform(multipartWith(PDF, "c.pdf").cookie(admin()))
         .andExpect(status().isForbidden())
+        .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
         .perform(multipartWith(PDF, "c.pdf").header("Sec-Fetch-Site", "cross-site").cookie(admin()))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isForbidden())
+        .andExpect(answersTheContract());
     verify(files, never()).store(any());
   }
 
