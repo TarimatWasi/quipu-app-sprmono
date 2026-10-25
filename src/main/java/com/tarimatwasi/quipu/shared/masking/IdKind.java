@@ -14,7 +14,8 @@ public enum IdKind {
   STAY("stay"),
   CONTRACT("contract"),
   PAYMENT("payment"),
-  GUEST_DOCUMENT("guest-document");
+  GUEST_DOCUMENT("guest-document"),
+  GUEST_DOCUMENT_ACTION("guest-document-action");
 
   private final long tag;
 

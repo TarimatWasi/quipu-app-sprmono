@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -37,6 +38,31 @@ class BffUploadExceptionHandlerTest {
 
   private static MockHttpServletRequest post(String uri) {
     return new MockHttpServletRequest("POST", uri);
+  }
+
+  private static MockHttpServletRequest put(String uri) {
+    return new MockHttpServletRequest("PUT", uri);
+  }
+
+  private static final String REPLACEMENT = "/bff/admin/guests/a/documents/b";
+
+  @Test
+  void theReplacementOfADocumentAnswersAsADocument() {
+    // TAR-187: over the limit it is a DOCUMENT_INVALID_FILE, never a 413; a busy inspection a 429
+    assertThat(handler.handleUploadTooLarge(put(REPLACEMENT)).getBody())
+        .extracting(BffErrorResponse::code)
+        .isEqualTo("DOCUMENT_INVALID_FILE");
+    var busy = handler.handleInspectionBusy(put(REPLACEMENT));
+    assertThat(busy.getStatusCode().value()).isEqualTo(429);
+    assertThat(busy.getBody()).extracting(BffErrorResponse::code).isEqualTo("RATE_LIMITED");
+    assertThat(busy.getHeaders().getFirst("Retry-After")).isNotBlank();
+    // only by PUT and only on that exact shape
+    assertThat(handler.handleUploadTooLarge(post(REPLACEMENT)).getBody())
+        .extracting(BffErrorResponse::code)
+        .isEqualTo("VALIDATION_ERROR");
+    assertThat(handler.handleUploadTooLarge(put(REPLACEMENT + "/deletion")).getBody())
+        .extracting(BffErrorResponse::code)
+        .isEqualTo("VALIDATION_ERROR");
   }
 
   @ParameterizedTest

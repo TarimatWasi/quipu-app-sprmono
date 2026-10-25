@@ -84,6 +84,47 @@ class GuestOnboardingMigrationTest {
         .isEqualTo(2L);
   }
 
+  /** TAR-187 (V18): a document leaves only with the evidence of who deleted it and why. */
+  @Test
+  void aDocumentIsDeletedOnlyWithItsEvidence() {
+    Long admin = TestIds.next();
+    jdbc.update(
+        "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+            + " must_change_password, status)"
+            + " VALUES (?, NULL, 'DNI', '00000001', 'hash', 'ADMIN', FALSE, 'ACTIVE')",
+        admin);
+    // with ARCO_REQUEST the date and the channel are required, with UPLOAD_ERROR not allowed
+    assertThatThrownBy(() -> insertAction(admin, "'ARCO_REQUEST', NULL, NULL"))
+        .isInstanceOf(DataAccessException.class)
+        .hasMessageContaining("ck_guest_document_actions_reason");
+    assertThatThrownBy(() -> insertAction(admin, "'UPLOAD_ERROR', DATE '2026-01-15', 'EMAIL'"))
+        .isInstanceOf(DataAccessException.class)
+        .hasMessageContaining("ck_guest_document_actions_reason");
+
+    insertAction(admin, "'ARCO_REQUEST', DATE '2026-01-15', 'EMAIL'");
+    assertThat(jdbc.update("DELETE FROM guest_documents WHERE id = 1")).isOne();
+    assertThatThrownBy(() -> jdbc.update("UPDATE guest_document_actions SET note = 'x'"))
+        .isInstanceOf(DataAccessException.class)
+        .hasMessageContaining("guest_document_actions");
+    assertThatThrownBy(() -> jdbc.update("DELETE FROM guest_document_actions"))
+        .isInstanceOf(DataAccessException.class);
+    // one action per document
+    assertThatThrownBy(() -> insertAction(admin, "'UPLOAD_ERROR', NULL, NULL"))
+        .isInstanceOf(DataAccessException.class)
+        .hasMessageContaining("uq_guest_document_actions_document");
+  }
+
+  private void insertAction(Long admin, String reason) {
+    jdbc.update(
+        "INSERT INTO guest_document_actions (id, guest_id, document_id, action, reason,"
+            + " requested_at, request_channel, content_type, size_bytes, created_by_id)"
+            + " VALUES (nextval('guest_document_actions_seq'), ?, 1, 'DELETE', "
+            + reason
+            + ", 'application/pdf', 10, ?)",
+        guest,
+        admin);
+  }
+
   private void insertConsent(Long id, String version) {
     jdbc.update(
         "INSERT INTO guest_consents (id, guest_id, consent_version, accepted_at, text_sha256)"

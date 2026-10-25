@@ -165,6 +165,41 @@ class UploadLimitTest {
     assertThat(response.body()).contains("\"code\":\"AUTH_FORBIDDEN\"");
   }
 
+  /** TAR-187: the replacement of a document is a PUT, parsed by the real container too. */
+  @Test
+  void theReplacementOfADocumentIsReadByPutAndOverTheLimitIsAnInvalidDocument() throws Exception {
+    Long guest =
+        jdbc.queryForObject("SELECT guest_id FROM users WHERE id = ?", Long.class, contractAccount);
+    Long document = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guest_documents (id, guest_id, storage_key, original_name, content_type,"
+            + " size_bytes) VALUES (?, ?, 'guest-documents/old', 'd.pdf', 'application/pdf', 10)",
+        document,
+        guest);
+    Mockito.when(documents.signedUrl(ArgumentMatchers.anyString(), ArgumentMatchers.any()))
+        .thenReturn("https://r2.test/s");
+    String route =
+        "/bff/admin/guests/"
+            + masker.mask(IdKind.GUEST, guest)
+            + "/documents/"
+            + masker.mask(IdKind.GUEST_DOCUMENT, document);
+
+    var tooBig = upload("PUT", route, adminId, bigPdf(), Map.of("reason", "UPLOAD_ERROR"));
+    assertThat(tooBig.statusCode()).isEqualTo(400);
+    assertThat(tooBig.body())
+        .contains("\"code\":\"DOCUMENT_INVALID_FILE\"")
+        .contains("\"field\":\"file\"");
+
+    var replaced =
+        upload(
+            "PUT",
+            route,
+            adminId,
+            TestPdfs.ofSize(TWO_MEGABYTES),
+            Map.of("reason", "UPLOAD_ERROR"));
+    assertThat(replaced.statusCode()).as(replaced.body()).isEqualTo(200);
+  }
+
   private Map<String, String> contractFields() {
     var fields = new java.util.LinkedHashMap<>(CONTRACT_FIELDS);
     fields.put("environmentId", masker.mask(IdKind.ENVIRONMENT, 1L).toString());
@@ -205,6 +240,12 @@ class UploadLimitTest {
 
   private HttpResponse<String> upload(
       String route, Long account, byte[] pdf, Map<String, String> fields) throws Exception {
+    return upload("POST", route, account, pdf, fields);
+  }
+
+  private HttpResponse<String> upload(
+      String method, String route, Long account, byte[] pdf, Map<String, String> fields)
+      throws Exception {
     var body = new ByteArrayOutputStream();
     for (var field : fields.entrySet()) {
       part(body, field.getKey(), field.getValue());
@@ -222,7 +263,7 @@ class UploadLimitTest {
             .header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
             .header("Origin", "http://localhost:3000")
             .header("Cookie", "sessionToken=" + jwtTokenProvider.issue(account.toString()))
-            .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+            .method(method, HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
             .build();
     return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
   }

@@ -2,8 +2,13 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentActionFailedException;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase.DocumentActionRequest;
+import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase.DocumentActionView;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentsUseCase.GuestDocumentView;
+import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestDetailView;
@@ -12,42 +17,64 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.IdDocumentKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.UpdateCommand;
+import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase;
+import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase.DocumentUpload;
+import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
+import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 /** RF-02. Only ADMIN reaches /bff/admin/** (RN-08); SecurityConfig enforces it. */
 @RestController
 public class GuestsBffController {
 
+  /** The parts the replacement form defines; any other one is refused (RN-37). */
+  private static final Set<String> REPLACEMENT_FORM =
+      Set.of("file", "reason", "requestedAt", "requestChannel", "note");
+
   private final ManageGuestsUseCase guests;
   private final GuestDocumentsUseCase documents;
   private final IdMasker ids;
+  private final Clock clock;
 
   public GuestsBffController(
-      ManageGuestsUseCase guests, GuestDocumentsUseCase documents, IdMasker ids) {
+      ManageGuestsUseCase guests, GuestDocumentsUseCase documents, IdMasker ids, Clock clock) {
     this.guests = guests;
     this.documents = documents;
     this.ids = ids;
+    this.clock = clock;
   }
 
   /** The contract requires {@code name} even when it is still null (RN-31). */
@@ -194,6 +221,165 @@ public class GuestsBffController {
             documents.documents(ids.unmask(IdKind.GUEST, id)).stream()
                 .map(document -> GuestDocumentResponse.of(document, ids))
                 .toList());
+  }
+
+  /** Why a document is deleted (RN-37); a field the schema does not define is refused. */
+  public record DocumentActionBody(
+      @Nullable String reason,
+      @Nullable String requestedAt,
+      @Nullable String requestChannel,
+      @Nullable String note,
+      @JsonAnySetter @Nullable Map<String, Object> unknown) {}
+
+  /** The replacement form: the new file and why; the use case checks the file by its content. */
+  public record DocumentReplacementForm(
+      @Nullable MultipartFile file,
+      @Nullable String reason,
+      @Nullable String requestedAt,
+      @Nullable String requestChannel,
+      @Nullable String note) {}
+
+  /** Evidence of one deletion or replacement; never the name, the key nor the content. */
+  public record DocumentActionResponse(
+      UUID id,
+      String action,
+      UUID documentId,
+      @Nullable UUID replacementDocumentId,
+      String reason,
+      @Nullable LocalDate requestedAt,
+      @Nullable String requestChannel,
+      @Nullable String note,
+      String contentType,
+      long sizeBytes,
+      UUID actorId,
+      Instant performedAt) {
+    static DocumentActionResponse of(DocumentActionView view, IdMasker ids) {
+      Long replacement = view.replacementDocumentId();
+      return new DocumentActionResponse(
+          ids.mask(IdKind.GUEST_DOCUMENT_ACTION, view.id()),
+          view.action(),
+          ids.mask(IdKind.GUEST_DOCUMENT, view.documentId()),
+          replacement == null ? null : ids.mask(IdKind.GUEST_DOCUMENT, replacement),
+          view.reason(),
+          view.requestedAt(),
+          view.requestChannel(),
+          view.note(),
+          view.contentType(),
+          view.sizeBytes(),
+          ids.mask(IdKind.USER, view.actorId()),
+          view.performedAt());
+    }
+  }
+
+  /**
+   * RN-37: deletes a document on an ARCO request or an upload error, with evidence. The body is
+   * checked before the ids are unmasked. If the file left the store but the row could not, the
+   * answer is a 500 and repeating the action completes it.
+   */
+  @PostMapping(UploadRoutes.GUEST_DOCUMENT_DELETION)
+  public ResponseEntity<Void> deleteDocument(
+      @PathVariable UUID id,
+      @PathVariable UUID documentId,
+      @Valid @RequestBody DocumentActionBody body) {
+    UnknownFieldException.rejectAny(body.unknown());
+    DocumentActionRequest request =
+        new DocumentActionRequest(
+            body.reason(), body.requestedAt(), body.requestChannel(), body.note());
+    request.check(LocalDate.now(clock));
+    Long guestId = guestOf(id);
+    Long document = documentOf(documentId);
+    try {
+      documents.delete(guestId, document, request);
+    } catch (DataAccessException | TransactionException e) {
+      throw new GuestDocumentActionFailedException(e);
+    }
+    return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+  }
+
+  /**
+   * RN-37: replaces a document with a new one (with a new id), with evidence. The parts and the
+   * reason are checked first, then the size before the file is read, and the PDF is inspected
+   * before the use case locks any row (TAR-39).
+   */
+  @PutMapping(
+      path = UploadRoutes.GUEST_DOCUMENT_REPLACEMENT,
+      consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ResponseEntity<GuestDocumentResponse> replaceDocument(
+      @PathVariable UUID id,
+      @PathVariable UUID documentId,
+      @Valid DocumentReplacementForm form,
+      MultipartHttpServletRequest multipart) {
+    boolean unknownPart =
+        Stream.concat(
+                multipart.getParameterMap().keySet().stream(),
+                multipart.getFileMap().keySet().stream())
+            .anyMatch(part -> !REPLACEMENT_FORM.contains(part));
+    if (unknownPart) {
+      throw invalidFile();
+    }
+    DocumentActionRequest request =
+        new DocumentActionRequest(
+            form.reason(), form.requestedAt(), form.requestChannel(), form.note());
+    request.check(LocalDate.now(clock));
+    MultipartFile file = form.file();
+    // RF-15: the declared size is checked before the bytes are read into memory.
+    if (file == null || file.getSize() > OnboardingUseCase.MAX_DOCUMENT_BYTES) {
+      throw invalidFile();
+    }
+    byte[] content;
+    try {
+      content = file.getBytes();
+    } catch (IOException unreadable) {
+      throw invalidFile();
+    }
+    FileKind.inspectAhead(content);
+    String name = file.getOriginalFilename();
+    GuestDocumentView replaced =
+        documents.replace(
+            guestOf(id),
+            documentOf(documentId),
+            request,
+            new DocumentUpload(name == null ? "" : name, content));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(GuestDocumentResponse.of(replaced, ids));
+  }
+
+  /** RN-37: who deleted or replaced which document of the guest, when and why; newest first. */
+  @GetMapping("/bff/admin/guests/{id}/document-actions")
+  public ResponseEntity<PagedResponse<DocumentActionResponse>> documentActions(
+      @PathVariable UUID id,
+      @RequestParam(name = "limit", defaultValue = "20") int limit,
+      @RequestParam(name = "after", required = false) @Nullable String after) {
+    PageQuery page = PageParams.query(after, limit);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            PagedResponse.of(
+                documents.actions(ids.unmask(IdKind.GUEST, id), page),
+                action -> DocumentActionResponse.of(action, ids)));
+  }
+
+  /** A guest id that was never issued is, for a document, a document that does not exist. */
+  private Long guestOf(UUID id) {
+    try {
+      return ids.unmask(IdKind.GUEST, id);
+    } catch (UnknownMaskedIdException forged) {
+      throw new GuestDocumentNotFoundException();
+    }
+  }
+
+  private Long documentOf(UUID id) {
+    try {
+      return ids.unmask(IdKind.GUEST_DOCUMENT, id);
+    } catch (UnknownMaskedIdException forged) {
+      throw new GuestDocumentNotFoundException();
+    }
+  }
+
+  private static InvalidOnboardingInputException invalidFile() {
+    return new InvalidOnboardingInputException(
+        InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
   }
 
   /** RF-13, RN-12: the guest loses its login access; a contract in force blocks it. */

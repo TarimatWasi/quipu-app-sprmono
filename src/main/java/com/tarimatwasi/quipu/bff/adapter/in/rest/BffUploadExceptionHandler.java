@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
@@ -37,8 +38,11 @@ public class BffUploadExceptionHandler {
   private static final RequestMatcher VOUCHERS =
       new OrRequestMatcher(UploadRoutes.VOUCHERS.stream().map(PATHS::matcher).toList());
 
+  /** A document of the onboarding, or the one an administrator puts in place of another. */
   private static final RequestMatcher DOCUMENTS =
-      PATHS.matcher(UploadRoutes.GUEST_ONBOARDING_DOCUMENTS);
+      new OrRequestMatcher(
+          PATHS.matcher(UploadRoutes.GUEST_ONBOARDING_DOCUMENTS),
+          PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT));
 
   /** A few seconds: an inspection takes well under one. */
   private static final int RETRY_SECONDS = 5;
@@ -68,7 +72,8 @@ public class BffUploadExceptionHandler {
   /**
    * TAR-39: the PDF could not be inspected in time (another one held the inspection, or its own ran
    * past its deadline). It is no verdict on this file, which may be sent again: 503 where the route
-   * declares it, and 429 for the documents of the onboarding, whose route declares no 503.
+   * declares it, and 429 for the documents of the onboarding, whose route declares no 503, and for
+   * the replacement of a document, whose 503 is the storage's (TAR-187).
    */
   @ExceptionHandler(FileInspectionBusyException.class)
   public ResponseEntity<BffErrorResponse> handleInspectionBusy(HttpServletRequest request) {
