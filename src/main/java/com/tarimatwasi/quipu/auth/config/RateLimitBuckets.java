@@ -14,8 +14,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
 /**
- * The in-memory counters of a rate limit filter: one bucket of {@code perMinute} requests per
- * minute and key, and the 429 {@code RATE_LIMITED} answer with {@code Retry-After}.
+ * The in-memory counters of a rate limit filter: one bucket per key, of {@code burst} requests
+ * refilled at {@code perMinute} per minute, and the 429 {@code RATE_LIMITED} answer with {@code
+ * Retry-After}.
  *
  * <p>The counters live in memory, which is right for the single instance of the free plan. The
  * table keeps the most recent keys only, so it cannot grow without bound: whoever rotates thousands
@@ -29,6 +30,7 @@ final class RateLimitBuckets {
           + " volver a intentar\"}";
 
   private final int perMinute;
+  private final int burst;
   private final Map<String, Bucket> buckets =
       Collections.synchronizedMap(
           new LinkedHashMap<>(16, 0.75f, true) {
@@ -40,8 +42,15 @@ final class RateLimitBuckets {
             }
           });
 
+  /** A burst as large as the allowance of the minute. */
   RateLimitBuckets(int perMinute) {
+    this(perMinute, perMinute);
+  }
+
+  /** Up to {@code burst} requests at once, refilled at {@code perMinute} per minute. */
+  RateLimitBuckets(int perMinute, int burst) {
     this.perMinute = perMinute;
+    this.burst = burst;
   }
 
   /**
@@ -54,21 +63,25 @@ final class RateLimitBuckets {
     if (probe.isConsumed()) {
       return true;
     }
-    long retryAfterSeconds =
-        Math.max(1, Duration.ofNanos(probe.getNanosToWaitForRefill()).toSeconds() + 1);
+    reject(
+        response, Math.max(1, Duration.ofNanos(probe.getNanosToWaitForRefill()).toSeconds() + 1));
+    return false;
+  }
+
+  /** Writes the 429 {@code RATE_LIMITED} answer. */
+  static void reject(HttpServletResponse response, long retryAfterSeconds) throws IOException {
     response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
     response.setHeader("Retry-After", Long.toString(retryAfterSeconds));
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.getWriter().write(BODY);
-    return false;
   }
 
   private Bucket newBucket() {
     return Bucket.builder()
         .addLimit(
             Bandwidth.builder()
-                .capacity(perMinute)
+                .capacity(burst)
                 .refillGreedy(perMinute, Duration.ofMinutes(1))
                 .build())
         .build();

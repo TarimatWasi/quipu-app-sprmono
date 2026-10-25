@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
+import jakarta.servlet.AsyncContext;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.Part;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,19 +61,24 @@ class UploadRateLimitFilterTest {
   }
 
   private MockHttpServletResponse run(UploadRateLimitFilter filter, MockHttpServletRequest in)
-      throws Exception {
+      throws IOException, ServletException {
     var response = new MockHttpServletResponse();
     filter.doFilter(in, response, (req, res) -> chained.incrementAndGet());
     return response;
   }
 
   private MockHttpServletResponse send(UploadRateLimitFilter filter, String method, String uri)
-      throws Exception {
+      throws IOException, ServletException {
     return run(filter, new MockHttpServletRequest(method, uri));
   }
 
+  /** A burst as large as the allowance of the minute: only the count per minute matters. */
   private static UploadRateLimitFilter limitedTo(int perMinute) {
-    return new UploadRateLimitFilter(new UploadRateLimitProperties(perMinute));
+    return limitedTo(perMinute, perMinute);
+  }
+
+  private static UploadRateLimitFilter limitedTo(int perMinute, int burst) {
+    return new UploadRateLimitFilter(new UploadRateLimitProperties(perMinute, burst));
   }
 
   @Test
@@ -159,9 +167,96 @@ class UploadRateLimitFilterTest {
   }
 
   @Test
-  void theAllowanceIsAtLeastOne() {
-    assertThatThrownBy(() -> new UploadRateLimitProperties(0))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("app.rate-limit.uploads-per-minute");
+  void theBurstIsSmallerThanTheAllowanceOfTheMinute() throws Exception {
+    var filter = limitedTo(10, 3);
+    signIn("7");
+    for (int i = 0; i < 3; i++) {
+      assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(200);
+    }
+
+    assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(429);
+  }
+
+  /** One upload in progress per user: a second one at once waits for nothing, it gets 429. */
+  @Test
+  void aSecondUploadOfTheSameUserAtOnceGets429WithoutReadingItWhileAnotherUserPasses()
+      throws Exception {
+    var filter = limitedTo(10);
+    var concurrent = new CountingRequest("POST", ROUTE);
+    var answers = new java.util.ArrayList<MockHttpServletResponse>();
+    signIn("7");
+
+    filter.doFilter(
+        new MockHttpServletRequest("POST", ROUTE),
+        new MockHttpServletResponse(),
+        (req, res) -> {
+          answers.add(run(filter, concurrent));
+          signIn("8");
+          answers.add(send(filter, "POST", ROUTE));
+          signIn("7");
+        });
+
+    assertThat(answers.get(0).getStatus()).isEqualTo(429);
+    assertThat(answers.get(0).getHeader("Retry-After")).isEqualTo("1");
+    assertThat(answers.get(0).getContentAsString()).contains("\"code\":\"RATE_LIMITED\"");
+    assertThat(concurrent.reads).hasValue(0);
+    assertThat(answers.get(1).getStatus()).isEqualTo(200);
+    // once the first one ends, the same user uploads again
+    assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(200);
+  }
+
+  @Test
+  void aRefusedConcurrentUploadSpendsNoAllowance() throws Exception {
+    var filter = limitedTo(2);
+    signIn("7");
+    filter.doFilter(
+        new MockHttpServletRequest("POST", ROUTE),
+        new MockHttpServletResponse(),
+        (req, res) -> send(filter, "POST", ROUTE));
+
+    assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(200);
+  }
+
+  @Test
+  void theUploadInProgressIsReleasedWhenTheRequestFails() throws Exception {
+    var filter = limitedTo(10);
+    signIn("7");
+
+    assertThatThrownBy(
+            () ->
+                filter.doFilter(
+                    new MockHttpServletRequest("POST", ROUTE),
+                    new MockHttpServletResponse(),
+                    (req, res) -> {
+                      throw new IOException("the store failed");
+                    }))
+        .isInstanceOf(IOException.class);
+
+    assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(200);
+  }
+
+  @Test
+  void anAsyncUploadStaysInProgressUntilItCompletes() throws Exception {
+    var filter = limitedTo(10);
+    signIn("7");
+    var async = new MockHttpServletRequest("POST", ROUTE);
+    async.setAsyncSupported(true);
+    var started = new java.util.concurrent.atomic.AtomicReference<AsyncContext>();
+    filter.doFilter(
+        async, new MockHttpServletResponse(), (req, res) -> started.set(req.startAsync()));
+
+    assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(429);
+    started.get().complete();
+    assertThat(send(filter, "POST", ROUTE).getStatus()).isEqualTo(200);
+  }
+
+  @Test
+  void theAllowanceAndTheBurstAreBounded() {
+    for (int[] wrong : new int[][] {{0, 1}, {61, 3}, {10, 0}, {10, 11}}) {
+      assertThatThrownBy(() -> new UploadRateLimitProperties(wrong[0], wrong[1]))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("app.rate-limit.");
+    }
+    assertThat(new UploadRateLimitProperties(60, 60).uploadsPerMinute()).isEqualTo(60);
   }
 }

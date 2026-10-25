@@ -1,11 +1,15 @@
 package com.tarimatwasi.quipu.auth.config;
 
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
+import jakarta.servlet.AsyncEvent;
+import jakarta.servlet.AsyncListener;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -17,15 +21,21 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * TAR-206: at most {@code uploadsPerMinute} uploads per minute and session user, over the six
- * routes that take a file ({@link UploadRoutes}); the next one gets 429 {@code RATE_LIMITED} with
- * {@code Retry-After}. The inspection of a PDF shares one global permit, so one user sending costly
- * files could keep everybody else waiting.
+ * TAR-206: limits the uploads of each session user over the six routes that take a file ({@link
+ * UploadRoutes}). The inspection of a PDF shares one global permit, so one user sending costly
+ * files could keep everybody else waiting. Two limits, both answered with 429 {@code RATE_LIMITED}:
+ *
+ * <ul>
+ *   <li>one upload in progress per user: a second one at once gets {@code Retry-After: 1} and
+ *       spends no allowance. The set of uploads in progress only holds the users with a request
+ *       still running, so it is bounded by the requests the server takes at once;
+ *   <li>{@code uploadBurst} uploads in a row, refilled at {@code uploadsPerMinute} per minute, in a
+ *       {@link RateLimitBuckets} (in memory and bounded to the most recent users).
+ * </ul>
  *
  * <p>It runs after the authorization, so the key is the authenticated user (never an address or a
  * header) and a request without session gets its 401 untouched. It runs before the dispatcher
- * parses the form, so a refused upload is never read nor stored. The counters are a {@link
- * RateLimitBuckets}: in memory and bounded to the most recent users.
+ * parses the form, so a refused upload is never read nor stored.
  */
 final class UploadRateLimitFilter extends OncePerRequestFilter {
 
@@ -41,9 +51,10 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
               .toArray(RequestMatcher[]::new));
 
   private final RateLimitBuckets buckets;
+  private final Set<String> inProgress = ConcurrentHashMap.newKeySet();
 
   UploadRateLimitFilter(UploadRateLimitProperties properties) {
-    this.buckets = new RateLimitBuckets(properties.uploadsPerMinute());
+    this.buckets = new RateLimitBuckets(properties.uploadsPerMinute(), properties.uploadBurst());
   }
 
   @Override
@@ -54,9 +65,61 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
     if (session == null
         || !session.isAuthenticated()
         || session instanceof AnonymousAuthenticationToken
-        || !UPLOADS.matches(request)
-        || buckets.tryConsume(session.getName(), response)) {
+        || !UPLOADS.matches(request)) {
       chain.doFilter(request, response);
+      return;
+    }
+    String user = session.getName();
+    if (!inProgress.add(user)) {
+      RateLimitBuckets.reject(response, 1);
+      return;
+    }
+    boolean handedToAsync = false;
+    try {
+      if (buckets.tryConsume(user, response)) {
+        chain.doFilter(request, response);
+        if (request.isAsyncStarted()) {
+          // The container fires the listener once this dispatch has returned, even if the async
+          // work already ended: the upload stays in progress until then.
+          request.getAsyncContext().addListener(new Release(user));
+          handedToAsync = true;
+        }
+      }
+    } finally {
+      if (!handedToAsync) {
+        inProgress.remove(user);
+      }
+    }
+  }
+
+  /** Ends the upload in progress of an async request, however it ends. */
+  private final class Release implements AsyncListener {
+
+    private final String user;
+
+    Release(String user) {
+      this.user = user;
+    }
+
+    @Override
+    public void onComplete(AsyncEvent event) {
+      inProgress.remove(user);
+    }
+
+    @Override
+    public void onTimeout(AsyncEvent event) {
+      inProgress.remove(user);
+    }
+
+    @Override
+    public void onError(AsyncEvent event) {
+      inProgress.remove(user);
+    }
+
+    /** A new async cycle of the same request drops the listeners: register again. */
+    @Override
+    public void onStartAsync(AsyncEvent event) {
+      event.getAsyncContext().addListener(this);
     }
   }
 }

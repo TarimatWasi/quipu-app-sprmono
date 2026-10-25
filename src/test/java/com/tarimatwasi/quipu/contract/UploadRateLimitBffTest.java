@@ -45,7 +45,8 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 @SpringBootTest(
     properties = {
       "app.cors.allowed-origin=http://localhost:3000",
-      "app.rate-limit.uploads-per-minute=1"
+      "app.rate-limit.uploads-per-minute=1",
+      "app.rate-limit.upload-burst=1"
     })
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)

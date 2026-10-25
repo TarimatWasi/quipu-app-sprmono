@@ -67,11 +67,14 @@ app:
   # la IP real del cliente (dev y prod: CF-Connecting-IP, que Cloudflare escribe y el cliente no puede
   # enviar).
   # uploads-per-minute (TAR-206) cuenta las subidas de archivo por usuario de la sesión, en las seis
-  # rutas que reciben archivo; es independiente del límite por dirección.
+  # rutas que reciben archivo; es independiente del límite por dirección y vale como mucho 60.
+  # upload-burst: subidas seguidas antes de que la recarga por minuto las espacie. Además, cada
+  # usuario tiene una sola subida en curso.
   rate-limit:
     per-minute: 60
     per-account-per-minute: 10
     uploads-per-minute: 10
+    upload-burst: 3
   # Cookie de sesión (TAR-75): el navegador habla con el origen del frontend y el alojamiento
   # reescribe /bff hacia este backend, así que la cookie es del mismo sitio: SameSite=Lax. Max-Age
   # coincide con la vigencia del token. Con el frontend en otro dominio: same-site: none.

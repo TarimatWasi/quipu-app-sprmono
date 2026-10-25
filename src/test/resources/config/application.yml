@@ -6,5 +6,7 @@ app:
   # Las pruebas de integración hacen muchas peticiones desde la misma dirección.
   rate-limit:
     per-minute: 100000
-    # y muchas subidas del mismo usuario (TAR-206); UploadRateLimitBffTest fija su propio límite.
-    uploads-per-minute: 100000
+    # y varias subidas seguidas del mismo usuario (TAR-206): el máximo que acepta la validación, sin
+    # ráfaga menor. UploadRateLimitBffTest fija su propio límite.
+    uploads-per-minute: 60
+    upload-burst: 60
