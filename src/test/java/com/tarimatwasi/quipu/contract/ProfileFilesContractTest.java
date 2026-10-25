@@ -154,7 +154,7 @@ class ProfileFilesContractTest {
     var base = load("application.yml");
 
     assertThat(base.get("spring.datasource.hikari.maximum-pool-size")).isEqualTo(10);
-    assertThat(base.get("spring.datasource.hikari.connection-timeout")).isEqualTo("5s");
+    assertThat(base.get("spring.datasource.hikari.connection-timeout")).isEqualTo(5000);
   }
 
   @ParameterizedTest

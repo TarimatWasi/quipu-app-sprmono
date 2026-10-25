@@ -19,7 +19,7 @@ spring:
       # TAR-206: un pool fijo y una espera corta por conexión: con el pool agotado, la petición
       # falla a los 5 s en vez de quedarse colgada. Ningún perfil los cambia.
       maximum-pool-size: 10
-      connection-timeout: 5s
+      connection-timeout: 5000 # ms: HikariConfig la enlaza como número, no como Duration
   jpa:
     hibernate:
       ddl-auto: validate

@@ -3,8 +3,10 @@ package com.tarimatwasi.quipu.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.zaxxer.hikari.HikariDataSource;
 import java.time.Clock;
 import java.time.ZoneId;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +20,7 @@ class ConfigurationContractTest {
 
   @Autowired Environment env;
   @Autowired Clock clock;
+  @Autowired DataSource dataSource;
 
   @Test
   void jpa_validates_schema_and_closes_open_in_view() {
@@ -54,5 +57,13 @@ class ConfigurationContractTest {
     assertThat(env.getProperty("springdoc.api-docs.enabled")).isEqualTo("true");
     assertThat(env.getProperty("springdoc.api-docs.path")).isEqualTo("/api-docs");
     assertThat(env.getProperty("springdoc.swagger-ui.path")).isEqualTo("/swagger-ui.html");
+  }
+
+  /** TAR-206: the pool is bounded and a request waits 5 s at most for a connection. */
+  @Test
+  void the_connection_pool_is_bounded() {
+    var pool = (HikariDataSource) dataSource;
+    assertThat(pool.getMaximumPoolSize()).isEqualTo(10);
+    assertThat(pool.getConnectionTimeout()).isEqualTo(5_000);
   }
 }
