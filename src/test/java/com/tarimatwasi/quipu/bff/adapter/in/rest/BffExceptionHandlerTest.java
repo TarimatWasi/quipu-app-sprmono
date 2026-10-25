@@ -104,6 +104,23 @@ class BffExceptionHandlerTest {
         .isEqualTo("CONCURRENT_MODIFICATION");
   }
 
+  /** TAR-207: a period the contract no longer charges has its own code (contract v0.9.2). */
+  @Test
+  void aPeriodNotPayableHasItsOwnCode() {
+    var response = handler.handlePaymentPeriodNotPayable();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "PAYMENT_PERIOD_NOT_PAYABLE",
+                "El contrato ya no cobra el período de este pago; solo puedes rechazarlo indicando"
+                    + " el motivo"));
+    assertThat(handler.handlePaymentAlreadyResolved().getBody())
+        .extracting(BffErrorResponse::code)
+        .isEqualTo("PAYMENT_ALREADY_RESOLVED");
+  }
+
   /** Throws whatever the test hands it, so the advice is reached the way a request reaches it. */
   @RestController
   static class ThrowingController {

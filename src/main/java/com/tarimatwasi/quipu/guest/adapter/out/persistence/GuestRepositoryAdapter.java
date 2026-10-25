@@ -18,7 +18,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -138,12 +137,8 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
    * must not be reported as a repeated document. Anything else keeps the document answer.
    */
   static RuntimeException conflict(DataIntegrityViolationException e) {
-    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-      if (cause instanceof ConstraintViolationException violation
-          && EMAIL_CONSTRAINT.equals(violation.getConstraintName())) {
-        return new GuestEmailAlreadyExistsException(e);
-      }
-    }
-    return new GuestDocumentAlreadyExistsException(e);
+    return ViolatedConstraint.is(e, EMAIL_CONSTRAINT)
+        ? new GuestEmailAlreadyExistsException(e)
+        : new GuestDocumentAlreadyExistsException(e);
   }
 }

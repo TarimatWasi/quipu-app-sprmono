@@ -6,7 +6,6 @@ import com.tarimatwasi.quipu.guest.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import java.util.List;
 import java.util.Optional;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -70,12 +69,8 @@ public class OnboardingRepositoryAdapter implements OnboardingRepositoryPort {
 
   /** Only the rule of one consent per version is translated; any other failure stays as it is. */
   static RuntimeException conflict(DataIntegrityViolationException e) {
-    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-      if (cause instanceof ConstraintViolationException violation
-          && VERSION_CONSTRAINT.equals(violation.getConstraintName())) {
-        return new GuestConsentAlreadyExistsException(e);
-      }
-    }
-    return e;
+    return ViolatedConstraint.is(e, VERSION_CONSTRAINT)
+        ? new GuestConsentAlreadyExistsException(e)
+        : e;
   }
 }

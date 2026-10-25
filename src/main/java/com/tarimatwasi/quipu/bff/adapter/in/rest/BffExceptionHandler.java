@@ -501,7 +501,7 @@ public class BffExceptionHandler {
                 "file"));
   }
 
-  /** Another process resolved the payment first. */
+  /** The payment is no longer pending: another process resolved it first. */
   @ExceptionHandler(PaymentAlreadyResolvedException.class)
   public ResponseEntity<BffErrorResponse> handlePaymentAlreadyResolved() {
     return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -511,17 +511,18 @@ public class BffExceptionHandler {
   }
 
   /**
-   * TAR-204: the contract no longer charges the period of the voucher, so it cannot be approved.
-   * The contract (v0.8.0) offers no code of its own for it on this operation: the payment can no
-   * longer be approved, so it answers as resolved, with a message that says why.
+   * TAR-204, TAR-207: the contract no longer charges the period of the voucher (terminated or
+   * expired first), so it cannot be approved; it stays pending and can only be rejected. Its own
+   * code since the contract v0.9.2 ({@code PaymentPeriodNotPayableError}).
    */
   @ExceptionHandler(PaymentPeriodNotPayableException.class)
   public ResponseEntity<BffErrorResponse> handlePaymentPeriodNotPayable() {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "PAYMENT_ALREADY_RESOLVED",
-                "El contrato ya no cobra el período de este pago; recházalo indicando el motivo"));
+                "PAYMENT_PERIOD_NOT_PAYABLE",
+                "El contrato ya no cobra el período de este pago; solo puedes rechazarlo indicando"
+                    + " el motivo"));
   }
 
   /** The payment that blocked a period was gone when it was looked for: try again. */
