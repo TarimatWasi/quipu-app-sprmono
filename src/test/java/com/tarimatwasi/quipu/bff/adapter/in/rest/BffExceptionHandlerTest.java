@@ -1,15 +1,29 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
+import jakarta.persistence.LockTimeoutException;
+import jakarta.persistence.PessimisticLockException;
+import java.net.SocketTimeoutException;
+import java.util.List;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 class BffExceptionHandlerTest {
 
@@ -88,5 +102,60 @@ class BffExceptionHandlerTest {
     assertThat(handler.handleObjectConcurrentModification(other).getBody())
         .extracting(BffErrorResponse::code)
         .isEqualTo("CONCURRENT_MODIFICATION");
+  }
+
+  /** Throws whatever the test hands it, so the advice is reached the way a request reaches it. */
+  @RestController
+  static class ThrowingController {
+
+    private Supplier<RuntimeException> failure = IllegalStateException::new;
+
+    @GetMapping("/fail")
+    void fail() {
+      throw failure.get();
+    }
+  }
+
+  private static MockMvc mvcThrowing(Supplier<RuntimeException> failure) {
+    var controller = new ThrowingController();
+    controller.failure = failure;
+    return MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(HANDLER).build();
+  }
+
+  private static final BffExceptionHandler HANDLER = new BffExceptionHandler(MASKER);
+
+  /**
+   * TAR-204: a row lock that waits past lock_timeout ends the request as the concurrency conflict
+   * of the contract, whether it comes translated by Spring or straight from JPA; never a 500.
+   */
+  @Test
+  void aLockThatTimesOutIsAConcurrencyConflict() throws Exception {
+    for (Supplier<RuntimeException> failure :
+        List.<Supplier<RuntimeException>>of(
+            () -> new CannotAcquireLockException("lock timeout"),
+            () -> new LockTimeoutException("lock timeout"),
+            () -> new PessimisticLockException("lock timeout"))) {
+      mvcThrowing(failure)
+          .perform(get("/fail"))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"))
+          .andExpect(
+              jsonPath("$.message")
+                  .value(
+                      "El registro cambió mientras lo editabas; vuelve a cargarlo e inténtalo de"
+                          + " nuevo"));
+    }
+  }
+
+  /** TAR-204: R2 that does not answer in time is the 503 of the contract, without the cause. */
+  @Test
+  void aStorageTimeoutIsFileStorageUnavailable() throws Exception {
+    mvcThrowing(() -> new PaymentFileUnavailableException(new SocketTimeoutException("r2 slow")))
+        .perform(get("/fail"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("FILE_STORAGE_UNAVAILABLE"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("No se pudo acceder al archivo; inténtalo de nuevo más tarde"));
   }
 }

@@ -105,6 +105,11 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
+  public Optional<Long> findContractGuestId(Long id) {
+    return jpaRepository.findContractGuestIdById(id);
+  }
+
+  @Override
   public Optional<StoredPayment> findByIdForUpdate(Long id) {
     return jpaRepository.findWithLockById(id).map(PaymentJpaEntity::toStored);
   }

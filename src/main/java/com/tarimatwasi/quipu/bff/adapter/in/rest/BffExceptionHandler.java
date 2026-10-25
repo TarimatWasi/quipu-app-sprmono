@@ -52,6 +52,7 @@ import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
+import com.tarimatwasi.quipu.payment.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentReasonRequiredException;
 import com.tarimatwasi.quipu.payment.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
@@ -208,9 +209,14 @@ public class BffExceptionHandler {
 
   /**
    * Two requests waited for each other's row locks and the database chose this one as the loser
-   * (deadlock, 40P01) or a lock could not be taken: retrying is safe, nothing was committed.
+   * (deadlock, 40P01) or a lock could not be taken: retrying is safe, nothing was committed. A wait
+   * past lock_timeout (55P03, TAR-204) is one of them, translated by Spring or straight from JPA.
    */
-  @ExceptionHandler(PessimisticLockingFailureException.class)
+  @ExceptionHandler({
+    PessimisticLockingFailureException.class,
+    jakarta.persistence.PessimisticLockException.class,
+    jakarta.persistence.LockTimeoutException.class
+  })
   public ResponseEntity<BffErrorResponse> handleLockConflict() {
     return handleConcurrentModification();
   }
@@ -465,6 +471,20 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "PAYMENT_ALREADY_RESOLVED", "El pago ya fue resuelto; vuelve a cargarlo"));
+  }
+
+  /**
+   * TAR-204: the contract no longer charges the period of the voucher, so it cannot be approved.
+   * The contract (v0.8.0) offers no code of its own for it on this operation: the payment can no
+   * longer be approved, so it answers as resolved, with a message that says why.
+   */
+  @ExceptionHandler(PaymentPeriodNotPayableException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentPeriodNotPayable() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "PAYMENT_ALREADY_RESOLVED",
+                "El contrato ya no cobra el período de este pago; recházalo indicando el motivo"));
   }
 
   /** The payment that blocked a period was gone when it was looked for: try again. */
