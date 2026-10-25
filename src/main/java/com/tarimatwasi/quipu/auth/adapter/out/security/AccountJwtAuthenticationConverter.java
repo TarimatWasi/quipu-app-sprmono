@@ -35,6 +35,8 @@ public class AccountJwtAuthenticationConverter
   /** The session may only change the password (RF-12); the HTTP rules look for this authority. */
   public static final String PASSWORD_CHANGE_PENDING = "PASSWORD_CHANGE_PENDING";
 
+  private static final long MICROS_PER_SECOND = 1_000_000L;
+
   private final UserRepositoryPort users;
   private final IdMasker masker;
 
@@ -52,8 +54,9 @@ public class AccountJwtAuthenticationConverter
     if (subject == null) {
       throw invalid("The token has no subject");
     }
+    Instant issuedAt = preciseIssuedAt(jwt);
     UserAccount account = accountOf(subject);
-    if (account.isDisabled() || account.issuedBeforePasswordChange(preciseIssuedAt(jwt))) {
+    if (account.isDisabled() || account.issuedBeforePasswordChange(issuedAt)) {
       throw invalid("The session is no longer valid");
     }
     List<GrantedAuthority> authorities = new ArrayList<>();
@@ -72,12 +75,31 @@ public class AccountJwtAuthenticationConverter
    * The issue time to compare with the password change (TAR-201). A token issued before the precise
    * claim existed has only the second, so it counts as issued at the last instant of that second:
    * the rule it was issued under, until it expires.
+   *
+   * <p>TAR-205: the precise claim must be a whole number of microseconds inside the second of
+   * {@code iat}, both ends included (the issuer rounds the instant up, so the last nanoseconds of a
+   * second give the first microsecond of the next); anything else, or a value that overflows, is an
+   * invalid token.
    */
   private static Instant preciseIssuedAt(Jwt jwt) {
-    if (jwt.getClaim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM) instanceof Number micros) {
-      return Instant.EPOCH.plus(micros.longValue(), ChronoUnit.MICROS);
+    Instant issuedAt = Objects.requireNonNull(jwt.getIssuedAt());
+    Object claim = jwt.getClaim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM);
+    if (claim == null) {
+      return issuedAt.plusSeconds(1).minusNanos(1);
     }
-    return Objects.requireNonNull(jwt.getIssuedAt()).plusSeconds(1).minusNanos(1);
+    if (!(claim instanceof Long || claim instanceof Integer)) {
+      throw invalid("The precise issue time is not a whole number");
+    }
+    long micros = ((Number) claim).longValue();
+    try {
+      long first = Math.multiplyExact(issuedAt.getEpochSecond(), MICROS_PER_SECOND);
+      if (micros < first || micros > Math.addExact(first, MICROS_PER_SECOND)) {
+        throw invalid("The precise issue time is outside the second of the token");
+      }
+    } catch (ArithmeticException overflow) {
+      throw invalid("The issue time is out of range");
+    }
+    return Instant.EPOCH.plus(micros, ChronoUnit.MICROS);
   }
 
   /** The subject is the masked id of the user; anything else is not a session of ours. */

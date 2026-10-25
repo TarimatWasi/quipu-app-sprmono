@@ -91,6 +91,19 @@ class SecurityContractTest {
         .andExpect(status().isForbidden());
   }
 
+  /**
+   * TAR-205: a multipart body is parsed by the six upload routes only; anywhere else, with any
+   * method, it is refused with 415 before the dispatcher could read it.
+   */
+  @Test
+  void a_multipart_get_outside_the_upload_routes_is_refused_with_415() throws Exception {
+    for (String path : new String[] {"/actuator/health", "/bff/guest/contract"}) {
+      mvc.perform(get(path).contentType("multipart/form-data; boundary=x").content("--x--"))
+          .andExpect(status().isUnsupportedMediaType())
+          .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+  }
+
   @Test
   void security_headers_are_present() throws Exception {
     mvc.perform(get("/actuator/health"))

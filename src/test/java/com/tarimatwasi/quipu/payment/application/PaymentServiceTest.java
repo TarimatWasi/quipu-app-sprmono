@@ -50,6 +50,7 @@ import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -66,8 +67,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class PaymentServiceTest {
 
   private static final Long ADMIN = TestIds.next();
@@ -646,16 +649,16 @@ class PaymentServiceTest {
   }
 
   @Test
-  void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+  void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt(CapturedOutput output) {
+    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
     when(payments.insertApproved(any())).thenThrow(failure);
-    doThrow(new PaymentFileStorageException("down")).when(files).delete(KEY);
-
+    var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
+    doThrow(cleanup).when(files).delete(KEY);
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
+    assertThat(output).contains("SdkClientException").doesNotContain(KEY, R2Failures.HOST);
   }
 
   @Test

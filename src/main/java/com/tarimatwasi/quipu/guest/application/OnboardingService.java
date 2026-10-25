@@ -116,13 +116,13 @@ public class OnboardingService implements OnboardingUseCase {
     }
     String name = FileNames.sanitized(upload.originalName(), DEFAULT_NAME);
     String key = store(content, kind);
-    boolean removedIfNotCommitted = removeUnlessCommitted(key);
+    boolean removedIfNotCommitted = removeUnlessCommitted(guestId, key);
     GuestDocument saved = null;
     try {
       saved = records.addDocument(guestId, key, name, kind.contentType(), content.length);
     } finally {
       if (saved == null && !removedIfNotCommitted) {
-        discard(key);
+        discard(guestId, key);
       }
     }
     return document(saved);
@@ -261,7 +261,7 @@ public class OnboardingService implements OnboardingUseCase {
    * Inside a transaction the object is removed whenever the transaction does not commit: the insert
    * failed, or something after it did. Returns true if it will be; otherwise the caller removes it.
    */
-  private boolean removeUnlessCommitted(String key) {
+  private boolean removeUnlessCommitted(Long guestId, String key) {
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {
       return false;
     }
@@ -270,19 +270,29 @@ public class OnboardingService implements OnboardingUseCase {
           @Override
           public void afterCompletion(int status) {
             if (status != STATUS_COMMITTED) {
-              discard(key);
+              discard(guestId, key);
             }
           }
         });
     return true;
   }
 
-  /** A failed cleanup is logged with the random key only, never the name nor the content. */
-  private void discard(String key) {
+  /**
+   * A failed cleanup is logged with the internal id of the guest only: never the storage key, the
+   * name nor the content (TAR-205).
+   */
+  private void discard(Long guestId, String key) {
     try {
       files.delete(key);
     } catch (GuestDocumentStorageException cleanupFailed) {
-      LOGGER.error("The guest document {} stays in the bucket without a row", key, cleanupFailed);
+      // TAR-205: the class names only; the message and trace of the SDK name the R2 host
+      // (account and bucket) and may name the key.
+      Throwable cause = cleanupFailed.getCause();
+      LOGGER.error(
+          "A document of guest {} stays in the bucket without a row ({}, cause {})",
+          guestId,
+          cleanupFailed.getClass().getName(),
+          cause == null ? "-" : cause.getClass().getName());
     }
   }
 }

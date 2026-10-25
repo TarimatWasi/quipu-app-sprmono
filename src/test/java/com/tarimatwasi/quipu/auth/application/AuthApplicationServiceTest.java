@@ -39,6 +39,7 @@ import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -201,6 +202,18 @@ class AuthApplicationServiceTest {
     UserAccount stored = repository.find(user.id());
     assertThat(encoder.matches("Nueva12345", stored.passwordHash())).isTrue();
     assertThat(stored.mustChangePassword()).isFalse();
+  }
+
+  /** TAR-205: stored as TIMESTAMPTZ keeps it, so no rounding of the database can move it. */
+  @Test
+  void theChangeIsMarkedToTheMicrosecond() {
+    UserAccount user = savedUser("Temporal123!", true, "ACTIVE");
+    clock.advance(Duration.ofNanos(1_999));
+
+    service.changePassword(change(user, null, "Nueva12345"));
+
+    assertThat(repository.find(user.id()).passwordChangedAt())
+        .isEqualTo(clock.instant().truncatedTo(ChronoUnit.MICROS));
   }
 
   @Test

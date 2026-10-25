@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase.OwnGuestView;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -42,5 +43,35 @@ class GuestAreaFilterTest {
     assertThat(response.getStatus()).isEqualTo(403);
     assertThat(response.getContentAsString()).contains("\"code\":\"AUTH_FORBIDDEN\"");
     assertThat(chain.getRequest()).isNull();
+  }
+
+  /** TAR-205: a failure of the check answers 500 in the BFF shape and never lets the request in. */
+  @Test
+  void aFailureOfTheCheckAnswers500WithTheBffBodyAndFailsClosed() throws Exception {
+    GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
+    OwnGuestUseCase guests = mock(OwnGuestUseCase.class);
+    when(accounts.guestOf(1L))
+        .thenThrow(
+            new org.springframework.dao.DataAccessResourceFailureException("down jdbc://secret"));
+    for (String principal : List.of("1", "not-a-number")) {
+      SecurityContextHolder.getContext()
+          .setAuthentication(new TestingAuthenticationToken(principal, null));
+      var request = new MockHttpServletRequest("GET", "/bff/guest/contract");
+      var response = new MockHttpServletResponse();
+      var chain = new MockFilterChain();
+
+      new GuestAreaFilter(accounts, guests).doFilter(request, response, chain);
+
+      assertThat(response.getStatus()).as(principal).isEqualTo(500);
+      assertThat(response.getContentType()).startsWith("application/json");
+      assertThat(response.getContentAsString())
+          .as(principal)
+          .isEqualTo(
+              "{\"code\":\"INTERNAL_ERROR\","
+                  + "\"message\":\"No se pudo completar la acción; vuelve a intentarlo\"}")
+          .doesNotContain(principal)
+          .doesNotContain("jdbc");
+      assertThat(chain.getRequest()).as(principal).isNull();
+    }
   }
 }

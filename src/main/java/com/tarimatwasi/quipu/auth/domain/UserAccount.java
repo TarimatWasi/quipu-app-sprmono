@@ -31,6 +31,10 @@ public record UserAccount(
    * comparison is exact, so the issue time must not be coarser than the truth on the early side
    * (the session layer rounds it up): the token issued in the same request as the change (the new
    * session) is issued after it and stays valid.
+   *
+   * <p>TAR-205, accepted by design: the issue time is rounded up to the microsecond and the change
+   * is truncated down to it, so a token issued less than about 2 µs before the change still passes.
+   * Closing that window would end the new session the same request issues.
    */
   public boolean issuedBeforePasswordChange(Instant issuedAt) {
     return passwordChangedAt != null && issuedAt.isBefore(passwordChangedAt);

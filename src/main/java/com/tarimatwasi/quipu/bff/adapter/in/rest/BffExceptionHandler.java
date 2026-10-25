@@ -84,6 +84,12 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice(basePackages = "com.tarimatwasi.quipu.bff")
 public class BffExceptionHandler {
 
+  /** The 500 of the BFF: nothing internal in the body (TAR-187); GuestAreaFilter writes it too. */
+  static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+
+  static final String INTERNAL_ERROR_MESSAGE =
+      "No se pudo completar la acción; vuelve a intentarlo";
+
   private final IdMasker ids;
 
   public BffExceptionHandler(IdMasker ids) {
@@ -295,9 +301,7 @@ public class BffExceptionHandler {
   @ExceptionHandler(GuestDocumentActionFailedException.class)
   public ResponseEntity<BffErrorResponse> handleGuestDocumentActionFailed() {
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(
-            new BffErrorResponse(
-                "INTERNAL_ERROR", "No se pudo completar la acción; vuelve a intentarlo"));
+        .body(new BffErrorResponse(INTERNAL_ERROR, INTERNAL_ERROR_MESSAGE));
   }
 
   @ExceptionHandler(GuestNotFoundException.class)

@@ -30,6 +30,7 @@ import com.tarimatwasi.quipu.guest.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.support.R2Failures;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -40,9 +41,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 /** TAR-137: what the contract tests cannot force, such as a failed insert after the upload. */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class OnboardingServiceTest {
 
   private static final Long GUEST = 7L;
@@ -86,6 +89,29 @@ class OnboardingServiceTest {
     assertThatThrownBy(() -> service().uploadDocument(GUEST, new DocumentUpload("d.pdf", PDF)))
         .isInstanceOf(IllegalStateException.class);
     verify(files).delete("guest-documents/k");
+  }
+
+  /** TAR-205: a failed cleanup is logged with the guest id, never the storage key. */
+  @Test
+  void aFailedCleanupIsLoggedWithoutTheStorageKey(CapturedOutput output) {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(NOW, null)));
+    when(files.store(PDF, FileKind.PDF)).thenReturn("guest-documents/k");
+    when(records.addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong()))
+        .thenThrow(new IllegalStateException("insert failed"));
+    org.mockito.Mockito.doThrow(
+            new GuestDocumentStorageException(
+                "down", R2Failures.clientFailure("guest-documents/k")))
+        .when(files)
+        .delete("guest-documents/k");
+
+    assertThatThrownBy(() -> service().uploadDocument(GUEST, new DocumentUpload("d.pdf", PDF)))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(output)
+        .contains("stays in the bucket")
+        .contains("guest " + GUEST)
+        .contains("SdkClientException")
+        .doesNotContain("guest-documents/k")
+        .doesNotContain(R2Failures.HOST);
   }
 
   @Test

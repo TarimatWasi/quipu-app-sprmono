@@ -146,6 +146,76 @@ class JsonOnlyFilterTest {
     }
   }
 
+  /** Counts every read of the body: a refused request must not read a byte. */
+  private static final class CountingRequest extends MockHttpServletRequest {
+    final AtomicInteger reads = new AtomicInteger();
+
+    CountingRequest(String method, String uri) {
+      super(method, uri);
+      setRequestURI(uri);
+    }
+
+    @Override
+    public jakarta.servlet.ServletInputStream getInputStream() {
+      reads.incrementAndGet();
+      return super.getInputStream();
+    }
+
+    @Override
+    public java.util.Collection<jakarta.servlet.http.Part> getParts() {
+      reads.incrementAndGet();
+      return List.of();
+    }
+  }
+
+  /**
+   * TAR-205: no route but the six uploads parses a multipart body, whatever the method: GET, HEAD
+   * and OPTIONS included, with or without a body, for any multipart subtype.
+   */
+  @Test
+  void a_multipart_request_with_any_method_outside_the_uploads_is_refused_unread()
+      throws Exception {
+    for (String method : List.of("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE")) {
+      for (String path :
+          List.of("/actuator/health", "/bff/guest/contract", "/bff/admin/environments")) {
+        for (String type : List.of(MULTIPART, "multipart/mixed; boundary=x", "Multipart/Related")) {
+          var request = new CountingRequest(method, path);
+          request.setContentType(type);
+          request.addHeader("Origin", ORIGIN);
+          var response = run(request);
+
+          String what = method + " " + path + " " + type;
+          assertThat(response.getStatus()).as(what).isEqualTo(415);
+          assertThat(response.getContentAsString()).as(what).contains("UNSUPPORTED_MEDIA_TYPE");
+          assertThat(request.reads).as(what).hasValue(0);
+        }
+      }
+    }
+    assertThat(reached).hasValue(0);
+  }
+
+  @Test
+  void a_multipart_get_or_head_to_an_upload_route_is_refused_too() throws Exception {
+    for (String method : List.of("GET", "HEAD", "OPTIONS")) {
+      for (String path : List.of(UploadRoutes.CONTRACTS, REPLACEMENT)) {
+        var request = multipart(method, path);
+        request.addHeader("Origin", ORIGIN);
+
+        assertThat(run(request).getStatus()).as(method + " " + path).isEqualTo(415);
+      }
+    }
+    assertThat(reached).hasValue(0);
+  }
+
+  @Test
+  void a_multipart_put_to_the_replacement_with_an_origin_still_reaches_it() throws Exception {
+    var request = multipart("PUT", REPLACEMENT);
+    request.addHeader("Origin", ORIGIN);
+
+    assertThat(run(request).getStatus()).isEqualTo(200);
+    assertThat(reached).hasValue(1);
+  }
+
   @Test
   void an_upload_route_takes_nothing_but_multipart_or_json() throws Exception {
     for (String type :

@@ -38,6 +38,7 @@ import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -53,8 +54,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class ContractServiceTest {
 
   private static final Long ENVIRONMENT_ID = TestIds.next();
@@ -277,16 +280,22 @@ class ContractServiceTest {
   }
 
   @Test
-  void ifTheCleanupAlsoFailsTheInsertFailureIsTheOneThatSurfaces() {
+  void ifTheCleanupAlsoFailsTheInsertFailureIsTheOneThatSurfaces(CapturedOutput output) {
     freeEnvironmentAndActiveContractGuest();
     when(files.store(PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
-    var cleanup = new ContractFileStorageException("down");
+    var cleanup = new ContractFileStorageException("down", R2Failures.clientFailure(KEY));
     when(contracts.insert(any())).thenThrow(failure);
     org.mockito.Mockito.doThrow(cleanup).when(files).delete(KEY);
 
     assertThatThrownBy(() -> service.create(request())).isSameAs(failure);
     verify(files).delete(KEY);
+    // TAR-205: the log names the guest, never the storage key.
+    assertThat(output)
+        .contains("stays in the bucket")
+        .contains("SdkClientException")
+        .doesNotContain(KEY)
+        .doesNotContain(R2Failures.HOST);
   }
 
   @Test

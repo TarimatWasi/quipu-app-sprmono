@@ -7,7 +7,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -32,6 +34,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * SecurityContractTest.bodyless_cross_site_request_is_stopped_by_cors} and {@code
  * AuthBffControllerTest.crossSiteBodilessPostIsStoppedByCors} (enforced by {@code
  * TestConventionsTest}).
+ *
+ * <p>A multipart body is taken by the exact upload routes only: with any other route or method,
+ * GET, HEAD and OPTIONS included, it is rejected with the same 415 (TAR-205). The upload routes are
+ * compared with the raw URI, so a differently encoded one fails closed with 415.
  *
  * <p>The uploads, and the deletion of a document of a guest (JSON, but irreversible, RN-37), must
  * also say where they come from: {@code Origin} or {@code Sec-Fetch-Site: same-origin}, else 403.
@@ -63,10 +69,15 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    if (STATE_CHANGING.contains(request.getMethod())
-        && (hasBody(request) || request.getContentType() != null)
-        && !isJson(request.getContentType())
-        && !isFileUpload(request)) {
+    boolean upload = isFileUpload(request);
+    // TAR-205: only the six uploads may carry a multipart body, whatever the method, so no other
+    // route ever parses one to disk.
+    boolean strayMultipart = isMultipart(request.getContentType()) && !upload;
+    if (strayMultipart
+        || (STATE_CHANGING.contains(request.getMethod())
+            && (hasBody(request) || request.getContentType() != null)
+            && !isJson(request.getContentType())
+            && !upload)) {
       // Write the response directly: sendError triggers an ERROR dispatch to /error, which the
       // security chain would answer with 401 for an unauthenticated client.
       response.setStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value());
@@ -75,8 +86,7 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
       response.getWriter().write(BODY);
       return;
     }
-    if ((isFileUpload(request) || DOCUMENT_DELETION.matches(request))
-        && !declaresItsOrigin(request)) {
+    if ((upload || DOCUMENT_DELETION.matches(request)) && !declaresItsOrigin(request)) {
       response.setStatus(HttpStatus.FORBIDDEN.value());
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -118,6 +128,15 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
     } catch (InvalidMediaTypeException e) {
       return false;
     }
+  }
+
+  /**
+   * Any multipart type, read from the raw header: a value that does not even parse still counts, so
+   * a malformed one fails closed.
+   */
+  private static boolean isMultipart(@Nullable String contentType) {
+    return contentType != null
+        && contentType.strip().toLowerCase(Locale.ROOT).startsWith("multipart/");
   }
 
   private static boolean hasBody(HttpServletRequest request) {

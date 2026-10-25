@@ -13,8 +13,11 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
@@ -25,6 +28,7 @@ import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -63,6 +67,16 @@ class GuestAreaFilter extends OncePerRequestFilter {
   private static final String ONBOARDING_REQUIRED_BODY =
       "{\"code\":\"AUTH_ONBOARDING_REQUIRED\",\"message\":\"Completa tu registro para continuar\"}";
 
+  /** The 500 of BffExceptionHandler: no controller advice runs in a filter. */
+  private static final String INTERNAL_ERROR_BODY =
+      "{\"code\":\""
+          + BffExceptionHandler.INTERNAL_ERROR
+          + "\",\"message\":\""
+          + BffExceptionHandler.INTERNAL_ERROR_MESSAGE
+          + "\"}";
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(GuestAreaFilter.class);
+
   private final GuestAccountUseCase accounts;
   private final OwnGuestUseCase guests;
 
@@ -76,15 +90,29 @@ class GuestAreaFilter extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
     GuestKind area = areaOf(request);
-    String refusal = area == null ? null : refusal(area);
+    String refusal;
+    try {
+      refusal = area == null ? null : refusal(area);
+    } catch (NumberFormatException | DataAccessException | TransactionException checkFailed) {
+      // TAR-205: fail closed, in the BFF shape; the log carries neither the principal nor the
+      // message, which may hold either the principal or internal details.
+      LOGGER.error("The guest area check failed: {}", checkFailed.getClass().getName());
+      write(response, HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR_BODY);
+      return;
+    }
     if (refusal == null) {
       chain.doFilter(request, response);
       return;
     }
-    response.setStatus(HttpStatus.FORBIDDEN.value());
+    write(response, HttpStatus.FORBIDDEN, refusal);
+  }
+
+  private static void write(HttpServletResponse response, HttpStatus status, String body)
+      throws IOException {
+    response.setStatus(status.value());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-    response.getWriter().write(refusal);
+    response.getWriter().write(body);
   }
 
   private static @Nullable GuestKind areaOf(HttpServletRequest request) {
