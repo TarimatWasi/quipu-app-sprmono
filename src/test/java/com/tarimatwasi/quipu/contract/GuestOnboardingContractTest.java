@@ -126,7 +126,7 @@ class GuestOnboardingContractTest {
             .andExpect(jsonPath("$.documents").isEmpty())
             .andExpect(jsonPath("$.consent.accepted").value(false))
             .andReturn();
-    assertThat(read(start, "$.consent.text")).contains("BORRADOR");
+    assertThat(read(start, "$.consent.text")).doesNotContainIgnoringCase("BORRADOR");
 
     personalData(guest(), "{\"name\":\"Ana Quispe\",\"phone\":\"987654321\"}")
         .andExpect(status().isOk())

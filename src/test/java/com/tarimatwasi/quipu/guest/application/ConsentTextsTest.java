@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.io.ClassPathResource;
 
 /** TAR-207: the text of a published consent version cannot change without failing the startup. */
 class ConsentTextsTest {
@@ -22,6 +25,23 @@ class ConsentTextsTest {
     assertThat(ConsentTexts.manifest()).containsEntry(CURRENT, HASH);
     assertThat(ConsentTexts.textVersions()).contains(CURRENT);
     assertThatCode(() -> new ConsentTexts(CURRENT)).doesNotThrowAnyException();
+  }
+
+  /** TAR-168: the version in force is the definitive text approved by the lawyer (D-62). */
+  @Test
+  void theConfiguredVersionIsTheDefinitiveText() throws IOException {
+    String configured =
+        String.valueOf(
+            new YamlPropertySourceLoader()
+                .load("application.yml", new ClassPathResource("application.yml"))
+                .get(0)
+                .getProperty("app.consent.version"));
+
+    assertThat(configured).isEqualTo("2026-10");
+    assertThatCode(() -> ConsentTexts.verify(configured)).doesNotThrowAnyException();
+    String text = new ConsentTexts(configured).currentText();
+    assertThat(ConsentTexts.manifest()).containsEntry(configured, ConsentTexts.sha256(text));
+    assertThat(text).doesNotContainIgnoringCase("BORRADOR");
   }
 
   @Test
