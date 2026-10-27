@@ -19,10 +19,14 @@ import com.tarimatwasi.quipu.support.TestTables;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -47,13 +51,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * the login takes its cutoff after the token, which then stops being valid.
  *
  * <p>Each race is forced, not hoped for: the first transaction holds the row until the other one is
- * seen waiting on a lock in PostgreSQL (or has finished, which only happens without the lock).
+ * seen waiting in PostgreSQL on the backend that holds it, and the test fails if that is never
+ * seen.
  */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
 class LoginPasswordChangeConcurrencyTest {
 
-  private static final String DOCUMENT = "40000001";
   private static final String OLD_PASSWORD = "Antigua12345";
   private static final String NEW_PASSWORD = "Nueva12345";
   private static final String RESET_CODE = "codigo-de-prueba-tar215";
@@ -70,23 +74,36 @@ class LoginPasswordChangeConcurrencyTest {
 
   private Long user;
 
+  /**
+   * Its own per test: the login limiter counts every attempt per document and lives as long as the
+   * cached context, so a document shared by the tests would run into it.
+   */
+  private String document;
+
+  /** Its own per test, so a transaction left hanging by a failed test is stopped before cleanup. */
+  private ExecutorService pool;
+
   @BeforeEach
   void setUp() {
     TestTables.clear(jdbc);
+    pool = Executors.newFixedThreadPool(2);
     user = TestIds.next();
+    document = TestIds.next().toString();
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
             + " must_change_password, status, reset_token_hash, reset_token_expires_at)"
             + " VALUES (?, 'admin@example.test', 'DNI', ?, ?, 'ADMIN', FALSE, 'ACTIVE', ?,"
             + " now() + interval '30 minutes')",
         user,
-        DOCUMENT,
+        document,
         passwordEncoder.encode(OLD_PASSWORD),
         sha256(RESET_CODE));
   }
 
   @AfterEach
-  void tearDown() {
+  void tearDown() throws InterruptedException {
+    pool.shutdownNow();
+    pool.awaitTermination(30, TimeUnit.SECONDS);
     TestTables.clear(jdbc);
   }
 
@@ -117,15 +134,20 @@ class LoginPasswordChangeConcurrencyTest {
   private void assertLoginDuringIsRefused(Runnable change) throws Exception {
     var changedNotCommitted = new CountDownLatch(1);
     var loginDone = new CountDownLatch(1);
+    var loginWaited = new AtomicBoolean();
     CompletableFuture<Void> changing =
         CompletableFuture.runAsync(
             () ->
                 transaction.executeWithoutResult(
                     status -> {
                       change.run();
+                      int holder = backendPid();
                       changedNotCommitted.countDown();
-                      waitUntil(() -> loginDone.getCount() == 0 || someoneWaitsOnALock());
-                    }));
+                      boolean seen =
+                          waitUntil(() -> loginDone.getCount() == 0 || someoneWaitsOn(holder));
+                      loginWaited.set(seen && loginDone.getCount() != 0);
+                    }),
+            pool);
     assertThat(changedNotCommitted.await(20, TimeUnit.SECONDS)).isTrue();
     CompletableFuture<@Nullable String> login =
         CompletableFuture.supplyAsync(
@@ -137,12 +159,14 @@ class LoginPasswordChangeConcurrencyTest {
               } finally {
                 loginDone.countDown();
               }
-            });
+            },
+            pool);
 
     changing.get(20, TimeUnit.SECONDS);
     String token = login.get(20, TimeUnit.SECONDS);
 
     assertThat(token).as("a session opened with the old password").isNull();
+    assertThat(loginWaited).as("the login waited for the uncommitted change").isTrue();
     assertThat(isValid(loginWith(NEW_PASSWORD))).isTrue();
   }
 
@@ -153,11 +177,13 @@ class LoginPasswordChangeConcurrencyTest {
   private void assertChangeDuringLoginEndsTheSession(Runnable change) throws Exception {
     var issuing = new CountDownLatch(1);
     var first = new AtomicBoolean(true);
+    var holder = new AtomicInteger();
     doAnswer(
             call -> {
               if (first.getAndSet(false)) {
+                holder.set(backendPid());
                 issuing.countDown();
-                if (!waitUntil(this::someoneWaitsOnALock)) {
+                if (!waitUntil(() -> someoneWaitsOn(holder.get()))) {
                   throw new IllegalStateException("The change never waited for the login");
                 }
               }
@@ -165,9 +191,10 @@ class LoginPasswordChangeConcurrencyTest {
             })
         .when(sessionTokens)
         .issue(anyString());
-    CompletableFuture<String> login = CompletableFuture.supplyAsync(() -> loginWith(OLD_PASSWORD));
+    CompletableFuture<String> login =
+        CompletableFuture.supplyAsync(() -> loginWith(OLD_PASSWORD), pool);
     assertThat(issuing.await(20, TimeUnit.SECONDS)).isTrue();
-    CompletableFuture<Void> changing = CompletableFuture.runAsync(change);
+    CompletableFuture<Void> changing = CompletableFuture.runAsync(change, pool);
 
     String token = login.get(20, TimeUnit.SECONDS);
     changing.get(20, TimeUnit.SECONDS);
@@ -186,7 +213,7 @@ class LoginPasswordChangeConcurrencyTest {
   }
 
   private String loginWith(String password) {
-    return logins.login(new LoginCommand(DocumentKind.DNI, DOCUMENT, password)).sessionToken();
+    return logins.login(new LoginCommand(DocumentKind.DNI, document, password)).sessionToken();
   }
 
   /** What the security chain does with the cookie on every request. */
@@ -199,22 +226,33 @@ class LoginPasswordChangeConcurrencyTest {
     }
   }
 
-  /** Someone is blocked by a transaction that holds a lock on the table of the accounts. */
-  private boolean someoneWaitsOnALock() {
+  /** The PostgreSQL backend of the transaction of the calling thread. */
+  private int backendPid() {
+    return Objects.requireNonNull(jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
+  }
+
+  /**
+   * Someone is blocked by the given backend while that backend holds a lock on the table of the
+   * accounts.
+   */
+  private boolean someoneWaitsOn(int holder) {
     Integer waiting =
         jdbc.queryForObject(
             "SELECT count(*) FROM pg_stat_activity a"
                 + " WHERE a.wait_event_type = 'Lock' AND a.datname = current_database()"
+                + " AND ? = ANY (pg_blocking_pids(a.pid))"
                 + " AND EXISTS (SELECT 1 FROM pg_locks l"
-                + " WHERE l.pid = ANY (pg_blocking_pids(a.pid))"
-                + " AND l.relation = 'users'::regclass AND l.granted)",
-            Integer.class);
+                + " WHERE l.pid = ? AND l.relation = 'users'::regclass AND l.granted)",
+            Integer.class,
+            holder,
+            holder);
     return waiting != null && waiting > 0;
   }
 
+  /** Gives up when the deadline passes or the pool is shut down after a failed test. */
   private static boolean waitUntil(BooleanSupplier condition) {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-    while (System.nanoTime() < deadline) {
+    while (System.nanoTime() < deadline && !Thread.currentThread().isInterrupted()) {
       if (condition.getAsBoolean()) {
         return true;
       }
