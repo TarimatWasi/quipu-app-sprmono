@@ -10,6 +10,7 @@ import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
+import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.PeriodView;
 import com.tarimatwasi.quipu.payment.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentNotFoundException;
@@ -61,6 +62,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   private final PaymentStayPort stays;
   private final Clock clock;
   private final VoucherRecorder recorder;
+  private final AccountStatus accountStatus;
 
   PaymentService(
       PaymentRepositoryPort payments,
@@ -78,6 +80,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     this.stays = stays;
     this.clock = clock;
     this.recorder = new VoucherRecorder(files);
+    this.accountStatus = new AccountStatus(payments, contracts, clock);
   }
 
   // --- the queue and the detail ---
@@ -141,6 +144,18 @@ public class PaymentService implements ManagePaymentsUseCase {
     CursorPage<StoredPayment> found = payments.findHistory(guestId, page);
     guests.profileOf(guestId);
     return found.map(VoucherRecorder::view);
+  }
+
+  /**
+   * RF-06: the same periods the guest sees, of a guest of either type and in any state; a temporary
+   * guest has no contracts and so no periods. The guest is looked up first, so one that does not
+   * exist is a 404.
+   */
+  @Override
+  @Transactional(readOnly = true)
+  public List<PeriodView> accountStatus(Long guestId) {
+    guests.profileOf(guestId);
+    return accountStatus.of(guestId);
   }
 
   @Override

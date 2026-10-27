@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.tarimatwasi.quipu.bff.adapter.in.rest.GuestPaymentsBffController.PeriodStatusResponse;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.InvalidVoucherFileException;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
@@ -24,6 +25,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -204,6 +206,18 @@ public class PaymentsBffController {
             PagedResponse.of(
                 payments.history(unmaskOrMissing(IdKind.GUEST, id), page),
                 payment -> PaymentResponse.of(payment, ids)));
+  }
+
+  /** RF-06: the status by period of a guest of either type, as the guest sees it. */
+  @GetMapping("/bff/admin/guests/{id}/account-status")
+  public ResponseEntity<List<PeriodStatusResponse>> accountStatus(@PathVariable UUID id) {
+    // The state of the payments of a person: no cache keeps it.
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            payments.accountStatus(unmaskOrMissing(IdKind.GUEST, id)).stream()
+                .map(view -> PeriodStatusResponse.of(view, ids))
+                .toList());
   }
 
   /** The state filter is a closed list; any other value is a 400 that names the parameter. */
