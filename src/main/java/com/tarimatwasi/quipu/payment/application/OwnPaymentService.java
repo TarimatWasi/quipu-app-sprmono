@@ -195,6 +195,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     byte[] content = upload.content();
     return VoucherRecorder.view(
         recorder.store(
+            guestId,
             content,
             type,
             key ->

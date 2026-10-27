@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.payment.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,6 +36,7 @@ import com.tarimatwasi.quipu.payment.port.out.LivePaymentExistsException;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort.ContractInfo;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
+import com.tarimatwasi.quipu.payment.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.payment.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.port.out.PaymentGuestPort.OwnGuest;
 import com.tarimatwasi.quipu.payment.port.out.PaymentGuestPort.Standing;
@@ -46,6 +48,7 @@ import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
+import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -61,9 +64,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** RF-04, RF-06, CU-16, CU-17, CU-21, CU-22, RN-03, RN-09, RN-15, RN-27, RN-33, RN-35. */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class OwnPaymentServiceTest {
 
   private static final Long GUEST = TestIds.next();
@@ -307,6 +314,49 @@ class OwnPaymentServiceTest {
     PaymentView view = service.uploadForPeriod(forPeriod("2026-10", "800", PDF));
 
     assertThat(view.contractId()).isEqualTo(CONTRACT);
+  }
+
+  @Test
+  void uploadForPeriod_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt(CapturedOutput output) {
+    openContract(); // no live payment: Mockito answers an empty Optional
+    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+    var failure = new IllegalStateException("insert failed");
+    when(payments.insertPending(any())).thenThrow(failure);
+    var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
+    doThrow(cleanup).when(files).delete(KEY);
+
+    assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)))
+        .isSameAs(failure);
+    assertThat(output)
+        .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
+        .doesNotContain(KEY, R2Failures.HOST);
+  }
+
+  @Test
+  void uploadForPeriod_aCleanupAfterARollbackThatFailsNamesTheGuestOnly(CapturedOutput output) {
+    openContract(); // no live payment: Mockito answers an empty Optional
+    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+    var failure = new IllegalStateException("insert failed");
+    when(payments.insertPending(any())).thenThrow(failure);
+    var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
+    doThrow(cleanup).when(files).delete(KEY);
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)))
+          .isSameAs(failure);
+      verify(files, never()).delete(any()); // the transaction removes it, not the finally
+      for (TransactionSynchronization sync :
+          TransactionSynchronizationManager.getSynchronizations()) {
+        sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+      }
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
+
+    verify(files).delete(KEY);
+    assertThat(output)
+        .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
+        .doesNotContain(KEY, R2Failures.HOST);
   }
 
   @Test

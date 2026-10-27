@@ -80,10 +80,12 @@ final class VoucherRecorder {
   /**
    * The object goes to the bucket first, then the row is inserted with its key; if the row fails,
    * the object is removed. A live payment that got there first is the conflict it is, never a 500.
+   * The internal id of the guest only names whose voucher a failed cleanup leaves behind (TAR-216).
    */
-  StoredPayment store(byte[] content, VoucherType type, Function<String, StoredPayment> insert) {
+  StoredPayment store(
+      Long guestId, byte[] content, VoucherType type, Function<String, StoredPayment> insert) {
     String key = storeFile(content, type);
-    boolean removedIfNotCommitted = removeUnlessCommitted(key);
+    boolean removedIfNotCommitted = removeUnlessCommitted(guestId, key);
     StoredPayment saved = null;
     try {
       saved = insert.apply(key);
@@ -92,7 +94,7 @@ final class VoucherRecorder {
       throw conflictOf(raced.liveStatus());
     } finally {
       if (saved == null && !removedIfNotCommitted) {
-        discard(key);
+        discard(guestId, key);
       }
     }
     return saved;
@@ -103,7 +105,7 @@ final class VoucherRecorder {
    * failed, or something after it did, or the commit itself failed. Returns true if it will be;
    * with no transaction the caller removes it.
    */
-  private boolean removeUnlessCommitted(String key) {
+  private boolean removeUnlessCommitted(Long guestId, String key) {
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {
       return false;
     }
@@ -112,7 +114,7 @@ final class VoucherRecorder {
           @Override
           public void afterCompletion(int status) {
             if (status != STATUS_COMMITTED) {
-              discard(key);
+              discard(guestId, key);
             }
           }
         });
@@ -129,9 +131,10 @@ final class VoucherRecorder {
 
   /**
    * A failure to clean up must not hide the failure that made the cleanup necessary. It is logged
-   * without the storage key (TAR-205).
+   * without the storage key (TAR-205), with the internal id of the guest so that the orphan can be
+   * traced (TAR-216).
    */
-  private void discard(String key) {
+  private void discard(Long guestId, String key) {
     try {
       files.delete(key);
     } catch (PaymentFileStorageException cleanupFailed) {
@@ -139,7 +142,8 @@ final class VoucherRecorder {
       // (account and bucket) and may name the key.
       Throwable cause = cleanupFailed.getCause();
       LOGGER.error(
-          "A voucher stays in the bucket without a payment ({}, cause {})",
+          "A voucher of guest {} stays in the bucket without a payment ({}, cause {})",
+          guestId,
           cleanupFailed.getClass().getName(),
           cause == null ? "-" : cause.getClass().getName());
     }
