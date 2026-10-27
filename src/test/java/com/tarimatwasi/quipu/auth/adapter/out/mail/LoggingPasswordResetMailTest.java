@@ -37,6 +37,31 @@ class LoggingPasswordResetMailTest {
         .doesNotContain("admin@quipu.local");
   }
 
+  /** RF-22: the same masked line, and the local profile always reports it as sent. */
+  @Test
+  void sendAccessLinkNow_writesTheLinkAndAMaskedEmailAndAnswersSent() {
+    var logger = (Logger) LoggerFactory.getLogger(LoggingPasswordResetMail.class);
+    var appender = new ListAppender<ILoggingEvent>();
+    appender.start();
+    logger.addAppender(appender);
+    boolean sent;
+    try {
+      sent =
+          new LoggingPasswordResetMail("http://localhost:4200/")
+              .sendAccessLinkNow("admin@quipu.local", "CODE123", Duration.ofMinutes(30));
+    } finally {
+      logger.detachAppender(appender);
+    }
+
+    assertThat(sent).isTrue();
+    assertThat(appender.list)
+        .singleElement()
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .asString()
+        .contains(LINK)
+        .doesNotContain("admin@quipu.local");
+  }
+
   @Test
   void sendResetLink_withoutAtSign_hidesTheWholeValue() {
     assertThat(logFor("not-an-email")).contains(LINK).doesNotContain("not-an-email");

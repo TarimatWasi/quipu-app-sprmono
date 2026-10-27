@@ -76,11 +76,17 @@ app:
   # rutas que reciben archivo; es independiente del límite por dirección y vale como mucho 60.
   # upload-burst: subidas seguidas antes de que la recarga por minuto las espacie. Además, cada
   # usuario tiene una sola subida en curso.
+  # administrator-creations-per-minute (RF-22): altas de administrador por usuario de la sesión, de 1
+  # a 60.
   rate-limit:
     per-minute: 60
     per-account-per-minute: 10
     uploads-per-minute: 10
     upload-burst: 3
+    administrator-creations-per-minute: 3
+  # RF-22: como máximo tantos administradores; cuenta todas las cuentas ADMIN, activas o no.
+  administrators:
+    max: 5
   # Cookie de sesión (TAR-75): el navegador habla con el origen del frontend y el alojamiento
   # reescribe /bff hacia este backend, así que la cookie es del mismo sitio: SameSite=Lax. Max-Age
   # coincide con la vigencia del token. Con el frontend en otro dominio: same-site: none.

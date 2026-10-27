@@ -35,6 +35,13 @@ public class LoggingPasswordResetMail implements PasswordResetMailPort {
         ResetLink.of(frontendOrigin, code));
   }
 
+  /** The same console line: whoever develops opens it to choose the password of the new ADMIN. */
+  @Override
+  public boolean sendAccessLinkNow(String toEmail, String code, Duration validFor) {
+    sendResetLink(toEmail, code, validFor);
+    return true;
+  }
+
   /** {@code admin@quipu.local} becomes {@code a***@quipu.local}; no at sign hides it all. */
   private static String masked(String email) {
     int at = email.indexOf('@');

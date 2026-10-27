@@ -35,4 +35,10 @@ public class ResendPasswordResetMailer implements PasswordResetMailPort {
       LOG.warn("Recovery email was not queued: the task executor is at its concurrency limit");
     }
   }
+
+  /** In the caller's thread: the administrator who created the account learns whether it left. */
+  @Override
+  public boolean sendAccessLinkNow(String toEmail, String code, Duration validFor) {
+    return sender.sendAdministratorAccessNow(toEmail, code, validFor);
+  }
 }

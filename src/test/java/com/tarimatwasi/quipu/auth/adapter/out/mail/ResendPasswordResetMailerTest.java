@@ -2,8 +2,12 @@ package com.tarimatwasi.quipu.auth.adapter.out.mail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -27,6 +31,20 @@ class ResendPasswordResetMailerTest {
         .sendResetLink("guest@example.test", "code", Duration.ofMinutes(30));
 
     verify(sender).send("guest@example.test", "code", Duration.ofMinutes(30));
+  }
+
+  /** RF-22: in the caller's thread, and what the provider answered reaches the caller. */
+  @Test
+  void theAccessLinkOfAnAdministratorWaitsForTheSenderAndTellsWhetherItLeft() {
+    when(sender.sendAdministratorAccessNow("admin@example.test", "code", Duration.ofMinutes(30)))
+        .thenReturn(true, false);
+    var mailer = new ResendPasswordResetMailer(sender);
+
+    assertThat(mailer.sendAccessLinkNow("admin@example.test", "code", Duration.ofMinutes(30)))
+        .isTrue();
+    assertThat(mailer.sendAccessLinkNow("admin@example.test", "code", Duration.ofMinutes(30)))
+        .isFalse();
+    verify(sender, never()).send(anyString(), anyString(), any());
   }
 
   @Test

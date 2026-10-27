@@ -94,7 +94,39 @@ public class ResendMailSender {
     post(toEmail, subject, text, "access");
   }
 
-  private void post(String toEmail, String subject, String text, String kind) {
+  /**
+   * The notice to the other administrators that one was created (RF-22), on the same executor and
+   * with the same rule: a failure is only logged, without the address, the text or the provider's
+   * answer.
+   */
+  @Async
+  public void sendNotice(String toEmail, String subject, String text) {
+    post(toEmail, subject, text, "administrator notice");
+  }
+
+  /**
+   * The link a new administrator uses to choose its first password (RF-22). Unlike the others it
+   * runs in the caller's thread, because the administrator who created the account must learn
+   * whether it left; the timeouts of the client bound the wait. A failure is logged as the others.
+   *
+   * @return true if Resend accepted the email
+   */
+  public boolean sendAdministratorAccessNow(String toEmail, String code, Duration validFor) {
+    String link = ResetLink.of(frontendOrigin, code);
+    String text =
+        "Hola,\n\n"
+            + "Se creó tu cuenta de administrador de Quipu. Abre este enlace para elegir tu"
+            + " contraseña; vale "
+            + validFor.toMinutes()
+            + " minutos y solo se puede usar una vez:\n\n"
+            + link
+            + "\n\n"
+            + "Si el enlace vence, usa \"Olvidé mi contraseña\" con este correo para recibir"
+            + " otro.\n";
+    return post(toEmail, "Tu cuenta de administrador de Quipu", text, "administrator access");
+  }
+
+  private boolean post(String toEmail, String subject, String text, String kind) {
     try {
       restClient
           .post()
@@ -102,8 +134,10 @@ public class ResendMailSender {
           .body(Map.of("from", fromEmail, "to", toEmail, "subject", subject, "text", text))
           .retrieve()
           .toBodilessEntity();
+      return true;
     } catch (RestClientException | IllegalArgumentException e) {
       LOG.warn("Resend did not accept the {} email ({})", kind, e.getClass().getSimpleName());
+      return false;
     }
   }
 }

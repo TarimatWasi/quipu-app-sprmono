@@ -366,6 +366,12 @@ class PasswordRecoveryServiceTest {
       }
       sent.add(new Sent(toEmail, code, validFor));
     }
+
+    /** RF-22 only: the recovery never waits for the provider. */
+    @Override
+    public boolean sendAccessLinkNow(String toEmail, String code, Duration validFor) {
+      throw new UnsupportedOperationException("The recovery sends in the background");
+    }
   }
 
   // ------------------------------------------------------------------ TAR-36
