@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
+import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
+import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
@@ -14,6 +16,7 @@ import com.tarimatwasi.quipu.shared.access.AccessMode;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
+import java.math.BigDecimal;
 import java.time.YearMonth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,7 @@ class MethodSecurityContractTest {
   @Autowired ManageGuestsUseCase guests;
   @Autowired ManageEnvironmentsUseCase environments;
   @Autowired ManageExpensesUseCase expenses;
+  @Autowired ManageFinesUseCase fines;
   @Autowired OwnPaymentsUseCase ownPayments;
   @Autowired ManagePaymentsUseCase payments;
   @Autowired OwnGuestUseCase ownGuests;
@@ -79,6 +83,18 @@ class MethodSecurityContractTest {
         .isInstanceOf(AccessDeniedException.class);
   }
 
+  /** TAR-47: the fines are handled only by the administrator (RF-19). */
+  @Test
+  @WithMockUser(roles = "GUEST")
+  void fineUseCases_withoutAdminRole_areForbidden() {
+    assertThatThrownBy(() -> fines.list(YearMonth.of(2026, 10)))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(
+            () -> fines.create(new FineCommand(1L, BigDecimal.TEN, YearMonth.of(2026, 10), null)))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> fines.delete(1L)).isInstanceOf(AccessDeniedException.class);
+  }
+
   @Test
   @WithMockUser(roles = "GUEST")
   void paymentHistoryOfTheAdministrator_withoutAdminRole_isForbidden() {
@@ -108,5 +124,6 @@ class MethodSecurityContractTest {
                 .content())
         .isEmpty();
     assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();
+    assertThat(fines.list(YearMonth.of(2026, 10))).isEmpty();
   }
 }

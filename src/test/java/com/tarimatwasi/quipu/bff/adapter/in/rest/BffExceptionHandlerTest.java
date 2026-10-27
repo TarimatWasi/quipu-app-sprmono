@@ -81,6 +81,16 @@ class BffExceptionHandlerTest {
     assertThat(response.getBody()).extracting(BffErrorResponse::code).isEqualTo("STAY_NOT_FOUND");
   }
 
+  /** TAR-47: a forged fine id answers as the missing fine, with the code of the contract. */
+  @Test
+  void aForgedFineIdAnswersAsAMissingFine() {
+    var response = handler.handleUnknownMaskedId(new UnknownMaskedIdException(IdKind.FINE));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(response.getBody())
+        .isEqualTo(new BffErrorResponse("RESOURCE_NOT_FOUND", "La multa no existe"));
+  }
+
   /**
    * TAR-43: losing the race for a payment is "already resolved"; for anything else it is a
    * conflict.

@@ -762,6 +762,7 @@ public class BffExceptionHandler {
       // The session reads the user id itself and refuses the token: no BFF path carries one.
       case USER -> throw new IllegalStateException("A user id is never part of a BFF path");
       case GUEST_DOCUMENT -> handleGuestDocumentNotFound();
+      case FINE -> BffFineExceptionHandler.fineNotFound();
       // An action is only listed, never addressed by its id.
       case GUEST_DOCUMENT_ACTION ->
           throw new IllegalStateException("A document action id is never part of a BFF path");
