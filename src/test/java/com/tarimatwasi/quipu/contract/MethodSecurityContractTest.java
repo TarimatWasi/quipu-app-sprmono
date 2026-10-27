@@ -100,6 +100,7 @@ class MethodSecurityContractTest {
   void paymentHistoryOfTheAdministrator_withoutAdminRole_isForbidden() {
     assertThatThrownBy(() -> payments.history(1L, PageQuery.first()))
         .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> payments.accountStatus(1L)).isInstanceOf(AccessDeniedException.class);
   }
 
   @Test

@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** RF-05, CU-05, CU-14: review the vouchers and register a payment by hand. */
@@ -129,6 +130,16 @@ public interface ManagePaymentsUseCase {
    * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
    */
   CursorPage<PaymentView> history(Long guestId, PageQuery page);
+
+  /**
+   * The state of every period that the contracts of a guest charge up to the current month (RF-06),
+   * classified and ordered as the guest sees it in {@link OwnPaymentsUseCase#accountStatus}. A
+   * guest without contracts, such as a temporary one, has none; an inactive guest still has its
+   * periods.
+   *
+   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
+   */
+  List<OwnPaymentsUseCase.PeriodView> accountStatus(Long guestId);
 
   /**
    * One payment with the signed URL of its voucher.

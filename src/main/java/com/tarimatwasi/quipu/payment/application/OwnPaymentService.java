@@ -3,7 +3,6 @@ package com.tarimatwasi.quipu.payment.application;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
 import com.tarimatwasi.quipu.payment.domain.PeriodState;
-import com.tarimatwasi.quipu.payment.domain.PeriodStatus;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.StayPayments.StayStatus;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
@@ -33,7 +32,6 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -51,6 +49,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
   private final PaymentStayPort stays;
   private final Clock clock;
   private final VoucherRecorder recorder;
+  private final AccountStatus accountStatus;
 
   OwnPaymentService(
       PaymentRepositoryPort payments,
@@ -65,6 +64,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     this.stays = stays;
     this.clock = clock;
     this.recorder = new VoucherRecorder(files);
+    this.accountStatus = new AccountStatus(payments, contracts, clock);
   }
 
   // --- the state of the payments ---
@@ -73,23 +73,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
   @Transactional(readOnly = true)
   public List<PeriodView> accountStatus(Long guestId) {
     admitted(guestId, true);
-    LocalDate today = BusinessDay.today(clock);
-    List<PeriodView> periods = new ArrayList<>();
-    for (ContractInfo contract : contracts.contractsOf(guestId)) {
-      for (PeriodStatus period :
-          contract.terms().statuses(payments.findAllByContract(contract.id()), today)) {
-        periods.add(
-            new PeriodView(
-                period.period(),
-                state(period.state()),
-                period.dueDate(),
-                contract.monthlyAmount(),
-                contract.id(),
-                period.paymentId(),
-                period.rejectionReason()));
-      }
-    }
-    return periods;
+    return accountStatus.of(guestId);
   }
 
   @Override
