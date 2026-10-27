@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.fine.port.in.FineGuestNotFoundException;
 import com.tarimatwasi.quipu.fine.port.in.FineNotFoundException;
 import com.tarimatwasi.quipu.fine.port.in.InvalidFineDescriptionException;
 import com.tarimatwasi.quipu.fine.port.in.InvalidFineException;
+import com.tarimatwasi.quipu.fine.port.in.InvalidFineMonthException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -47,6 +48,13 @@ public class BffFineExceptionHandler {
                 "VALIDATION_ERROR",
                 "El monto debe ser mayor que 0 y tener como máximo 2 decimales",
                 "amount"));
+  }
+
+  /** A month of the pattern that the base does not keep as it is, such as year 0000. */
+  @ExceptionHandler(InvalidFineMonthException.class)
+  public ResponseEntity<BffErrorResponse> handleInvalidFineMonth() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Datos de entrada inválidos", "month"));
   }
 
   /** The description is longer than 500 characters. */

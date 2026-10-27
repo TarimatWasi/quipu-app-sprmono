@@ -35,6 +35,16 @@ class FineTest {
   }
 
   @Test
+  void theMonthsGoFromYearOneToYear9999() {
+    assertThat(Fine.isValidMonth(YearMonth.of(1, 1))).isTrue();
+    assertThat(Fine.isValidMonth(YearMonth.of(9999, 12))).isTrue();
+    assertThat(Fine.isValidMonth(YearMonth.of(0, 12))).isFalse();
+    assertThat(Fine.isValidMonth(YearMonth.of(10000, 1))).isFalse();
+    assertThatThrownBy(() -> new Fine(1L, 2L, BigDecimal.ONE, YearMonth.of(0, 1), null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void aFineKeepsItsMonthAndStartsOnItsFirstDay() {
     var fine = new Fine(1L, 2L, new BigDecimal("15.00"), SEPTEMBER, "Ruido");
 

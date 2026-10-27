@@ -182,6 +182,36 @@ class FinesBffControllerTest {
         .andExpect(status().isCreated());
   }
 
+  /** Year 1 and year 9999 are stored and read back as they are. */
+  @Test
+  void theEdgeYearsAreStoredAndListedAsTheyAre() throws Exception {
+    for (var month : new String[] {"0001-01", "9999-12"}) {
+      create(fine("10", month))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.month").value(month));
+      mockMvc
+          .perform(get(URL).param("month", month).cookie(admin()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.length()").value(1))
+          .andExpect(jsonPath("$[0].month").value(month));
+    }
+  }
+
+  /** Year 0000 matches the pattern, but PostgreSQL would read it back as year 1 (TAR-47). */
+  @Test
+  void yearZeroIs400OnCreateAndList() throws Exception {
+    create(fine("10", "0000-12"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("month"));
+    mockMvc
+        .perform(get(URL).param("month", "0000-12").cookie(admin()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("month"));
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM fines", Integer.class)).isZero();
+  }
+
   @Test
   void theMonthOfTheListingIsRequiredAndWellFormed() throws Exception {
     for (var month : new String[] {"2026-13", "2026-9", "2026-09-01", "+10000-01", "  "}) {

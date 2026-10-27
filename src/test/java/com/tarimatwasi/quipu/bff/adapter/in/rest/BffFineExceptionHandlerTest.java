@@ -37,6 +37,10 @@ class BffFineExceptionHandlerTest {
     assertThat(amount.getBody())
         .extracting(BffErrorResponse::code, BffErrorResponse::field)
         .containsExactly("VALIDATION_ERROR", "amount");
+    assertThat(handler.handleInvalidFineMonth().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(handler.handleInvalidFineMonth().getBody())
+        .extracting(BffErrorResponse::code, BffErrorResponse::field)
+        .containsExactly("VALIDATION_ERROR", "month");
     assertThat(description.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(description.getBody())
         .extracting(BffErrorResponse::code, BffErrorResponse::field)

@@ -13,6 +13,14 @@ import org.jspecify.annotations.Nullable;
 public record Fine(
     Long id, Long guestId, BigDecimal amount, YearMonth month, @Nullable String description) {
 
+  /**
+   * Year 0 of Java is 1 BC for PostgreSQL, and it reads back as year 1: the months start in year 1.
+   * The contract allows four digits at most.
+   */
+  private static final int MIN_YEAR = 1;
+
+  private static final int MAX_YEAR = 9999;
+
   /** NUMERIC(10,2): eight digits before the point. */
   private static final BigDecimal MAX_AMOUNT = new BigDecimal("99999999.99");
 
@@ -20,6 +28,14 @@ public record Fine(
     if (!isValidAmount(amount)) {
       throw new IllegalArgumentException("The fine amount is not valid");
     }
+    if (!isValidMonth(month)) {
+      throw new IllegalArgumentException("The fine month is not valid");
+    }
+  }
+
+  /** A month that the base stores and reads back as it is: from year 1 to year 9999. */
+  public static boolean isValidMonth(YearMonth month) {
+    return month.getYear() >= MIN_YEAR && month.getYear() <= MAX_YEAR;
   }
 
   /** Greater than 0, at most two decimals (trailing zeros do not count) and within the column. */

@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.fine.port.in.FineGuestNotFoundException;
 import com.tarimatwasi.quipu.fine.port.in.FineNotFoundException;
 import com.tarimatwasi.quipu.fine.port.in.InvalidFineDescriptionException;
 import com.tarimatwasi.quipu.fine.port.in.InvalidFineException;
+import com.tarimatwasi.quipu.fine.port.in.InvalidFineMonthException;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.fine.port.out.FineGuestMissingException;
 import com.tarimatwasi.quipu.fine.port.out.FineGuestPort;
@@ -37,6 +38,7 @@ public class FineService implements ManageFinesUseCase {
     if (!Fine.isValidAmount(command.amount())) {
       throw new InvalidFineException();
     }
+    requireValid(command.month());
     String description = description(command.description());
     // A guest is never deleted (it is deactivated), so no lock is taken; if it were missing at the
     // insert all the same, the foreign key answers the same 404.
@@ -62,7 +64,14 @@ public class FineService implements ManageFinesUseCase {
   @Override
   @Transactional(readOnly = true)
   public List<FineView> list(YearMonth month) {
+    requireValid(month);
     return fines.findByMonth(month).stream().map(FineService::view).toList();
+  }
+
+  private static void requireValid(YearMonth month) {
+    if (!Fine.isValidMonth(month)) {
+      throw new InvalidFineMonthException();
+    }
   }
 
   private static @Nullable String description(@Nullable String description) {

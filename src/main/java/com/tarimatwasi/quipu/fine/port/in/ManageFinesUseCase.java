@@ -26,6 +26,7 @@ public interface ManageFinesUseCase {
    * Registers a fine as income of its month (RN-30), for any existing guest, active or inactive.
    *
    * @throws InvalidFineException if the amount is not valid
+   * @throws InvalidFineMonthException if the year of the month is not from 1 to 9999
    * @throws InvalidFineDescriptionException if the description has more than 500 characters
    * @throws FineGuestNotFoundException if there is no guest with that id
    */
@@ -38,6 +39,10 @@ public interface ManageFinesUseCase {
    */
   void delete(Long id);
 
-  /** The fines of the month, oldest first and not paged: a month has few. */
+  /**
+   * The fines of the month, oldest first and not paged: a month has few.
+   *
+   * @throws InvalidFineMonthException if the year of the month is not from 1 to 9999
+   */
   List<FineView> list(YearMonth month);
 }

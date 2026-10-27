@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.fine.port.in.FineGuestNotFoundException;
 import com.tarimatwasi.quipu.fine.port.in.FineNotFoundException;
 import com.tarimatwasi.quipu.fine.port.in.InvalidFineDescriptionException;
 import com.tarimatwasi.quipu.fine.port.in.InvalidFineException;
+import com.tarimatwasi.quipu.fine.port.in.InvalidFineMonthException;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineView;
 import com.tarimatwasi.quipu.fine.port.out.FineGuestMissingException;
@@ -74,6 +75,18 @@ class FineServiceTest {
     }
     verify(guests, never()).exists(any());
     verify(repository, never()).insert(any(), any(), any(), any());
+  }
+
+  @Test
+  void aMonthOfYearZeroIsRejectedOnCreateAndList() {
+    assertThatThrownBy(
+            () -> service().create(new FineCommand(GUEST, AMOUNT, YearMonth.of(0, 1), null)))
+        .isInstanceOf(InvalidFineMonthException.class);
+    assertThatThrownBy(() -> service().list(YearMonth.of(0, 1)))
+        .isInstanceOf(InvalidFineMonthException.class);
+    verify(guests, never()).exists(any());
+    verify(repository, never()).insert(any(), any(), any(), any());
+    verify(repository, never()).findByMonth(any());
   }
 
   @Test
