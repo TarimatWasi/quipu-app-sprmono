@@ -10,3 +10,5 @@ app:
     # ráfaga menor. UploadRateLimitBffTest fija su propio límite.
     uploads-per-minute: 60
     upload-burst: 60
+    # y varias altas de administrador seguidas (RF-22); AdministratorRateLimitBffTest fija el suyo.
+    administrator-creations-per-minute: 60

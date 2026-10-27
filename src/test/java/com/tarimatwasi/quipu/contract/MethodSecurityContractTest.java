@@ -3,7 +3,10 @@ package com.tarimatwasi.quipu.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase;
+import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase.CreateAdministratorCommand;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
+import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
@@ -43,6 +46,7 @@ class MethodSecurityContractTest {
   @Autowired ManagePaymentsUseCase payments;
   @Autowired OwnGuestUseCase ownGuests;
   @Autowired GuestAccessUseCase guestAccess;
+  @Autowired CreateAdministratorUseCase administrators;
   @Autowired JdbcTemplate jdbc;
 
   @BeforeEach
@@ -66,6 +70,19 @@ class MethodSecurityContractTest {
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(() -> guestAccess.revokeAccess(1L))
         .isInstanceOf(AccessDeniedException.class);
+  }
+
+  /** TAR-188: only an administrator creates another one (RF-22). */
+  @Test
+  @WithMockUser(roles = "GUEST")
+  void createAdministrator_withoutAdminRole_isForbidden() {
+    assertThatThrownBy(
+            () ->
+                administrators.create(
+                    new CreateAdministratorCommand(
+                        1L, DocumentKind.DNI, "22222222", "n@example.test", "Creador12345")))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
   }
 
   @Test

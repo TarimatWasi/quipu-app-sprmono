@@ -118,4 +118,57 @@ class ResendMailSenderTest {
         .doesNotContain("guest@example.test")
         .doesNotContain(CODE);
   }
+
+  /** RF-22: the link of a new administrator, and whether Resend took it. */
+  @Test
+  void theAccessOfAnAdministratorIsSentAtOnceAndTellsThatItLeft() {
+    server
+        .expect(requestTo("https://api.resend.com/emails"))
+        .andExpect(jsonPath("$.to").value("admin@example.test"))
+        .andExpect(jsonPath("$.subject").value("Tu cuenta de administrador de Quipu"))
+        .andExpect(
+            request ->
+                assertThat(((MockClientHttpRequest) request).getBodyAsString())
+                    .contains("https://app.example.test/reset-password?code=" + CODE)
+                    .contains("30 minutos")
+                    .contains("administrador"))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+    assertThat(
+            sender.sendAdministratorAccessNow("admin@example.test", CODE, Duration.ofMinutes(30)))
+        .isTrue();
+
+    server.verify();
+    assertThat(logs.list).isEmpty();
+  }
+
+  @Test
+  void anAccessOfAnAdministratorThatResendRefusesTellsThatItDidNotLeave() {
+    server.expect(requestTo("https://api.resend.com/emails")).andRespond(withServerError());
+
+    assertThat(
+            sender.sendAdministratorAccessNow("admin@example.test", CODE, Duration.ofMinutes(30)))
+        .isFalse();
+
+    assertThat(logs.list)
+        .singleElement()
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .asString()
+        .doesNotContain("admin@example.test")
+        .doesNotContain(CODE);
+  }
+
+  @Test
+  void theNoticeToTheAdministratorsGoesAsGiven() {
+    server
+        .expect(requestTo("https://api.resend.com/emails"))
+        .andExpect(jsonPath("$.to").value("otra@example.test"))
+        .andExpect(jsonPath("$.subject").value("Aviso"))
+        .andExpect(jsonPath("$.text").value("Texto"))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+    sender.sendNotice("otra@example.test", "Aviso", "Texto");
+
+    server.verify();
+  }
 }

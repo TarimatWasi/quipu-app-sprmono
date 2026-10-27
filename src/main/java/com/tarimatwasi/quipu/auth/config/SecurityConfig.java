@@ -44,7 +44,8 @@ class SecurityConfig {
       JwtDecoder jwtDecoder,
       AccountJwtAuthenticationConverter sessionConverter,
       RateLimitProperties rateLimit,
-      UploadRateLimitProperties uploadRateLimit)
+      UploadRateLimitProperties uploadRateLimit,
+      AdministratorRateLimitProperties administratorRateLimit)
       throws Exception {
     // CSRF is disabled on purpose (ADR-006). Mitigation, in layers: the session cookie is
     // SameSite=Lax (the browser talks to the frontend origin and the hosting layer rewrites
@@ -89,7 +90,10 @@ class SecurityConfig {
         .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class)
         // TAR-206: counts the uploads of the session user once it is authorized, before the
         // dispatcher reads the form.
-        .addFilterAfter(new UploadRateLimitFilter(uploadRateLimit), AuthorizationFilter.class);
+        .addFilterAfter(new UploadRateLimitFilter(uploadRateLimit), AuthorizationFilter.class)
+        // RF-22: counts the creations of administrators of the session user once it is authorized.
+        .addFilterAfter(
+            new AdministratorRateLimitFilter(administratorRateLimit), AuthorizationFilter.class);
     return http.build();
   }
 

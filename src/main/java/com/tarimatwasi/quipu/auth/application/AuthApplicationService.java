@@ -36,10 +36,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthApplicationService
     implements LoginUseCase, ChangePasswordUseCase, CurrentSessionUseCase {
 
-  /** SEG-06: consecutive failed logins that lock the account, and for how long. */
-  private static final int MAX_FAILED_LOGINS = 5;
+  /**
+   * SEG-06: consecutive failed logins that lock the account, and for how long. The
+   * re-authentication of RF-22 counts against the same limit ({@link AdministratorRegistrar}).
+   */
+  static final int MAX_FAILED_LOGINS = 5;
 
-  private static final Duration LOCK_DURATION = Duration.ofMinutes(15);
+  static final Duration LOCK_DURATION = Duration.ofMinutes(15);
 
   private final UserRepositoryPort userRepository;
   private final PasswordEncoder passwordEncoder;
