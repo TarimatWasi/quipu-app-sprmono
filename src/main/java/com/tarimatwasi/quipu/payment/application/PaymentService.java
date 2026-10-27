@@ -158,6 +158,17 @@ public class PaymentService implements ManagePaymentsUseCase {
     return accountStatus.of(guestId);
   }
 
+  /**
+   * RF-06: the periods of the current contract of an environment, active or not. The environment is
+   * looked up first, so one that does not exist is a 404.
+   */
+  @Override
+  @Transactional(readOnly = true)
+  public List<PeriodView> environmentAccountStatus(Long environmentId) {
+    environments.requireExists(environmentId);
+    return accountStatus.ofEnvironment(environmentId);
+  }
+
   @Override
   @Transactional(readOnly = true)
   public PaymentDetailView get(Long id) {

@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
@@ -38,8 +40,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * TAR-44 (RF-06): the status by period, as the administrator reads it of a guest of either type
- * through {@link PaymentService}.
+ * TAR-44 (RF-06): the status by period, as the administrator reads it of a guest of either type or
+ * of the current contract of an environment through {@link PaymentService}.
  */
 @ExtendWith(MockitoExtension.class)
 class AccountStatusTest {
@@ -130,6 +132,40 @@ class AccountStatusTest {
 
     assertThatThrownBy(() -> service.accountStatus(GUEST))
         .isInstanceOf(GuestNotFoundException.class);
+    verifyNoInteractions(contracts, payments);
+  }
+
+  @Test
+  void anEnvironmentHasThePeriodsOfItsCurrentContractOnly() {
+    when(contracts.currentContractsOf(ENVIRONMENT)).thenReturn(List.of(contractFromSeptember()));
+    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(approved(SEPTEMBER)));
+
+    List<PeriodView> periods = service.environmentAccountStatus(ENVIRONMENT);
+
+    assertThat(periods)
+        .extracting(PeriodView::period, PeriodView::status, PeriodView::contractId)
+        .containsExactly(
+            tuple(SEPTEMBER, ChargeState.PAID, CONTRACT),
+            tuple(OCTOBER, ChargeState.OVERDUE, CONTRACT));
+    assertThat(periods.get(0).paymentId()).isEqualTo(PAYMENT);
+    verify(environments).requireExists(ENVIRONMENT);
+    verify(contracts, never()).contractsOf(any());
+  }
+
+  @Test
+  void anEnvironmentWithoutACurrentContractHasNoPeriods() {
+    when(contracts.currentContractsOf(ENVIRONMENT)).thenReturn(List.of());
+
+    assertThat(service.environmentAccountStatus(ENVIRONMENT)).isEmpty();
+    verify(payments, never()).findAllByContract(any());
+  }
+
+  @Test
+  void anEnvironmentThatDoesNotExistIsNotFoundBeforeAnythingIsRead() {
+    doThrow(new EnvironmentNotFoundException()).when(environments).requireExists(ENVIRONMENT);
+
+    assertThatThrownBy(() -> service.environmentAccountStatus(ENVIRONMENT))
+        .isInstanceOf(EnvironmentNotFoundException.class);
     verifyNoInteractions(contracts, payments);
   }
 }

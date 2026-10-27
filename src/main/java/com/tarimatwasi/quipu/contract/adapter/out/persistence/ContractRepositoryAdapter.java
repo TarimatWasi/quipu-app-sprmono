@@ -108,12 +108,23 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
 
   @Override
   public boolean existsInForce(Long environmentId, LocalDate today) {
-    Specification<ContractJpaEntity> inForce =
-        (root, query, builder) ->
-            builder.and(
-                builder.equal(root.get("environmentId"), environmentId),
-                hasStatus(ContractStatus.ACTIVE, today, root, builder));
-    return jpaRepository.exists(inForce);
+    return jpaRepository.exists(inForce(environmentId, today));
+  }
+
+  @Override
+  public List<Contract> findAllInForce(Long environmentId, LocalDate today) {
+    Sort order = Sort.by(Sort.Order.asc("startDate"), Sort.Order.asc("id"));
+    return jpaRepository.findAll(inForce(environmentId, today), order).stream()
+        .map(ContractJpaEntity::toDomain)
+        .toList();
+  }
+
+  /** The contracts of the environment that are ACTIVE on today. */
+  private static Specification<ContractJpaEntity> inForce(Long environmentId, LocalDate today) {
+    return (root, query, builder) ->
+        builder.and(
+            builder.equal(root.get("environmentId"), environmentId),
+            hasStatus(ContractStatus.ACTIVE, today, root, builder));
   }
 
   @Override

@@ -20,4 +20,9 @@ public class EnvironmentPaymentAdapter implements PaymentEnvironmentPort {
   public Map<Long, String> codesOf(Collection<Long> environmentIds) {
     return environments.codesOf(environmentIds);
   }
+
+  @Override
+  public void requireExists(Long environmentId) {
+    environments.get(environmentId);
+  }
 }

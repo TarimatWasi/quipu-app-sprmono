@@ -14,9 +14,9 @@ import java.util.List;
 
 /**
  * RF-06: what the guest and the administrator share when they read the state of the periods of a
- * guest. Every period that the contracts of the guest charge up to the current month, the oldest
- * contract first and each one oldest period first; a guest without contracts has none. Who may read
- * it is checked by the caller.
+ * guest or of an environment. Every period that the contracts charge up to the current month, the
+ * oldest contract first and each one oldest period first; no contracts, no periods. Who may read it
+ * is checked by the caller.
  */
 final class AccountStatus {
 
@@ -30,10 +30,20 @@ final class AccountStatus {
     this.clock = clock;
   }
 
+  /** The periods of every contract of the guest, whatever its state. */
   List<PeriodView> of(Long guestId) {
+    return periodsOf(contracts.contractsOf(guestId));
+  }
+
+  /** The periods of the current contract of the environment; none if it has no current one. */
+  List<PeriodView> ofEnvironment(Long environmentId) {
+    return periodsOf(contracts.currentContractsOf(environmentId));
+  }
+
+  private List<PeriodView> periodsOf(List<ContractInfo> read) {
     LocalDate today = BusinessDay.today(clock);
     List<PeriodView> periods = new ArrayList<>();
-    for (ContractInfo contract : contracts.contractsOf(guestId)) {
+    for (ContractInfo contract : read) {
       for (PeriodStatus period :
           contract.terms().statuses(payments.findAllByContract(contract.id()), today)) {
         periods.add(
