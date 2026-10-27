@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort;
+import com.tarimatwasi.quipu.support.MutableClock;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -13,9 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -23,7 +24,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ContractTermsServiceTest {
 
   @Mock ContractRepositoryPort contracts;
-  @InjectMocks ContractTermsService service;
+
+  // 2026-10-15 03:00 UTC is still 2026-10-14 in Lima.
+  private final MutableClock clock = new MutableClock(Instant.parse("2026-10-15T03:00:00Z"));
+  private ContractTermsService service;
+
+  @BeforeEach
+  void setUp() {
+    service = new ContractTermsService(contracts, clock);
+  }
 
   private static Contract contract(
       long id, long environment, String start, @Nullable Instant terminatedAt) {
@@ -80,6 +89,25 @@ class ContractTermsServiceTest {
             List.of(contract(1, 10, "2025-01-01", null), contract(2, 11, "2026-01-01", null)));
 
     assertThat(service.environmentsOf(Set.of(1L, 2L))).isEqualTo(Map.of(1L, 10L, 2L, 11L));
+  }
+
+  @Test
+  void currentTermsOfEnvironment_readTheContractsInForceOnTheDayOfLima() {
+    when(contracts.findAllInForce(10L, LocalDate.of(2026, 10, 14)))
+        .thenReturn(List.of(contract(2, 10, "2026-07-01", null)));
+
+    var terms = service.currentTermsOfEnvironment(10L);
+
+    assertThat(terms).extracting(t -> t.contractId()).containsExactly(2L);
+    assertThat(terms.get(0).environmentId()).isEqualTo(10L);
+    assertThat(terms.get(0).startDate()).isEqualTo(LocalDate.of(2026, 7, 1));
+  }
+
+  @Test
+  void currentTermsOfEnvironment_aFreeEnvironmentHasNone() {
+    when(contracts.findAllInForce(10L, LocalDate.of(2026, 10, 14))).thenReturn(List.of());
+
+    assertThat(service.currentTermsOfEnvironment(10L)).isEmpty();
   }
 
   @Test

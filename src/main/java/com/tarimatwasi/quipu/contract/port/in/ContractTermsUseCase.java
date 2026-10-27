@@ -39,4 +39,11 @@ public interface ContractTermsUseCase {
 
   /** The environment of each contract; an id with no contract adds nothing. */
   Map<Long, Long> environmentsOf(Collection<Long> contractIds);
+
+  /**
+   * The current contract of the environment: the one ACTIVE today in the zone of the business
+   * (RN-07), whether it started or not. Empty if there is none (never one, expired or terminated);
+   * RN-20 keeps it to one, and should two be found the oldest start comes first.
+   */
+  List<ContractTermsView> currentTermsOfEnvironment(Long environmentId);
 }

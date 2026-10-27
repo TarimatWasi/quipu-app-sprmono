@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.contract.application;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.port.in.ContractTermsUseCase;
 import com.tarimatwasi.quipu.contract.port.out.ContractRepositoryPort;
+import java.time.Clock;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -17,9 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class ContractTermsService implements ContractTermsUseCase {
 
   private final ContractRepositoryPort contracts;
+  private final Clock clock;
 
-  ContractTermsService(ContractRepositoryPort contracts) {
+  ContractTermsService(ContractRepositoryPort contracts, Clock clock) {
     this.contracts = contracts;
+    this.clock = clock;
   }
 
   @Override
@@ -44,6 +47,14 @@ public class ContractTermsService implements ContractTermsUseCase {
       contracts.findAllByIds(contractIds).forEach(c -> environments.put(c.id(), c.environmentId()));
     }
     return environments;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<ContractTermsView> currentTermsOfEnvironment(Long environmentId) {
+    return contracts.findAllInForce(environmentId, ContractViews.today(clock)).stream()
+        .map(ContractTermsService::view)
+        .toList();
   }
 
   private static ContractTermsView view(Contract contract) {

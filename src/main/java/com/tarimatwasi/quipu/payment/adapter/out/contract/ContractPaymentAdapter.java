@@ -37,6 +37,11 @@ public class ContractPaymentAdapter implements PaymentContractPort {
     return contracts.environmentsOf(contractIds);
   }
 
+  @Override
+  public List<ContractInfo> currentContractsOf(Long environmentId) {
+    return contracts.currentTermsOfEnvironment(environmentId).stream().map(this::info).toList();
+  }
+
   /**
    * The month a contract was finished in is the one of that instant in the zone of the business.
    */

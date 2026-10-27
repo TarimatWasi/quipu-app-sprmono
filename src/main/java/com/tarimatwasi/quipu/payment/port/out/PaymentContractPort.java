@@ -22,4 +22,7 @@ public interface PaymentContractPort {
 
   /** The environment of each contract; an id with no contract adds nothing. */
   Map<Long, Long> environmentsOf(Collection<Long> contractIds);
+
+  /** The current (ACTIVE) contract of the environment, if it has one (RN-07). */
+  List<ContractInfo> currentContractsOf(Long environmentId);
 }

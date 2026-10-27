@@ -142,6 +142,15 @@ public interface ManagePaymentsUseCase {
   List<OwnPaymentsUseCase.PeriodView> accountStatus(Long guestId);
 
   /**
+   * The state of every period of the current contract of an environment (RF-06): the one ACTIVE
+   * today (RN-07), classified and ordered as in {@link #accountStatus}. An environment without a
+   * current contract (none, expired or terminated) has none; an inactive one still has its periods.
+   *
+   * @throws com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException no such one
+   */
+  List<OwnPaymentsUseCase.PeriodView> environmentAccountStatus(Long environmentId);
+
+  /**
    * One payment with the signed URL of its voucher.
    *
    * @throws PaymentNotFoundException if there is no payment with that id

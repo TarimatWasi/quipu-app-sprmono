@@ -118,6 +118,8 @@ class MethodSecurityContractTest {
     assertThatThrownBy(() -> payments.history(1L, PageQuery.first()))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(() -> payments.accountStatus(1L)).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> payments.environmentAccountStatus(1L))
+        .isInstanceOf(AccessDeniedException.class);
   }
 
   @Test

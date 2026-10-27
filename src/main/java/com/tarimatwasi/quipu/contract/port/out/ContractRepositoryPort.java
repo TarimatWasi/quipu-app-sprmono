@@ -52,6 +52,12 @@ public interface ContractRepositoryPort {
   /** Whether an ACTIVE contract (not terminated, not past its end) holds the environment. */
   boolean existsInForce(Long environmentId, LocalDate today);
 
+  /**
+   * The ACTIVE contracts (not terminated, not past their end) of the environment on {@code today},
+   * the oldest start first. RN-20 keeps it to one at most; none if the environment is free.
+   */
+  List<Contract> findAllInForce(Long environmentId, LocalDate today);
+
   /** Stores the terminated state of an existing contract. */
   Contract save(Contract contract);
 

@@ -220,6 +220,22 @@ public class PaymentsBffController {
                 .toList());
   }
 
+  /**
+   * RF-06: the status by period of the current contract of an environment, active or not. An id
+   * that was never issued reads as the environment that does not exist, as in getEnvironment.
+   */
+  @GetMapping("/bff/admin/environments/{id}/account-status")
+  public ResponseEntity<List<PeriodStatusResponse>> environmentAccountStatus(
+      @PathVariable UUID id) {
+    // The state of the payments of the guest who holds it: no cache keeps it.
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            payments.environmentAccountStatus(ids.unmask(IdKind.ENVIRONMENT, id)).stream()
+                .map(view -> PeriodStatusResponse.of(view, ids))
+                .toList());
+  }
+
   /** The state filter is a closed list; any other value is a 400 that names the parameter. */
   private static @Nullable PaymentState state(@Nullable String status) {
     if (status == null) {
