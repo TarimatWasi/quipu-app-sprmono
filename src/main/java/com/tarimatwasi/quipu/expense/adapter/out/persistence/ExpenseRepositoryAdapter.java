@@ -87,6 +87,12 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
         .map(ExpenseJpaEntity::toDomain);
   }
 
+  @Override
+  public BigDecimal sumByMonth(YearMonth month) {
+    BigDecimal sum = jpaRepository.sumAmountByMonth(month.atDay(1));
+    return sum == null ? BigDecimal.ZERO : sum;
+  }
+
   private static String cursorOf(ExpenseJpaEntity expense) {
     return CursorToken.encode(
         // PostgreSQL keeps microseconds: a finer value would sort after the row it came from.

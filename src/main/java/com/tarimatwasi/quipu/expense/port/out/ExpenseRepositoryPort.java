@@ -33,4 +33,7 @@ public interface ExpenseRepositoryPort {
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
   CursorPage<Expense> findByMonth(YearMonth month, PageQuery page);
+
+  /** The sum of the amounts of the expenses of the month, added up by the base; 0 if none. */
+  BigDecimal sumByMonth(YearMonth month);
 }

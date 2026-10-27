@@ -20,4 +20,7 @@ public interface FineRepositoryPort {
 
   /** The fines of the month, oldest first. */
   List<Fine> findByMonth(YearMonth month);
+
+  /** The sum of the amounts of the fines of the month, added up by the base; 0 if it has none. */
+  BigDecimal sumByMonth(YearMonth month);
 }

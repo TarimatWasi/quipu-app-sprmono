@@ -29,4 +29,7 @@ public interface StayRepositoryPort {
 
   /** Stores the new data of an existing stay. */
   Stay update(Stay stay);
+
+  /** The ids of the stays of any guest that start between both days, inclusive. */
+  List<Long> findIdsStartingBetween(LocalDate first, LocalDate last);
 }

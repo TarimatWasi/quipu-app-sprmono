@@ -166,4 +166,15 @@ class ExpenseServiceTest {
       assertThat(service().list(month, PageQuery.first()).content()).hasSize(1);
     }
   }
+
+  /** RF-18: the expenses of the month add up in the base, and a month of year 0000 is refused. */
+  @Test
+  void theTotalOfTheMonthIsTheSumTheBaseAnswers() {
+    YearMonth october = YearMonth.of(2026, 10);
+    when(repository.sumByMonth(october)).thenReturn(new BigDecimal("2000.00"));
+
+    assertThat(service().totalOf(october)).isEqualByComparingTo("2000.00");
+    assertThatThrownBy(() -> service().totalOf(YearMonth.of(0, 1)))
+        .isInstanceOf(InvalidExpenseMonthException.class);
+  }
 }

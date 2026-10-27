@@ -10,11 +10,13 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -39,6 +41,9 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   /** The name of the unique indexes of the live payments (V13). */
   private static final String LIVE_INDEX_PREFIX = "uq_payments_live";
+
+  /** How many stays a single sum binds at most. */
+  private static final int STAY_SLICE = 1000;
 
   private final PaymentJpaRepository jpaRepository;
   private final TransactionTemplate separateTransaction;
@@ -213,6 +218,27 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
         .stream()
         .map(PaymentJpaEntity::toDomain)
         .toList();
+  }
+
+  @Override
+  public BigDecimal sumApprovedOfPeriod(YearMonth period) {
+    return orZero(jpaRepository.sumAmountOfPeriod(period.atDay(1), PaymentStatus.APPROVED));
+  }
+
+  /** In slices, so that a long list of stays never nears the limit of bound parameters. */
+  @Override
+  public BigDecimal sumApprovedOfStays(Collection<Long> stayIds) {
+    List<Long> ids = List.copyOf(stayIds);
+    BigDecimal total = BigDecimal.ZERO;
+    for (int from = 0; from < ids.size(); from += STAY_SLICE) {
+      List<Long> slice = ids.subList(from, Math.min(from + STAY_SLICE, ids.size()));
+      total = total.add(orZero(jpaRepository.sumAmountOfStays(slice, PaymentStatus.APPROVED)));
+    }
+    return total;
+  }
+
+  private static BigDecimal orZero(@Nullable BigDecimal sum) {
+    return sum == null ? BigDecimal.ZERO : sum;
   }
 
   private static String cursorOf(PaymentJpaEntity payment) {

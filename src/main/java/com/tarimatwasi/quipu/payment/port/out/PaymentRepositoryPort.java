@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -111,4 +112,16 @@ public interface PaymentRepositoryPort {
    * that clear a period of its debt (RN-25).
    */
   List<Payment> findApprovedOfContracts(Long guestId);
+
+  /**
+   * The sum of the approved payments of that period, of every contract (RF-18); 0 if there are
+   * none. Pending and rejected payments do not count.
+   */
+  BigDecimal sumApprovedOfPeriod(YearMonth period);
+
+  /**
+   * The sum of the approved payments of those stays (RF-18); 0 if there are none. Pending and
+   * rejected payments do not count.
+   */
+  BigDecimal sumApprovedOfStays(Collection<Long> stayIds);
 }

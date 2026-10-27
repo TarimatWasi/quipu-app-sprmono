@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.payment.port.out;
 
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,4 +23,7 @@ public interface PaymentStayPort {
 
   /** The stay a summary of the guest of the session shows: in course, else next, else last. */
   Optional<StayTerms> relevantStayOf(Long guestId, LocalDate today);
+
+  /** The ids of the stays of any guest that start in the month (RF-18, D-68). */
+  List<Long> idsStartingIn(YearMonth month);
 }

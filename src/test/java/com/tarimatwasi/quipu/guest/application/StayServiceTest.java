@@ -28,6 +28,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -316,5 +317,14 @@ class StayServiceTest {
 
     assertThat(service().get(GUEST_ID, STAY_ID).endDate()).isEqualTo(LocalDate.parse("2026-10-20"));
     assertThatThrownBy(() -> service().get(5L, STAY_ID)).isInstanceOf(StayNotFoundException.class);
+  }
+
+  /** RF-18: the stays that start in the month, from its first to its last day, of any guest. */
+  @Test
+  void theStaysThatStartInAMonthAreReadFromItsFirstToItsLastDay() {
+    when(stays.findIdsStartingBetween(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28)))
+        .thenReturn(List.of(4L, 8L));
+
+    assertThat(service().idsStartingIn(YearMonth.of(2026, 2))).containsExactly(4L, 8L);
   }
 }

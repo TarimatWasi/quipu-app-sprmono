@@ -45,4 +45,11 @@ public interface ManageFinesUseCase {
    * @throws InvalidFineMonthException if the year of the month is not from 1 to 9999
    */
   List<FineView> list(YearMonth month);
+
+  /**
+   * The sum of the amounts of the fines of the month, of any guest (RF-18); 0 if it has none.
+   *
+   * @throws InvalidFineMonthException if the year of the month is not from 1 to 9999
+   */
+  BigDecimal totalOf(YearMonth month);
 }

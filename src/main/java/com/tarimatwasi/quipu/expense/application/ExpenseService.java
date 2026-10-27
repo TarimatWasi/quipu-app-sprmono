@@ -77,6 +77,13 @@ public class ExpenseService implements ManageExpensesUseCase {
     return expenses.findByMonth(month, page).map(ExpenseService::view);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public BigDecimal totalOf(YearMonth month) {
+    requireValid(month);
+    return expenses.sumByMonth(month);
+  }
+
   private static void validate(BigDecimal amount) {
     if (amount.signum() <= 0
         || amount.stripTrailingZeros().scale() > 2

@@ -1,7 +1,9 @@
 package com.tarimatwasi.quipu.fine.adapter.out.persistence;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,4 +20,8 @@ interface FineJpaRepository extends JpaRepository<FineJpaEntity, Long> {
   int deleteFine(@Param("id") Long id);
 
   List<FineJpaEntity> findByMonthOrderByCreatedDateAscIdAsc(LocalDate month);
+
+  /** RF-18: read by ix_fines_month; null when the month has no fines. */
+  @Query("select sum(f.amount) from FineJpaEntity f where f.month = :month")
+  @Nullable BigDecimal sumAmountByMonth(@Param("month") LocalDate month);
 }
