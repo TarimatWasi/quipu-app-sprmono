@@ -124,6 +124,40 @@ class ContractsMigrationTest {
     }
   }
 
+  /** TAR-194 (V19): the transitional trigger of V13 is gone; the CHECK alone guards the instant. */
+  @Test
+  void v19_dropsTheTriggerThatFilledTheInstantAFinishedContractWasFinished() {
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_contracts_fill_terminated_at'",
+                Integer.class))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM pg_proc WHERE proname = 'contracts_fill_terminated_at'",
+                Integer.class))
+        .isZero();
+  }
+
+  @Test
+  void contracts_refuseToFinishWithoutTheInstantItWasFinished() {
+    long guest = insertGuest("public", "20000009");
+    long environment = insertEnvironment("public", "399");
+    try {
+      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+
+      assertThatThrownBy(
+              () ->
+                  jdbc.update(
+                      "UPDATE contracts SET status = 'TERMINATED' WHERE id ="
+                          + " (SELECT max(id) FROM contracts)"))
+          .isInstanceOf(DataIntegrityViolationException.class)
+          .hasMessageContaining("ck_contracts_terminated_at");
+    } finally {
+      jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
+    }
+  }
+
   private void refused(long guest, long environment, Terms terms, String why) {
     assertThatThrownBy(() -> insertContract(guest, environment, terms))
         .as(why)
