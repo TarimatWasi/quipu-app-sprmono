@@ -142,13 +142,15 @@ class PaymentsMigrationTest {
     assertThatThrownBy(
             () -> jdbc.update("UPDATE contracts SET terminated_at = now() WHERE id = ?", contract))
         .as("an active contract with an instant")
-        .isInstanceOf(DataIntegrityViolationException.class);
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("ck_contracts_terminated_at");
     assertThatThrownBy(
             () ->
                 jdbc.update(
                     "UPDATE contracts SET status = 'ACTIVE', terminated_at = now() WHERE id = ?",
                     contract))
-        .isInstanceOf(DataIntegrityViolationException.class);
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("ck_contracts_terminated_at");
     jdbc.update(
         "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", contract);
   }

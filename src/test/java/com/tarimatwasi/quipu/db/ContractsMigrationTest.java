@@ -129,14 +129,15 @@ class ContractsMigrationTest {
   void v19_dropsTheTriggerThatFilledTheInstantAFinishedContractWasFinished() {
     assertThat(
             jdbc.queryForObject(
-                "SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_contracts_fill_terminated_at'",
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.contracts'::regclass"
+                    + " AND tgname = 'trg_contracts_fill_terminated_at'",
                 Integer.class))
         .isZero();
     assertThat(
             jdbc.queryForObject(
-                "SELECT count(*) FROM pg_proc WHERE proname = 'contracts_fill_terminated_at'",
-                Integer.class))
-        .isZero();
+                "SELECT to_regprocedure('public.contracts_fill_terminated_at()') IS NULL",
+                Boolean.class))
+        .isTrue();
   }
 
   @Test
@@ -144,13 +145,19 @@ class ContractsMigrationTest {
     long guest = insertGuest("public", "20000009");
     long environment = insertEnvironment("public", "399");
     try {
-      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+      long id =
+          insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
 
       assertThatThrownBy(
+              () -> jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", id))
+          .as("finishing an active contract")
+          .isInstanceOf(DataIntegrityViolationException.class)
+          .hasMessageContaining("ck_contracts_terminated_at");
+      assertThatThrownBy(
               () ->
-                  jdbc.update(
-                      "UPDATE contracts SET status = 'TERMINATED' WHERE id ="
-                          + " (SELECT max(id) FROM contracts)"))
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "TERMINATED")))
+          .as("inserting a finished contract")
           .isInstanceOf(DataIntegrityViolationException.class)
           .hasMessageContaining("ck_contracts_terminated_at");
     } finally {
@@ -173,12 +180,13 @@ class ContractsMigrationTest {
       int graceDays,
       String status) {}
 
-  private void insertContract(long guest, long environment, Terms terms) {
-    jdbc.update(
+  private long insertContract(long guest, long environment, Terms terms) {
+    return jdbc.queryForObject(
         "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
             + " payment_day, grace_days, file_key, original_name, size_bytes, status)"
             + " VALUES (nextval('contracts_seq'), ?, ?, ?::date, ?::date, ?::numeric, ?, ?,"
-            + " 'contracts/a.pdf', 'a.pdf', 10, ?)",
+            + " 'contracts/a.pdf', 'a.pdf', 10, ?) RETURNING id",
+        Long.class,
         guest,
         environment,
         terms.start(),
