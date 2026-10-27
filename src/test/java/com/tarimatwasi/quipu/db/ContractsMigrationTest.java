@@ -113,11 +113,11 @@ class ContractsMigrationTest {
     long guest = insertGuest("public", "20000009");
     long environment = insertEnvironment("public", "399");
     try {
-      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+      long first =
+          insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
       // From V13 a finished contract also says when (terminated_at).
       jdbc.update(
-          "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id ="
-              + " (SELECT max(id) FROM contracts)");
+          "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", first);
       insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
     } finally {
       jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
