@@ -124,6 +124,18 @@ class ExpensesContractTest {
         .andExpect(answersTheContractToARequestWith("validation.request.parameter.schema.pattern"));
   }
 
+  /** Year 0000 matches the pattern of the contract; the base would keep it as 1 BC (TAR-221). */
+  @Test
+  void yearZeroIsAValidationErrorOfTheContract() throws Exception {
+    create("{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"0000-01\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract());
+    mockMvc
+        .perform(get(URL).param("month", "0000-01").cookie(admin()))
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract());
+  }
+
   @Test
   void withoutSessionIs401AndAGuestIs403() throws Exception {
     var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));

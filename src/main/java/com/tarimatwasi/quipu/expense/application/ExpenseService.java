@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
 import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
+import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseMonthException;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -36,6 +37,7 @@ public class ExpenseService implements ManageExpensesUseCase {
   @Transactional
   public ExpenseView create(ExpenseCommand command) {
     validate(command.amount());
+    requireValid(command.month());
     return view(
         expenses.insert(
             category(command.category()),
@@ -48,6 +50,7 @@ public class ExpenseService implements ManageExpensesUseCase {
   @Transactional
   public ExpenseView update(Long id, ExpenseCommand command) {
     validate(command.amount());
+    requireValid(command.month());
     return expenses
         .update(
             id,
@@ -70,6 +73,7 @@ public class ExpenseService implements ManageExpensesUseCase {
   @Override
   @Transactional(readOnly = true)
   public CursorPage<ExpenseView> list(YearMonth month, PageQuery page) {
+    requireValid(month);
     return expenses.findByMonth(month, page).map(ExpenseService::view);
   }
 
@@ -78,6 +82,13 @@ public class ExpenseService implements ManageExpensesUseCase {
         || amount.stripTrailingZeros().scale() > 2
         || amount.compareTo(MAX_AMOUNT) > 0) {
       throw new InvalidExpenseException();
+    }
+  }
+
+  /** Year 0 matches the pattern, but the base keeps it as 1 BC and reads it back as year 1. */
+  private static void requireValid(YearMonth month) {
+    if (!Expense.isValidMonth(month)) {
+      throw new InvalidExpenseMonthException();
     }
   }
 

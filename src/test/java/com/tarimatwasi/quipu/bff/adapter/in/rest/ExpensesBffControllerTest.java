@@ -273,6 +273,57 @@ class ExpensesBffControllerTest {
         .andExpect(jsonPath("$.content.length()").value(1));
   }
 
+  /** Year 1 and year 9999 are stored, edited and listed as they are. */
+  @Test
+  void theEdgeYearsAreStoredEditedAndListedAsTheyAre() throws Exception {
+    for (var month : new String[] {"0001-01", "9999-12"}) {
+      var body = "{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"" + month + "\"}";
+      var id = idOf(create(body).andExpect(status().isCreated()));
+      mockMvc
+          .perform(
+              patch(URL + "/" + id)
+                  .cookie(admin())
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(body))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.month").value(month));
+      mockMvc
+          .perform(get(URL).param("month", month).cookie(admin()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.content.length()").value(1))
+          .andExpect(jsonPath("$.content[0].month").value(month));
+    }
+  }
+
+  /** Year 0000 matches the pattern, but PostgreSQL would keep it as 1 BC (TAR-221). */
+  @Test
+  void yearZeroIs400OnCreateEditAndList() throws Exception {
+    var id = idOf(create(UTILITIES));
+    var yearZero = "{\"category\":\"UTILITIES\",\"amount\":10,\"month\":\"0000-01\"}";
+
+    create(yearZero)
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("month"));
+    mockMvc
+        .perform(
+            patch(URL + "/" + id)
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(yearZero))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("month"));
+    mockMvc
+        .perform(get(URL).param("month", "0000-01").cookie(admin()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.field").value("month"));
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM expenses", Integer.class)).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT to_char(month, 'YYYY-MM') FROM expenses", String.class))
+        .isEqualTo("2026-09");
+  }
+
   private Cookie admin() {
     return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
   }

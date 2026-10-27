@@ -45,7 +45,8 @@ class SecurityConfig {
       AccountJwtAuthenticationConverter sessionConverter,
       RateLimitProperties rateLimit,
       UploadRateLimitProperties uploadRateLimit,
-      AdministratorRateLimitProperties administratorRateLimit)
+      AdministratorRateLimitProperties administratorRateLimit,
+      AdminAreaRateLimitProperties adminAreaRateLimit)
       throws Exception {
     // CSRF is disabled on purpose (ADR-006). Mitigation, in layers: the session cookie is
     // SameSite=Lax (the browser talks to the frontend origin and the hosting layer rewrites
@@ -87,14 +88,28 @@ class SecurityConfig {
                     .authenticated())
         // Both run before the session is read, so a flood of bad requests costs no account lookup.
         .addFilterBefore(new RateLimitFilter(rateLimit), BearerTokenAuthenticationFilter.class)
-        .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class)
-        // TAR-206: counts the uploads of the session user once it is authorized, before the
-        // dispatcher reads the form.
+        .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class);
+    addSessionUserLimits(http, adminAreaRateLimit, uploadRateLimit, administratorRateLimit);
+    return http.build();
+  }
+
+  /**
+   * The limits per session user, once the request is authorized. Filters at the same place run in
+   * the order they are added: the general limit of the ADMIN area first, then the specific ones,
+   * which still apply on their own.
+   */
+  private static void addSessionUserLimits(
+      HttpSecurity http,
+      AdminAreaRateLimitProperties adminAreaRateLimit,
+      UploadRateLimitProperties uploadRateLimit,
+      AdministratorRateLimitProperties administratorRateLimit) {
+    // TAR-221: counts every request of the session user to /bff/admin/**, of any method.
+    http.addFilterAfter(new AdminAreaRateLimitFilter(adminAreaRateLimit), AuthorizationFilter.class)
+        // TAR-206: counts the uploads of the session user, before the dispatcher reads the form.
         .addFilterAfter(new UploadRateLimitFilter(uploadRateLimit), AuthorizationFilter.class)
-        // RF-22: counts the creations of administrators of the session user once it is authorized.
+        // RF-22: counts the creations of administrators of the session user.
         .addFilterAfter(
             new AdministratorRateLimitFilter(administratorRateLimit), AuthorizationFilter.class);
-    return http.build();
   }
 
   private static RequestMatcher publicRequests() {
