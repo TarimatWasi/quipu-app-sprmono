@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
 import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
+import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseMonthException;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseCommand;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseKind;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase.ExpenseView;
@@ -126,5 +127,43 @@ class ExpenseServiceTest {
 
     assertThat(result.content()).containsExactly(UTILITIES_VIEW);
     assertThat(result.nextCursor()).isEqualTo("next");
+  }
+
+  /** Year 0 matches the pattern, but PostgreSQL keeps it as 1 BC and reads it back as year 1. */
+  @Test
+  void aMonthOutOfTheYearsOneTo9999IsRejectedOnCreateEditAndList() {
+    for (var month : new YearMonth[] {YearMonth.of(0, 1), YearMonth.of(10_000, 1)}) {
+      var command = new ExpenseCommand(ExpenseKind.UTILITIES, AMOUNT, month, null);
+      assertThatThrownBy(() -> service().create(command))
+          .as(month.toString())
+          .isInstanceOf(InvalidExpenseMonthException.class);
+      assertThatThrownBy(() -> service().update(ID, command))
+          .as(month.toString())
+          .isInstanceOf(InvalidExpenseMonthException.class);
+      assertThatThrownBy(() -> service().list(month, PageQuery.first()))
+          .as(month.toString())
+          .isInstanceOf(InvalidExpenseMonthException.class);
+    }
+
+    verify(repository, never()).insert(any(), any(), any(), any());
+    verify(repository, never()).update(any(), any(), any(), any(), any());
+    verify(repository, never()).findByMonth(any(), any());
+  }
+
+  @Test
+  void theEdgeYearsOneAnd9999AreAccepted() {
+    for (var month : new YearMonth[] {YearMonth.of(1, 1), YearMonth.of(9999, 12)}) {
+      var expense = new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, month, null);
+      when(repository.insert(ExpenseCategory.UTILITIES, AMOUNT, month, null)).thenReturn(expense);
+      when(repository.update(ID, ExpenseCategory.UTILITIES, AMOUNT, month, null))
+          .thenReturn(Optional.of(expense));
+      when(repository.findByMonth(month, PageQuery.first()))
+          .thenReturn(new CursorPage<>(List.of(expense), null));
+      var command = new ExpenseCommand(ExpenseKind.UTILITIES, AMOUNT, month, null);
+
+      assertThat(service().create(command).month()).isEqualTo(month);
+      assertThat(service().update(ID, command).month()).isEqualTo(month);
+      assertThat(service().list(month, PageQuery.first()).content()).hasSize(1);
+    }
   }
 }

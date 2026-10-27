@@ -84,6 +84,9 @@ app:
     uploads-per-minute: 10
     upload-burst: 3
     administrator-creations-per-minute: 3
+    # TAR-221: todas las peticiones a /bff/admin/** por usuario de sesión y minuto (de 1 a 600);
+    # las subidas y las altas de administrador cuentan aquí y además en su límite propio.
+    admin-requests-per-minute: 120
   # RF-22: como máximo tantos administradores; cuenta todas las cuentas ADMIN, activas o no.
   administrators:
     max: 5

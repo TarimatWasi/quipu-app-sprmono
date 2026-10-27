@@ -37,6 +37,7 @@ public interface ManageExpensesUseCase {
    * Registers an expense.
    *
    * @throws InvalidExpenseException if the amount is not valid
+   * @throws InvalidExpenseMonthException if the year of the month is not from 1 to 9999
    */
   ExpenseView create(ExpenseCommand command);
 
@@ -45,6 +46,7 @@ public interface ManageExpensesUseCase {
    *
    * @throws ExpenseNotFoundException if there is no expense with that id
    * @throws InvalidExpenseException if the amount is not valid
+   * @throws InvalidExpenseMonthException if the year of the month is not from 1 to 9999
    */
   ExpenseView update(Long id, ExpenseCommand command);
 
@@ -60,6 +62,7 @@ public interface ManageExpensesUseCase {
    * (BE-SPR-WEB-08).
    *
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
+   * @throws InvalidExpenseMonthException if the year of the month is not from 1 to 9999
    */
   CursorPage<ExpenseView> list(YearMonth month, PageQuery page);
 }
