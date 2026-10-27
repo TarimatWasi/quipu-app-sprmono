@@ -165,4 +165,14 @@ class FineServiceTest {
         .containsExactly(
             NOISE_VIEW, new FineView(other.id(), GUEST, BigDecimal.TEN, SEPTEMBER, null));
   }
+
+  /** RF-18: the fines of the month add up in the base, and a month of year 0000 is refused. */
+  @Test
+  void theTotalOfTheMonthIsTheSumTheBaseAnswers() {
+    when(repository.sumByMonth(SEPTEMBER)).thenReturn(new BigDecimal("25.30"));
+
+    assertThat(service().totalOf(SEPTEMBER)).isEqualByComparingTo("25.30");
+    assertThatThrownBy(() -> service().totalOf(YearMonth.of(0, 1)))
+        .isInstanceOf(InvalidFineMonthException.class);
+  }
 }

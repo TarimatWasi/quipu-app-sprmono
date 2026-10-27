@@ -57,6 +57,11 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
   }
 
   @Override
+  public List<Long> findIdsStartingBetween(LocalDate first, LocalDate last) {
+    return jpaRepository.findIdsByStartDateBetween(first, last);
+  }
+
+  @Override
   public List<Stay> findAllByGuest(Long guestId) {
     return jpaRepository.findByGuestId(guestId).stream().map(StayJpaEntity::toDomain).toList();
   }

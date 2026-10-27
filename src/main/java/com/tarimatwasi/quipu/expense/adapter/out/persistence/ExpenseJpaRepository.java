@@ -1,5 +1,8 @@
 package com.tarimatwasi.quipu.expense.adapter.out.persistence;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -16,4 +19,8 @@ interface ExpenseJpaRepository
   @Modifying
   @Query("delete from ExpenseJpaEntity e where e.id = :id")
   int deleteByIdIgnoringVersion(@Param("id") Long id);
+
+  /** RF-18: read by the prefix of ix_expenses_month_created_date_id; null when there are none. */
+  @Query("select sum(e.amount) from ExpenseJpaEntity e where e.month = :month")
+  @Nullable BigDecimal sumAmountByMonth(@Param("month") LocalDate month);
 }

@@ -65,4 +65,11 @@ public interface ManageExpensesUseCase {
    * @throws InvalidExpenseMonthException if the year of the month is not from 1 to 9999
    */
   CursorPage<ExpenseView> list(YearMonth month, PageQuery page);
+
+  /**
+   * The sum of the amounts of the expenses of the month (RF-18); 0 if it has none.
+   *
+   * @throws InvalidExpenseMonthException if the year of the month is not from 1 to 9999
+   */
+  BigDecimal totalOf(YearMonth month);
 }

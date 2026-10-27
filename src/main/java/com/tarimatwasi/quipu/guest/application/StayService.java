@@ -18,6 +18,8 @@ import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +63,12 @@ public class StayService implements ManageStaysUseCase {
         .findByIdAndGuest(stayId, guestId)
         .map(StayService::view)
         .orElseThrow(StayNotFoundException::new);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<Long> idsStartingIn(YearMonth month) {
+    return stays.findIdsStartingBetween(month.atDay(1), month.atEndOfMonth());
   }
 
   @Override

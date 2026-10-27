@@ -10,6 +10,7 @@ import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.fine.port.out.FineGuestMissingException;
 import com.tarimatwasi.quipu.fine.port.out.FineGuestPort;
 import com.tarimatwasi.quipu.fine.port.out.FineRepositoryPort;
+import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -66,6 +67,13 @@ public class FineService implements ManageFinesUseCase {
   public List<FineView> list(YearMonth month) {
     requireValid(month);
     return fines.findByMonth(month).stream().map(FineService::view).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public BigDecimal totalOf(YearMonth month) {
+    requireValid(month);
+    return fines.sumByMonth(month);
   }
 
   private static void requireValid(YearMonth month) {

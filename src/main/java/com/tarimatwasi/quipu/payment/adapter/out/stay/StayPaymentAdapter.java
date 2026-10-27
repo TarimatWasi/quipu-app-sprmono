@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
@@ -34,6 +35,11 @@ public class StayPaymentAdapter implements PaymentStayPort {
 
   private static StayTerms terms(StayView stay) {
     return new StayTerms(stay.id(), stay.startDate(), stay.endDate(), stay.agreedAmount());
+  }
+
+  @Override
+  public List<Long> idsStartingIn(YearMonth month) {
+    return stays.idsStartingIn(month);
   }
 
   @Override

@@ -417,4 +417,23 @@ class PaymentRepositoryAdapterTest {
                 String.class))
         .contains("(created_date, id)");
   }
+
+  /** RF-18: only approved payments add up; a long list of stays is read in slices. */
+  @Test
+  void theSumsOfTheMonthCountOnlyApprovedPaymentsAndEveryStayOfALongList() {
+    adapter.insertApproved(draftForPeriod("2026-10"));
+    adapter.insertApproved(draftForPeriod("2026-09"));
+    adapter.insertApproved(draftForStay());
+    insertPending("2026-11", null);
+    List<Long> stays = new ArrayList<>();
+    for (int i = 0; i < 2500; i++) {
+      stays.add(TestIds.next());
+    }
+    stays.add(stay);
+
+    assertThat(adapter.sumApprovedOfPeriod(OCTOBER)).isEqualByComparingTo("800.50");
+    assertThat(adapter.sumApprovedOfPeriod(YearMonth.of(2026, 11))).isEqualByComparingTo("0");
+    assertThat(adapter.sumApprovedOfStays(stays)).isEqualByComparingTo("150");
+    assertThat(adapter.sumApprovedOfStays(List.of(TestIds.next()))).isEqualByComparingTo("0");
+  }
 }

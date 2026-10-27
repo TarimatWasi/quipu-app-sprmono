@@ -5,6 +5,8 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** RN-13, RN-17, CU-31: the stays of a temporary guest. A stay is never deleted. */
@@ -58,4 +60,10 @@ public interface ManageStaysUseCase {
    * @throws StayNotFoundException if the guest has no stay with that id
    */
   StayView get(Long guestId, Long stayId);
+
+  /**
+   * The ids of the stays of any guest, active or inactive, that start in the month (RF-18): the
+   * month its payment counts in.
+   */
+  List<Long> idsStartingIn(YearMonth month);
 }

@@ -53,6 +53,12 @@ public class FineRepositoryAdapter implements FineRepositoryPort {
         .toList();
   }
 
+  @Override
+  public BigDecimal sumByMonth(YearMonth month) {
+    BigDecimal sum = jpaRepository.sumAmountByMonth(month.atDay(1));
+    return sum == null ? BigDecimal.ZERO : sum;
+  }
+
   /**
    * Whether the write broke that constraint, read from the name the server reports so that the
    * language of its messages does not matter; the name Hibernate parses is only a fallback.

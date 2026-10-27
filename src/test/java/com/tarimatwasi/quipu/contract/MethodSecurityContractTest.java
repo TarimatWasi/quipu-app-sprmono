@@ -12,7 +12,9 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.payment.port.in.FinanceSummaryUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
@@ -44,6 +46,8 @@ class MethodSecurityContractTest {
   @Autowired ManageFinesUseCase fines;
   @Autowired OwnPaymentsUseCase ownPayments;
   @Autowired ManagePaymentsUseCase payments;
+  @Autowired FinanceSummaryUseCase finance;
+  @Autowired ManageStaysUseCase stays;
   @Autowired OwnGuestUseCase ownGuests;
   @Autowired GuestAccessUseCase guestAccess;
   @Autowired CreateAdministratorUseCase administrators;
@@ -112,6 +116,18 @@ class MethodSecurityContractTest {
     assertThatThrownBy(() -> fines.delete(1L)).isInstanceOf(AccessDeniedException.class);
   }
 
+  /** TAR-48: the balance of a month and the reads it is made of are only for the administrator. */
+  @Test
+  @WithMockUser(roles = "GUEST")
+  void financeSummaryAndItsReads_withoutAdminRole_areForbidden() {
+    YearMonth october = YearMonth.of(2026, 10);
+    assertThatThrownBy(() -> finance.summary(october)).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> fines.totalOf(october)).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> expenses.totalOf(october)).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> stays.idsStartingIn(october))
+        .isInstanceOf(AccessDeniedException.class);
+  }
+
   @Test
   @WithMockUser(roles = "GUEST")
   void paymentHistoryOfTheAdministrator_withoutAdminRole_isForbidden() {
@@ -145,5 +161,6 @@ class MethodSecurityContractTest {
         .isEmpty();
     assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();
     assertThat(fines.list(YearMonth.of(2026, 10))).isEmpty();
+    assertThat(finance.summary(YearMonth.of(2026, 10)).net()).hasToString("0.00");
   }
 }
