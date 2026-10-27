@@ -113,12 +113,53 @@ class ContractsMigrationTest {
     long guest = insertGuest("public", "20000009");
     long environment = insertEnvironment("public", "399");
     try {
-      insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+      long first =
+          insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
       // From V13 a finished contract also says when (terminated_at).
       jdbc.update(
-          "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id ="
-              + " (SELECT max(id) FROM contracts)");
+          "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", first);
       insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+    } finally {
+      jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
+    }
+  }
+
+  /** TAR-194 (V19): the transitional trigger of V13 is gone; the CHECK alone guards the instant. */
+  @Test
+  void v19_dropsTheTriggerThatFilledTheInstantAFinishedContractWasFinished() {
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.contracts'::regclass"
+                    + " AND tgname = 'trg_contracts_fill_terminated_at'",
+                Integer.class))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT to_regprocedure('public.contracts_fill_terminated_at()') IS NULL",
+                Boolean.class))
+        .isTrue();
+  }
+
+  @Test
+  void contracts_refuseToFinishWithoutTheInstantItWasFinished() {
+    long guest = insertGuest("public", "20000009");
+    long environment = insertEnvironment("public", "399");
+    try {
+      long id =
+          insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
+
+      assertThatThrownBy(
+              () -> jdbc.update("UPDATE contracts SET status = 'TERMINATED' WHERE id = ?", id))
+          .as("finishing an active contract")
+          .isInstanceOf(DataIntegrityViolationException.class)
+          .hasMessageContaining("ck_contracts_terminated_at");
+      assertThatThrownBy(
+              () ->
+                  insertContract(
+                      guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "TERMINATED")))
+          .as("inserting a finished contract")
+          .isInstanceOf(DataIntegrityViolationException.class)
+          .hasMessageContaining("ck_contracts_terminated_at");
     } finally {
       jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
     }
@@ -139,12 +180,13 @@ class ContractsMigrationTest {
       int graceDays,
       String status) {}
 
-  private void insertContract(long guest, long environment, Terms terms) {
-    jdbc.update(
+  private long insertContract(long guest, long environment, Terms terms) {
+    return jdbc.queryForObject(
         "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
             + " payment_day, grace_days, file_key, original_name, size_bytes, status)"
             + " VALUES (nextval('contracts_seq'), ?, ?, ?::date, ?::date, ?::numeric, ?, ?,"
-            + " 'contracts/a.pdf', 'a.pdf', 10, ?)",
+            + " 'contracts/a.pdf', 'a.pdf', 10, ?) RETURNING id",
+        Long.class,
         guest,
         environment,
         terms.start(),
