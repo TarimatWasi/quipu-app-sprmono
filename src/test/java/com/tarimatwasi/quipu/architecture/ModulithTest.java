@@ -18,6 +18,14 @@ class ModulithTest {
         .isEmpty();
     assertThat(modules.stream().map(m -> m.getIdentifier().toString()))
         .containsExactlyInAnyOrder(
-            "auth", "bff", "contract", "environment", "expense", "guest", "payment", "shared");
+            "auth",
+            "bff",
+            "contract",
+            "environment",
+            "expense",
+            "fine",
+            "guest",
+            "payment",
+            "shared");
   }
 }
