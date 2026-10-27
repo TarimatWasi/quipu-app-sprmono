@@ -620,8 +620,7 @@ class PaymentServiceTest {
 
   @Test
   void registerDirect_ifTheInsertFailsTheStoredObjectIsRemoved() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
     when(payments.insertApproved(any())).thenThrow(failure);
@@ -634,8 +633,7 @@ class PaymentServiceTest {
   @Test
   void
       registerDirect_ifAnotherRequestGotThePeriodFirstTheRightConflictIsAnsweredAndTheObjectRemoved() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     when(payments.insertApproved(any()))
         .thenThrow(new LivePaymentExistsException(PaymentStatus.PENDING))
@@ -658,7 +656,9 @@ class PaymentServiceTest {
     doThrow(cleanup).when(files).delete(KEY);
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
-    assertThat(output).contains("SdkClientException").doesNotContain(KEY, R2Failures.HOST);
+    assertThat(output)
+        .contains("stays in the bucket", "guest " + GUEST, "SdkClientException")
+        .doesNotContain(KEY, R2Failures.HOST);
   }
 
   @Test

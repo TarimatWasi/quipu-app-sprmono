@@ -327,6 +327,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     byte[] content = direct.voucher().content();
     return VoucherRecorder.view(
         recorder.store(
+            direct.guestId(),
             content,
             type,
             key ->
