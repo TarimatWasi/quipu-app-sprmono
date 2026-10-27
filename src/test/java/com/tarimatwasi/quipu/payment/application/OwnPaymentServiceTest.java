@@ -66,6 +66,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** RF-04, RF-06, CU-16, CU-17, CU-21, CU-22, RN-03, RN-09, RN-15, RN-27, RN-33, RN-35. */
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
@@ -326,7 +328,34 @@ class OwnPaymentServiceTest {
     assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
     assertThat(output)
-        .contains("stays in the bucket", "guest " + GUEST, "SdkClientException")
+        .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
+        .doesNotContain(KEY, R2Failures.HOST);
+  }
+
+  @Test
+  void uploadForPeriod_aCleanupAfterARollbackThatFailsNamesTheGuestOnly(CapturedOutput output) {
+    openContract(); // no live payment: Mockito answers an empty Optional
+    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+    var failure = new IllegalStateException("insert failed");
+    when(payments.insertPending(any())).thenThrow(failure);
+    var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
+    doThrow(cleanup).when(files).delete(KEY);
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)))
+          .isSameAs(failure);
+      verify(files, never()).delete(any()); // the transaction removes it, not the finally
+      for (TransactionSynchronization sync :
+          TransactionSynchronizationManager.getSynchronizations()) {
+        sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+      }
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
+
+    verify(files).delete(KEY);
+    assertThat(output)
+        .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
         .doesNotContain(KEY, R2Failures.HOST);
   }
 

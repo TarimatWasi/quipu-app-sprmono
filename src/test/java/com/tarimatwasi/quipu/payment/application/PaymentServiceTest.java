@@ -657,7 +657,7 @@ class PaymentServiceTest {
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
     assertThat(output)
-        .contains("stays in the bucket", "guest " + GUEST, "SdkClientException")
+        .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
         .doesNotContain(KEY, R2Failures.HOST);
   }
 
