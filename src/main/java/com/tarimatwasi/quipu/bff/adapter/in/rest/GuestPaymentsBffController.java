@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.PaymentsBffController.PaymentResponse;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;

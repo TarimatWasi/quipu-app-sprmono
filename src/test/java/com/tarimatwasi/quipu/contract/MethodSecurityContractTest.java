@@ -3,12 +3,12 @@ package com.tarimatwasi.quipu.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase;
-import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase.CreateAdministratorCommand;
-import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
-import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
+import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase.CreateAdministratorCommand;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.DocumentKind;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;

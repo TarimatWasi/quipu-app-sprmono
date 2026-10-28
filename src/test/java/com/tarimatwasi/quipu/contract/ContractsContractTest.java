@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.contract.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.contract.port.out.ContractFileStorageException;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;

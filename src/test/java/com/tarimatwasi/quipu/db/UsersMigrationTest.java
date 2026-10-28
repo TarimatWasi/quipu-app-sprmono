@@ -5,9 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 
-import com.tarimatwasi.quipu.auth.adapter.in.bootstrap.AdminBootstrap;
-import com.tarimatwasi.quipu.auth.port.in.PasswordRecoveryUseCase;
-import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
+import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.in.bootstrap.AdminBootstrap;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestTables;

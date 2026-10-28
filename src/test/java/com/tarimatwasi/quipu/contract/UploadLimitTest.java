@@ -2,7 +2,7 @@ package com.tarimatwasi.quipu.contract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.contract.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;

@@ -2,7 +2,7 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonSetter;
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.GuestOnboardingBffController.EmergencyContactBody;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.GuestsBffController.GuestSummaryResponse;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;

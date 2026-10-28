@@ -5,12 +5,12 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
-import com.tarimatwasi.quipu.auth.port.in.LastActiveAdministratorException;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
-import com.tarimatwasi.quipu.auth.port.out.AdministratorNoticePort;
-import com.tarimatwasi.quipu.auth.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.application.port.in.LastActiveAdministratorException;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
+import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;

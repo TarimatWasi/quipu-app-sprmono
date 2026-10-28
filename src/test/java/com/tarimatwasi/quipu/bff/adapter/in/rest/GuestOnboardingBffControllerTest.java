@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.GuestOnboardingBffController.DocumentForm;
 import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase;

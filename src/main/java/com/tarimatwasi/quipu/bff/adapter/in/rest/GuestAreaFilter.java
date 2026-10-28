@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;

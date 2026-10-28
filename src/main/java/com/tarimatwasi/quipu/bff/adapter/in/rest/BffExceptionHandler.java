@@ -1,14 +1,14 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.AccountDisabledException;
-import com.tarimatwasi.quipu.auth.port.in.AccountLockedException;
-import com.tarimatwasi.quipu.auth.port.in.InvalidCredentialsException;
-import com.tarimatwasi.quipu.auth.port.in.InvalidResetCodeException;
-import com.tarimatwasi.quipu.auth.port.in.NoActiveSessionException;
-import com.tarimatwasi.quipu.auth.port.in.PasswordUnchangedException;
-import com.tarimatwasi.quipu.auth.port.in.TemporaryPasswordExpiredException;
-import com.tarimatwasi.quipu.auth.port.in.TooManyLoginAttemptsException;
-import com.tarimatwasi.quipu.auth.port.in.WeakPasswordException;
+import com.tarimatwasi.quipu.auth.application.port.in.AccountDisabledException;
+import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
+import com.tarimatwasi.quipu.auth.application.port.in.InvalidCredentialsException;
+import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
+import com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException;
+import com.tarimatwasi.quipu.auth.application.port.in.PasswordUnchangedException;
+import com.tarimatwasi.quipu.auth.application.port.in.TemporaryPasswordExpiredException;
+import com.tarimatwasi.quipu.auth.application.port.in.TooManyLoginAttemptsException;
+import com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.contract.port.in.ContractFileUnavailableException;
 import com.tarimatwasi.quipu.contract.port.in.ContractNotFoundException;
 import com.tarimatwasi.quipu.contract.port.in.InvalidContractDatesException;

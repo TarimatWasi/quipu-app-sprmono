@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.tarimatwasi.quipu.auth.config.ProfileRateLimitProperties;
+import com.tarimatwasi.quipu.auth.infrastructure.config.ProfileRateLimitProperties;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.support.TestIds;
 import jakarta.servlet.http.Cookie;

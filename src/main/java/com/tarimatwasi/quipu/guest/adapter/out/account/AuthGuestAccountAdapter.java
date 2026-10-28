@@ -1,8 +1,8 @@
 package com.tarimatwasi.quipu.guest.adapter.out.account;
 
-import com.tarimatwasi.quipu.auth.port.in.AccountDocumentTakenException;
-import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.AccountDocumentTakenException;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.guest.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.access.AccessMode;

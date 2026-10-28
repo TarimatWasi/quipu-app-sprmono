@@ -11,9 +11,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
-import com.tarimatwasi.quipu.auth.port.in.AdministratorLimitReachedException;
-import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedException;
+import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;

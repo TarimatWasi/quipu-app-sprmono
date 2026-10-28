@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;

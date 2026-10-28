@@ -1,13 +1,13 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.AdministratorDocumentTakenException;
-import com.tarimatwasi.quipu.auth.port.in.AdministratorEmailTakenException;
-import com.tarimatwasi.quipu.auth.port.in.AdministratorLimitReachedException;
-import com.tarimatwasi.quipu.auth.port.in.AdministratorNotFoundException;
-import com.tarimatwasi.quipu.auth.port.in.AdministratorReauthenticationException;
-import com.tarimatwasi.quipu.auth.port.in.AdministratorSelfDeactivationException;
-import com.tarimatwasi.quipu.auth.port.in.InvalidAdministratorDocumentException;
-import com.tarimatwasi.quipu.auth.port.in.LastActiveAdministratorException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorDocumentTakenException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorEmailTakenException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNotFoundException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorReauthenticationException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorSelfDeactivationException;
+import com.tarimatwasi.quipu.auth.application.port.in.InvalidAdministratorDocumentException;
+import com.tarimatwasi.quipu.auth.application.port.in.LastActiveAdministratorException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;

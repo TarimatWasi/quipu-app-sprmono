@@ -15,11 +15,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
-import com.tarimatwasi.quipu.auth.port.out.AdministratorNoticePort;
-import com.tarimatwasi.quipu.auth.port.out.AdministratorNoticePort.StatusChange;
-import com.tarimatwasi.quipu.auth.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort.StatusChange;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
+import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
