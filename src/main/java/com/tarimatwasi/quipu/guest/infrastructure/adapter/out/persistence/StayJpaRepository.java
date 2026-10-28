@@ -24,4 +24,8 @@ interface StayJpaRepository
       "select s.id from StayJpaEntity s where s.startDate between :first and :last order by s.id")
   List<Long> findIdsByStartDateBetween(
       @Param("first") LocalDate first, @Param("last") LocalDate last);
+
+  /** TAR-227: where a page cursor stands, if the stay is one of this guest. */
+  @Query("select s.startDate from StayJpaEntity s where s.id = :id and s.guestId = :guestId")
+  Optional<LocalDate> findStartDate(@Param("id") Long id, @Param("guestId") Long guestId);
 }

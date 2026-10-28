@@ -6,10 +6,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort.Draft;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.domain.ContractStatus;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.NoMaskSessionException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.support.AdminSessions;
+import com.tarimatwasi.quipu.support.MaskedCursors;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -17,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -25,9 +31,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -42,7 +50,10 @@ class ContractRepositoryAdapterTest {
   @Autowired ContractRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
   @Autowired PlatformTransactionManager transactionManager;
+  @Autowired IdMasker masker;
+  @Autowired ApplicationContext context;
 
+  private Long admin;
   private Long guestId;
   private Long otherGuestId;
   private Long roomId;
@@ -51,6 +62,8 @@ class ContractRepositoryAdapterTest {
   @BeforeEach
   void setUp() {
     TestTables.clear(jdbc);
+    admin = AdminSessions.insertAdmin(jdbc);
+    AdminSessions.signIn(context, admin);
     guestId = insertGuest("40000001");
     otherGuestId = insertGuest("40000002");
     roomId = insertEnvironment("101");
@@ -59,6 +72,7 @@ class ContractRepositoryAdapterTest {
 
   @AfterEach
   void tearDown() {
+    SecurityContextHolder.clearContext();
     TestTables.clear(jdbc);
   }
 
@@ -279,6 +293,67 @@ class ContractRepositoryAdapterTest {
                 adapter.findAll(
                     null, TODAY, new PageQuery(CursorToken.encode("2026-01-01T00:00:00", "x"), 5)))
         .isInstanceOf(InvalidCursorException.class);
+  }
+
+  /** A contract with a large id of the test, so that a cursor that carried it would show it. */
+  private Long jdbcContract(String createdDate) {
+    Long id = TestIds.next();
+    jdbc.update(
+        "INSERT INTO contracts (id, guest_id, environment_id, start_date, monthly_amount,"
+            + " payment_day, grace_days, file_key, original_name, size_bytes, created_date)"
+            + " VALUES (?, ?, ?, '2026-01-01', 800, 5, 3, ?, 'c.pdf', 10, ?::timestamptz)",
+        id,
+        guestId,
+        insertEnvironment("3" + id),
+        "contracts/" + id + ".pdf",
+        createdDate);
+    return id;
+  }
+
+  /** TAR-227: the cursor hides the internal id and the date, and serves only its own session. */
+  @Test
+  void findAll_cursorIsOpaqueAndValidOnlyInItsSession() {
+    Long oldest = jdbcContract("2026-10-01T10:00:00Z");
+    Long middle = jdbcContract("2026-10-02T10:00:00Z");
+    Long newest = jdbcContract("2026-10-03T10:00:00Z");
+
+    CursorPage<Contract> first = adapter.findAll(null, TODAY, new PageQuery(null, 2));
+    assertThat(ids(first)).containsExactly(newest, middle);
+    String cursor = Objects.requireNonNull(first.nextCursor());
+
+    // one part only, a UUID: neither the internal ids nor the date travel in it
+    String key =
+        MaskedCursors.assertOpaque(
+            cursor, masker, IdKind.CONTRACT, middle, List.of(oldest, middle, newest));
+    CursorPage<Contract> second = adapter.findAll(null, TODAY, new PageQuery(cursor, 2));
+    assertThat(ids(second)).containsExactly(oldest);
+    assertThat(second.nextCursor()).isNull();
+
+    for (String bad :
+        MaskedCursors.forgeries(key, masker, IdKind.PAYMENT, middle, "2026-10-02T10:00:00")) {
+      assertThatThrownBy(() -> adapter.findAll(null, TODAY, new PageQuery(bad, 2)))
+          .as(bad)
+          .isInstanceOf(InvalidCursorException.class);
+    }
+
+    // another session of the same administrator
+    AdminSessions.signIn(context, admin);
+    assertThatThrownBy(() -> adapter.findAll(null, TODAY, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+    String again =
+        Objects.requireNonNull(adapter.findAll(null, TODAY, new PageQuery(null, 2)).nextCursor());
+    assertThat(again).isNotEqualTo(cursor);
+    assertThat(ids(adapter.findAll(null, TODAY, new PageQuery(again, 2)))).containsExactly(oldest);
+
+    // the contract of the cursor is no longer there
+    jdbc.update("DELETE FROM contracts WHERE id = ?", middle);
+    assertThatThrownBy(() -> adapter.findAll(null, TODAY, new PageQuery(again, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // with no session at all it fails closed
+    SecurityContextHolder.clearContext();
+    assertThatThrownBy(() -> adapter.findAll(null, TODAY, new PageQuery(null, 1)))
+        .isInstanceOf(NoMaskSessionException.class);
   }
 
   private static List<Long> ids(CursorPage<Contract> page) {

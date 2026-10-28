@@ -5,22 +5,32 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.NoMaskSessionException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.support.AdminSessions;
+import com.tarimatwasi.quipu.support.MaskedCursors;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** RN-24 (TAR-171): the version guards the edits, never the deletion of an expense. */
@@ -32,10 +42,21 @@ class ExpenseRepositoryAdapterTest {
   @Autowired ExpenseJpaRepository repository;
   @Autowired JdbcTemplate jdbc;
   @Autowired TransactionTemplate transaction;
+  @Autowired IdMasker masker;
+  @Autowired ApplicationContext context;
+
+  private Long admin;
 
   @BeforeEach
   void setUp() {
     TestTables.clear(jdbc);
+    admin = AdminSessions.insertAdmin(jdbc);
+    AdminSessions.signIn(context, admin);
+  }
+
+  @AfterEach
+  void tearDown() {
+    SecurityContextHolder.clearContext();
   }
 
   private Expense inserted() {
@@ -143,5 +164,76 @@ class ExpenseRepositoryAdapterTest {
     } while (query.after() != null);
 
     assertThat(amounts).containsExactly(1, 2, 3);
+  }
+
+  /** An expense with a large id of the test, so that a cursor that carried it would show it. */
+  private Long jdbcExpense(int amount, String month, String createdDate) {
+    Long id = TestIds.next();
+    jdbc.update(
+        "INSERT INTO expenses (id, type, amount, month, created_date, last_modified_date)"
+            + " VALUES (?, 'TAXES_FEES', ?, ?::date, ?::timestamptz, ?::timestamptz)",
+        id,
+        amount,
+        month,
+        createdDate,
+        createdDate);
+    return id;
+  }
+
+  private List<Integer> amounts(CursorPage<Expense> page) {
+    return page.content().stream().map(expense -> expense.amount().intValue()).toList();
+  }
+
+  /**
+   * TAR-227: the cursor hides the internal id and the date, and serves only its own session and its
+   * own month.
+   */
+  @Test
+  void findByMonth_cursorIsOpaqueAndValidOnlyInItsSessionAndMonth() {
+    YearMonth september = YearMonth.of(2026, 9);
+    Long first = jdbcExpense(1, "2026-09-01", "2026-09-02T10:00:00Z");
+    Long second = jdbcExpense(2, "2026-09-01", "2026-09-03T10:00:00Z");
+    Long third = jdbcExpense(3, "2026-09-01", "2026-09-04T10:00:00Z");
+    jdbcExpense(4, "2026-10-01", "2026-09-05T10:00:00Z");
+
+    CursorPage<Expense> page = adapter.findByMonth(september, new PageQuery(null, 2));
+    assertThat(amounts(page)).containsExactly(1, 2);
+    String cursor = Objects.requireNonNull(page.nextCursor());
+
+    String key =
+        MaskedCursors.assertOpaque(
+            cursor, masker, IdKind.EXPENSE, second, List.of(first, second, third));
+    CursorPage<Expense> next = adapter.findByMonth(september, new PageQuery(cursor, 2));
+    assertThat(amounts(next)).containsExactly(3);
+    assertThat(next.nextCursor()).isNull();
+
+    for (String bad :
+        MaskedCursors.forgeries(key, masker, IdKind.STAY, second, "2026-09-03T10:00:00")) {
+      assertThatThrownBy(() -> adapter.findByMonth(september, new PageQuery(bad, 2)))
+          .as(bad)
+          .isInstanceOf(InvalidCursorException.class);
+    }
+    // the position of an expense of September is not one in October
+    assertThatThrownBy(() -> adapter.findByMonth(YearMonth.of(2026, 10), new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // another session of the same administrator
+    AdminSessions.signIn(context, admin);
+    assertThatThrownBy(() -> adapter.findByMonth(september, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+    String again =
+        Objects.requireNonNull(adapter.findByMonth(september, new PageQuery(null, 2)).nextCursor());
+    assertThat(again).isNotEqualTo(cursor);
+    assertThat(amounts(adapter.findByMonth(september, new PageQuery(again, 2)))).containsExactly(3);
+
+    // the expense of the cursor is no longer there
+    jdbc.update("DELETE FROM expenses WHERE id = ?", second);
+    assertThatThrownBy(() -> adapter.findByMonth(september, new PageQuery(again, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // with no session at all it fails closed
+    SecurityContextHolder.clearContext();
+    assertThatThrownBy(() -> adapter.findByMonth(september, new PageQuery(null, 1)))
+        .isInstanceOf(NoMaskSessionException.class);
   }
 }

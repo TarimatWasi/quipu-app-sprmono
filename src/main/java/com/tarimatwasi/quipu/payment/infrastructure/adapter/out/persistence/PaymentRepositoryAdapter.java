@@ -4,18 +4,18 @@ import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsExcep
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
-import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.MaskedCursor;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -49,10 +49,14 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   private final PaymentJpaRepository jpaRepository;
   private final TransactionTemplate separateTransaction;
+  private final IdMasker masker;
 
   PaymentRepositoryAdapter(
-      PaymentJpaRepository jpaRepository, PlatformTransactionManager transactionManager) {
+      PaymentJpaRepository jpaRepository,
+      PlatformTransactionManager transactionManager,
+      IdMasker masker) {
     this.jpaRepository = jpaRepository;
+    this.masker = masker;
     this.separateTransaction = new TransactionTemplate(transactionManager);
     this.separateTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     this.separateTransaction.setReadOnly(true);
@@ -133,8 +137,10 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   @Override
   public CursorPage<StoredPayment> findQueue(@Nullable PaymentStatus status, PageQuery page) {
+    // The status is not where the cursor belongs: it changes while the queue is reviewed.
     return findByCreation(
         status == null ? null : (root, query, builder) -> builder.equal(root.get("status"), status),
+        jpaRepository::findCreatedDate,
         Sort.Direction.ASC,
         page);
   }
@@ -144,19 +150,26 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
     // ix_payments_history (guest_id, created_date DESC, id DESC) serves this order.
     return findByCreation(
         (root, query, builder) -> builder.equal(root.get("guestId"), guestId),
+        id -> jpaRepository.findCreatedDateOfGuest(id, guestId),
         Sort.Direction.DESC,
         page);
   }
 
   /**
    * One page of the payments that meet the condition, ordered by (createdDate, id) in that
-   * direction and read by last index: the page starts right after the key of the cursor.
+   * direction and read by last index: the page starts right after the payment of the cursor.
+   *
+   * <p>TAR-227: the cursor carries only the id of that payment, masked in the session that asked,
+   * never the internal one nor its date; {@code createdDateOf} reads the date again, empty when the
+   * payment is no longer there or is not one of the listing. Then, as for a cursor of another
+   * session or altered, the cursor is invalid.
    */
   private CursorPage<StoredPayment> findByCreation(
       @Nullable Specification<PaymentJpaEntity> condition,
+      Function<Long, Optional<Instant>> createdDateOf,
       Sort.Direction direction,
       PageQuery page) {
-    CreationKey after = page.after() == null ? null : CreationKey.decode(page.after());
+    CreationKey after = page.after() == null ? null : keyOf(page.after(), createdDateOf);
     boolean ascending = direction == Sort.Direction.ASC;
     Specification<PaymentJpaEntity> filter =
         (root, query, builder) -> {
@@ -166,7 +179,7 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
           }
           if (after != null) {
             // (createdDate, id) after (date, id) in the order of the list.
-            Path<LocalDateTime> createdDate = root.get("createdDate");
+            Path<Instant> createdDate = root.get("createdDate");
             Path<Long> id = root.get("id");
             where.add(
                 builder.or(
@@ -185,7 +198,10 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
     // One more than the limit: the extra row only says that there is a next page.
     List<PaymentJpaEntity> rows =
         jpaRepository.findBy(filter, query -> query.sortBy(order).limit(page.limit() + 1).all());
-    return CursorPage.of(rows, page.limit(), PaymentRepositoryAdapter::cursorOf)
+    return CursorPage.of(
+            rows,
+            page.limit(),
+            row -> MaskedCursor.of(masker, IdKind.PAYMENT, Objects.requireNonNull(row.getId())))
         .map(PaymentJpaEntity::toStored);
   }
 
@@ -271,31 +287,13 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
     return sum == null ? BigDecimal.ZERO : sum;
   }
 
-  private static String cursorOf(PaymentJpaEntity payment) {
-    return CursorToken.encode(
-        // PostgreSQL keeps microseconds: a finer value would sort after the row it came from.
-        payment.getCreatedDate().orElseThrow().truncatedTo(ChronoUnit.MICROS).toString(),
-        Objects.requireNonNull(payment.getId()).toString());
+  /** Where the cursor stands: the sort key of its payment, read again from the row. */
+  private CreationKey keyOf(String cursor, Function<Long, Optional<Instant>> createdDateOf) {
+    Long id = MaskedCursor.idOf(masker, IdKind.PAYMENT, cursor);
+    Instant createdDate = createdDateOf.apply(id).orElseThrow(InvalidCursorException::new);
+    return new CreationKey(createdDate, id);
   }
 
-  /** The sort key of a payment, as the cursor carries it. */
-  private record CreationKey(LocalDateTime createdDate, Long id) {
-
-    private static final int MIN_YEAR = 1900;
-    private static final int MAX_YEAR = 9999;
-
-    static CreationKey decode(String cursor) {
-      List<String> parts = CursorToken.decode(cursor, 2);
-      try {
-        LocalDateTime createdDate = LocalDateTime.parse(parts.get(0));
-        // Java parses years far outside what a PostgreSQL timestamp holds; that would be a 500.
-        if (createdDate.getYear() < MIN_YEAR || createdDate.getYear() > MAX_YEAR) {
-          throw new InvalidCursorException();
-        }
-        return new CreationKey(createdDate, Long.valueOf(parts.get(1)));
-      } catch (DateTimeParseException | NumberFormatException notAKey) {
-        throw new InvalidCursorException();
-      }
-    }
-  }
+  /** The sort key of a payment. */
+  private record CreationKey(Instant createdDate, Long id) {}
 }

@@ -4,10 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.NoMaskSessionException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.support.AdminSessions;
+import com.tarimatwasi.quipu.support.MaskedCursors;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -15,14 +20,17 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /** TAR-182: the stays of a guest, read by last index and newest first. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
@@ -31,19 +39,25 @@ class StayRepositoryAdapterTest {
 
   @Autowired StayRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
+  @Autowired IdMasker masker;
+  @Autowired ApplicationContext context;
 
+  private Long admin;
   private Long guestId;
   private Long otherGuestId;
 
   @BeforeEach
   void setUp() {
     TestTables.clear(jdbc);
+    admin = AdminSessions.insertAdmin(jdbc);
+    AdminSessions.signIn(context, admin);
     guestId = insertGuest("30000001");
     otherGuestId = insertGuest("30000002");
   }
 
   @AfterEach
   void tearDown() {
+    SecurityContextHolder.clearContext();
     TestTables.clear(jdbc);
   }
 
@@ -149,6 +163,62 @@ class StayRepositoryAdapterTest {
           .as(bad)
           .isInstanceOf(InvalidCursorException.class);
     }
+  }
+
+  private static List<LocalDate> starts(CursorPage<Stay> page) {
+    return page.content().stream().map(Stay::startDate).toList();
+  }
+
+  /**
+   * TAR-227: the cursor hides the internal id and the start date, and serves only its own session
+   * and its own guest.
+   */
+  @Test
+  void findByGuest_cursorIsOpaqueAndValidOnlyInItsSessionAndForItsGuest() {
+    Long oldest = jdbcStay(guestId, "2025-01-01", "2025-01-10");
+    Long middle = jdbcStay(guestId, "2025-05-01", "2025-05-10");
+    Long newest = jdbcStay(guestId, "2025-09-01", "2025-09-10");
+    jdbcStay(otherGuestId, "2025-03-01", "2025-03-10");
+
+    CursorPage<Stay> first = adapter.findByGuest(guestId, new PageQuery(null, 2));
+    assertThat(first.content()).extracting(Stay::id).containsExactly(newest, middle);
+    String cursor = Objects.requireNonNull(first.nextCursor());
+
+    String key =
+        MaskedCursors.assertOpaque(
+            cursor, masker, IdKind.STAY, middle, List.of(oldest, middle, newest));
+    CursorPage<Stay> second = adapter.findByGuest(guestId, new PageQuery(cursor, 2));
+    assertThat(second.content()).extracting(Stay::id).containsExactly(oldest);
+    assertThat(second.nextCursor()).isNull();
+
+    for (String bad : MaskedCursors.forgeries(key, masker, IdKind.GUEST, middle, "2025-05-01")) {
+      assertThatThrownBy(() -> adapter.findByGuest(guestId, new PageQuery(bad, 2)))
+          .as(bad)
+          .isInstanceOf(InvalidCursorException.class);
+    }
+    // the position of a stay of one guest is not one in the stays of another
+    assertThatThrownBy(() -> adapter.findByGuest(otherGuestId, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // another session of the same administrator
+    AdminSessions.signIn(context, admin);
+    assertThatThrownBy(() -> adapter.findByGuest(guestId, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+    String again =
+        Objects.requireNonNull(adapter.findByGuest(guestId, new PageQuery(null, 2)).nextCursor());
+    assertThat(again).isNotEqualTo(cursor);
+    assertThat(starts(adapter.findByGuest(guestId, new PageQuery(again, 2))))
+        .containsExactly(LocalDate.parse("2025-01-01"));
+
+    // the stay of the cursor is no longer there
+    jdbc.update("DELETE FROM stays WHERE id = ?", middle);
+    assertThatThrownBy(() -> adapter.findByGuest(guestId, new PageQuery(again, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // with no session at all it fails closed
+    SecurityContextHolder.clearContext();
+    assertThatThrownBy(() -> adapter.findByGuest(guestId, new PageQuery(null, 1)))
+        .isInstanceOf(NoMaskSessionException.class);
   }
 
   @Test

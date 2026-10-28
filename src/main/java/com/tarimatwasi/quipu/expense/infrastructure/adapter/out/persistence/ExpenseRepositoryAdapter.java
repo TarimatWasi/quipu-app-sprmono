@@ -3,17 +3,17 @@ package com.tarimatwasi.quipu.expense.infrastructure.adapter.out.persistence;
 import com.tarimatwasi.quipu.expense.application.port.out.ExpenseRepositoryPort;
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
-import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.MaskedCursor;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.YearMonth;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,9 +26,11 @@ import org.springframework.stereotype.Component;
 public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
 
   private final ExpenseJpaRepository jpaRepository;
+  private final IdMasker masker;
 
-  ExpenseRepositoryAdapter(ExpenseJpaRepository jpaRepository) {
+  ExpenseRepositoryAdapter(ExpenseJpaRepository jpaRepository, IdMasker masker) {
     this.jpaRepository = jpaRepository;
+    this.masker = masker;
   }
 
   @Override
@@ -60,9 +62,15 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
     return jpaRepository.deleteByIdIgnoringVersion(id) > 0;
   }
 
+  /**
+   * TAR-227: the cursor carries only the id of the last expense, masked in the session that asked,
+   * never the internal one nor its date; the date is read again from the expense. A cursor of
+   * another session, altered, or of an expense that is no longer there or not of this month is an
+   * invalid cursor.
+   */
   @Override
   public CursorPage<Expense> findByMonth(YearMonth month, PageQuery page) {
-    CreationKey after = page.after() == null ? null : CreationKey.decode(page.after());
+    CreationKey after = page.after() == null ? null : keyOf(page.after(), month);
     Specification<ExpenseJpaEntity> filter =
         (root, query, builder) -> {
           Predicate inMonth = builder.equal(root.get("month"), month.atDay(1));
@@ -70,7 +78,7 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
             return inMonth;
           }
           // (createdDate, id) > (date, id), in the order of the listing.
-          Path<LocalDateTime> createdDate = root.get("createdDate");
+          Path<Instant> createdDate = root.get("createdDate");
           return builder.and(
               inMonth,
               builder.or(
@@ -83,7 +91,10 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
     // One more than the limit: the extra row only says that there is a next page.
     List<ExpenseJpaEntity> rows =
         jpaRepository.findBy(filter, query -> query.sortBy(order).limit(page.limit() + 1).all());
-    return CursorPage.of(rows, page.limit(), ExpenseRepositoryAdapter::cursorOf)
+    return CursorPage.of(
+            rows,
+            page.limit(),
+            row -> MaskedCursor.of(masker, IdKind.EXPENSE, Objects.requireNonNull(row.getId())))
         .map(ExpenseJpaEntity::toDomain);
   }
 
@@ -93,31 +104,14 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
     return sum == null ? BigDecimal.ZERO : sum;
   }
 
-  private static String cursorOf(ExpenseJpaEntity expense) {
-    return CursorToken.encode(
-        // PostgreSQL keeps microseconds: a finer value would sort after the row it came from.
-        expense.getCreatedDate().orElseThrow().truncatedTo(ChronoUnit.MICROS).toString(),
-        Objects.requireNonNull(expense.getId()).toString());
+  /** Where the cursor stands: the sort key of its expense, read again from the row. */
+  private CreationKey keyOf(String cursor, YearMonth month) {
+    Long id = MaskedCursor.idOf(masker, IdKind.EXPENSE, cursor);
+    Instant createdDate =
+        jpaRepository.findCreatedDate(id, month.atDay(1)).orElseThrow(InvalidCursorException::new);
+    return new CreationKey(createdDate, id);
   }
 
-  /** The sort key of an expense, as the cursor carries it. */
-  private record CreationKey(LocalDateTime createdDate, Long id) {
-
-    private static final int MIN_YEAR = 1900;
-    private static final int MAX_YEAR = 9999;
-
-    static CreationKey decode(String cursor) {
-      List<String> parts = CursorToken.decode(cursor, 2);
-      try {
-        LocalDateTime createdDate = LocalDateTime.parse(parts.get(0));
-        // Java parses years far outside what a PostgreSQL timestamp holds; that would be a 500.
-        if (createdDate.getYear() < MIN_YEAR || createdDate.getYear() > MAX_YEAR) {
-          throw new InvalidCursorException();
-        }
-        return new CreationKey(createdDate, Long.valueOf(parts.get(1)));
-      } catch (DateTimeParseException | NumberFormatException notAKey) {
-        throw new InvalidCursorException();
-      }
-    }
-  }
+  /** The sort key of an expense. */
+  private record CreationKey(Instant createdDate, Long id) {}
 }

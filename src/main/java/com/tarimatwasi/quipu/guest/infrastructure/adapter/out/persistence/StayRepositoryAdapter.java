@@ -2,15 +2,16 @@ package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.guest.application.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
-import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.MaskedCursor;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -22,14 +23,22 @@ import org.springframework.stereotype.Component;
 public class StayRepositoryAdapter implements StayRepositoryPort {
 
   private final StayJpaRepository jpaRepository;
+  private final IdMasker masker;
 
-  StayRepositoryAdapter(StayJpaRepository jpaRepository) {
+  StayRepositoryAdapter(StayJpaRepository jpaRepository, IdMasker masker) {
     this.jpaRepository = jpaRepository;
+    this.masker = masker;
   }
 
+  /**
+   * TAR-227: the cursor carries only the id of the last stay, masked in the session that asked,
+   * never the internal one nor its start date; the date is read again from the stay. A cursor of
+   * another session, altered, or of a stay that is no longer there or of another guest is an
+   * invalid cursor.
+   */
   @Override
   public CursorPage<Stay> findByGuest(Long guestId, PageQuery page) {
-    StartKey after = page.after() == null ? null : StartKey.decode(page.after());
+    StartKey after = page.after() == null ? null : keyOf(page.after(), guestId);
     Specification<StayJpaEntity> filter =
         (root, query, builder) -> {
           Predicate ofGuest = builder.equal(root.get("guestId"), guestId);
@@ -53,7 +62,7 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
     return CursorPage.of(
         rows.stream().map(StayJpaEntity::toDomain).toList(),
         page.limit(),
-        stay -> CursorToken.encode(stay.startDate().toString(), stay.id().toString()));
+        stay -> MaskedCursor.of(masker, IdKind.STAY, stay.id()));
   }
 
   @Override
@@ -98,24 +107,14 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
     return jpaRepository.saveAndFlush(entity).toDomain();
   }
 
-  /** The sort key of a stay, as the cursor carries it. */
-  private record StartKey(LocalDate startDate, Long id) {
-
-    private static final int MIN_YEAR = 1900;
-    private static final int MAX_YEAR = 9999;
-
-    static StartKey decode(String cursor) {
-      List<String> parts = CursorToken.decode(cursor, 2);
-      try {
-        LocalDate startDate = LocalDate.parse(parts.get(0));
-        // Java parses years far outside what a PostgreSQL date holds; that would be a 500.
-        if (startDate.getYear() < MIN_YEAR || startDate.getYear() > MAX_YEAR) {
-          throw new InvalidCursorException();
-        }
-        return new StartKey(startDate, Long.valueOf(parts.get(1)));
-      } catch (DateTimeParseException | NumberFormatException notAKey) {
-        throw new InvalidCursorException();
-      }
-    }
+  /** Where the cursor stands: the sort key of its stay, read again from the row. */
+  private StartKey keyOf(String cursor, Long guestId) {
+    Long id = MaskedCursor.idOf(masker, IdKind.STAY, cursor);
+    LocalDate startDate =
+        jpaRepository.findStartDate(id, guestId).orElseThrow(InvalidCursorException::new);
+    return new StartKey(startDate, id);
   }
+
+  /** The sort key of a stay. */
+  private record StartKey(LocalDate startDate, Long id) {}
 }

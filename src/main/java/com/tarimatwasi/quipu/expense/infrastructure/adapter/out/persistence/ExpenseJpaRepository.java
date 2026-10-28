@@ -1,7 +1,9 @@
 package com.tarimatwasi.quipu.expense.infrastructure.adapter.out.persistence;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -23,4 +25,11 @@ interface ExpenseJpaRepository
   /** RF-18: read by the prefix of ix_expenses_month_created_date_id; null when there are none. */
   @Query("select sum(e.amount) from ExpenseJpaEntity e where e.month = :month")
   @Nullable BigDecimal sumAmountByMonth(@Param("month") LocalDate month);
+
+  /**
+   * TAR-227: where a page cursor stands, if the expense is one of that month. createdDate is mapped
+   * as an Instant (the field of AbstractAuditable; only its getter is a LocalDateTime).
+   */
+  @Query("select e.createdDate from ExpenseJpaEntity e where e.id = :id and e.month = :month")
+  Optional<Instant> findCreatedDate(@Param("id") Long id, @Param("month") LocalDate month);
 }

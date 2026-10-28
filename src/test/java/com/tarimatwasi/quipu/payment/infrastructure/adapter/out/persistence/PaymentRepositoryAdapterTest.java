@@ -8,10 +8,15 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.NoMaskSessionException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.support.AdminSessions;
+import com.tarimatwasi.quipu.support.MaskedCursors;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -20,6 +25,7 @@ import java.time.Instant;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -28,9 +34,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -45,6 +53,8 @@ class PaymentRepositoryAdapterTest {
   @Autowired PaymentRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
   @Autowired PlatformTransactionManager transactionManager;
+  @Autowired IdMasker masker;
+  @Autowired ApplicationContext context;
 
   private Long admin;
   private Long guest;
@@ -61,6 +71,7 @@ class PaymentRepositoryAdapterTest {
             + " must_change_password, status)"
             + " VALUES (?, 'admin@example.test', 'DNI', '00000001', 'hash', 'ADMIN', FALSE, 'ACTIVE')",
         admin);
+    AdminSessions.signIn(context, admin);
     guest = insertGuest("70000001", "CONTRACT");
     temporaryGuest = insertGuest("70000002", "TEMPORARY");
     Long room = TestIds.next();
@@ -85,6 +96,7 @@ class PaymentRepositoryAdapterTest {
 
   @AfterEach
   void tearDown() {
+    SecurityContextHolder.clearContext();
     TestTables.clear(jdbc);
   }
 
@@ -398,6 +410,117 @@ class PaymentRepositoryAdapterTest {
           .as(bad)
           .isInstanceOf(InvalidCursorException.class);
     }
+  }
+
+  private static List<Long> ids(CursorPage<StoredPayment> page) {
+    return page.content().stream().map(p -> p.payment().id()).toList();
+  }
+
+  /**
+   * TAR-227: the cursor of the queue hides the internal id and the date, and serves one session.
+   */
+  @Test
+  void findQueue_cursorIsOpaqueAndValidOnlyInItsSession() {
+    Long oldest = insertPending("2026-01", "2026-10-01T10:00:00Z");
+    Long middle = insertPending("2026-02", "2026-10-02T10:00:00Z");
+    Long newest = insertPending("2026-03", "2026-10-03T10:00:00Z");
+
+    CursorPage<StoredPayment> first =
+        adapter.findQueue(PaymentStatus.PENDING, new PageQuery(null, 2));
+    assertThat(ids(first)).containsExactly(oldest, middle);
+    String cursor = Objects.requireNonNull(first.nextCursor());
+
+    String key =
+        MaskedCursors.assertOpaque(
+            cursor, masker, IdKind.PAYMENT, middle, List.of(oldest, middle, newest));
+    for (String bad :
+        MaskedCursors.forgeries(key, masker, IdKind.CONTRACT, middle, "2026-10-02T10:00:00")) {
+      assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(bad, 2)))
+          .as(bad)
+          .isInstanceOf(InvalidCursorException.class);
+    }
+
+    // reviewing the payment of the cursor does not lose the place in the queue of pending ones
+    jdbc.update(
+        "UPDATE payments SET status = 'APPROVED', reviewed_at = now(), reviewed_by_id = ?"
+            + " WHERE id = ?",
+        admin,
+        middle);
+    CursorPage<StoredPayment> second =
+        adapter.findQueue(PaymentStatus.PENDING, new PageQuery(cursor, 2));
+    assertThat(ids(second)).containsExactly(newest);
+    assertThat(second.nextCursor()).isNull();
+
+    // another session of the same administrator
+    AdminSessions.signIn(context, admin);
+    assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+    String again =
+        Objects.requireNonNull(adapter.findQueue(null, new PageQuery(null, 2)).nextCursor());
+    assertThat(again).isNotEqualTo(cursor);
+    assertThat(ids(adapter.findQueue(null, new PageQuery(again, 2)))).containsExactly(newest);
+
+    // the payment of the cursor is no longer there
+    jdbc.update("DELETE FROM payments WHERE id = ?", middle);
+    assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(again, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // with no session at all it fails closed
+    SecurityContextHolder.clearContext();
+    assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(null, 1)))
+        .isInstanceOf(NoMaskSessionException.class);
+  }
+
+  /**
+   * TAR-227: the cursor of the history hides the internal id and the date, and serves only its own
+   * session and its own guest.
+   */
+  @Test
+  void findHistory_cursorIsOpaqueAndValidOnlyInItsSessionAndForItsGuest() {
+    Long oldest = insertPending("2026-01", "2026-10-01T10:00:00Z");
+    Long middle = insertPending("2026-02", "2026-10-02T10:00:00Z");
+    Long newest = insertPending("2026-03", "2026-10-03T10:00:00Z");
+    adapter.insertApproved(draftForStay());
+
+    CursorPage<StoredPayment> first = adapter.findHistory(guest, new PageQuery(null, 2));
+    assertThat(ids(first)).containsExactly(newest, middle);
+    String cursor = Objects.requireNonNull(first.nextCursor());
+
+    String key =
+        MaskedCursors.assertOpaque(
+            cursor, masker, IdKind.PAYMENT, middle, List.of(oldest, middle, newest));
+    CursorPage<StoredPayment> second = adapter.findHistory(guest, new PageQuery(cursor, 2));
+    assertThat(ids(second)).containsExactly(oldest);
+    assertThat(second.nextCursor()).isNull();
+
+    for (String bad :
+        MaskedCursors.forgeries(key, masker, IdKind.CONTRACT, middle, "2026-10-02T10:00:00")) {
+      assertThatThrownBy(() -> adapter.findHistory(guest, new PageQuery(bad, 2)))
+          .as(bad)
+          .isInstanceOf(InvalidCursorException.class);
+    }
+    // the position of a payment of one guest is not one in the history of another
+    assertThatThrownBy(() -> adapter.findHistory(temporaryGuest, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // another session of the same administrator
+    AdminSessions.signIn(context, admin);
+    assertThatThrownBy(() -> adapter.findHistory(guest, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+    String again =
+        Objects.requireNonNull(adapter.findHistory(guest, new PageQuery(null, 2)).nextCursor());
+    assertThat(again).isNotEqualTo(cursor);
+    assertThat(ids(adapter.findHistory(guest, new PageQuery(again, 2)))).containsExactly(oldest);
+
+    // the payment of the cursor is no longer there
+    jdbc.update("DELETE FROM payments WHERE id = ?", middle);
+    assertThatThrownBy(() -> adapter.findHistory(guest, new PageQuery(again, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // with no session at all it fails closed
+    SecurityContextHolder.clearContext();
+    assertThatThrownBy(() -> adapter.findHistory(guest, new PageQuery(null, 1)))
+        .isInstanceOf(NoMaskSessionException.class);
   }
 
   @Test
