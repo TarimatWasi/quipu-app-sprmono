@@ -32,6 +32,27 @@ public interface GuestAccountPort {
   void openAccount(
       Long guestId, String documentType, String documentNumber, @Nullable String email);
 
+  /**
+   * TAR-229: creates the account of a guest just registered with that email as its account email;
+   * an email another account has is refused, not dropped (D-77). Joins the caller's transaction.
+   *
+   * @throws GuestDocumentAlreadyExistsException if another account has the document
+   * @throws AccountEmailAlreadyExistsException if another account has the email, ignoring case
+   */
+  void openNewAccount(
+      Long guestId, String documentType, String documentNumber, @Nullable String email);
+
+  /**
+   * TAR-229: sets or changes the account email of the guest; a change removes the pending recovery
+   * code. Joins the caller's transaction, which holds the lock of the guest.
+   *
+   * @throws AccountEmailAlreadyExistsException if another account has the email, ignoring case
+   */
+  AccountEmailChange changeAccountEmail(Long guestId, String email);
+
+  /** Tells the previous account email about the change, best-effort. After the commit. */
+  void noticeAccountEmailChanged(String previousEmail, String newEmail);
+
   /** Revokes the live access of the guest and issues a new one (RN-32). Joins the transaction. */
   IssuedAccess issueAccess(Long guestId, AccessMode mode);
 
@@ -57,6 +78,25 @@ public interface GuestAccountPort {
     public String toString() {
       // Never the secret: this record may reach a log by accident.
       return "IssuedAccess[mode=" + mode + ", expiresAt=" + expiresAt + "]";
+    }
+  }
+
+  /** What a change of account email did. */
+  enum EmailChangeOutcome {
+    NO_ACCOUNT,
+    UNCHANGED,
+    CHANGED
+  }
+
+  /**
+   * A change of account email; {@code previousEmail} is the email replaced by a change (null if the
+   * account had none or nothing changed).
+   */
+  record AccountEmailChange(EmailChangeOutcome outcome, @Nullable String previousEmail) {
+    @Override
+    public String toString() {
+      // Never the email: this record may reach a log by accident.
+      return "AccountEmailChange[outcome=" + outcome + "]";
     }
   }
 

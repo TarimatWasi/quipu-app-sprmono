@@ -3,11 +3,14 @@ package com.tarimatwasi.quipu.contract;
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +19,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedE
 import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
@@ -51,7 +55,8 @@ import org.springframework.test.web.servlet.ResultActions;
     properties = {
       "app.cors.allowed-origin=http://localhost:3000",
       "app.rate-limit.administrator-creations-per-minute=1",
-      "app.rate-limit.administrator-status-changes-per-minute=1"
+      "app.rate-limit.administrator-status-changes-per-minute=1",
+      "app.rate-limit.guest-account-email-changes-per-minute=1"
     })
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)
@@ -81,6 +86,7 @@ class AdministratorRateLimitBffTest {
   @Autowired IdMasker ids;
   @MockitoBean CreateAdministratorUseCase administrators;
   @MockitoBean ManageAdministratorsUseCase management;
+  @MockitoBean ManageGuestAccessUseCase guestAccess;
 
   private final Long adminId = TestIds.next();
   private final Long otherAdminId = TestIds.next();
@@ -189,6 +195,35 @@ class AdministratorRateLimitBffTest {
     change("deactivate", session(guestUserId)).andExpect(status().isForbidden());
     change("deactivate", session(guestUserId)).andExpect(status().isForbidden());
     verify(management, times(2)).deactivate(any());
+  }
+
+  /** TAR-229: the changes of the account email of a guest have their own allowance. */
+  @Test
+  void theGuestAccountEmailChangeOverTheAllowanceGets429BeforeTheUseCase() throws Exception {
+    String guest = sessionIds().mask(IdKind.GUEST, TestIds.next()).toString();
+    setGuestEmail(guest, session(adminId)).andExpect(status().isNoContent());
+
+    MvcResult limited =
+        setGuestEmail(guest, session(adminId))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(content().json(RATE_LIMITED, JsonCompareMode.STRICT))
+            .andExpect(openApi().isValid(SPEC))
+            .andReturn();
+    // Another administrator keeps its allowance; the other routes keep theirs.
+    setGuestEmail(guest, session(otherAdminId)).andExpect(status().isNoContent());
+    change("deactivate", session(adminId)).andExpect(status().isNoContent());
+    setGuestEmail(guest, session(guestUserId)).andExpect(status().isForbidden());
+
+    assertRetryAfter(limited);
+    verify(guestAccess, times(2)).setAccountEmail(anyLong(), anyString());
+  }
+
+  private ResultActions setGuestEmail(String guest, Cookie session) throws Exception {
+    return mockMvc.perform(
+        put("/bff/admin/guests/" + guest + "/account-email")
+            .cookie(session)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"email\":\"nueva@example.com\"}"));
   }
 
   private static void assertRetryAfter(MvcResult limited) {

@@ -7,6 +7,8 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.IssuedA
 import com.tarimatwasi.quipu.guest.application.service.GuestAccessIssuer.Issued;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,8 @@ import org.springframework.stereotype.Service;
 @Service
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02: admin use case, besides the URL rule
 public class GuestRegistrationService implements ManageGuestAccessUseCase {
+
+  private static final Logger LOG = LoggerFactory.getLogger(GuestRegistrationService.class);
 
   private final GuestAccessIssuer issuer;
   private final GuestAccountPort accounts;
@@ -36,6 +40,17 @@ public class GuestRegistrationService implements ManageGuestAccessUseCase {
   @Override
   public AccessView generateAccess(Long guestId, AccessMode mode) {
     return delivered(issuer.generate(guestId, mode));
+  }
+
+  /** The notice leaves only after the commit, so it never tells about a change that was undone. */
+  @Override
+  public void setAccountEmail(Long guestId, String email) {
+    String address = email.strip();
+    issuer
+        .changeAccountEmail(guestId, address)
+        .ifPresent(previous -> accounts.noticeAccountEmailChanged(previous, address));
+    // Only the id: never an email in the logs.
+    LOG.info("The account email of guest {} was set", guestId);
   }
 
   private AccessView delivered(Issued issued) {

@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.auth.application.port.out.AccountAlreadyExistsException;
+import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
+import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
@@ -56,6 +58,41 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     }
     throw new AccountAlreadyExistsException(
         new IllegalStateException("The document of guest " + guestId + " has an account"));
+  }
+
+  @Override
+  public void insertNewGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    // ON CONFLICT waits for a simultaneous insert of the same email or document and, if it
+    // commits, writes nothing: the rule that refused it is then read without locking any row.
+    if (insertGuest(guestId, documentType, documentNumber, email, unusablePasswordHash) == 1
+        || !jpaRepository.findByGuestIdIn(List.of(guestId)).isEmpty()) {
+      return;
+    }
+    IllegalStateException cause = new IllegalStateException("A unique rule of users refused it");
+    if (jpaRepository.findByDocumentTypeAndDocumentNumber(documentType, documentNumber).isPresent()
+        || email == null) {
+      throw new AccountTakenException(Taken.DOCUMENT, cause);
+    }
+    throw new AccountTakenException(Taken.EMAIL, cause);
+  }
+
+  @Override
+  public void changeEmail(Long id, String email) {
+    try {
+      jpaRepository.updateEmailById(id, email);
+    } catch (DataIntegrityViolationException e) {
+      // By the name of the rule, never by the message: the language of the server does not matter.
+      String constraint = ConstraintName.of(e);
+      if (constraint != null && AdministratorStoreAdapter.EMAIL_CONSTRAINTS.contains(constraint)) {
+        throw new AccountTakenException(Taken.EMAIL, e);
+      }
+      throw e;
+    }
   }
 
   @Override

@@ -96,6 +96,29 @@ public interface UserRepositoryPort {
       String unusablePasswordHash);
 
   /**
+   * TAR-229: like {@link #insertGuestAccount} for a guest just registered, but an email another
+   * account has (ignoring case, also one committed meanwhile) is refused instead of dropped. The
+   * transaction stays usable: nothing is written when it throws.
+   *
+   * @throws AccountTakenException if another account has the document or the email
+   */
+  void insertNewGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash);
+
+  /**
+   * TAR-229: writes the email of the account and removes its recovery code, so a code emailed to
+   * the previous address stops working. Only those columns are written.
+   *
+   * @throws AccountTakenException with {@code EMAIL} if another account has the email, ignoring
+   *     case (the unique index decides two simultaneous changes); the transaction must roll back
+   */
+  void changeEmail(Long id, String email);
+
+  /**
    * The document the guest account logs in with follows the document of the guest (RN-36); nothing
    * if the guest has no account.
    *

@@ -14,6 +14,9 @@ app:
     administrator-creations-per-minute: 60
     # y varias bajas y reactivaciones seguidas (TAR-127); AdministratorRateLimitBffTest fija el suyo.
     administrator-status-changes-per-minute: 60
+    # y varios cambios seguidos del correo de cuenta de un huésped (TAR-229); la prueba de límite
+    # fija el suyo.
+    guest-account-email-changes-per-minute: 60
     # y muchas peticiones ADMIN seguidas del mismo usuario (TAR-221): el máximo que acepta la
     # validación. AdminAreaRateLimitBffTest fija el suyo.
     admin-requests-per-minute: 600

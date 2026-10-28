@@ -1,8 +1,10 @@
 package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.account;
 
 import com.tarimatwasi.quipu.auth.application.port.in.AccountDocumentTakenException;
+import com.tarimatwasi.quipu.auth.application.port.in.AccountEmailTakenException;
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.guest.application.port.out.AccountEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
@@ -34,6 +36,35 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
     } catch (AccountDocumentTakenException e) {
       throw new GuestDocumentAlreadyExistsException(e);
     }
+  }
+
+  @Override
+  public void openNewAccount(
+      Long guestId, String documentType, String documentNumber, @Nullable String email) {
+    try {
+      access.openNewAccount(guestId, documentType, documentNumber, email);
+    } catch (AccountDocumentTakenException e) {
+      throw new GuestDocumentAlreadyExistsException(e);
+    } catch (AccountEmailTakenException e) {
+      throw new AccountEmailAlreadyExistsException(e);
+    }
+  }
+
+  @Override
+  public AccountEmailChange changeAccountEmail(Long guestId, String email) {
+    GuestAccessUseCase.AccountEmailChange change;
+    try {
+      change = access.changeAccountEmail(guestId, email);
+    } catch (AccountEmailTakenException e) {
+      throw new AccountEmailAlreadyExistsException(e);
+    }
+    return new AccountEmailChange(
+        EmailChangeOutcome.valueOf(change.outcome().name()), change.previousEmail());
+  }
+
+  @Override
+  public void noticeAccountEmailChanged(String previousEmail, String newEmail) {
+    access.noticeAccountEmailChanged(previousEmail, newEmail);
   }
 
   @Override

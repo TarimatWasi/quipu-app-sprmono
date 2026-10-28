@@ -48,6 +48,8 @@ public interface ManageGuestAccessUseCase {
    * @throws GuestDocumentTakenException if an administrator account has the document
    * @throws GuestInactiveException if the document belongs to an inactive guest
    * @throws GuestEmailTakenException if another guest has the email
+   * @throws GuestAccountEmailTakenException if another access account has the email as its account
+   *     email, ignoring case (D-77); nothing is created
    */
   Registration register(RegisterCommand command);
 
@@ -59,4 +61,17 @@ public interface ManageGuestAccessUseCase {
    * @throws GuestInactiveException if the guest is inactive
    */
   AccessView generateAccess(Long guestId, AccessMode mode);
+
+  /**
+   * TAR-229 (RF-16, D-76): sets or changes the account email of the guest, the one the password
+   * recovery writes to; the contact email stays apart (D-33). The same email, ignoring case,
+   * changes nothing. A change removes the pending recovery code of the account and, if the account
+   * had another email, tells it, best-effort: a failed notice does not undo the change.
+   *
+   * @throws GuestNotFoundException if there is no guest with that id
+   * @throws GuestInactiveException if the guest is inactive
+   * @throws GuestWithoutAccountException if the guest has no access account
+   * @throws GuestAccountEmailTakenException if another access account has the email, ignoring case
+   */
+  void setAccountEmail(Long guestId, String email);
 }

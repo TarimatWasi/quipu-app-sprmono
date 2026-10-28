@@ -22,10 +22,13 @@ import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -53,6 +56,15 @@ public class GuestAccessBffController {
       @NotNull AccessMode accessMode) {}
 
   public record GenerateAccessRequest(@NotNull AccessMode accessMode) {}
+
+  /** The body of setGuestAccountEmail (TAR-229). */
+  public record AccountEmailRequest(@NotBlank @Email @Size(max = 200) String email) {
+    @Override
+    public String toString() {
+      // Never the email: this record may reach a log by accident.
+      return "AccountEmailRequest[]";
+    }
+  }
 
   /** AccessGrant: the secret goes in the field of its mode only. */
   @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -114,6 +126,17 @@ public class GuestAccessBffController {
       @PathVariable UUID id, @Valid @RequestBody GenerateAccessRequest request) {
     AccessView issued = access.generateAccess(ids.unmask(IdKind.GUEST, id), request.accessMode());
     return noStore(ResponseEntity.ok()).body(AccessGrantResponse.of(issued));
+  }
+
+  /**
+   * TAR-229 (RF-16, D-76): sets or changes the account email of the guest. The body is checked
+   * before the id is unmasked; an id of another session answers 404 (TAR-227).
+   */
+  @PutMapping("/bff/admin/guests/{id}/account-email")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void setAccountEmail(
+      @PathVariable UUID id, @Valid @RequestBody AccountEmailRequest request) {
+    access.setAccountEmail(ids.unmask(IdKind.GUEST, id), request.email());
   }
 
   /** Exactly {@code no-store}, as the contract says, instead of Spring Security's default list. */
