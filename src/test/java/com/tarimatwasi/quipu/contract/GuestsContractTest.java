@@ -12,7 +12,9 @@ import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -47,6 +49,12 @@ class GuestsContractTest {
   @Autowired JwtTokenProvider jwtTokenProvider;
 
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
 
   private final Long adminId = TestIds.next();
   private final Long guestAccountId = TestIds.next();
@@ -271,17 +279,19 @@ class GuestsContractTest {
         .perform(
             get(URL)
                 .cookie(
-                    new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()))))
+                    new Cookie(
+                        "sessionToken",
+                        jwtTokenProvider.renew(guestAccountId.toString(), sessionId))))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
   }
 
   private UUID masked(Long id) {
-    return masker.mask(IdKind.GUEST, id);
+    return sessionIds().mask(IdKind.GUEST, id);
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private ResultActions patchGuest(Long id, String body) throws Exception {
@@ -317,5 +327,10 @@ class GuestsContractTest {
         document,
         role,
         guestId);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

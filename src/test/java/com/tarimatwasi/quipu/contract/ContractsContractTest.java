@@ -25,8 +25,10 @@ import com.tarimatwasi.quipu.contract.application.port.out.ContractFileStorageEx
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -84,6 +86,8 @@ class ContractsContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+  private @Nullable Cookie admin;
+  private @Nullable Cookie guest;
   @Autowired Clock clock;
   @MockitoBean ContractFilePort files;
 
@@ -135,8 +139,9 @@ class ContractsContractTest {
         .andExpect(status().isCreated())
         .andExpect(answersTheContract())
         .andExpect(
-            jsonPath("$.environmentId").value(masker.mask(IdKind.ENVIRONMENT, room).toString()))
-        .andExpect(jsonPath("$.guestId").value(masker.mask(IdKind.GUEST, contractGuest).toString()))
+            jsonPath("$.environmentId").value(adminIds().mask(IdKind.ENVIRONMENT, room).toString()))
+        .andExpect(
+            jsonPath("$.guestId").value(adminIds().mask(IdKind.GUEST, contractGuest).toString()))
         .andExpect(jsonPath("$.monthlyAmount").value(850.50))
         .andExpect(jsonPath("$.paymentDay").value(5))
         .andExpect(jsonPath("$.graceDays").value(3))
@@ -195,8 +200,8 @@ class ContractsContractTest {
     mockMvc
         .perform(
             multipart(URL)
-                .param("environmentId", masker.mask(IdKind.ENVIRONMENT, room).toString())
-                .param("guestId", masker.mask(IdKind.GUEST, contractGuest).toString())
+                .param("environmentId", adminIds().mask(IdKind.ENVIRONMENT, room).toString())
+                .param("guestId", adminIds().mask(IdKind.GUEST, contractGuest).toString())
                 .param("monthlyAmount", "850.50")
                 .param("paymentDay", "5")
                 .param("graceDays", "3")
@@ -290,7 +295,7 @@ class ContractsContractTest {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
-        .andExpect(jsonPath("$.guestId").value(masker.mask(IdKind.GUEST, pending).toString()));
+        .andExpect(jsonPath("$.guestId").value(adminIds().mask(IdKind.GUEST, pending).toString()));
   }
 
   @Test
@@ -450,7 +455,7 @@ class ContractsContractTest {
     Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
 
     mockMvc
-        .perform(get(URL + "/" + masker.mask(IdKind.CONTRACT, id)).cookie(admin()))
+        .perform(get(URL + "/" + adminIds().mask(IdKind.CONTRACT, id)).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(header().string("Cache-Control", "no-store"))
@@ -464,7 +469,7 @@ class ContractsContractTest {
     Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
     jdbc.update("DELETE FROM contracts WHERE id = ?", id);
 
-    for (UUID unknown : new UUID[] {masker.mask(IdKind.CONTRACT, id), UUID.randomUUID()}) {
+    for (UUID unknown : new UUID[] {adminIds().mask(IdKind.CONTRACT, id), UUID.randomUUID()}) {
       mockMvc
           .perform(get(URL + "/" + unknown).cookie(admin()))
           .andExpect(status().isNotFound())
@@ -517,7 +522,7 @@ class ContractsContractTest {
     assertThat(storedStatus(active)).isEqualTo("TERMINATED");
     assertThat(storedStatus(expired)).isEqualTo("ACTIVE");
     mockMvc
-        .perform(get(URL + "/" + masker.mask(IdKind.CONTRACT, expired)).cookie(admin()))
+        .perform(get(URL + "/" + adminIds().mask(IdKind.CONTRACT, expired)).cookie(admin()))
         .andExpect(jsonPath("$.status").value("EXPIRED"));
   }
 
@@ -527,7 +532,7 @@ class ContractsContractTest {
   void anEnvironmentHeldByAContractCannotBeDeactivated() throws Exception {
     Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
     String deactivate =
-        "/bff/admin/environments/" + masker.mask(IdKind.ENVIRONMENT, room) + "/deactivate";
+        "/bff/admin/environments/" + adminIds().mask(IdKind.ENVIRONMENT, room) + "/deactivate";
 
     mockMvc
         .perform(post(deactivate).cookie(admin()))
@@ -552,7 +557,7 @@ class ContractsContractTest {
         .perform(get("/bff/guest/contract").cookie(guest()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.id").value(masker.mask(IdKind.CONTRACT, id).toString()))
+        .andExpect(jsonPath("$.id").value(guestIds().mask(IdKind.CONTRACT, id).toString()))
         .andExpect(jsonPath("$.status").value("EXPIRED"))
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.fileUrl").value(SIGNED));
@@ -666,12 +671,34 @@ class ContractsContractTest {
     return openApi().isValid(validator);
   }
 
-  private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+  /** The ids as the session of {@link #admin} shows them. */
+  private MaskSession adminIds() {
+    return SessionIds.of(masker, admin());
   }
 
+  /** One session per test (TAR-227: its masked ids are valid only in it). */
+  private Cookie admin() {
+    Cookie session = admin;
+    if (session == null) {
+      session = new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+      admin = session;
+    }
+    return session;
+  }
+
+  /** The ids as the session of {@link #guest} shows them. */
+  private MaskSession guestIds() {
+    return SessionIds.of(masker, guest());
+  }
+
+  /** One session per test (TAR-227: its masked ids are valid only in it). */
   private Cookie guest() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()));
+    Cookie session = guest;
+    if (session == null) {
+      session = new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()));
+      guest = session;
+    }
+    return session;
   }
 
   private MockMultipartHttpServletRequestBuilder multipartWith(byte[] content, String name) {
@@ -685,8 +712,8 @@ class ContractsContractTest {
   private MockMultipartHttpServletRequestBuilder fields(
       MockMultipartHttpServletRequestBuilder request, Long environment, Long guest, Terms terms) {
     request
-        .param("environmentId", masker.mask(IdKind.ENVIRONMENT, environment).toString())
-        .param("guestId", masker.mask(IdKind.GUEST, guest).toString())
+        .param("environmentId", adminIds().mask(IdKind.ENVIRONMENT, environment).toString())
+        .param("guestId", adminIds().mask(IdKind.GUEST, guest).toString())
         .param("monthlyAmount", terms.amount())
         .param("paymentDay", terms.paymentDay())
         .param("graceDays", terms.graceDays())
@@ -724,7 +751,7 @@ class ContractsContractTest {
 
   private ResultActions terminate(Long id) throws Exception {
     return mockMvc.perform(
-        post(URL + "/" + masker.mask(IdKind.CONTRACT, id) + "/terminate").cookie(admin()));
+        post(URL + "/" + adminIds().mask(IdKind.CONTRACT, id) + "/terminate").cookie(admin()));
   }
 
   private Long contractId() {

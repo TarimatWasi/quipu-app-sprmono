@@ -13,11 +13,14 @@ import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +51,7 @@ class StaysContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+  private @Nullable Cookie admin;
 
   private final Long adminId = TestIds.next();
   private final Long guestAccountId = TestIds.next();
@@ -145,7 +149,8 @@ class StaysContractTest {
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(get(URL + "/" + masker.mask(IdKind.GUEST, 999_999L) + "/stays").cookie(admin()))
+        .perform(
+            get(URL + "/" + adminIds().mask(IdKind.GUEST, 999_999L) + "/stays").cookie(admin()))
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
   }
@@ -209,7 +214,7 @@ class StaysContractTest {
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
-        .andExpect(jsonPath("$.guestId").value(masker.mask(IdKind.GUEST, guest).toString()));
+        .andExpect(jsonPath("$.guestId").value(adminIds().mask(IdKind.GUEST, guest).toString()));
   }
 
   @Test
@@ -227,7 +232,7 @@ class StaysContractTest {
   void aStayForAnUnknownGuestIsNotFound() throws Exception {
     mockMvc
         .perform(
-            post(URL + "/" + masker.mask(IdKind.GUEST, 999_999L) + "/stays")
+            post(URL + "/" + adminIds().mask(IdKind.GUEST, 999_999L) + "/stays")
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -392,11 +397,22 @@ class StaysContractTest {
   // --- helpers ---
 
   private String stays(Long guestId) {
-    return URL + "/" + masker.mask(IdKind.GUEST, guestId) + "/stays";
+    return URL + "/" + adminIds().mask(IdKind.GUEST, guestId) + "/stays";
   }
 
+  /** The ids as the session of {@link #admin} shows them. */
+  private MaskSession adminIds() {
+    return SessionIds.of(masker, admin());
+  }
+
+  /** One session per test (TAR-227: its masked ids are valid only in it). */
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    Cookie session = admin;
+    if (session == null) {
+      session = new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+      admin = session;
+    }
+    return session;
   }
 
   private ResultActions postStay(Long guest, String body) throws Exception {
@@ -406,7 +422,7 @@ class StaysContractTest {
 
   private ResultActions patchStay(Long guest, Long stay, String body) throws Exception {
     return mockMvc.perform(
-        patch(stays(guest) + "/" + masker.mask(IdKind.STAY, stay))
+        patch(stays(guest) + "/" + adminIds().mask(IdKind.STAY, stay))
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));

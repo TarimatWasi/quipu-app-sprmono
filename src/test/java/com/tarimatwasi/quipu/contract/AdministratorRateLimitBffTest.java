@@ -18,7 +18,9 @@ import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCas
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -69,6 +71,13 @@ class AdministratorRateLimitBffTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired IdMasker ids;
   @MockitoBean CreateAdministratorUseCase administrators;
   @MockitoBean ManageAdministratorsUseCase management;
@@ -85,7 +94,7 @@ class AdministratorRateLimitBffTest {
     insertUser(otherAdminId, "ADMIN", "00000003");
     insertUser(guestUserId, "GUEST", "00000002");
     when(administrators.create(any())).thenThrow(new AdministratorLimitReachedException());
-    target = ids.mask(IdKind.USER, TestIds.next()).toString();
+    target = sessionIds().mask(IdKind.USER, TestIds.next()).toString();
   }
 
   @AfterEach
@@ -208,7 +217,7 @@ class AdministratorRateLimitBffTest {
   }
 
   private Cookie session(Long id) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(id.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(id.toString(), sessionId));
   }
 
   private void insertUser(Long id, String role, String document) {
@@ -219,5 +228,10 @@ class AdministratorRateLimitBffTest {
         document + "@example.test",
         document,
         role);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return ids.session(sessionId);
   }
 }

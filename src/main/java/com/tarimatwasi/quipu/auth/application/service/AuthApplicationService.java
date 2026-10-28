@@ -182,7 +182,8 @@ public class AuthApplicationService
       grants.revokeLive(guestId, now);
       guests.accessUsed(guestId);
     }
-    return new ChangePasswordResult(sessionTokens.issue(command.userId()));
+    // TAR-227: the same session goes on, so the ids it has shown stay valid.
+    return new ChangePasswordResult(sessionTokens.renew(command.userId(), command.sessionId()));
   }
 
   @Override

@@ -41,11 +41,12 @@ class PaymentHistoryContractTest extends PaymentsContractSupport {
   }
 
   private Cookie temporary() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(temporaryAccountId.toString()));
+    return new Cookie(
+        "sessionToken", jwtTokenProvider.renew(temporaryAccountId.toString(), sessionId));
   }
 
   private String adminUrl(Long guestId) {
-    return adminUrl(masker.mask(IdKind.GUEST, guestId));
+    return adminUrl(ids().mask(IdKind.GUEST, guestId));
   }
 
   private static String adminUrl(UUID guestId) {

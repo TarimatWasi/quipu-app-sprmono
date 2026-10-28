@@ -46,7 +46,8 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   }
 
   private Cookie temporary() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(temporaryAccountId.toString()));
+    return new Cookie(
+        "sessionToken", jwtTokenProvider.renew(temporaryAccountId.toString(), sessionId));
   }
 
   private static MockMultipartHttpServletRequestBuilder form(String url, byte[] content) {

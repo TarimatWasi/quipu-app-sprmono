@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.nio.charset.StandardCharsets;
@@ -205,7 +206,8 @@ class LoginPasswordChangeConcurrencyTest {
 
   private void changePassword() {
     passwords.changePassword(
-        new ChangePasswordCommand(user.toString(), OLD_PASSWORD, NEW_PASSWORD));
+        new ChangePasswordCommand(
+            user.toString(), SessionIds.newSessionId(), OLD_PASSWORD, NEW_PASSWORD));
   }
 
   private void resetPassword() {

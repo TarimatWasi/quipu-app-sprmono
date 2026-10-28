@@ -10,11 +10,13 @@ import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableE
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import jakarta.persistence.LockTimeoutException;
 import jakarta.persistence.PessimisticLockException;
 import java.net.SocketTimeoutException;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.CannotAcquireLockException;
@@ -27,8 +29,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 class BffExceptionHandlerTest {
 
-  private static final IdMasker MASKER =
-      new IdMasker(new IdMaskProperties("test-secret-test-secret-test-secret-00"));
+  private static final IdMaskProperties KEY =
+      new IdMaskProperties("test-secret-test-secret-test-secret-00");
+
+  /** The session of the request being answered (TAR-227). */
+  private static final MaskSession SESSION =
+      new IdMasker(KEY, Optional::empty).session("AAECAwQFBgcICQoLDA0ODw");
+
+  private static final IdMasker MASKER = new IdMasker(KEY, () -> Optional.of(SESSION));
 
   private final BffExceptionHandler handler = new BffExceptionHandler(MASKER);
 

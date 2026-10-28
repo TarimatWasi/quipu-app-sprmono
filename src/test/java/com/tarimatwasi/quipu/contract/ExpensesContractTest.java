@@ -13,6 +13,7 @@ import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -47,6 +48,12 @@ class ExpensesContractTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
 
   private final Long adminId = TestIds.next();
   private final Long guestId = TestIds.next();
@@ -138,7 +145,7 @@ class ExpensesContractTest {
 
   @Test
   void withoutSessionIs401AndAGuestIs403() throws Exception {
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.renew(guestId.toString(), sessionId));
 
     mockMvc
         .perform(get(URL).param("month", "2026-09"))
@@ -151,7 +158,7 @@ class ExpensesContractTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private ResultActions create(String body) throws Exception {

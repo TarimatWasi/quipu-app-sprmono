@@ -47,7 +47,8 @@ class GuestProfileContractTest extends PaymentsContractSupport {
   }
 
   private Cookie temporary() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(temporaryAccountId.toString()));
+    return new Cookie(
+        "sessionToken", jwtTokenProvider.renew(temporaryAccountId.toString(), sessionId));
   }
 
   private ResultActions edit(String url, Cookie who, String body) throws Exception {

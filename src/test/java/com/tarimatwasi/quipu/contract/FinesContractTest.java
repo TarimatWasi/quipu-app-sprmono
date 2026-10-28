@@ -15,7 +15,9 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -49,6 +51,13 @@ class FinesContractTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired IdMasker ids;
 
   private final Long adminId = TestIds.next();
@@ -65,7 +74,7 @@ class FinesContractTest {
         "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
             + " VALUES (?, 'DNI', '40000001', 'TEMPORARY', 'INACTIVE')",
         guestId);
-    maskedGuest = ids.mask(IdKind.GUEST, guestId);
+    maskedGuest = sessionIds().mask(IdKind.GUEST, guestId);
   }
 
   private static ResultMatcher satisfiesTheContract() {
@@ -127,7 +136,7 @@ class FinesContractTest {
 
   @Test
   void aGuestThatDoesNotExistIs404() throws Exception {
-    create(body(ids.mask(IdKind.GUEST, TestIds.next()), "10", "2026-09", ""))
+    create(body(sessionIds().mask(IdKind.GUEST, TestIds.next()), "10", "2026-09", ""))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
         .andExpect(satisfiesTheContract());
@@ -172,7 +181,8 @@ class FinesContractTest {
 
   @Test
   void withoutSessionIs401AndAGuestIs403() throws Exception {
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestUserId.toString()));
+    var guest =
+        new Cookie("sessionToken", jwtTokenProvider.renew(guestUserId.toString(), sessionId));
 
     mockMvc
         .perform(get(URL).param("month", "2026-09"))
@@ -191,13 +201,13 @@ class FinesContractTest {
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(delete(URL + "/" + ids.mask(IdKind.FINE, 1L)).cookie(guest))
+        .perform(delete(URL + "/" + sessionIds().mask(IdKind.FINE, 1L)).cookie(guest))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private ResultActions create(String body) throws Exception {
@@ -213,5 +223,10 @@ class FinesContractTest {
         document + "@example.test",
         document,
         role);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return ids.session(sessionId);
   }
 }

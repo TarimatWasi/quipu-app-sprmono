@@ -22,7 +22,9 @@ import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -76,6 +78,13 @@ class AdministratorManagementContractTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired IdMasker ids;
   @Autowired PasswordEncoder passwordEncoder;
   @MockitoBean AdministratorNoticePort notices;
@@ -439,11 +448,11 @@ class AdministratorManagementContractTest {
   }
 
   private UUID masked(Long id) {
-    return ids.mask(IdKind.USER, id);
+    return sessionIds().mask(IdKind.USER, id);
   }
 
   private Cookie session(Long userId) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(userId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(userId.toString(), sessionId));
   }
 
   private Map<String, @Nullable Object> row(Long id) {
@@ -483,5 +492,10 @@ class AdministratorManagementContractTest {
         hash,
         role,
         mustChangePassword);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return ids.session(sessionId);
   }
 }

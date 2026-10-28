@@ -28,7 +28,9 @@ import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -86,6 +88,13 @@ class GuestOnboardingContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @MockitoBean GuestDocumentFilePort files;
 
   private final Long adminId = TestIds.next();
@@ -492,7 +501,7 @@ class GuestOnboardingContractTest {
   void theAdministratorListsTheDocumentsWithAShortLivedLink() throws Exception {
     savePersonalData();
     upload(guest(), PDF, "dni.pdf").andExpect(status().isCreated());
-    String guestId = masker.mask(IdKind.GUEST, contractGuest).toString();
+    String guestId = sessionIds().mask(IdKind.GUEST, contractGuest).toString();
 
     MvcResult listed =
         mockMvc
@@ -513,7 +522,9 @@ class GuestOnboardingContractTest {
 
     mockMvc
         .perform(
-            get("/bff/admin/guests/" + masker.mask(IdKind.GUEST, temporaryGuest) + "/documents")
+            get("/bff/admin/guests/"
+                    + sessionIds().mask(IdKind.GUEST, temporaryGuest)
+                    + "/documents")
                 .cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").isEmpty());
@@ -568,7 +579,7 @@ class GuestOnboardingContractTest {
   }
 
   private Cookie session(Long accountId) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(accountId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(accountId.toString(), sessionId));
   }
 
   private ResultActions onboarding(Cookie who) throws Exception {
@@ -685,5 +696,10 @@ class GuestOnboardingContractTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("DOCUMENT_INVALID_FILE")));
     verify(files, never()).store(any(), any());
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

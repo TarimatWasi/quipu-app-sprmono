@@ -43,7 +43,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
             .andExpect(jsonPath("$.amount").value(850.50))
             .andExpect(jsonPath("$.paymentMethod").value("Efectivo"))
             .andExpect(
-                jsonPath("$.contractId").value(masker.mask(IdKind.CONTRACT, contract).toString()))
+                jsonPath("$.contractId").value(ids().mask(IdKind.CONTRACT, contract).toString()))
             .andReturn();
     Map<String, Object> body = JsonPath.read(result.getResponse().getContentAsString(), "$");
     assertThat(body).containsEntry("stayId", null).containsEntry("rejectionReason", null);
@@ -60,17 +60,11 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
 
   @Test
   void aPaymentForAStayIsRegisteredApprovedAtOnce() throws Exception {
-    post(
-            temporaryGuest,
-            "stayId",
-            masker.mask(IdKind.STAY, stay).toString(),
-            "150.50",
-            PDF,
-            "v.pdf")
+    post(temporaryGuest, "stayId", ids().mask(IdKind.STAY, stay).toString(), "150.50", PDF, "v.pdf")
         .andExpect(status().isCreated())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.status").value("APPROVED"))
-        .andExpect(jsonPath("$.stayId").value(masker.mask(IdKind.STAY, stay).toString()));
+        .andExpect(jsonPath("$.stayId").value(ids().mask(IdKind.STAY, stay).toString()));
   }
 
   @Test
@@ -148,14 +142,14 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     post(
             temporaryGuest,
             "stayId",
-            masker.mask(IdKind.STAY, 999_999L).toString(),
+            ids().mask(IdKind.STAY, 999_999L).toString(),
             "150",
             PDF,
             "v.pdf")
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("STAY_NOT_FOUND"));
     // a stay of another guest does not exist for this one
-    post(contractGuest, "stayId", masker.mask(IdKind.STAY, stay).toString(), "150", PDF, "v.pdf")
+    post(contractGuest, "stayId", ids().mask(IdKind.STAY, stay).toString(), "150", PDF, "v.pdf")
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("STAY_NOT_FOUND"));
     // D-27: an inactive guest pays only the months it owes; November is not owed
@@ -164,8 +158,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
-        .andExpect(
-            jsonPath("$.guestId").value(masker.mask(IdKind.GUEST, contractGuest).toString()));
+        .andExpect(jsonPath("$.guestId").value(ids().mask(IdKind.GUEST, contractGuest).toString()));
     verify(files, never()).store(any(), any());
   }
 
@@ -202,7 +195,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
   void aStayWithAPaymentAlreadyApprovedIsAConflict() throws Exception {
     insertPayment(temporaryGuest, null, stay, null, "APPROVED", "2026-10-01T10:00:00Z");
 
-    post(temporaryGuest, "stayId", masker.mask(IdKind.STAY, stay).toString(), "150", PDF, "v.pdf")
+    post(temporaryGuest, "stayId", ids().mask(IdKind.STAY, stay).toString(), "150", PDF, "v.pdf")
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_EXISTS_FOR_PERIOD"));
   }
@@ -228,7 +221,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
   void onlyAnAdministratorReachesThePaymentRoutes() throws Exception {
     Long id =
         insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
-    String one = URL + "/" + masker.mask(IdKind.PAYMENT, id);
+    String one = URL + "/" + ids().mask(IdKind.PAYMENT, id);
 
     mockMvc.perform(get(URL)).andExpect(status().isUnauthorized());
     mockMvc

@@ -8,15 +8,18 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Limit;
@@ -32,18 +35,21 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   private final GuestDocumentPurgeJpaRepository purges;
   private final GuestDocumentDeletionJpaRepository deletions;
   private final EntityManager entityManager;
+  private final IdMasker masker;
 
   GuestDocumentActionRepositoryAdapter(
       GuestDocumentJpaRepository documents,
       GuestDocumentActionJpaRepository actions,
       GuestDocumentPurgeJpaRepository purges,
       GuestDocumentDeletionJpaRepository deletions,
-      EntityManager entityManager) {
+      EntityManager entityManager,
+      IdMasker masker) {
     this.documents = documents;
     this.actions = actions;
     this.purges = purges;
     this.deletions = deletions;
     this.entityManager = entityManager;
+    this.masker = masker;
   }
 
   @Override
@@ -93,6 +99,11 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
     documents.deleteByIdAndGuest(document.id(), document.guestId());
   }
 
+  /**
+   * TAR-227: the cursor carries only the id of the last action, masked in the session that asked,
+   * never the internal one nor its date; the date is read again from the action. A cursor of
+   * another session, altered, or of an action of another guest is an invalid cursor.
+   */
   @Override
   public CursorPage<GuestDocumentAction> actionsOf(Long guestId, PageQuery page) {
     Limit limit = Limit.of(page.limit() + 1);
@@ -100,14 +111,17 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
     if (page.after() == null) {
       rows = actions.findByGuestIdOrderByCreatedDateDescIdDesc(guestId, limit);
     } else {
-      List<String> key = CursorToken.decode(page.after(), 2);
-      rows = actions.findPageAfter(guestId, date(key.get(0)), id(key.get(1)), limit);
+      Long last = maskedId(CursorToken.decode(page.after(), 1).get(0));
+      Instant date =
+          actions.findCreatedDate(last, guestId).orElseThrow(InvalidCursorException::new);
+      rows = actions.findPageAfter(guestId, date, last, limit);
     }
     // One more than the limit: the extra row only says that there is a next page.
     return CursorPage.of(
         rows.stream().map(GuestDocumentActionJpaEntity::toDomain).toList(),
         page.limit(),
-        action -> CursorToken.encode(action.performedAt().toString(), action.id().toString()));
+        action ->
+            CursorToken.encode(masker.mask(IdKind.GUEST_DOCUMENT_ACTION, action.id()).toString()));
   }
 
   @Override
@@ -166,18 +180,10 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
         : e;
   }
 
-  private static Instant date(String text) {
+  private Long maskedId(String text) {
     try {
-      return Instant.parse(text);
-    } catch (DateTimeParseException notADate) {
-      throw new InvalidCursorException();
-    }
-  }
-
-  private static Long id(String text) {
-    try {
-      return Long.valueOf(text);
-    } catch (NumberFormatException notAnId) {
+      return masker.unmask(IdKind.GUEST_DOCUMENT_ACTION, UUID.fromString(text));
+    } catch (IllegalArgumentException | UnknownMaskedIdException notAnId) {
       throw new InvalidCursorException();
     }
   }

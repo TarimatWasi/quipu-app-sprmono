@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedE
 import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -55,6 +56,13 @@ class AdminAreaRateLimitBffTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @MockitoBean CreateAdministratorUseCase administrators;
 
   private final Long adminId = TestIds.next();
@@ -153,7 +161,7 @@ class AdminAreaRateLimitBffTest {
   }
 
   private Cookie session(Long id) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(id.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(id.toString(), sessionId));
   }
 
   private void insertUser(Long id, String document) {

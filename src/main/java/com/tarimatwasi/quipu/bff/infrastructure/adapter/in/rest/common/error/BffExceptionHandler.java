@@ -756,9 +756,10 @@ public class BffExceptionHandler {
   }
 
   /**
-   * A well-formed masked id that was never issued for that kind answers as the resource that does
-   * not exist, with the same body, so that a client cannot tell a forged id from a missing one. A
-   * value that is not a UUID at all is still a 400.
+   * A well-formed masked id that was never issued for that kind, or was issued in another session
+   * (TAR-227), answers as the resource that does not exist, with the same body, so that a client
+   * cannot tell a forged or stale id from a missing one. A value that is not a UUID at all is still
+   * a 400.
    */
   @ExceptionHandler(UnknownMaskedIdException.class)
   public ResponseEntity<BffErrorResponse> handleUnknownMaskedId(UnknownMaskedIdException e) {

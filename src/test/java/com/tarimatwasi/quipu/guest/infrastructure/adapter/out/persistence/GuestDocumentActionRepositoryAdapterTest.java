@@ -3,6 +3,8 @@ package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
@@ -12,6 +14,9 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.NoMaskSessionException;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -22,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,8 +36,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** TAR-187 (RN-37): the evidence of the actions and the objects left to remove. */
@@ -46,6 +52,10 @@ class GuestDocumentActionRepositoryAdapterTest {
   @Autowired OnboardingRepositoryPort onboarding;
   @Autowired JdbcTemplate jdbc;
   @Autowired TransactionTemplate transaction;
+  @Autowired JwtTokenProvider jwtTokenProvider;
+  @Autowired JwtDecoder jwtDecoder;
+  @Autowired AccountJwtAuthenticationConverter sessions;
+  @Autowired IdMasker masker;
 
   private final Long admin = TestIds.next();
   private final Long guest = TestIds.next();
@@ -62,8 +72,17 @@ class GuestDocumentActionRepositoryAdapterTest {
         "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
             + " VALUES (?, 'DNI', '12345678', 'CONTRACT', 'ACTIVE')",
         guest);
+    signIn();
+  }
+
+  /**
+   * TAR-227: a new session of the administrator, as the security chain builds it from its token
+   * (the cursors are masked with the key of the session).
+   */
+  private void signIn() {
     SecurityContextHolder.getContext()
-        .setAuthentication(new TestingAuthenticationToken(admin.toString(), "", "ROLE_ADMIN"));
+        .setAuthentication(
+            sessions.convert(jwtDecoder.decode(jwtTokenProvider.issue(admin.toString()))));
   }
 
   @AfterEach
@@ -131,15 +150,67 @@ class GuestDocumentActionRepositoryAdapterTest {
     assertThat(second.content()).extracting(GuestDocumentAction::documentId).containsExactly(1L);
     assertThat(second.nextCursor()).isNull();
 
+    Long last =
+        jdbc.queryForObject(
+            "SELECT id FROM guest_document_actions WHERE document_id = 2", Long.class);
     for (String forged :
         new String[] {
           CursorToken.encode("yesterday", "1"),
           CursorToken.encode(Instant.now().toString(), "x"),
+          // TAR-227: the cursor of before, with the internal id, is no longer one
+          CursorToken.encode(Instant.now().toString(), String.valueOf(last)),
+          CursorToken.encode(String.valueOf(last)),
+          CursorToken.encode(UUID.randomUUID().toString()),
           "a"
         }) {
       assertThatThrownBy(() -> adapter.actionsOf(guest, new PageQuery(forged, 2)))
           .isInstanceOf(InvalidCursorException.class);
     }
+  }
+
+  /** TAR-227: the cursor hides the internal id and the date, and serves only its own session. */
+  @Test
+  void aCursorIsOpaqueAndValidOnlyInItsSessionAndForItsGuest() {
+    add(1L);
+    add(2L);
+    add(3L);
+    var first = adapter.actionsOf(guest, new PageQuery(null, 2));
+    String cursor = Objects.requireNonNull(first.nextCursor());
+    Long last =
+        jdbc.queryForObject(
+            "SELECT id FROM guest_document_actions WHERE document_id = 2", Long.class);
+
+    String key = CursorToken.decode(cursor, 1).get(0);
+    assertThat(key).matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}");
+    assertThat(masker.unmask(IdKind.GUEST_DOCUMENT_ACTION, UUID.fromString(key))).isEqualTo(last);
+    assertThat(adapter.actionsOf(guest, new PageQuery(cursor, 2)).content())
+        .extracting(GuestDocumentAction::documentId)
+        .containsExactly(1L);
+
+    // the same position, read by another guest, is not a cursor of that guest
+    Long otherGuest = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'DNI', '87654321', 'CONTRACT', 'ACTIVE')",
+        otherGuest);
+    assertThatThrownBy(() -> adapter.actionsOf(otherGuest, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+
+    // another session of the same administrator
+    signIn();
+    assertThatThrownBy(() -> adapter.actionsOf(guest, new PageQuery(cursor, 2)))
+        .isInstanceOf(InvalidCursorException.class);
+    String again =
+        Objects.requireNonNull(adapter.actionsOf(guest, new PageQuery(null, 2)).nextCursor());
+    assertThat(again).isNotEqualTo(cursor);
+    assertThat(adapter.actionsOf(guest, new PageQuery(again, 2)).content())
+        .extracting(GuestDocumentAction::documentId)
+        .containsExactly(1L);
+
+    // with no session at all it fails closed
+    SecurityContextHolder.clearContext();
+    assertThatThrownBy(() -> adapter.actionsOf(guest, new PageQuery(null, 2)))
+        .isInstanceOf(NoMaskSessionException.class);
   }
 
   @Test
