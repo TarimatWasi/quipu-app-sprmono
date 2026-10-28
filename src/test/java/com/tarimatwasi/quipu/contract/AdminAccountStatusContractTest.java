@@ -24,7 +24,7 @@ class AdminAccountStatusContractTest extends PaymentsContractSupport {
   private static final String OWN = "/bff/guest/account-status";
 
   private String url(Long guestId) {
-    return url(masker.mask(IdKind.GUEST, guestId));
+    return url(ids().mask(IdKind.GUEST, guestId));
   }
 
   private static String url(UUID guestId) {

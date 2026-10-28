@@ -9,13 +9,18 @@ import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,7 +44,8 @@ import org.springframework.security.oauth2.server.resource.InvalidBearerTokenExc
 /**
  * TAR-125 and TAR-164: a session token is only as good as the account behind it, read on every
  * request. The token is issued by {@link JwtTokenProvider}, read by Spring's JWT decoder and turned
- * into an authentication by {@link AccountJwtAuthenticationConverter}.
+ * into an authentication by {@link AccountJwtAuthenticationConverter}. TAR-227: every token names
+ * its session, and the subject is masked with the key of that session.
  */
 class AccountJwtAuthenticationConverterTest {
 
@@ -49,8 +55,15 @@ class AccountJwtAuthenticationConverterTest {
 
   private final UserRepositoryPort users = mock(UserRepositoryPort.class);
   private final MutableClock clock = new MutableClock(NOW);
+  private static final String SESSION = "AAECAwQFBgcICQoLDA0ODw";
+  private static final String OTHER_SESSION = "8PHy8_T19vf4-fr7_P3-_w";
+
+  /** The issuer and the converter never mask through the request: they name the session. */
   private final IdMasker masker =
-      new IdMasker(new IdMaskProperties("a-test-key-with-more-than-thirty-two-characters"));
+      new IdMasker(
+          new IdMaskProperties("a-test-key-with-more-than-thirty-two-characters"), Optional::empty);
+
+  private final MaskSession inSession = masker.session(SESSION);
   private final SecretKey key = SessionJwt.key(SECRET);
   private final JwtDecoder decoder = SessionJwt.decoder(key, clock);
   private final JwtEncoder encoder = SessionJwt.encoder(key);
@@ -161,7 +174,7 @@ class AccountJwtAuthenticationConverterTest {
     Instant changedAt = NOW.plusMillis(900);
     when(users.findById(id))
         .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
-    String sub = masker.mask(IdKind.USER, id).toString();
+    String sub = inSession.mask(IdKind.USER, id).toString();
 
     assertThat(authenticate(signed(Map.of("sub", sub)))).isPresent();
     when(users.findById(id))
@@ -203,7 +216,7 @@ class AccountJwtAuthenticationConverterTest {
     assertThat(
             authenticate(
                 signedWithoutExpiration(
-                    Map.of("sub", masker.mask(IdKind.USER, id).toString(), "role", "ADMIN"))))
+                    Map.of("sub", inSession.mask(IdKind.USER, id).toString(), "role", "ADMIN"))))
         .isEmpty();
   }
 
@@ -212,7 +225,7 @@ class AccountJwtAuthenticationConverterTest {
   void aSignedTokenWithoutRoleOpensTheSessionOfItsAccount() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
 
-    assertThat(authenticate(signed(Map.of("sub", masker.mask(IdKind.USER, id).toString()))))
+    assertThat(authenticate(signed(Map.of("sub", inSession.mask(IdKind.USER, id).toString()))))
         .hasValueSatisfying(
             auth ->
                 assertThat(auth.getAuthorities())
@@ -264,7 +277,7 @@ class AccountJwtAuthenticationConverterTest {
   void aTokenWithoutThePendingChangeClaimIsJudgedByTheAccountToo() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", true, null)));
     String unmarked =
-        signed(Map.of("sub", masker.mask(IdKind.USER, id).toString(), "role", "ADMIN"));
+        signed(Map.of("sub", inSession.mask(IdKind.USER, id).toString(), "role", "ADMIN"));
 
     assertThat(authenticate(unmarked))
         .hasValueSatisfying(
@@ -276,11 +289,115 @@ class AccountJwtAuthenticationConverterTest {
 
   /** The browser can read the token: it must not carry the sequential id of the account. */
   @Test
-  void theSubjectOfTheTokenIsAMaskedIdAndNotTheNumericOne() {
-    String subject = decoder.decode(provider.issue(id.toString())).getSubject();
+  void theSubjectOfTheTokenIsTheIdMaskedInItsSession() {
+    Jwt token = decoder.decode(provider.issue(id.toString()));
+    String subject = token.getSubject();
 
     assertThat(subject).isNotEqualTo(id.toString());
-    assertThat(UUID.fromString(subject)).isEqualTo(masker.mask(IdKind.USER, id));
+    assertThat(UUID.fromString(subject))
+        .isEqualTo(masker.session(sessionOf(token)).mask(IdKind.USER, id));
+  }
+
+  /** TAR-227: each login or activation opens a session of its own, 128 random bits. */
+  @Test
+  void everyIssuedTokenNamesANewRandomSession() {
+    var sessions = new HashSet<String>();
+    for (int i = 0; i < 50; i++) {
+      String sessionId = sessionOf(decoder.decode(provider.issue(id.toString())));
+      assertThat(sessionId).matches("[A-Za-z0-9_-]{22}");
+      assertThat(Base64.getUrlDecoder().decode(sessionId)).hasSize(16);
+      sessions.add(sessionId);
+    }
+    sessions.add(
+        sessionOf(decoder.decode(provider.issueTemporary(id.toString(), 7L, NOW.plusSeconds(60)))));
+
+    assertThat(sessions).hasSize(51);
+  }
+
+  /** TAR-227: the same id masks differently in two sessions, the subject too. */
+  @Test
+  void twoSessionsOfOneAccountHaveDifferentSubjects() {
+    String one = decoder.decode(provider.issue(id.toString())).getSubject();
+    String two = decoder.decode(provider.issue(id.toString())).getSubject();
+
+    assertThat(one).isNotEqualTo(two);
+  }
+
+  /** TAR-227: renewing a session (a password change) keeps its id and so its subject. */
+  @Test
+  void aRenewedTokenKeepsItsSession() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    Jwt first = decoder.decode(provider.issue(id.toString()));
+    clock.advance(Duration.ofSeconds(3));
+
+    Jwt renewed = decoder.decode(provider.renew(id.toString(), sessionOf(first)));
+
+    assertThat(sessionOf(renewed)).isEqualTo(sessionOf(first));
+    assertThat(renewed.getSubject()).isEqualTo(first.getSubject());
+    assertThat(renewed.getIssuedAt()).isAfter(first.getIssuedAt());
+    assertThat(authenticate(renewed.getTokenValue())).isPresent();
+  }
+
+  /** TAR-227 (D-75, 2a): a token from before the sessions names none: it is no session. */
+  @Test
+  void aTokenWithoutASessionIsRefused() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String old = signedWithoutSession(Map.of("sub", inSession.mask(IdKind.USER, id).toString()));
+
+    assertThat(authenticate(old)).isEmpty();
+    Jwt decoded = decoder.decode(old);
+    assertThatThrownBy(() -> converter.convert(decoded))
+        .isInstanceOf(InvalidBearerTokenException.class)
+        .hasMessage("The session is no longer valid");
+  }
+
+  /** TAR-227: a session id that is not one (not text, not 16 bytes) is no session either. */
+  @Test
+  void aTokenWithAMalformedSessionIsRefused() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String sub = inSession.mask(IdKind.USER, id).toString();
+
+    for (Object bad : List.<Object>of(42L, "", "short", SESSION + "AA", SESSION + "==")) {
+      Map<String, Object> claims = new HashMap<>(Map.of("sub", sub));
+      claims.put(AccessSessions.SESSION_ID_CLAIM, bad);
+      Jwt decoded = decoder.decode(signed(claims));
+      assertThatThrownBy(() -> converter.convert(decoded))
+          .as(String.valueOf(bad))
+          .isInstanceOf(InvalidBearerTokenException.class)
+          .hasMessage("The session is no longer valid");
+    }
+  }
+
+  /** TAR-227: a subject masked in one session does not open another, even of the same account. */
+  @Test
+  void aSubjectMaskedInAnotherSessionIsRefused() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String sub = inSession.mask(IdKind.USER, id).toString();
+    Map<String, Object> claims = new HashMap<>(Map.of("sub", sub));
+    claims.put(AccessSessions.SESSION_ID_CLAIM, OTHER_SESSION);
+
+    assertThat(authenticate(signed(Map.of("sub", sub)))).isPresent();
+    assertThat(authenticate(signed(claims))).isEmpty();
+  }
+
+  /** TAR-227: the authentication carries the masking of its own session for the request. */
+  @Test
+  void theAuthenticationMasksWithTheKeyOfItsSession() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    Jwt token = decoder.decode(provider.issue(id.toString()));
+
+    var auth = converter.convert(token);
+
+    assertThat(auth).isInstanceOf(MaskedSessionAuthenticationToken.class);
+    MaskSession session = ((MaskedSessionAuthenticationToken) auth).maskSession().orElseThrow();
+    assertThat(session.mask(IdKind.GUEST, 5))
+        .isEqualTo(masker.session(sessionOf(token)).mask(IdKind.GUEST, 5))
+        .isNotEqualTo(inSession.mask(IdKind.GUEST, 5));
+  }
+
+  private static String sessionOf(Jwt token) {
+    return java.util.Objects.requireNonNull(
+        token.getClaimAsString(AccessSessions.SESSION_ID_CLAIM));
   }
 
   /** A token from before the masking carried the numeric id: it no longer opens a session. */
@@ -298,7 +415,8 @@ class AccountJwtAuthenticationConverterTest {
 
     assertThat(
             authenticate(
-                signed(Map.of("sub", masker.mask(IdKind.GUEST, id).toString(), "role", "ADMIN"))))
+                signed(
+                    Map.of("sub", inSession.mask(IdKind.GUEST, id).toString(), "role", "ADMIN"))))
         .isEmpty();
   }
 
@@ -336,8 +454,9 @@ class AccountJwtAuthenticationConverterTest {
   private Jwt jwt(Instant issuedAt, Object preciseIssuedAt) {
     return Jwt.withTokenValue("t")
         .header("alg", "HS256")
-        .subject(masker.mask(IdKind.USER, id).toString())
+        .subject(inSession.mask(IdKind.USER, id).toString())
         .issuedAt(issuedAt)
+        .claim(AccessSessions.SESSION_ID_CLAIM, SESSION)
         .claim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM, preciseIssuedAt)
         .build();
   }
@@ -353,8 +472,21 @@ class AccountJwtAuthenticationConverterTest {
     return encode(claims, null);
   }
 
+  /** Like {@link #signed} but naming no session, as a token issued before TAR-227. */
+  private String signedWithoutSession(Map<String, Object> claims) {
+    JwtClaimsSet.Builder builder =
+        JwtClaimsSet.builder().issuedAt(NOW).expiresAt(NOW.plusSeconds(600));
+    claims.forEach(builder::claim);
+    return encoder
+        .encode(
+            JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), builder.build()))
+        .getTokenValue();
+  }
+
+  /** Names {@link #SESSION} unless the claims name another. */
   private String encode(Map<String, Object> claims, @Nullable Instant expiresAt) {
-    JwtClaimsSet.Builder builder = JwtClaimsSet.builder().issuedAt(NOW);
+    JwtClaimsSet.Builder builder =
+        JwtClaimsSet.builder().issuedAt(NOW).claim(AccessSessions.SESSION_ID_CLAIM, SESSION);
     if (expiresAt != null) {
       builder.expiresAt(expiresAt);
     }

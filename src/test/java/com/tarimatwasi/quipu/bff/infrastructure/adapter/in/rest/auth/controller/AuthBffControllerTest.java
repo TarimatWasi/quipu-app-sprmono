@@ -12,9 +12,11 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -669,9 +671,11 @@ class AuthBffControllerTest {
    * A token signed with the real key, for a user id, issued at the given time and valid 10 minutes.
    */
   private String craftedToken(String userId, Instant issuedAt) {
+    String sessionId = SessionIds.newSessionId();
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
-            .subject(masker.mask(IdKind.USER, Long.parseLong(userId)).toString())
+            .subject(masker.session(sessionId).mask(IdKind.USER, Long.parseLong(userId)).toString())
+            .claim(AccessSessions.SESSION_ID_CLAIM, sessionId)
             .issuedAt(issuedAt)
             .expiresAt(issuedAt.plusSeconds(600))
             .build();

@@ -27,7 +27,7 @@ class EnvironmentAccountStatusContractTest extends PaymentsContractSupport {
   private Long environment;
 
   private String url(Long environmentId) {
-    return url(masker.mask(IdKind.ENVIRONMENT, environmentId));
+    return url(ids().mask(IdKind.ENVIRONMENT, environmentId));
   }
 
   private static String url(UUID environmentId) {
@@ -98,7 +98,7 @@ class EnvironmentAccountStatusContractTest extends PaymentsContractSupport {
 
     List<Map<String, Object>> ofTheEnvironment = read(url(environment));
     List<Map<String, Object>> ofTheGuest =
-        read("/bff/admin/guests/" + masker.mask(IdKind.GUEST, contractGuest) + "/account-status");
+        read("/bff/admin/guests/" + ids().mask(IdKind.GUEST, contractGuest) + "/account-status");
 
     String currentId = id(IdKind.CONTRACT, current);
     assertThat(ofTheGuest).hasSize(14);

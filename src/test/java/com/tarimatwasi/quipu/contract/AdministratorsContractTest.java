@@ -23,7 +23,9 @@ import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -69,6 +71,13 @@ class AdministratorsContractTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired IdMasker ids;
   @Autowired PasswordEncoder passwordEncoder;
   @MockitoBean PasswordResetMailPort mail;
@@ -150,7 +159,7 @@ class AdministratorsContractTest {
     String masked =
         JsonPath.read(created.andReturn().getResponse().getContentAsString(), "$.id").toString();
 
-    Long id = ids.unmask(IdKind.USER, UUID.fromString(masked));
+    Long id = sessionIds().unmask(IdKind.USER, UUID.fromString(masked));
     Map<String, Object> row =
         jdbc.queryForMap(
             "SELECT role, status, must_change_password, created_by_id, document_type,"
@@ -362,7 +371,7 @@ class AdministratorsContractTest {
   }
 
   private Cookie session(Long userId) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(userId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(userId.toString(), sessionId));
   }
 
   private void insertUser(
@@ -376,5 +385,10 @@ class AdministratorsContractTest {
         passwordEncoder.encode(PASSWORD),
         role,
         mustChangePassword);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return ids.session(sessionId);
   }
 }

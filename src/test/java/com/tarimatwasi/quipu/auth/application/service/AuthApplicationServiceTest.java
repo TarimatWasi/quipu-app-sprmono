@@ -80,6 +80,11 @@ class AuthApplicationServiceTest {
       }
 
       @Override
+      public String renew(String userId, String sessionId) {
+        return "renewed:" + sessionId + ":" + issue.apply(userId);
+      }
+
+      @Override
       public String issueTemporary(String userId, Long grantId, Instant expiresAt) {
         return "temporary:" + grantId + ":" + expiresAt + ":" + issue.apply(userId);
       }
@@ -188,8 +193,11 @@ class AuthApplicationServiceTest {
     return user;
   }
 
+  /** The session that asks for the change; its token is renewed, not replaced (TAR-227). */
+  private static final String SESSION = "AAECAwQFBgcICQoLDA0ODw";
+
   private ChangePasswordCommand change(UserAccount user, @Nullable String current, String next) {
-    return new ChangePasswordCommand(user.id().toString(), current, next);
+    return new ChangePasswordCommand(user.id().toString(), SESSION, current, next);
   }
 
   @Test
@@ -198,7 +206,8 @@ class AuthApplicationServiceTest {
 
     ChangePasswordResult result = service.changePassword(change(user, null, "Nueva12345"));
 
-    assertThat(result.sessionToken()).isEqualTo(user.id().toString());
+    // TAR-227: the same session goes on with a new token.
+    assertThat(result.sessionToken()).isEqualTo("renewed:" + SESSION + ":" + user.id());
     UserAccount stored = repository.find(user.id());
     assertThat(encoder.matches("Nueva12345", stored.passwordHash())).isTrue();
     assertThat(stored.mustChangePassword()).isFalse();
@@ -296,7 +305,7 @@ class AuthApplicationServiceTest {
 
   @Test
   void rejectsAnUnknownAccount() {
-    var command = new ChangePasswordCommand(TestIds.next().toString(), null, "Nueva12345");
+    var command = new ChangePasswordCommand(TestIds.next().toString(), SESSION, null, "Nueva12345");
 
     assertThatThrownBy(() -> service.changePassword(command))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -304,7 +313,7 @@ class AuthApplicationServiceTest {
 
   @Test
   void rejectsAMalformedUserId() {
-    var command = new ChangePasswordCommand("no-es-un-uuid", null, "Nueva12345");
+    var command = new ChangePasswordCommand("no-es-un-uuid", SESSION, null, "Nueva12345");
 
     assertThatThrownBy(() -> service.changePassword(command))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -611,7 +620,7 @@ class AuthApplicationServiceTest {
     temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
 
     service.changePassword(
-        new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", GRANT));
+        new ChangePasswordCommand(user.id().toString(), SESSION, null, "Nueva12345", GRANT));
 
     assertThat(lockedGuests).containsExactly(GUEST);
     verify(grants).consumeTemporaryPassword(GUEST, clock.instant());
@@ -628,7 +637,8 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () ->
                 service.changePassword(
-                    new ChangePasswordCommand(user.id().toString(), null, "Tmp-abc-12345", GRANT)))
+                    new ChangePasswordCommand(
+                        user.id().toString(), SESSION, null, "Tmp-abc-12345", GRANT)))
         .isInstanceOfSatisfying(
             WeakPasswordException.class,
             e ->
@@ -656,7 +666,8 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () ->
                 service.changePassword(
-                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", 999L)))
+                    new ChangePasswordCommand(
+                        user.id().toString(), SESSION, null, "Nueva12345", 999L)))
         .isInstanceOf(InvalidCredentialsException.class);
   }
 
@@ -669,7 +680,8 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () ->
                 service.changePassword(
-                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", GRANT)))
+                    new ChangePasswordCommand(
+                        user.id().toString(), SESSION, null, "Nueva12345", GRANT)))
         .isInstanceOf(InvalidCredentialsException.class);
   }
 
@@ -681,7 +693,8 @@ class AuthApplicationServiceTest {
     assertThatThrownBy(
             () ->
                 service.changePassword(
-                    new ChangePasswordCommand(user.id().toString(), null, "Nueva12345", GRANT)))
+                    new ChangePasswordCommand(
+                        user.id().toString(), SESSION, null, "Nueva12345", GRANT)))
         .isInstanceOf(InvalidCredentialsException.class);
   }
 }

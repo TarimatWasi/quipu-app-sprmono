@@ -9,7 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -39,6 +41,13 @@ class EnvironmentsBffControllerTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired JwtTokenProvider jwtTokenProvider;
 
   private final Long adminId = TestIds.next();
@@ -241,7 +250,7 @@ class EnvironmentsBffControllerTest {
     var inactive = createdId("100", "CABIN");
     jdbc.update(
         "UPDATE environments SET status = 'INACTIVE' WHERE id = ?",
-        masker.unmask(IdKind.ENVIRONMENT, UUID.fromString(inactive)));
+        sessionIds().unmask(IdKind.ENVIRONMENT, UUID.fromString(inactive)));
 
     mockMvc
         .perform(get(URL).cookie(admin()))
@@ -307,7 +316,7 @@ class EnvironmentsBffControllerTest {
   @Test
   void changingTheStatusOfAnUnknownEnvironmentIs404AndOfAGuestIs403() throws Exception {
     var unknown = UUID.randomUUID();
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.renew(guestId.toString(), sessionId));
     var id = createdId("201", "ROOM");
 
     for (var action : new String[] {"deactivate", "reactivate"}) {
@@ -355,7 +364,7 @@ class EnvironmentsBffControllerTest {
   /** RN-08: a guest session is valid but never reaches the administration. */
   @Test
   void aGuestIs403OnEveryOperationAndNothingIsWritten() throws Exception {
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.renew(guestId.toString(), sessionId));
     var id = createdId("201", "ROOM");
 
     mockMvc
@@ -385,7 +394,7 @@ class EnvironmentsBffControllerTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private ResultActions create(String code, String type) throws Exception {
@@ -484,5 +493,10 @@ class EnvironmentsBffControllerTest {
 
     org.assertj.core.api.Assertions.assertThat(body.getHeader("Location"))
         .isEqualTo(URL + "/" + id);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

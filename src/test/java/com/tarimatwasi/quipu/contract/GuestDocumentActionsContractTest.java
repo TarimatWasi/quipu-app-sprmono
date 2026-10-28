@@ -31,7 +31,9 @@ import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -97,6 +99,7 @@ class GuestDocumentActionsContractTest {
   @Autowired GuestDocumentPurger purger;
 
   private final Long adminId = TestIds.next();
+  private final String sessionId = SessionIds.newSessionId();
   private final Long guestAccount = TestIds.next();
   private Long guestId;
   private Long otherGuestId;
@@ -153,7 +156,8 @@ class GuestDocumentActionsContractTest {
         .andExpect(jsonPath("$.content[0].contentType").value("application/pdf"))
         .andExpect(jsonPath("$.content[0].sizeBytes").value(10))
         .andExpect(
-            jsonPath("$.content[0].actorId").value(masker.mask(IdKind.USER, adminId).toString()))
+            jsonPath("$.content[0].actorId")
+                .value(adminIds().mask(IdKind.USER, adminId).toString()))
         .andExpect(jsonPath("$.content[0].performedAt").isNotEmpty())
         .andExpect(jsonPath("$.nextCursor").isEmpty());
     assertThat(output).doesNotContain(DNI, NAME, OLD_KEY, FILE_NAME, "ticket 7");
@@ -239,7 +243,7 @@ class GuestDocumentActionsContractTest {
                 + masked(documentId)
                 + "/deletion",
             "/bff/admin/guests/"
-                + masker.mask(IdKind.GUEST, guestId)
+                + adminIds().mask(IdKind.GUEST, guestId)
                 + "/documents/"
                 + UUID.randomUUID()
                 + "/deletion");
@@ -345,7 +349,7 @@ class GuestDocumentActionsContractTest {
     assertThat(count("guest_document_deletions")).isOne();
     mockMvc
         .perform(
-            get("/bff/admin/guests/" + masker.mask(IdKind.GUEST, guestId) + "/documents")
+            get("/bff/admin/guests/" + adminIds().mask(IdKind.GUEST, guestId) + "/documents")
                 .cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(0));
@@ -417,7 +421,8 @@ class GuestDocumentActionsContractTest {
         .andExpect(jsonPath("$.content[0].reason").value("ARCO_REQUEST"))
         .andExpect(jsonPath("$.content[0].requestChannel").value("EMAIL"))
         .andExpect(
-            jsonPath("$.content[0].actorId").value(masker.mask(IdKind.USER, adminId).toString()));
+            jsonPath("$.content[0].actorId")
+                .value(adminIds().mask(IdKind.USER, adminId).toString()));
     assertThat(output).contains("did not finish").doesNotContain(DNI, NAME, OLD_KEY);
   }
 
@@ -511,9 +516,11 @@ class GuestDocumentActionsContractTest {
         "UPDATE guest_document_purges SET created_date = created_date - interval '2 minutes'");
     reset(files);
     Long replacement =
-        masker.unmask(
-            IdKind.GUEST_DOCUMENT,
-            UUID.fromString(JsonPath.read(replaced.getResponse().getContentAsString(), "$.id")));
+        adminIds()
+            .unmask(
+                IdKind.GUEST_DOCUMENT,
+                UUID.fromString(
+                    JsonPath.read(replaced.getResponse().getContentAsString(), "$.id")));
     delete(guestId, replacement, UPLOAD_ERROR).andExpect(status().isNoContent());
     verify(files).delete(NEW_KEY);
     verify(files).delete(OLD_KEY);
@@ -671,12 +678,12 @@ class GuestDocumentActionsContractTest {
   }
 
   private String masked(Long document) {
-    return masker.mask(IdKind.GUEST_DOCUMENT, document).toString();
+    return adminIds().mask(IdKind.GUEST_DOCUMENT, document).toString();
   }
 
   private String replacement(Long guest, Long document) {
     return "/bff/admin/guests/"
-        + masker.mask(IdKind.GUEST, guest)
+        + adminIds().mask(IdKind.GUEST, guest)
         + "/documents/"
         + masked(document);
   }
@@ -686,7 +693,7 @@ class GuestDocumentActionsContractTest {
   }
 
   private String actionsRoute(Long guest) {
-    return "/bff/admin/guests/" + masker.mask(IdKind.GUEST, guest) + "/document-actions";
+    return "/bff/admin/guests/" + adminIds().mask(IdKind.GUEST, guest) + "/document-actions";
   }
 
   private ResultActions delete(Long guest, Long document, String body) throws Exception {
@@ -716,8 +723,14 @@ class GuestDocumentActionsContractTest {
     return session(adminId);
   }
 
+  /** The ids as the session of the test shows them (TAR-227). */
+  private MaskSession adminIds() {
+    return masker.session(sessionId);
+  }
+
+  /** TAR-227: every account of a test signs in to one session, so its ids serve every request. */
   private Cookie session(Long accountId) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(accountId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(accountId.toString(), sessionId));
   }
 
   private int documentsOf(Long guest) {

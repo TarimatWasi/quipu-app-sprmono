@@ -17,7 +17,9 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -62,6 +64,13 @@ abstract class PaymentsContractSupport {
   @Autowired protected JdbcTemplate jdbc;
   @Autowired protected JwtTokenProvider jwtTokenProvider;
   @Autowired protected IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  protected final String sessionId = SessionIds.newSessionId();
+
   @MockitoBean protected PaymentFilePort files;
 
   protected final Long adminId = TestIds.next();
@@ -133,20 +142,25 @@ abstract class PaymentsContractSupport {
   }
 
   protected Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   protected Cookie guest() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(guestAccountId.toString(), sessionId));
+  }
+
+  /** The ids as the session of the test shows them. */
+  protected MaskSession ids() {
+    return masker.session(sessionId);
   }
 
   protected String id(IdKind kind, Long id) {
-    return masker.mask(kind, id).toString();
+    return ids().mask(kind, id).toString();
   }
 
   protected ResultActions resolve(Long id, String body) throws Exception {
     return mockMvc.perform(
-        patch(URL + "/" + masker.mask(IdKind.PAYMENT, id))
+        patch(URL + "/" + ids().mask(IdKind.PAYMENT, id))
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));

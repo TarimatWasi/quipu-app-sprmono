@@ -108,14 +108,13 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
 
     mockMvc
-        .perform(get(URL + "/" + masker.mask(IdKind.PAYMENT, id)).cookie(admin()))
+        .perform(get(URL + "/" + ids().mask(IdKind.PAYMENT, id)).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.voucherUrl").value(SIGNED))
         .andExpect(jsonPath("$.amount").value(800))
-        .andExpect(
-            jsonPath("$.contractId").value(masker.mask(IdKind.CONTRACT, contract).toString()))
+        .andExpect(jsonPath("$.contractId").value(ids().mask(IdKind.CONTRACT, contract).toString()))
         .andExpect(jsonPath("$.period").value("2026-09"));
     verify(files).signedUrl(KEY + "-" + id, VoucherType.PDF);
   }
@@ -126,10 +125,10 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
 
     MvcResult result =
         mockMvc
-            .perform(get(URL + "/" + masker.mask(IdKind.PAYMENT, id)).cookie(admin()))
+            .perform(get(URL + "/" + ids().mask(IdKind.PAYMENT, id)).cookie(admin()))
             .andExpect(status().isOk())
             .andExpect(satisfiesTheContract())
-            .andExpect(jsonPath("$.stayId").value(masker.mask(IdKind.STAY, stay).toString()))
+            .andExpect(jsonPath("$.stayId").value(ids().mask(IdKind.STAY, stay).toString()))
             .andReturn();
     Map<String, Object> body = JsonPath.read(result.getResponse().getContentAsString(), "$");
     assertThat(body).containsEntry("contractId", null).containsEntry("period", null);
@@ -143,7 +142,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
 
     for (UUID unknown :
         new UUID[] {
-          masker.mask(IdKind.PAYMENT, id), UUID.randomUUID(), masker.mask(IdKind.CONTRACT, id)
+          ids().mask(IdKind.PAYMENT, id), UUID.randomUUID(), ids().mask(IdKind.CONTRACT, id)
         }) {
       mockMvc
           .perform(get(URL + "/" + unknown).cookie(admin()))

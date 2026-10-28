@@ -25,8 +25,10 @@ import com.tarimatwasi.quipu.contract.application.port.out.ContractFileStorageEx
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -84,6 +86,10 @@ class ContractsContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+
+  /** TAR-227: the accounts of a test sign in to one session, so its ids serve every request. */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired Clock clock;
   @MockitoBean ContractFilePort files;
 
@@ -135,8 +141,8 @@ class ContractsContractTest {
         .andExpect(status().isCreated())
         .andExpect(answersTheContract())
         .andExpect(
-            jsonPath("$.environmentId").value(masker.mask(IdKind.ENVIRONMENT, room).toString()))
-        .andExpect(jsonPath("$.guestId").value(masker.mask(IdKind.GUEST, contractGuest).toString()))
+            jsonPath("$.environmentId").value(ids().mask(IdKind.ENVIRONMENT, room).toString()))
+        .andExpect(jsonPath("$.guestId").value(ids().mask(IdKind.GUEST, contractGuest).toString()))
         .andExpect(jsonPath("$.monthlyAmount").value(850.50))
         .andExpect(jsonPath("$.paymentDay").value(5))
         .andExpect(jsonPath("$.graceDays").value(3))
@@ -194,13 +200,7 @@ class ContractsContractTest {
   void aRequestWithoutTheFileIsAValidationError() throws Exception {
     mockMvc
         .perform(
-            multipart(URL)
-                .param("environmentId", masker.mask(IdKind.ENVIRONMENT, room).toString())
-                .param("guestId", masker.mask(IdKind.GUEST, contractGuest).toString())
-                .param("monthlyAmount", "850.50")
-                .param("paymentDay", "5")
-                .param("graceDays", "3")
-                .param("startDate", "2026-11-01")
+            fields(multipart(URL), room, contractGuest, OPEN_ENDED)
                 .header("Origin", "http://localhost:3000")
                 .cookie(admin()))
         .andExpect(status().isBadRequest())
@@ -213,11 +213,7 @@ class ContractsContractTest {
   void aFieldTheFormDoesNotDefineIsAValidationErrorNamingIt() throws Exception {
     mockMvc
         .perform(
-            fields(
-                    multipartWith(PDF, "c.pdf"),
-                    room,
-                    contractGuest,
-                    new Terms("850.50", "5", "3", "2026-11-01", null))
+            fields(multipartWith(PDF, "c.pdf"), room, contractGuest, OPEN_ENDED)
                 .param("endDtae", "2027-10-31")
                 .header("Origin", "http://localhost:3000")
                 .cookie(admin()))
@@ -231,7 +227,7 @@ class ContractsContractTest {
                     multipartWith(PDF, "c.pdf").file(new MockMultipartFile("copy", PDF)),
                     room,
                     contractGuest,
-                    new Terms("850.50", "5", "3", "2026-11-01", null))
+                    OPEN_ENDED)
                 .header("Origin", "http://localhost:3000")
                 .cookie(admin()))
         .andExpect(status().isBadRequest())
@@ -290,7 +286,7 @@ class ContractsContractTest {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
-        .andExpect(jsonPath("$.guestId").value(masker.mask(IdKind.GUEST, pending).toString()));
+        .andExpect(jsonPath("$.guestId").value(ids().mask(IdKind.GUEST, pending).toString()));
   }
 
   @Test
@@ -450,7 +446,7 @@ class ContractsContractTest {
     Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
 
     mockMvc
-        .perform(get(URL + "/" + masker.mask(IdKind.CONTRACT, id)).cookie(admin()))
+        .perform(get(URL + "/" + ids().mask(IdKind.CONTRACT, id)).cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(header().string("Cache-Control", "no-store"))
@@ -464,7 +460,7 @@ class ContractsContractTest {
     Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
     jdbc.update("DELETE FROM contracts WHERE id = ?", id);
 
-    for (UUID unknown : new UUID[] {masker.mask(IdKind.CONTRACT, id), UUID.randomUUID()}) {
+    for (UUID unknown : new UUID[] {ids().mask(IdKind.CONTRACT, id), UUID.randomUUID()}) {
       mockMvc
           .perform(get(URL + "/" + unknown).cookie(admin()))
           .andExpect(status().isNotFound())
@@ -517,7 +513,7 @@ class ContractsContractTest {
     assertThat(storedStatus(active)).isEqualTo("TERMINATED");
     assertThat(storedStatus(expired)).isEqualTo("ACTIVE");
     mockMvc
-        .perform(get(URL + "/" + masker.mask(IdKind.CONTRACT, expired)).cookie(admin()))
+        .perform(get(URL + "/" + ids().mask(IdKind.CONTRACT, expired)).cookie(admin()))
         .andExpect(jsonPath("$.status").value("EXPIRED"));
   }
 
@@ -527,7 +523,7 @@ class ContractsContractTest {
   void anEnvironmentHeldByAContractCannotBeDeactivated() throws Exception {
     Long id = insertContract(contractGuest, room, "2025-01-01", null, "ACTIVE");
     String deactivate =
-        "/bff/admin/environments/" + masker.mask(IdKind.ENVIRONMENT, room) + "/deactivate";
+        "/bff/admin/environments/" + ids().mask(IdKind.ENVIRONMENT, room) + "/deactivate";
 
     mockMvc
         .perform(post(deactivate).cookie(admin()))
@@ -552,7 +548,7 @@ class ContractsContractTest {
         .perform(get("/bff/guest/contract").cookie(guest()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.id").value(masker.mask(IdKind.CONTRACT, id).toString()))
+        .andExpect(jsonPath("$.id").value(ids().mask(IdKind.CONTRACT, id).toString()))
         .andExpect(jsonPath("$.status").value("EXPIRED"))
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.fileUrl").value(SIGNED));
@@ -666,12 +662,17 @@ class ContractsContractTest {
     return openApi().isValid(validator);
   }
 
+  /** The ids as the session of the test shows them. */
+  private MaskSession ids() {
+    return masker.session(sessionId);
+  }
+
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private Cookie guest() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(guestAccountId.toString(), sessionId));
   }
 
   private MockMultipartHttpServletRequestBuilder multipartWith(byte[] content, String name) {
@@ -682,11 +683,13 @@ class ContractsContractTest {
   private record Terms(
       String amount, String paymentDay, String graceDays, String start, @Nullable String end) {}
 
+  private static final Terms OPEN_ENDED = new Terms("850.50", "5", "3", "2026-11-01", null);
+
   private MockMultipartHttpServletRequestBuilder fields(
       MockMultipartHttpServletRequestBuilder request, Long environment, Long guest, Terms terms) {
     request
-        .param("environmentId", masker.mask(IdKind.ENVIRONMENT, environment).toString())
-        .param("guestId", masker.mask(IdKind.GUEST, guest).toString())
+        .param("environmentId", ids().mask(IdKind.ENVIRONMENT, environment).toString())
+        .param("guestId", ids().mask(IdKind.GUEST, guest).toString())
         .param("monthlyAmount", terms.amount())
         .param("paymentDay", terms.paymentDay())
         .param("graceDays", terms.graceDays())
@@ -724,7 +727,7 @@ class ContractsContractTest {
 
   private ResultActions terminate(Long id) throws Exception {
     return mockMvc.perform(
-        post(URL + "/" + masker.mask(IdKind.CONTRACT, id) + "/terminate").cookie(admin()));
+        post(URL + "/" + ids().mask(IdKind.CONTRACT, id) + "/terminate").cookie(admin()));
   }
 
   private Long contractId() {

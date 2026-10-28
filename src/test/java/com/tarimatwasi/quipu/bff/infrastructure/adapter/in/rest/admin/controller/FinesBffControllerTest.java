@@ -11,7 +11,9 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -40,6 +42,12 @@ class FinesBffControllerTest {
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker ids;
 
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   private final Long adminId = TestIds.next();
   private final Long guestUserId = TestIds.next();
   private Long guestId;
@@ -52,7 +60,7 @@ class FinesBffControllerTest {
     insertUser(adminId, "ADMIN", "00000001");
     insertUser(guestUserId, "GUEST", "00000002");
     guestId = insertGuest("ACTIVE");
-    maskedGuest = ids.mask(IdKind.GUEST, guestId);
+    maskedGuest = sessionIds().mask(IdKind.GUEST, guestId);
   }
 
   private String fine(String amount, String month) {
@@ -82,13 +90,13 @@ class FinesBffControllerTest {
     String id = JsonPath.read(response.getContentAsString(), "$.id");
 
     assertThat(response.getHeader("Location")).isEqualTo(URL + "/" + id);
-    assertThat(ids.unmask(IdKind.FINE, UUID.fromString(id)))
+    assertThat(sessionIds().unmask(IdKind.FINE, UUID.fromString(id)))
         .isEqualTo(jdbc.queryForObject("SELECT id FROM fines", Long.class));
   }
 
   @Test
   void anInactiveGuestCanBeFined() throws Exception {
-    var inactive = ids.mask(IdKind.GUEST, insertGuest("INACTIVE"));
+    var inactive = sessionIds().mask(IdKind.GUEST, insertGuest("INACTIVE"));
 
     create("{\"guestId\":\"" + inactive + "\",\"amount\":10,\"month\":\"2026-09\"}")
         .andExpect(status().isCreated())
@@ -230,7 +238,7 @@ class FinesBffControllerTest {
 
   @Test
   void aGuestThatDoesNotExistIs404AndNothingIsWritten() throws Exception {
-    var unknown = ids.mask(IdKind.GUEST, TestIds.next());
+    var unknown = sessionIds().mask(IdKind.GUEST, TestIds.next());
     var forged = UUID.randomUUID();
 
     for (var guest : new UUID[] {unknown, forged}) {
@@ -272,7 +280,7 @@ class FinesBffControllerTest {
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     mockMvc
-        .perform(delete(URL + "/" + ids.mask(IdKind.FINE, TestIds.next())).cookie(admin()))
+        .perform(delete(URL + "/" + sessionIds().mask(IdKind.FINE, TestIds.next())).cookie(admin()))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     // An id issued for another kind does not unmask as a fine.
@@ -289,7 +297,8 @@ class FinesBffControllerTest {
   @Test
   void withoutSessionIs401AndAGuestIs403AndNothingIsWritten() throws Exception {
     var id = idOf(create(fine("10", "2026-09")));
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestUserId.toString()));
+    var guest =
+        new Cookie("sessionToken", jwtTokenProvider.renew(guestUserId.toString(), sessionId));
 
     mockMvc.perform(get(URL).param("month", "2026-09")).andExpect(status().isUnauthorized());
     mockMvc
@@ -317,7 +326,7 @@ class FinesBffControllerTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private ResultActions create(String body) throws Exception {
@@ -348,5 +357,10 @@ class FinesBffControllerTest {
         String.valueOf(id).substring(2),
         status);
     return id;
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return ids.session(sessionId);
   }
 }

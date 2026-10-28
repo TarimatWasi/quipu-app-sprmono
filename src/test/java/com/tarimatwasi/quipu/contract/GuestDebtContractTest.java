@@ -150,7 +150,7 @@ class GuestDebtContractTest extends PaymentsContractSupport {
   private ResultActions terminate() throws Exception {
     return mockMvc.perform(
         MockMvcRequestBuilders.post(
-                CONTRACTS + "/" + masker.mask(IdKind.CONTRACT, contract) + "/terminate")
+                CONTRACTS + "/" + ids().mask(IdKind.CONTRACT, contract) + "/terminate")
             .cookie(admin()));
   }
 

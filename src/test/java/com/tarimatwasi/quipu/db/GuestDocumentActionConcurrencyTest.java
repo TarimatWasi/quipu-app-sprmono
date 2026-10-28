@@ -13,7 +13,9 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -56,6 +58,13 @@ class GuestDocumentActionConcurrencyTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @MockitoBean GuestDocumentFilePort files;
 
   private final Long adminId = TestIds.next();
@@ -169,13 +178,13 @@ class GuestDocumentActionConcurrencyTest {
 
   private String route(Long document) {
     return "/bff/admin/guests/"
-        + masker.mask(IdKind.GUEST, guest)
+        + sessionIds().mask(IdKind.GUEST, guest)
         + "/documents/"
-        + masker.mask(IdKind.GUEST_DOCUMENT, document);
+        + sessionIds().mask(IdKind.GUEST_DOCUMENT, document);
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private Long insertDocument() {
@@ -201,5 +210,10 @@ class GuestDocumentActionConcurrencyTest {
   private int documents() {
     Integer count = jdbc.queryForObject("SELECT count(*) FROM guest_documents", Integer.class);
     return count == null ? 0 : count;
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

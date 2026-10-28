@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -39,6 +40,12 @@ class ExpensesBffControllerTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
 
   private final Long adminId = TestIds.next();
   private final Long guestId = TestIds.next();
@@ -249,7 +256,7 @@ class ExpensesBffControllerTest {
   @Test
   void withoutSessionIs401AndAGuestIs403AndNothingIsWritten() throws Exception {
     var id = idOf(create(UTILITIES));
-    var guest = new Cookie("sessionToken", jwtTokenProvider.issue(guestId.toString()));
+    var guest = new Cookie("sessionToken", jwtTokenProvider.renew(guestId.toString(), sessionId));
 
     mockMvc.perform(get(URL).param("month", "2026-09")).andExpect(status().isUnauthorized());
     mockMvc
@@ -325,7 +332,7 @@ class ExpensesBffControllerTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private static String expenseOf(int amount) {

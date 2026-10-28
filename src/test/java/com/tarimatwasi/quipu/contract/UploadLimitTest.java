@@ -8,8 +8,10 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.io.ByteArrayOutputStream;
@@ -62,6 +64,13 @@ class UploadLimitTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @MockitoBean ContractFilePort files;
   @MockitoBean GuestDocumentFilePort documents;
 
@@ -180,9 +189,9 @@ class UploadLimitTest {
         .thenReturn("https://r2.test/s");
     String route =
         "/bff/admin/guests/"
-            + masker.mask(IdKind.GUEST, guest)
+            + sessionIds().mask(IdKind.GUEST, guest)
             + "/documents/"
-            + masker.mask(IdKind.GUEST_DOCUMENT, document);
+            + sessionIds().mask(IdKind.GUEST_DOCUMENT, document);
 
     var tooBig = upload("PUT", route, adminId, bigPdf(), Map.of("reason", "UPLOAD_ERROR"));
     assertThat(tooBig.statusCode()).isEqualTo(400);
@@ -202,8 +211,8 @@ class UploadLimitTest {
 
   private Map<String, String> contractFields() {
     var fields = new java.util.LinkedHashMap<>(CONTRACT_FIELDS);
-    fields.put("environmentId", masker.mask(IdKind.ENVIRONMENT, 1L).toString());
-    fields.put("guestId", masker.mask(IdKind.GUEST, 1L).toString());
+    fields.put("environmentId", sessionIds().mask(IdKind.ENVIRONMENT, 1L).toString());
+    fields.put("guestId", sessionIds().mask(IdKind.GUEST, 1L).toString());
     return fields;
   }
 
@@ -262,7 +271,8 @@ class UploadLimitTest {
         HttpRequest.newBuilder(URI.create("http://localhost:" + port + route))
             .header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
             .header("Origin", "http://localhost:3000")
-            .header("Cookie", "sessionToken=" + jwtTokenProvider.issue(account.toString()))
+            .header(
+                "Cookie", "sessionToken=" + jwtTokenProvider.renew(account.toString(), sessionId))
             .method(method, HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
             .build();
     return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
@@ -279,5 +289,10 @@ class UploadLimitTest {
                 + value
                 + "\r\n")
             .getBytes(StandardCharsets.UTF_8));
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

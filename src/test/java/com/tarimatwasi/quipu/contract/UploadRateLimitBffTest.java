@@ -18,8 +18,10 @@ import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -60,6 +62,13 @@ class UploadRateLimitBffTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @MockitoBean ManageContractsUseCase contracts;
 
   private final Long adminId = TestIds.next();
@@ -79,15 +88,15 @@ class UploadRateLimitBffTest {
   }
 
   private Cookie session(Long id) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(id.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(id.toString(), sessionId));
   }
 
   /** A complete form: past the limit, the controller hands it to the use case. */
   private MockMultipartHttpServletRequestBuilder contract() {
     return multipart(UploadRoutes.CONTRACTS)
         .file(new MockMultipartFile("file", "c.pdf", "application/pdf", new byte[] {1}))
-        .param("environmentId", masker.mask(IdKind.ENVIRONMENT, 1L).toString())
-        .param("guestId", masker.mask(IdKind.GUEST, 1L).toString())
+        .param("environmentId", sessionIds().mask(IdKind.ENVIRONMENT, 1L).toString())
+        .param("guestId", sessionIds().mask(IdKind.GUEST, 1L).toString())
         .param("monthlyAmount", "500")
         .param("paymentDay", "5")
         .param("graceDays", "3")
@@ -141,5 +150,10 @@ class UploadRateLimitBffTest {
         id,
         document + "@example.test",
         document);
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

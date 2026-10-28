@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -18,7 +19,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.authentication.AbstractOAuth2TokenAuthenticationToken;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,6 +27,11 @@ import org.springframework.stereotype.Component;
  * change after the token was issued ends the session (TAR-125). The role and the pending password
  * change come from the account, not from the token, so a closed account, a changed password or a
  * new role take effect at once. The name of the authentication is the (unmasked) id of the user.
+ *
+ * <p>TAR-227: the token must name its session ({@link AccessSessions#SESSION_ID_CLAIM}); the
+ * subject is unmasked with the key of that session, and the masking of the session goes with the
+ * authentication for the rest of the request. A token without a session (issued before it existed)
+ * or whose subject was masked in another session is just an invalid session.
  */
 @Component
 public class AccountJwtAuthenticationConverter
@@ -55,7 +60,8 @@ public class AccountJwtAuthenticationConverter
       throw invalid("The token has no subject");
     }
     Instant issuedAt = preciseIssuedAt(jwt);
-    UserAccount account = accountOf(subject);
+    MaskSession session = sessionOf(jwt);
+    UserAccount account = accountOf(session, subject);
     if (account.isDisabled() || account.issuedBeforePasswordChange(issuedAt)) {
       throw invalid("The session is no longer valid");
     }
@@ -68,7 +74,20 @@ public class AccountJwtAuthenticationConverter
     if (temporary) {
       authorities.add(new SimpleGrantedAuthority(AccessSessions.TEMPORARY_AUTHORITY));
     }
-    return new JwtAuthenticationToken(jwt, authorities, account.id().toString());
+    return new MaskedSessionAuthenticationToken(jwt, authorities, account.id().toString(), session);
+  }
+
+  /** The value is a credential of the session: no message repeats it. */
+  private MaskSession sessionOf(Jwt jwt) {
+    Object claim = jwt.getClaim(AccessSessions.SESSION_ID_CLAIM);
+    if (!(claim instanceof String sessionId)) {
+      throw invalid("The session is no longer valid");
+    }
+    try {
+      return masker.session(sessionId);
+    } catch (IllegalArgumentException notASession) {
+      throw invalid("The session is no longer valid");
+    }
   }
 
   /**
@@ -102,11 +121,14 @@ public class AccountJwtAuthenticationConverter
     return Instant.EPOCH.plus(micros, ChronoUnit.MICROS);
   }
 
-  /** The subject is the masked id of the user; anything else is not a session of ours. */
-  private UserAccount accountOf(String subject) {
+  /**
+   * The subject is the id of the user masked in this session; anything else is not a session of
+   * ours.
+   */
+  private UserAccount accountOf(MaskSession session, String subject) {
     long id;
     try {
-      id = masker.unmask(IdKind.USER, UUID.fromString(subject));
+      id = session.unmask(IdKind.USER, UUID.fromString(subject));
     } catch (IllegalArgumentException | UnknownMaskedIdException notAnId) {
       throw invalid("The subject is not a user id");
     }

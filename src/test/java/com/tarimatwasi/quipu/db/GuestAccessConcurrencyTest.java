@@ -7,7 +7,9 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -50,6 +52,12 @@ class GuestAccessConcurrencyTest {
   @Autowired PasswordEncoder passwordEncoder;
   @Autowired IdMasker masker;
 
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   private final Long adminId = TestIds.next();
 
   @BeforeEach
@@ -69,7 +77,7 @@ class GuestAccessConcurrencyTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   @Test
@@ -136,8 +144,9 @@ class GuestAccessConcurrencyTest {
             String.format("7100%04d", round),
             passwordEncoder.encode("Actual-2026"),
             guest);
-        Cookie session = new Cookie("sessionToken", jwtTokenProvider.issue(account.toString()));
-        String guestId = masker.mask(IdKind.GUEST, guest).toString();
+        Cookie session =
+            new Cookie("sessionToken", jwtTokenProvider.renew(account.toString(), sessionId));
+        String guestId = sessionIds().mask(IdKind.GUEST, guest).toString();
 
         CountDownLatch start = new CountDownLatch(1);
         Future<Integer> deactivation =
@@ -211,5 +220,10 @@ class GuestAccessConcurrencyTest {
         .andReturn()
         .getResponse()
         .getStatus();
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }

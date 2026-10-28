@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.LoginResult;
+import com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.auth.support.SessionCookies;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestSessionUseCase;
@@ -154,6 +155,20 @@ public class AuthBffController {
     }
   }
 
+  /**
+   * TAR-227: the id of the session, signed in its token; the security layer refuses a token without
+   * one, so its absence is only a session that is not ours.
+   */
+  private static String sessionIdOf(Authentication authentication) {
+    if (authentication instanceof JwtAuthenticationToken token) {
+      String sessionId = token.getToken().getClaimAsString(AccessSessions.SESSION_ID_CLAIM);
+      if (sessionId != null) {
+        return sessionId;
+      }
+    }
+    throw new NoActiveSessionException();
+  }
+
   /** The session opened with a temporary password (RF-12); see {@link AccessSessions}. */
   private static boolean isTemporary(Authentication authentication) {
     return authentication.getAuthorities().stream()
@@ -195,7 +210,10 @@ public class AuthBffController {
         .build();
   }
 
-  /** RF-12: the change replaces the session cookie with one that no longer forces the change. */
+  /**
+   * RF-12: the change replaces the session cookie with one that no longer forces the change. It is
+   * the same session (TAR-227): the ids it has shown stay valid.
+   */
   @PostMapping("/bff/auth/change-password")
   public ResponseEntity<Void> changePassword(
       @Valid @RequestBody ChangePasswordRequest request, Authentication authentication) {
@@ -203,6 +221,7 @@ public class AuthBffController {
         changePasswordUseCase.changePassword(
             new ChangePasswordCommand(
                 authentication.getName(),
+                sessionIdOf(authentication),
                 request.currentPassword(),
                 request.newPassword(),
                 temporaryGrantOf(authentication)));

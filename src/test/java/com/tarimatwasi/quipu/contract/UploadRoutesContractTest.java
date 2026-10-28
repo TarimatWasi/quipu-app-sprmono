@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
@@ -39,6 +40,12 @@ class UploadRoutesContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
 
+  /**
+   * TAR-227: every account of a test signs in to this one session, so an id one request shows is
+   * valid in the next.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   private final Long adminId = TestIds.next();
   private final Long guestAccountId = TestIds.next();
 
@@ -55,11 +62,11 @@ class UploadRoutesContractTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private Cookie guest() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(guestAccountId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(guestAccountId.toString(), sessionId));
   }
 
   private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder
@@ -149,7 +156,7 @@ class UploadRoutesContractTest {
     Long id = TestIds.next();
     insertAccount(id, "GUEST", document);
     jdbc.update("UPDATE users SET guest_id = ? WHERE id = ?", guestId, id);
-    return new Cookie("sessionToken", jwtTokenProvider.issue(id.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(id.toString(), sessionId));
   }
 
   @Test

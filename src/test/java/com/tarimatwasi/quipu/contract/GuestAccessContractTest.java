@@ -13,8 +13,10 @@ import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -83,6 +85,13 @@ class GuestAccessContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+
+  /**
+   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
+   * of its checks are masked alike.
+   */
+  private final String sessionId = SessionIds.newSessionId();
+
   @Autowired Clock clock;
 
   private final Long adminId = TestIds.next();
@@ -114,7 +123,7 @@ class GuestAccessContractTest {
   }
 
   private Cookie admin() {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(adminId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
   private MutableClock clock() {
@@ -169,7 +178,7 @@ class GuestAccessContractTest {
     return jdbc.queryForObject(
         "SELECT status FROM guests WHERE id = ?",
         String.class,
-        masker.unmask(IdKind.GUEST, UUID.fromString(maskedGuestId)));
+        sessionIds().unmask(IdKind.GUEST, UUID.fromString(maskedGuestId)));
   }
 
   @Test
@@ -689,7 +698,8 @@ class GuestAccessContractTest {
   void aGuestSessionCannotUseTheAdministratorRoutes() throws Exception {
     String guestId = read(register("12345678", "LINK", null).andReturn(), "$.guest.id");
     Cookie guest =
-        new Cookie("sessionToken", jwtTokenProvider.issue(otherGuestAccountId.toString()));
+        new Cookie(
+            "sessionToken", jwtTokenProvider.renew(otherGuestAccountId.toString(), sessionId));
 
     mockMvc
         .perform(
@@ -743,5 +753,10 @@ class GuestAccessContractTest {
                             "the request is invalid on purpose",
                             com.atlassian.oai.validator.whitelist.rule.WhitelistRules.isRequest()))
                 .build());
+  }
+
+  /** The ids as the session of the test shows them. */
+  private MaskSession sessionIds() {
+    return masker.session(sessionId);
   }
 }
