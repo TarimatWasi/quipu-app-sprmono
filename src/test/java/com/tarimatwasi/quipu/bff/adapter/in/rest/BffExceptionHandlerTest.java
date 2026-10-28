@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
-import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
+import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -99,7 +99,8 @@ class BffExceptionHandlerTest {
   void aVersionConflictOnAPaymentIsAlreadyResolved() {
     var payment =
         new org.springframework.orm.ObjectOptimisticLockingFailureException(
-            "com.tarimatwasi.quipu.payment.adapter.out.persistence.PaymentJpaEntity", 7L);
+            "com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence.PaymentJpaEntity",
+            7L);
     var other =
         new org.springframework.orm.ObjectOptimisticLockingFailureException(
             "com.tarimatwasi.quipu.contract.infrastructure.adapter.out.persistence.ContractJpaEntity",

@@ -8,11 +8,11 @@ import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractFile;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.NewContract;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
-import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
-import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
+import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.DirectPayment;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.MutableClock;

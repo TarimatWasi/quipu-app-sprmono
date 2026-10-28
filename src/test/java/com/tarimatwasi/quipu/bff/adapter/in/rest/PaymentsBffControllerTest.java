@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tarimatwasi.quipu.bff.adapter.in.rest.PaymentsBffController.DirectPaymentForm;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.shared.file.FileInspectionBusyException;
 import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;

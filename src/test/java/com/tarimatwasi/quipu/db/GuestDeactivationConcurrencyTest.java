@@ -6,10 +6,10 @@ import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
-import com.tarimatwasi.quipu.payment.port.out.PaymentFilePort;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.DirectPayment;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;

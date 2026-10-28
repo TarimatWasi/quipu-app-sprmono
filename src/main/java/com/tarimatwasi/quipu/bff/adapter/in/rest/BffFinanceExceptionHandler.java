@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.payment.port.in.InvalidFinanceMonthException;
+import com.tarimatwasi.quipu.payment.application.port.in.InvalidFinanceMonthException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;

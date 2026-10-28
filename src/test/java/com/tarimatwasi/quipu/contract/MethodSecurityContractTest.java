@@ -18,10 +18,10 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.Guest
 import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
-import com.tarimatwasi.quipu.payment.port.in.AdminDashboardUseCase;
-import com.tarimatwasi.quipu.payment.port.in.FinanceSummaryUseCase;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.AdminDashboardUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.FinanceSummaryUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;

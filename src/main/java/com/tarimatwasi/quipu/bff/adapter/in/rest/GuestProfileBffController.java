@@ -10,7 +10,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.Emerg
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase.ProfileChange;
-import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
+import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;

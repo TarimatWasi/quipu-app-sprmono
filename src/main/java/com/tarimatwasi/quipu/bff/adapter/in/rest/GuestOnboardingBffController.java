@@ -11,7 +11,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.Documen
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentView;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.OnboardingView;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.PersonalData;
-import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
+import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
