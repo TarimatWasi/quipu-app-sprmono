@@ -119,6 +119,14 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
         .toList();
   }
 
+  @Override
+  public List<Contract> findAllInForce(LocalDate today) {
+    Sort order = Sort.by(Sort.Order.asc("startDate"), Sort.Order.asc("id"));
+    Specification<ContractJpaEntity> active =
+        (root, query, builder) -> hasStatus(ContractStatus.ACTIVE, today, root, builder);
+    return jpaRepository.findAll(active, order).stream().map(ContractJpaEntity::toDomain).toList();
+  }
+
   /** The contracts of the environment that are ACTIVE on today. */
   private static Specification<ContractJpaEntity> inForce(Long environmentId, LocalDate today) {
     return (root, query, builder) ->

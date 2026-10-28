@@ -30,6 +30,11 @@ public interface StayRepositoryPort {
   /** Stores the new data of an existing stay. */
   Stay update(Stay stay);
 
+  /**
+   * The stays of any guest in course on that day (the dates are inclusive), the lowest id first.
+   */
+  List<Stay> findAllInForceOn(LocalDate day);
+
   /** The ids of the stays of any guest that start between both days, inclusive. */
   List<Long> findIdsStartingBetween(LocalDate first, LocalDate last);
 }

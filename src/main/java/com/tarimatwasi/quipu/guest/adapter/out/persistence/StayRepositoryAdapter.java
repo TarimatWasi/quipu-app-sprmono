@@ -57,6 +57,15 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
   }
 
   @Override
+  public List<Stay> findAllInForceOn(LocalDate day) {
+    return jpaRepository
+        .findByStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByIdAsc(day, day)
+        .stream()
+        .map(StayJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Long> findIdsStartingBetween(LocalDate first, LocalDate last) {
     return jpaRepository.findIdsByStartDateBetween(first, last);
   }

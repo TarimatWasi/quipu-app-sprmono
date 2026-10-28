@@ -25,4 +25,7 @@ public interface PaymentContractPort {
 
   /** The current (ACTIVE) contract of the environment, if it has one (RN-07). */
   List<ContractInfo> currentContractsOf(Long environmentId);
+
+  /** Every ACTIVE contract today, of any environment, in one read (HU-A04). */
+  List<ContractInfo> contractsInForce();
 }

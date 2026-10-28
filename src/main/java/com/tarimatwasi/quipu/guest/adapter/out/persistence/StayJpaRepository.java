@@ -15,6 +15,10 @@ interface StayJpaRepository
 
   Optional<StayJpaEntity> findByIdAndGuestId(Long id, Long guestId);
 
+  /** HU-A04: the stays in course on a day, of every guest. */
+  List<StayJpaEntity> findByStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByIdAsc(
+      LocalDate onOrBefore, LocalDate onOrAfter);
+
   /** RF-18: only the ids, not the rows. */
   @Query(
       "select s.id from StayJpaEntity s where s.startDate between :first and :last order by s.id")

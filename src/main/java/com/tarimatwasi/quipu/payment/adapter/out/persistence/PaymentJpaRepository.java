@@ -35,6 +35,13 @@ interface PaymentJpaRepository
 
   List<PaymentJpaEntity> findByStayId(Long stayId);
 
+  List<PaymentJpaEntity> findByContractIdInAndPeriod(
+      Collection<Long> contractIds, LocalDate period);
+
+  List<PaymentJpaEntity> findByStayIdIn(Collection<Long> stayIds);
+
+  long countByStatus(PaymentStatus status);
+
   /** RF-18: the payments of a period of any contract in that state; null when there are none. */
   @Query(
       "SELECT SUM(p.amount) FROM PaymentJpaEntity p WHERE p.contractId IS NOT NULL"

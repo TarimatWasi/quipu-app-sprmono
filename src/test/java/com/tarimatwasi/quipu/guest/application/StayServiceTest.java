@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotTemporaryException;
 import com.tarimatwasi.quipu.guest.port.in.InvalidGuestStayException;
+import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase.NewStay;
 import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase.StayChange;
 import com.tarimatwasi.quipu.guest.port.in.StayNotFoundException;
@@ -326,5 +327,21 @@ class StayServiceTest {
         .thenReturn(List.of(4L, 8L));
 
     assertThat(service().idsStartingIn(YearMonth.of(2026, 2))).containsExactly(4L, 8L);
+  }
+
+  @Test
+  void theStaysInCourseAreOnePerGuestTheLowestIdKept() {
+    LocalDate today = day("2026-10-14");
+    Long other = TestIds.next();
+    when(stays.findAllInForceOn(today))
+        .thenReturn(
+            List.of(
+                new Stay(3L, GUEST_ID, day("2026-10-01"), day("2026-10-20"), BigDecimal.TEN),
+                new Stay(5L, other, day("2026-10-14"), day("2026-10-14"), BigDecimal.ONE),
+                new Stay(9L, GUEST_ID, day("2026-10-10"), day("2026-10-30"), BigDecimal.TEN)));
+
+    assertThat(service().inForceOn(today))
+        .extracting(ManageStaysUseCase.StayView::id)
+        .containsExactly(3L, 5L);
   }
 }

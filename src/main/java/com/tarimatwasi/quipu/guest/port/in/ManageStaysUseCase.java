@@ -66,4 +66,10 @@ public interface ManageStaysUseCase {
    * month its payment counts in.
    */
   List<Long> idsStartingIn(YearMonth month);
+
+  /**
+   * HU-A04: the stay in course on that day of each guest, active or inactive, in one read. The
+   * stays of a guest never overlap; should two be found anyway, the lowest id is kept.
+   */
+  List<StayView> inForceOn(LocalDate day);
 }

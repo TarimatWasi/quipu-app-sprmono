@@ -19,7 +19,9 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +71,17 @@ public class StayService implements ManageStaysUseCase {
   @Transactional(readOnly = true)
   public List<Long> idsStartingIn(YearMonth month) {
     return stays.findIdsStartingBetween(month.atDay(1), month.atEndOfMonth());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<StayView> inForceOn(LocalDate day) {
+    Set<Long> seen = new HashSet<>();
+    // Read the lowest id first, so the first stay of each guest is the one kept.
+    return stays.findAllInForceOn(day).stream()
+        .filter(stay -> seen.add(stay.guestId()))
+        .map(StayService::view)
+        .toList();
   }
 
   @Override

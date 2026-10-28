@@ -46,4 +46,10 @@ public interface ContractTermsUseCase {
    * RN-20 keeps it to one, and should two be found the oldest start comes first.
    */
   List<ContractTermsView> currentTermsOfEnvironment(Long environmentId);
+
+  /**
+   * Every contract ACTIVE today in the zone of the business (RN-07), of any environment, whether it
+   * started or not, read at once (HU-A04); the oldest start first.
+   */
+  List<ContractTermsView> termsInForce();
 }

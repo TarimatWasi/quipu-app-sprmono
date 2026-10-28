@@ -241,7 +241,7 @@ public class GuestOnboardingBffController {
    * field} only as letters, digits, {@code _} and {@code .}, at most 64 characters: whatever the
    * client sent, the answer carries no markup.
    */
-  private static void rejectUnknown(String prefix, @Nullable Map<String, Object> unknown) {
+  static void rejectUnknown(String prefix, @Nullable Map<String, Object> unknown) {
     if (unknown != null && !unknown.isEmpty()) {
       String field =
           (prefix + unknown.keySet().iterator().next()).replaceAll("[^A-Za-z0-9_.]", "_");
@@ -249,7 +249,7 @@ public class GuestOnboardingBffController {
     }
   }
 
-  private static @Nullable String blankToNull(@Nullable String text) {
+  static @Nullable String blankToNull(@Nullable String text) {
     return text == null || text.isBlank() ? null : text.strip();
   }
 

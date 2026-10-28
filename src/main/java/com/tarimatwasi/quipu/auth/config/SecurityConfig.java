@@ -44,9 +44,7 @@ class SecurityConfig {
       JwtDecoder jwtDecoder,
       AccountJwtAuthenticationConverter sessionConverter,
       RateLimitProperties rateLimit,
-      UploadRateLimitProperties uploadRateLimit,
-      AdministratorRateLimitProperties administratorRateLimit,
-      AdminAreaRateLimitProperties adminAreaRateLimit)
+      SessionUserLimits sessionUserLimits)
       throws Exception {
     // CSRF is disabled on purpose (ADR-006). Mitigation, in layers: the session cookie is
     // SameSite=Lax (the browser talks to the frontend origin and the hosting layer rewrites
@@ -89,7 +87,7 @@ class SecurityConfig {
         // Both run before the session is read, so a flood of bad requests costs no account lookup.
         .addFilterBefore(new RateLimitFilter(rateLimit), BearerTokenAuthenticationFilter.class)
         .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class);
-    addSessionUserLimits(http, adminAreaRateLimit, uploadRateLimit, administratorRateLimit);
+    addSessionUserLimits(http, sessionUserLimits);
     return http.build();
   }
 
@@ -98,18 +96,32 @@ class SecurityConfig {
    * the order they are added: the general limit of the ADMIN area first, then the specific ones,
    * which still apply on their own.
    */
-  private static void addSessionUserLimits(
-      HttpSecurity http,
-      AdminAreaRateLimitProperties adminAreaRateLimit,
-      UploadRateLimitProperties uploadRateLimit,
-      AdministratorRateLimitProperties administratorRateLimit) {
+  private static void addSessionUserLimits(HttpSecurity http, SessionUserLimits limits) {
     // TAR-221: counts every request of the session user to /bff/admin/**, of any method.
-    http.addFilterAfter(new AdminAreaRateLimitFilter(adminAreaRateLimit), AuthorizationFilter.class)
+    http.addFilterAfter(new AdminAreaRateLimitFilter(limits.adminArea()), AuthorizationFilter.class)
         // TAR-206: counts the uploads of the session user, before the dispatcher reads the form.
-        .addFilterAfter(new UploadRateLimitFilter(uploadRateLimit), AuthorizationFilter.class)
+        .addFilterAfter(new UploadRateLimitFilter(limits.uploads()), AuthorizationFilter.class)
         // RF-22, TAR-127: counts the creations, deactivations and reactivations of administrators.
         .addFilterAfter(
-            new AdministratorRateLimitFilter(administratorRateLimit), AuthorizationFilter.class);
+            new AdministratorRateLimitFilter(limits.administrators()), AuthorizationFilter.class)
+        // TAR-222: counts the edits of the own profile, the routes of the guest that write data.
+        .addFilterAfter(new ProfileRateLimitFilter(limits.profile()), AuthorizationFilter.class);
+  }
+
+  /** The limits per session user, together, so that the chain keeps few parameters (TAR-222). */
+  record SessionUserLimits(
+      AdminAreaRateLimitProperties adminArea,
+      UploadRateLimitProperties uploads,
+      AdministratorRateLimitProperties administrators,
+      ProfileRateLimitProperties profile) {}
+
+  @Bean
+  SessionUserLimits sessionUserLimits(
+      AdminAreaRateLimitProperties adminArea,
+      UploadRateLimitProperties uploads,
+      AdministratorRateLimitProperties administrators,
+      ProfileRateLimitProperties profile) {
+    return new SessionUserLimits(adminArea, uploads, administrators, profile);
   }
 
   private static RequestMatcher publicRequests() {

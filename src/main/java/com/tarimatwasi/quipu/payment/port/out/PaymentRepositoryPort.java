@@ -108,6 +108,21 @@ public interface PaymentRepositoryPort {
   List<Payment> findAllByStay(Long stayId);
 
   /**
+   * Every payment, whatever its state, of that period of any of those contracts, in as few reads as
+   * the list allows (HU-A04); none for no contracts.
+   */
+  List<Payment> findAllByContractsAndPeriod(Collection<Long> contractIds, YearMonth period);
+
+  /**
+   * Every payment, whatever its state, of any of those stays, in as few reads as the list allows
+   * (HU-A04); none for no stays.
+   */
+  List<Payment> findAllByStays(Collection<Long> stayIds);
+
+  /** How many payments are in that state. */
+  long countByStatus(PaymentStatus status);
+
+  /**
    * The approved payments of periods of the guest, of all its contracts in one read: the only ones
    * that clear a period of its debt (RN-25).
    */

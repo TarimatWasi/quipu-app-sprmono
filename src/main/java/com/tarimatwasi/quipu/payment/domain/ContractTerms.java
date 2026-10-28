@@ -102,6 +102,17 @@ public record ContractTerms(
   }
 
   /**
+   * The state of the period of the current month (HU-A04), read like any other by {@link #status};
+   * {@code null} if the contract does not charge that month (it starts in a later one).
+   *
+   * @param ofMonth the payments of the contract; those of other periods are not read
+   */
+  public @Nullable PeriodState stateOfCurrentMonth(List<Payment> ofMonth, LocalDate today) {
+    YearMonth month = YearMonth.from(today);
+    return periods(today).contains(month) ? status(month, ofMonth, today).state() : null;
+  }
+
+  /**
    * Whether the contract is in force for a voucher of the guest (RN-27): not finished by hand and
    * not expired by date. One that has not started yet is in force but charges no period.
    */

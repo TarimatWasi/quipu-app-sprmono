@@ -90,6 +90,9 @@ app:
     # las subidas y las altas, bajas y reactivaciones de administrador cuentan aquí y además en su
     # límite propio.
     admin-requests-per-minute: 120
+    # TAR-222: ediciones del perfil propio (PATCH /bff/guest/profile y /bff/temporary-guest/profile,
+    # un solo contador) por usuario de sesión y minuto, de 1 a 60.
+    profile-updates-per-minute: 10
   # RF-22: como máximo tantos administradores; cuenta todas las cuentas ADMIN, activas o no.
   administrators:
     max: 5

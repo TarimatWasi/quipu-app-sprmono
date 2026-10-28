@@ -58,6 +58,12 @@ public interface ContractRepositoryPort {
    */
   List<Contract> findAllInForce(Long environmentId, LocalDate today);
 
+  /**
+   * The ACTIVE contracts (not terminated, not past their end) of every environment on {@code
+   * today}, in one read; the oldest start first.
+   */
+  List<Contract> findAllInForce(LocalDate today);
+
   /** Stores the terminated state of an existing contract. */
   Contract save(Contract contract);
 
