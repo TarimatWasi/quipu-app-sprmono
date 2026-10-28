@@ -60,7 +60,7 @@ class ArchitectureScopesTest {
     // TAR_226_HEXAGONAL_PACKAGES selects its modules by name: each one must exist.
     assertThat(ArchitectureRules.HEXAGONAL_MODULES)
         .containsExactlyInAnyOrder(
-            "auth", "contract", "environment", "expense", "fine", "guest", "payment")
+            "auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment")
         .allSatisfy(
             m ->
                 assertThat(
@@ -69,6 +69,19 @@ class ArchitectureScopesTest {
                                 c.getPackageName()
                                     .startsWith(ArchitectureRules.ROOT + "." + m + ".")))
                     .as("classes of " + m)
+                    .isNotEmpty());
+  }
+
+  @Test
+  void bffAreas_areNotEmpty() {
+    // TAR_226_BFF_PACKAGES selects the bff by its package: each area must have classes.
+    var rest = ArchitectureRules.ROOT + ".bff." + ArchitectureConditions.BFF_REST + ".";
+    assertThat(List.of("admin", "guest", "auth", "common"))
+        .containsExactlyElementsOf(ArchitectureConditions.BFF_AREAS)
+        .allSatisfy(
+            area ->
+                assertThat(names(c -> c.getPackageName().startsWith(rest + area + ".")))
+                    .as("classes of the bff area " + area)
                     .isNotEmpty());
   }
 
