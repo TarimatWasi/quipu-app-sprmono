@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.service;
 
+import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
+import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
@@ -169,6 +171,46 @@ final class InMemoryUserRepository implements UserRepositoryPort {
             0,
             null,
             null));
+  }
+
+  @Override
+  public void insertNewGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    if (findByDocument(documentType, documentNumber).isPresent()) {
+      throw new AccountTakenException(Taken.DOCUMENT, new IllegalStateException("document"));
+    }
+    if (email != null && findByEmail(email).isPresent()) {
+      throw new AccountTakenException(Taken.EMAIL, new IllegalStateException("email"));
+    }
+    insertGuestAccount(guestId, documentType, documentNumber, email, unusablePasswordHash);
+  }
+
+  @Override
+  public void changeEmail(Long id, String email) {
+    Optional<UserAccount> holder = findByEmail(email);
+    if (holder.isPresent() && !holder.get().id().equals(id)) {
+      throw new AccountTakenException(Taken.EMAIL, new IllegalStateException("email"));
+    }
+    UserAccount user = find(id);
+    save(
+        new UserAccount(
+            user.id(),
+            email,
+            user.documentType(),
+            user.documentNumber(),
+            user.passwordHash(),
+            user.role(),
+            user.guestId(),
+            user.mustChangePassword(),
+            user.status(),
+            user.failedLoginAttempts(),
+            user.lockedUntil(),
+            user.passwordChangedAt()));
+    resetTokens.remove(id);
   }
 
   @Override

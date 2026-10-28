@@ -16,9 +16,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * RF-22 and TAR-127: limits the creations, the deactivations and the reactivations of
- * administrators of each session user, each route with its own counter, answered with 429 {@code
- * RATE_LIMITED} and {@code Retry-After}. The counters are {@link RateLimitBuckets} (in memory and
- * bounded to the most recent users).
+ * administrators of each session user, and TAR-229 the changes of the account email of a guest,
+ * each route with its own counter, answered with 429 {@code RATE_LIMITED} and {@code Retry-After}.
+ * The counters are {@link RateLimitBuckets} (in memory and bounded to the most recent users).
  *
  * <p>It runs after the authorization, like {@link UploadRateLimitFilter}: the key is the
  * authenticated user (never an address or a header), and a request without session or of another
@@ -45,7 +45,10 @@ final class AdministratorRateLimitFilter extends OncePerRequestFilter {
                 new RateLimitBuckets(statusChanges)),
             new LimitedRoute(
                 paths.matcher(HttpMethod.POST, "/bff/admin/administrators/{id}/reactivate"),
-                new RateLimitBuckets(statusChanges)));
+                new RateLimitBuckets(statusChanges)),
+            new LimitedRoute(
+                paths.matcher(HttpMethod.PUT, "/bff/admin/guests/{id}/account-email"),
+                new RateLimitBuckets(properties.guestAccountEmailChangesPerMinute())));
   }
 
   @Override

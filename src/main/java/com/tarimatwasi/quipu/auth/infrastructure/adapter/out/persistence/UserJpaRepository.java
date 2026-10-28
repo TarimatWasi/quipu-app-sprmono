@@ -41,6 +41,19 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
   int updateDocumentByGuestId(
       @Param("guestId") Long guestId, @Param("type") String type, @Param("number") String number);
 
+  /**
+   * TAR-229: only the email of the account and its recovery code, which stops working; flushed
+   * before and cleared after, like the status. The unique index on lower(email) refuses an email
+   * another account has.
+   */
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query(
+      value =
+          "UPDATE users SET email = :email, reset_token_hash = NULL, reset_token_expires_at = NULL,"
+              + " last_modified_date = now() WHERE id = :id",
+      nativeQuery = true)
+  int updateEmailById(@Param("id") Long id, @Param("email") String email);
+
   Optional<UserJpaEntity> findByDocumentTypeAndDocumentNumber(
       DocumentType documentType, String documentNumber);
 

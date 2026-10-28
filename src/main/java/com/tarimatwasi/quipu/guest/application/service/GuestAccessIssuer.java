@@ -1,12 +1,17 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
+import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException.Field;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestWithoutAccountException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.RegisterCommand;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.application.port.out.AccountEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountEmailChange;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.IssuedAccess;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
@@ -73,10 +78,14 @@ class GuestAccessIssuer {
       // ponytail: two simultaneous registrations of one document; the loser gets a 409, not RN-18.
       throw new GuestDocumentTakenException(e);
     }
+    // D-77: the contact email becomes the account email or nothing is created; the exception
+    // rolls back the guest inserted above.
     try {
-      accounts.openAccount(created.id(), type.name(), number, email);
+      accounts.openNewAccount(created.id(), type.name(), number, email);
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
+    } catch (AccountEmailAlreadyExistsException e) {
+      throw new GuestAccountEmailTakenException(Field.CONTACT_EMAIL, e);
     }
     IssuedAccess access = accounts.issueAccess(created.id(), command.accessMode());
     return new Issued(GuestService.summary(created, stateOf(created)), access, email);
@@ -97,6 +106,29 @@ class GuestAccessIssuer {
       throw new GuestDocumentTakenException(e);
     }
     return new Issued(null, accounts.issueAccess(guestId, mode), guest.email());
+  }
+
+  /**
+   * TAR-229. Lock order of the other flows: the guest row, then its account row (taken by the
+   * account module until the commit). Returns the email to tell about the change, if any.
+   */
+  @Transactional
+  Optional<String> changeAccountEmail(Long guestId, String email) {
+    Guest guest = guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new);
+    if (guest.status() == GuestStatus.INACTIVE) {
+      throw new GuestInactiveException(guestId);
+    }
+    AccountEmailChange change;
+    try {
+      change = accounts.changeAccountEmail(guestId, email);
+    } catch (AccountEmailAlreadyExistsException e) {
+      throw new GuestAccountEmailTakenException(Field.EMAIL, e);
+    }
+    return switch (change.outcome()) {
+      case NO_ACCOUNT -> throw new GuestWithoutAccountException();
+      case UNCHANGED -> Optional.empty();
+      case CHANGED -> Optional.ofNullable(change.previousEmail());
+    };
   }
 
   private AccountState stateOf(Guest guest) {

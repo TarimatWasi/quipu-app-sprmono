@@ -101,7 +101,8 @@ class SecurityConfig {
     http.addFilterAfter(new AdminAreaRateLimitFilter(limits.adminArea()), AuthorizationFilter.class)
         // TAR-206: counts the uploads of the session user, before the dispatcher reads the form.
         .addFilterAfter(new UploadRateLimitFilter(limits.uploads()), AuthorizationFilter.class)
-        // RF-22, TAR-127: counts the creations, deactivations and reactivations of administrators.
+        // RF-22, TAR-127: counts the creations, deactivations and reactivations of administrators;
+        // TAR-229: and the changes of the account email of a guest.
         .addFilterAfter(
             new AdministratorRateLimitFilter(limits.administrators()), AuthorizationFilter.class)
         // TAR-222: counts the edits of the own profile, the routes of the guest that write data.

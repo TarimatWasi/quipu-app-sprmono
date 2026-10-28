@@ -7,7 +7,8 @@ import org.springframework.validation.annotation.Validated;
 /**
  * Creations (RF-22), deactivations and reactivations (TAR-127) of administrators per session user:
  * the routes change privileged accounts and re-check a password, so one session cannot fire them
- * without pause.
+ * without pause. The changes of the account email of a guest (TAR-229) change where its password
+ * recovery goes and email the previous address, so they are limited alike.
  *
  * @param administratorCreationsPerMinute {@code app.rate-limit.administrator-creations-per-minute}:
  *     requests per minute and session user to create an administrator, as a burst refilled over the
@@ -16,12 +17,16 @@ import org.springframework.validation.annotation.Validated;
  * @param administratorStatusChangesPerMinute {@code
  *     app.rate-limit.administrator-status-changes-per-minute}: the same for each of deactivating
  *     and reactivating an administrator, each with its own counter (3; from 1 to 60).
+ * @param guestAccountEmailChangesPerMinute {@code
+ *     app.rate-limit.guest-account-email-changes-per-minute}: the same for setting the account
+ *     email of a guest (TAR-229), which may email the previous address (5; from 1 to 60).
  */
 @ConfigurationProperties("app.rate-limit")
 @Validated
 public record AdministratorRateLimitProperties(
     @DefaultValue("3") int administratorCreationsPerMinute,
-    @DefaultValue("3") int administratorStatusChangesPerMinute) {
+    @DefaultValue("3") int administratorStatusChangesPerMinute,
+    @DefaultValue("5") int guestAccountEmailChangesPerMinute) {
 
   /** The most that the configuration may allow. */
   static final int MAX_PER_MINUTE = 60;
@@ -32,6 +37,8 @@ public record AdministratorRateLimitProperties(
     requireWithinBounds(
         administratorStatusChangesPerMinute,
         "app.rate-limit.administrator-status-changes-per-minute");
+    requireWithinBounds(
+        guestAccountEmailChangesPerMinute, "app.rate-limit.guest-account-email-changes-per-minute");
   }
 
   private static void requireWithinBounds(int perMinute, String property) {

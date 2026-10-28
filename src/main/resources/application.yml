@@ -86,6 +86,9 @@ app:
     upload-burst: 3
     administrator-creations-per-minute: 3
     administrator-status-changes-per-minute: 3
+    # TAR-229: cambios del correo de cuenta de un huésped por usuario de la sesión y minuto, de 1 a
+    # 60 (cada cambio puede escribir al correo anterior).
+    guest-account-email-changes-per-minute: 5
     # TAR-221: todas las peticiones a /bff/admin/** por usuario de sesión y minuto (de 1 a 600);
     # las subidas y las altas, bajas y reactivaciones de administrador cuentan aquí y además en su
     # límite propio.
