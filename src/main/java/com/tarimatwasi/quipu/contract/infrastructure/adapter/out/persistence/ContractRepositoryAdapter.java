@@ -3,18 +3,18 @@ package com.tarimatwasi.quipu.contract.infrastructure.adapter.out.persistence;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.domain.ContractStatus;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
-import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import com.tarimatwasi.quipu.shared.paging.MaskedCursor;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -30,9 +30,11 @@ import org.springframework.stereotype.Component;
 public class ContractRepositoryAdapter implements ContractRepositoryPort {
 
   private final ContractJpaRepository jpaRepository;
+  private final IdMasker masker;
 
-  ContractRepositoryAdapter(ContractJpaRepository jpaRepository) {
+  ContractRepositoryAdapter(ContractJpaRepository jpaRepository, IdMasker masker) {
     this.jpaRepository = jpaRepository;
+    this.masker = masker;
   }
 
   @Override
@@ -76,10 +78,15 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
         .map(ContractJpaEntity::toDomain);
   }
 
+  /**
+   * TAR-227: the cursor carries only the id of the last contract, masked in the session that asked,
+   * never the internal one nor its date; the date is read again from the contract. A cursor of
+   * another session, altered, or of a contract that is no longer there is an invalid cursor.
+   */
   @Override
   public CursorPage<Contract> findAll(
       @Nullable ContractStatus status, LocalDate today, PageQuery page) {
-    CreationKey after = page.after() == null ? null : CreationKey.decode(page.after());
+    CreationKey after = page.after() == null ? null : keyOf(page.after());
     Specification<ContractJpaEntity> filter =
         (root, query, builder) -> {
           List<Predicate> where = new ArrayList<>();
@@ -88,7 +95,7 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
           }
           if (after != null) {
             // (createdDate, id) < (date, id), in the order of the listing: newest first.
-            Path<LocalDateTime> createdDate = root.get("createdDate");
+            Path<Instant> createdDate = root.get("createdDate");
             where.add(
                 builder.or(
                     builder.lessThan(createdDate, after.createdDate()),
@@ -102,7 +109,10 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
     // One more than the limit: the extra row only says that there is a next page.
     List<ContractJpaEntity> rows =
         jpaRepository.findBy(filter, query -> query.sortBy(order).limit(page.limit() + 1).all());
-    return CursorPage.of(rows, page.limit(), ContractRepositoryAdapter::cursorOf)
+    return CursorPage.of(
+            rows,
+            page.limit(),
+            row -> MaskedCursor.of(masker, IdKind.CONTRACT, Objects.requireNonNull(row.getId())))
         .map(ContractJpaEntity::toDomain);
   }
 
@@ -163,31 +173,14 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
     };
   }
 
-  private static String cursorOf(ContractJpaEntity contract) {
-    return CursorToken.encode(
-        // PostgreSQL keeps microseconds: a finer value would sort after the row it came from.
-        contract.getCreatedDate().orElseThrow().truncatedTo(ChronoUnit.MICROS).toString(),
-        Objects.requireNonNull(contract.getId()).toString());
+  /** Where the cursor stands: the sort key of its contract, read again from the row. */
+  private CreationKey keyOf(String cursor) {
+    Long id = MaskedCursor.idOf(masker, IdKind.CONTRACT, cursor);
+    Instant createdDate =
+        jpaRepository.findCreatedDate(id).orElseThrow(InvalidCursorException::new);
+    return new CreationKey(createdDate, id);
   }
 
-  /** The sort key of a contract, as the cursor carries it. */
-  private record CreationKey(LocalDateTime createdDate, Long id) {
-
-    private static final int MIN_YEAR = 1900;
-    private static final int MAX_YEAR = 9999;
-
-    static CreationKey decode(String cursor) {
-      List<String> parts = CursorToken.decode(cursor, 2);
-      try {
-        LocalDateTime createdDate = LocalDateTime.parse(parts.get(0));
-        // Java parses years far outside what a PostgreSQL timestamp holds; that would be a 500.
-        if (createdDate.getYear() < MIN_YEAR || createdDate.getYear() > MAX_YEAR) {
-          throw new InvalidCursorException();
-        }
-        return new CreationKey(createdDate, Long.valueOf(parts.get(1)));
-      } catch (DateTimeParseException | NumberFormatException notAKey) {
-        throw new InvalidCursorException();
-      }
-    }
-  }
+  /** The sort key of a contract. */
+  private record CreationKey(Instant createdDate, Long id) {}
 }

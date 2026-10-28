@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -59,4 +60,14 @@ interface PaymentJpaRepository
   /** Read by ix_payments_guest_status_period (guest_id, status, period). */
   List<PaymentJpaEntity> findByGuestIdAndStatusAndContractIdIsNotNull(
       Long guestId, PaymentStatus status);
+
+  // createdDate is mapped as an Instant (the field of AbstractAuditable; only its getter is a
+  // LocalDateTime).
+  /** TAR-227: where a page cursor of the queue stands. */
+  @Query("SELECT p.createdDate FROM PaymentJpaEntity p WHERE p.id = :id")
+  Optional<Instant> findCreatedDate(@Param("id") Long id);
+
+  /** TAR-227: where a page cursor of the history stands, if the payment is one of that guest. */
+  @Query("SELECT p.createdDate FROM PaymentJpaEntity p WHERE p.id = :id AND p.guestId = :guestId")
+  Optional<Instant> findCreatedDateOfGuest(@Param("id") Long id, @Param("guestId") Long guestId);
 }
