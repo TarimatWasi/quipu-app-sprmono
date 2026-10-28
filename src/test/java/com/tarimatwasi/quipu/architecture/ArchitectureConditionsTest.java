@@ -9,15 +9,17 @@ import com.tarimatwasi.fixtures.architecture.BadTest;
 import com.tarimatwasi.fixtures.architecture.Good;
 import com.tarimatwasi.fixtures.architecture.GoodTest;
 import com.tarimatwasi.fixtures.bff.adapter.in.rest.BffRoutes;
+import com.tarimatwasi.fixtures.bff.infrastructure.adapter.in.rest.admin.AreaWithoutType;
+import com.tarimatwasi.fixtures.bff.infrastructure.adapter.in.rest.admin.controller.AreaController;
+import com.tarimatwasi.fixtures.bff.infrastructure.adapter.in.rest.admin.dto.UnknownTypeDto;
+import com.tarimatwasi.fixtures.bff.infrastructure.adapter.in.rest.common.support.AreaSupport;
+import com.tarimatwasi.fixtures.bff.infrastructure.adapter.in.rest.other.controller.UnknownAreaController;
 import com.tarimatwasi.fixtures.core.adapter.in.rest.CoreRoutes;
 import com.tarimatwasi.fixtures.demo.adapter.out.AsyncInAdapter;
 import com.tarimatwasi.fixtures.demo.application.AsyncClassInService;
 import com.tarimatwasi.fixtures.demo.application.AsyncInService;
 import com.tarimatwasi.fixtures.demo.application.EnableAsyncInService;
 import com.tarimatwasi.fixtures.demo.application.SchedulingEnabled;
-import com.tarimatwasi.fixtures.demo.application.Service;
-import com.tarimatwasi.fixtures.demo.domain.BadDomain;
-import com.tarimatwasi.fixtures.demo.domain.GoodDomain;
 import com.tarimatwasi.fixtures.hexa.adapter.out.OldAdapter;
 import com.tarimatwasi.fixtures.hexa.application.FlatService;
 import com.tarimatwasi.fixtures.hexa.application.port.in.HexUseCase;
@@ -25,6 +27,7 @@ import com.tarimatwasi.fixtures.hexa.application.port.out.HexPort;
 import com.tarimatwasi.fixtures.hexa.application.port.out.LeakyPort;
 import com.tarimatwasi.fixtures.hexa.application.service.HexService;
 import com.tarimatwasi.fixtures.hexa.application.service.LeakyService;
+import com.tarimatwasi.fixtures.hexa.domain.ApplicationDomain;
 import com.tarimatwasi.fixtures.hexa.domain.HexDomain;
 import com.tarimatwasi.fixtures.hexa.domain.LeakyDomain;
 import com.tarimatwasi.fixtures.hexa.infrastructure.adapter.in.rest.HexController;
@@ -152,8 +155,11 @@ class ArchitectureConditionsTest {
   @Test
   void arq03_rejects_a_domain_that_depends_on_application() {
     var rule = ArchitectureConditions.layersFollowTheTable("com.tarimatwasi.fixtures");
-    assertFails(rule, BadDomain.class, Service.class, GoodDomain.class);
-    assertPasses(rule, GoodDomain.class, Service.class);
+    assertThatThrownBy(
+            () -> rule.check(classes(ApplicationDomain.class, HexService.class, HexDomain.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("Field <" + ApplicationDomain.class.getName() + ".service>");
+    assertPasses(rule, HexDomain.class, HexService.class);
   }
 
   private static final String FIXTURES = "com.tarimatwasi.fixtures";
@@ -221,6 +227,40 @@ class ArchitectureConditionsTest {
         .isInstanceOf(AssertionError.class)
         .hasMessageContaining("Field <" + LeakyService.class.getName() + ".config>");
     assertPasses(rule, HEXAGONAL_MODULE);
+  }
+
+  @Test
+  void bffLayout_accepts_an_area_and_a_type_of_the_lists() {
+    var rule = ArchitectureConditions.bffLayout(FIXTURES);
+    assertPasses(rule, AreaController.class, AreaSupport.class);
+  }
+
+  @Test
+  void bffLayout_rejects_the_flat_package_an_unknown_area_or_type_and_a_missing_type() {
+    var rule = ArchitectureConditions.bffLayout(FIXTURES);
+    assertThatThrownBy(
+            () ->
+                rule.check(
+                    classes(
+                        BffRoutes.class,
+                        UnknownAreaController.class,
+                        UnknownTypeDto.class,
+                        AreaWithoutType.class,
+                        AreaController.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining(BffRoutes.class.getName() + " is outside")
+        .hasMessageContaining(UnknownAreaController.class.getName() + " is outside")
+        .hasMessageContaining(UnknownTypeDto.class.getName() + " is outside")
+        .hasMessageContaining(AreaWithoutType.class.getName() + " is outside")
+        .hasMessageNotContaining(AreaController.class.getName() + " is outside");
+  }
+
+  @Test
+  void bffLayout_ignores_the_classes_outside_the_bff() {
+    var rule = ArchitectureConditions.bffLayout(FIXTURES);
+    assertThatThrownBy(() -> rule.check(classes(HexController.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("failed to check any classes");
   }
 
   @Test

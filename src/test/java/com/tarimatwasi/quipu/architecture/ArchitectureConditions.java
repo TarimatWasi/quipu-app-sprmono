@@ -76,10 +76,7 @@ final class ArchitectureConditions {
           "infrastructure.adapter.out",
           "infrastructure.config");
 
-  /**
-   * Package of each layer of the table, relative to the module: the hexagonal packages first, then
-   * the flat ones of the modules not yet moved (bff, until batch 2 of TAR-226). First match wins.
-   */
+  /** Package of each layer of the table, relative to the module (TAR-226, D-72). */
   private static final List<Map.Entry<String, String>> LAYER_PACKAGES =
       List.of(
           Map.entry("domain", "domain"),
@@ -88,13 +85,17 @@ final class ArchitectureConditions {
           Map.entry("application.port.out", "port.out"),
           Map.entry("infrastructure.adapter.in", "adapter.in"),
           Map.entry("infrastructure.adapter.out", "adapter.out"),
-          Map.entry("infrastructure.config", "config"),
-          Map.entry("application", "application"),
-          Map.entry("port.in", "port.in"),
-          Map.entry("port.out", "port.out"),
-          Map.entry("adapter.in", "adapter.in"),
-          Map.entry("adapter.out", "adapter.out"),
-          Map.entry("config", "config"));
+          Map.entry("infrastructure.config", "config"));
+
+  /** The package of the bff controllers and their support, relative to the bff module. */
+  static final String BFF_REST = "infrastructure.adapter.in.rest";
+
+  /** The areas of the bff (TAR-226, D-73): by route prefix, plus what several areas share. */
+  static final List<String> BFF_AREAS = List.of("admin", "guest", "auth", "common");
+
+  /** The types inside each area of the bff (TAR-226, D-73). */
+  static final List<String> BFF_TYPES =
+      List.of("controller", "error", "request", "response", "filter", "support");
 
   private ArchitectureConditions() {}
 
@@ -302,6 +303,39 @@ final class ArchitectureConditions {
                 .should()
                 .dependOnClassesThat(inInfrastructure)
                 .because("domain and application never see the infrastructure"));
+  }
+
+  /**
+   * TAR-226 (D-73): every class of the bff lives in {@code
+   * infrastructure.adapter.in.rest.<area>.<type>}, with the area in {@link #BFF_AREAS} and the type
+   * in {@link #BFF_TYPES}.
+   */
+  static ArchRule bffLayout(String rootPackage) {
+    var base = rootPackage + ".bff";
+    var allowed =
+        Pattern.compile(
+            Pattern.quote(base + "." + BFF_REST + ".")
+                + "("
+                + String.join("|", BFF_AREAS)
+                + ")\\.("
+                + String.join("|", BFF_TYPES)
+                + ")");
+    return classes()
+        .that(
+            DescribedPredicate.describe(
+                "are in the bff module",
+                c -> c.getPackageName().equals(base) || c.getPackageName().startsWith(base + ".")))
+        .and()
+        .doNotHaveSimpleName("package-info")
+        .should(
+            condition(
+                "reside in " + BFF_REST + ".<area>.<type> of " + BFF_AREAS + " x " + BFF_TYPES,
+                (c, events) -> {
+                  if (!allowed.matcher(c.getPackageName()).matches()) {
+                    events.add(
+                        violated(c, c.getName() + " is outside " + BFF_REST + ".<area>.<type>"));
+                  }
+                }));
   }
 
   /** The package path after {@code root.<module>} ("" for the module root), or null outside. */

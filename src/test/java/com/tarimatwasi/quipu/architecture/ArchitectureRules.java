@@ -46,9 +46,9 @@ final class ArchitectureRules {
 
   static final String ROOT = "com.tarimatwasi.quipu";
 
-  /** Business modules already in hexagonal packages (TAR-226, batch 1); bff follows in batch 2. */
+  /** Modules in hexagonal packages (TAR-226): the business ones (batch 1) and bff (batch 2). */
   static final Set<String> HEXAGONAL_MODULES =
-      Set.of("auth", "contract", "environment", "expense", "fine", "guest", "payment");
+      Set.of("auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment");
 
   private ArchitectureRules() {}
 
@@ -71,9 +71,6 @@ final class ArchitectureRules {
           .and()
           .resideOutsideOfPackages(ROOT, ROOT + ".shared..")
           .and()
-          .resideOutsideOfPackages(
-              HEXAGONAL_MODULES.stream().map(m -> ROOT + "." + m + "..").toArray(String[]::new))
-          .and()
           .doNotHaveSimpleName("package-info")
           .should()
           .resideInAnyPackage(
@@ -89,6 +86,9 @@ final class ArchitectureRules {
   @ArchTest
   static final ArchRule TAR_226_HEXAGONAL_PACKAGES =
       ArchitectureConditions.hexagonalLayout(ROOT, HEXAGONAL_MODULES);
+
+  /** TAR-226 (D-73): the bff goes by area and, inside each area, by type. */
+  @ArchTest static final ArchRule TAR_226_BFF_PACKAGES = ArchitectureConditions.bffLayout(ROOT);
 
   @ArchTest static final ArchRule BE_SPR_ARQ_03 = ArchitectureConditions.layersFollowTheTable(ROOT);
 
