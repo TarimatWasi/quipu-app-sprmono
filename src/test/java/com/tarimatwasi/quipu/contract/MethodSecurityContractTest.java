@@ -14,8 +14,11 @@ import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;
 import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.port.in.OwnProfileUseCase;
+import com.tarimatwasi.quipu.payment.port.in.AdminDashboardUseCase;
 import com.tarimatwasi.quipu.payment.port.in.FinanceSummaryUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
@@ -24,6 +27,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +53,8 @@ class MethodSecurityContractTest {
   @Autowired OwnPaymentsUseCase ownPayments;
   @Autowired ManagePaymentsUseCase payments;
   @Autowired FinanceSummaryUseCase finance;
+  @Autowired AdminDashboardUseCase dashboard;
+  @Autowired OwnProfileUseCase ownProfiles;
   @Autowired ManageStaysUseCase stays;
   @Autowired OwnGuestUseCase ownGuests;
   @Autowired GuestAccessUseCase guestAccess;
@@ -151,6 +157,17 @@ class MethodSecurityContractTest {
         .isInstanceOf(AccessDeniedException.class);
   }
 
+  /**
+   * TAR-222: the summary of the home and the reads it is made of are only for the administrator.
+   */
+  @Test
+  @WithMockUser(roles = "GUEST")
+  void adminDashboardAndItsReads_withoutAdminRole_areForbidden() {
+    assertThatThrownBy(() -> dashboard.dashboard()).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> stays.inForceOn(LocalDate.of(2026, 10, 14)))
+        .isInstanceOf(AccessDeniedException.class);
+  }
+
   @Test
   @WithMockUser(roles = "GUEST")
   void paymentHistoryOfTheAdministrator_withoutAdminRole_isForbidden() {
@@ -170,6 +187,13 @@ class MethodSecurityContractTest {
     assertThatThrownBy(() -> ownPayments.history(1L, PageQuery.first()))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(() -> ownGuests.own(1L)).isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(
+            () ->
+                ownProfiles.update(
+                    1L,
+                    GuestKind.CONTRACT,
+                    new OwnProfileUseCase.ProfileChange("Ana", null, null, null)))
+        .isInstanceOf(AccessDeniedException.class);
   }
 
   @Test
@@ -185,6 +209,7 @@ class MethodSecurityContractTest {
     assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();
     assertThat(fines.list(YearMonth.of(2026, 10))).isEmpty();
     assertThat(finance.summary(YearMonth.of(2026, 10)).net()).hasToString("0.00");
+    assertThat(dashboard.dashboard().pendingVouchers()).isEmpty();
     assertThat(administratorManagement.list(1L)).isEmpty();
   }
 }

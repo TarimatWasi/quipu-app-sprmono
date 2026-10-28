@@ -38,6 +38,11 @@ public class StayPaymentAdapter implements PaymentStayPort {
   }
 
   @Override
+  public List<StayTerms> staysInForceOn(LocalDate day) {
+    return stays.inForceOn(day).stream().map(StayPaymentAdapter::terms).toList();
+  }
+
+  @Override
   public List<Long> idsStartingIn(YearMonth month) {
     return stays.idsStartingIn(month);
   }

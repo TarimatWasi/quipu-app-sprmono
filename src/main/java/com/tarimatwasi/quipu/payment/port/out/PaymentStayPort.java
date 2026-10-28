@@ -24,6 +24,9 @@ public interface PaymentStayPort {
   /** The stay a summary of the guest of the session shows: in course, else next, else last. */
   Optional<StayTerms> relevantStayOf(Long guestId, LocalDate today);
 
+  /** The stay in course on that day of each guest, of every guest, in one read (HU-A04). */
+  List<StayTerms> staysInForceOn(LocalDate day);
+
   /** The ids of the stays of any guest that start in the month (RF-18, D-68). */
   List<Long> idsStartingIn(YearMonth month);
 }

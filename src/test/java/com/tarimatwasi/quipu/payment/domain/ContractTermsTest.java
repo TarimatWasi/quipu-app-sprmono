@@ -421,4 +421,39 @@ class ContractTermsTest {
     assertThat(toCome.activeOn(TODAY)).isTrue();
     assertThat(toCome.periods(TODAY)).isEmpty();
   }
+
+  // --- the period of the current month (HU-A04) ---
+
+  @Test
+  void theCurrentMonthIsUnpaidWithinTheGraceAndOverdueAfterIt() {
+    // Due on the 12th with 3 days of grace: pending through the 15th, overdue from the 16th.
+    ContractTerms terms = terms("2026-01-01", null, null, 12, 3);
+    assertThat(terms.stateOfCurrentMonth(List.of(), TODAY)).isEqualTo(PeriodState.UNPAID);
+    assertThat(terms.stateOfCurrentMonth(List.of(), LocalDate.parse("2026-10-15")))
+        .isEqualTo(PeriodState.UNPAID);
+    assertThat(terms.stateOfCurrentMonth(List.of(), LocalDate.parse("2026-10-16")))
+        .isEqualTo(PeriodState.OVERDUE);
+  }
+
+  @Test
+  void theCurrentMonthReadsOnlyThePaymentsOfThatPeriod() {
+    ContractTerms terms = terms("2026-01-01", null, null, 5, 3);
+    Payment september = payment(1, "2026-09", PaymentStatus.APPROVED, null);
+    Payment october = payment(2, "2026-10", PaymentStatus.PENDING, null);
+
+    assertThat(terms.stateOfCurrentMonth(List.of(september), TODAY)).isEqualTo(PeriodState.OVERDUE);
+    assertThat(terms.stateOfCurrentMonth(List.of(september, october), TODAY))
+        .isEqualTo(PeriodState.UNDER_REVIEW);
+    Payment approved = payment(3, "2026-10", PaymentStatus.APPROVED, null);
+    assertThat(terms.stateOfCurrentMonth(List.of(october, approved), TODAY))
+        .isEqualTo(PeriodState.PAID);
+  }
+
+  @Test
+  void aContractThatStartsInALaterMonthHasNoStateForTheCurrentOne() {
+    assertThat(terms("2026-11-01", null, null, 5, 3).stateOfCurrentMonth(List.of(), TODAY))
+        .isNull();
+    assertThat(terms("2026-10-31", null, null, 5, 3).stateOfCurrentMonth(List.of(), TODAY))
+        .isEqualTo(PeriodState.OVERDUE);
+  }
 }

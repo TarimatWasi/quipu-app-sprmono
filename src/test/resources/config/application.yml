@@ -17,3 +17,5 @@ app:
     # y muchas peticiones ADMIN seguidas del mismo usuario (TAR-221): el máximo que acepta la
     # validación. AdminAreaRateLimitBffTest fija el suyo.
     admin-requests-per-minute: 600
+    # y varias ediciones seguidas del perfil propio (TAR-222): el máximo que acepta la validación.
+    profile-updates-per-minute: 60

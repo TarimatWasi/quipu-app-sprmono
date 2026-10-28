@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
@@ -23,6 +24,7 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -42,7 +44,7 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   /** The name of the unique indexes of the live payments (V13). */
   private static final String LIVE_INDEX_PREFIX = "uq_payments_live";
 
-  /** How many stays a single sum binds at most. */
+  /** How many ids a single read binds at most. */
   private static final int STAY_SLICE = 1000;
 
   private final PaymentJpaRepository jpaRepository;
@@ -209,6 +211,34 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   @Override
   public List<Payment> findAllByStay(Long stayId) {
     return jpaRepository.findByStayId(stayId).stream().map(PaymentJpaEntity::toDomain).toList();
+  }
+
+  @Override
+  public List<Payment> findAllByContractsAndPeriod(Collection<Long> contractIds, YearMonth period) {
+    LocalDate month = period.atDay(1);
+    return inSlices(contractIds, slice -> jpaRepository.findByContractIdInAndPeriod(slice, month));
+  }
+
+  @Override
+  public List<Payment> findAllByStays(Collection<Long> stayIds) {
+    return inSlices(stayIds, jpaRepository::findByStayIdIn);
+  }
+
+  /** One read per slice of ids, so that a long list never nears the limit of bound parameters. */
+  private static List<Payment> inSlices(
+      Collection<Long> ids, Function<List<Long>, List<PaymentJpaEntity>> read) {
+    List<Long> all = List.copyOf(ids);
+    List<Payment> found = new ArrayList<>();
+    for (int from = 0; from < all.size(); from += STAY_SLICE) {
+      read.apply(all.subList(from, Math.min(from + STAY_SLICE, all.size())))
+          .forEach(row -> found.add(row.toDomain()));
+    }
+    return found;
+  }
+
+  @Override
+  public long countByStatus(PaymentStatus status) {
+    return jpaRepository.countByStatus(status);
   }
 
   @Override

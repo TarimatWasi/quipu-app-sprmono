@@ -57,6 +57,14 @@ public class ContractTermsService implements ContractTermsUseCase {
         .toList();
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public List<ContractTermsView> termsInForce() {
+    return contracts.findAllInForce(ContractViews.today(clock)).stream()
+        .map(ContractTermsService::view)
+        .toList();
+  }
+
   private static ContractTermsView view(Contract contract) {
     return new ContractTermsView(
         contract.id(),
