@@ -19,6 +19,7 @@ import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.auth.port.out.AdministratorNoticePort;
+import com.tarimatwasi.quipu.auth.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -43,6 +44,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
@@ -71,6 +73,12 @@ class AdministratorsContractTest {
   @Autowired PasswordEncoder passwordEncoder;
   @MockitoBean PasswordResetMailPort mail;
   @MockitoBean AdministratorNoticePort notices;
+
+  /**
+   * Unused here: the same overrides as AdministratorManagementContractTest and
+   * AdministratorDeactivationConcurrencyTest, so the three share one Spring context (and its pool).
+   */
+  @MockitoSpyBean AdministratorStorePort store;
 
   private final Long adminId = TestIds.next();
   private final Long otherAdminId = TestIds.next();

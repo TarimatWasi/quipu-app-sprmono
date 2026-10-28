@@ -6,13 +6,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.auth.port.in.AdministratorLimitReachedException;
 import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase;
+import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -29,19 +34,22 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
 /**
- * RF-22 through the real security chain: the creations of administrators of one session user are
- * limited per minute, after the session is read and before the use case, and the 429 satisfies the
- * pinned contract.
+ * RF-22 and TAR-127 through the real security chain: the creations, the deactivations and the
+ * reactivations of administrators of one session user are limited per minute, each route with its
+ * own counter, after the session is read and before the use case, and the 429 satisfies the pinned
+ * contract.
  */
 @SpringBootTest(
     properties = {
       "app.cors.allowed-origin=http://localhost:3000",
-      "app.rate-limit.administrator-creations-per-minute=1"
+      "app.rate-limit.administrator-creations-per-minute=1",
+      "app.rate-limit.administrator-status-changes-per-minute=1"
     })
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)
@@ -50,6 +58,10 @@ class AdministratorRateLimitBffTest {
   private static final String SPEC =
       Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
   private static final String URL = "/bff/admin/administrators";
+  private static final String REAUTHENTICATION = "{\"currentPassword\":\"Actor12345\"}";
+  private static final String RATE_LIMITED =
+      "{\"code\":\"RATE_LIMITED\",\"message\":\"Demasiados intentos, espera un momento antes de"
+          + " volver a intentar\"}";
   private static final String BODY =
       "{\"documentType\":\"DNI\",\"documentNumber\":\"22222222\",\"email\":\"n@example.com\","
           + "\"currentPassword\":\"Creador12345\"}";
@@ -57,11 +69,14 @@ class AdministratorRateLimitBffTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+  @Autowired IdMasker ids;
   @MockitoBean CreateAdministratorUseCase administrators;
+  @MockitoBean ManageAdministratorsUseCase management;
 
   private final Long adminId = TestIds.next();
   private final Long otherAdminId = TestIds.next();
   private final Long guestUserId = TestIds.next();
+  private String target = "";
 
   @BeforeEach
   void setUp() {
@@ -70,6 +85,7 @@ class AdministratorRateLimitBffTest {
     insertUser(otherAdminId, "ADMIN", "00000003");
     insertUser(guestUserId, "GUEST", "00000002");
     when(administrators.create(any())).thenThrow(new AdministratorLimitReachedException());
+    target = ids.mask(IdKind.USER, TestIds.next()).toString();
   }
 
   @AfterEach
@@ -110,6 +126,77 @@ class AdministratorRateLimitBffTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     verify(administrators, times(2)).create(any());
+  }
+
+  /** TAR-127. */
+  @Test
+  void theDeactivationOverTheAllowanceGets429WithRetryAfterBeforeTheUseCase() throws Exception {
+    change("deactivate", session(adminId)).andExpect(status().isNoContent());
+
+    MvcResult limited =
+        change("deactivate", session(adminId))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(content().json(RATE_LIMITED, JsonCompareMode.STRICT))
+            .andExpect(openApi().isValid(SPEC))
+            .andReturn();
+
+    assertRetryAfter(limited);
+    verify(management, times(1)).deactivate(any());
+  }
+
+  /** TAR-127: each route counts apart, and apart from the creations. */
+  @Test
+  void theReactivationAndTheCreationHaveTheirOwnAllowance() throws Exception {
+    change("deactivate", session(adminId)).andExpect(status().isNoContent());
+    change("deactivate", session(adminId)).andExpect(status().isTooManyRequests());
+
+    change("reactivate", session(adminId)).andExpect(status().isNoContent());
+    MvcResult limited =
+        change("reactivate", session(adminId))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(content().json(RATE_LIMITED, JsonCompareMode.STRICT))
+            .andExpect(openApi().isValid(SPEC))
+            .andReturn();
+    create(session(adminId)).andExpect(status().isConflict());
+
+    assertRetryAfter(limited);
+    verify(management, times(1)).deactivate(any());
+    verify(management, times(1)).reactivate(any());
+    verify(administrators, times(1)).create(any());
+  }
+
+  @Test
+  void anotherAdministratorKeepsItsOwnAllowanceToDeactivateAndOtherAnswersAreUntouched()
+      throws Exception {
+    change("deactivate", session(adminId)).andExpect(status().isNoContent());
+    change("deactivate", session(adminId)).andExpect(status().isTooManyRequests());
+    // The list is not one of these routes.
+    mockMvc
+        .perform(get("/bff/admin/administrators").cookie(session(adminId)))
+        .andExpect(status().isOk());
+
+    change("deactivate", session(otherAdminId)).andExpect(status().isNoContent());
+    change("deactivate", null).andExpect(status().isUnauthorized());
+    change("deactivate", session(guestUserId)).andExpect(status().isForbidden());
+    change("deactivate", session(guestUserId)).andExpect(status().isForbidden());
+    verify(management, times(2)).deactivate(any());
+  }
+
+  private static void assertRetryAfter(MvcResult limited) {
+    String retryAfter = limited.getResponse().getHeader("Retry-After");
+    assertThat(retryAfter).isNotNull();
+    assertThat(Long.parseLong(retryAfter)).isBetween(1L, 61L);
+  }
+
+  private ResultActions change(String action, @Nullable Cookie session) throws Exception {
+    var request =
+        post(URL + "/" + target + "/" + action)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(REAUTHENTICATION);
+    if (session != null) {
+      request.cookie(session);
+    }
+    return mockMvc.perform(request);
   }
 
   private ResultActions create(@Nullable Cookie session) throws Exception {

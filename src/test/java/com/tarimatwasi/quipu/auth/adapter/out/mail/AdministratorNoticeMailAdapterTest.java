@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.tarimatwasi.quipu.auth.port.out.AdministratorNoticePort.StatusChange;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,61 @@ class AdministratorNoticeMailAdapterTest {
         .contains("nueva@example.test")
         .doesNotContain("http")
         .doesNotContain("code");
+  }
+
+  /** TAR-127: who deactivated or reactivated which account, and nothing that gives access. */
+  @Test
+  void tellsWhoDeactivatedOrReactivatedWhichAccount() {
+    when(provider.getIfAvailable()).thenReturn(sender);
+
+    adapter.administratorStatusChanged(
+        "otra@example.test",
+        "actor@example.test",
+        "destino@example.test",
+        StatusChange.DEACTIVATED);
+    adapter.administratorStatusChanged(
+        "otra@example.test",
+        "actor@example.test",
+        "destino@example.test",
+        StatusChange.REACTIVATED);
+
+    var deactivated = ArgumentCaptor.forClass(String.class);
+    verify(sender)
+        .sendNotice(
+            eq("otra@example.test"),
+            eq(AdministratorNoticeMailAdapter.DEACTIVATED_SUBJECT),
+            deactivated.capture());
+    assertThat(deactivated.getValue())
+        .contains("actor@example.test desactivó")
+        .contains("destino@example.test")
+        .contains("ya no puede iniciar sesión")
+        .doesNotContain("http")
+        .doesNotContain("code");
+    var reactivated = ArgumentCaptor.forClass(String.class);
+    verify(sender)
+        .sendNotice(
+            eq("otra@example.test"),
+            eq(AdministratorNoticeMailAdapter.REACTIVATED_SUBJECT),
+            reactivated.capture());
+    assertThat(reactivated.getValue())
+        .contains("actor@example.test reactivó")
+        .contains("destino@example.test")
+        .contains("puede iniciar sesión de nuevo")
+        .doesNotContain("http");
+  }
+
+  @Test
+  void withoutAProviderNoStatusNoticeIsSent() {
+    when(provider.getIfAvailable()).thenReturn(null);
+
+    assertThatCode(
+            () ->
+                adapter.administratorStatusChanged(
+                    "otra@example.test",
+                    "actor@example.test",
+                    "destino@example.test",
+                    StatusChange.DEACTIVATED))
+        .doesNotThrowAnyException();
   }
 
   @Test

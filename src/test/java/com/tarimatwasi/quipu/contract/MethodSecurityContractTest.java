@@ -7,6 +7,8 @@ import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase;
 import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase.CreateAdministratorCommand;
 import com.tarimatwasi.quipu.auth.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
+import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase;
+import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
 import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
@@ -51,6 +53,7 @@ class MethodSecurityContractTest {
   @Autowired OwnGuestUseCase ownGuests;
   @Autowired GuestAccessUseCase guestAccess;
   @Autowired CreateAdministratorUseCase administrators;
+  @Autowired ManageAdministratorsUseCase administratorManagement;
   @Autowired JdbcTemplate jdbc;
 
   @BeforeEach
@@ -87,6 +90,26 @@ class MethodSecurityContractTest {
                         1L, DocumentKind.DNI, "22222222", "n@example.test", "Creador12345")))
         .isInstanceOf(AccessDeniedException.class);
     assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
+  }
+
+  /** TAR-127: only an administrator lists, deactivates or reactivates another one. */
+  @Test
+  @WithMockUser(roles = "GUEST")
+  void manageAdministrators_withoutAdminRole_isForbidden() {
+    jdbc.update(
+        "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+            + " must_change_password, status) VALUES (2, 'a@example.test', 'DNI', '22222222',"
+            + " 'hash', 'ADMIN', FALSE, 'ACTIVE')");
+    assertThatThrownBy(() -> administratorManagement.list(1L))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(
+            () -> administratorManagement.deactivate(new StatusChangeCommand(1L, 2L, "Actor12345")))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(
+            () -> administratorManagement.reactivate(new StatusChangeCommand(1L, 2L, "Actor12345")))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThat(jdbc.queryForObject("SELECT status FROM users WHERE id = 2", String.class))
+        .isEqualTo("ACTIVE");
   }
 
   @Test
@@ -162,5 +185,6 @@ class MethodSecurityContractTest {
     assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();
     assertThat(fines.list(YearMonth.of(2026, 10))).isEmpty();
     assertThat(finance.summary(YearMonth.of(2026, 10)).net()).hasToString("0.00");
+    assertThat(administratorManagement.list(1L)).isEmpty();
   }
 }

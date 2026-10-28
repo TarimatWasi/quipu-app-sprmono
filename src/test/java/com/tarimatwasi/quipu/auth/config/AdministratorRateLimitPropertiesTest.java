@@ -5,22 +5,38 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
-/** RF-22: the limit cannot be turned off nor loosened without bound by the environment. */
+/**
+ * RF-22, TAR-127: the limits cannot be turned off nor loosened without bound by the environment.
+ */
 class AdministratorRateLimitPropertiesTest {
 
   @Test
   void acceptsFromOneToSixty() {
-    assertThat(new AdministratorRateLimitProperties(1).administratorCreationsPerMinute())
-        .isEqualTo(1);
-    assertThat(new AdministratorRateLimitProperties(60).administratorCreationsPerMinute())
-        .isEqualTo(60);
+    var lowest = new AdministratorRateLimitProperties(1, 1);
+    assertThat(lowest.administratorCreationsPerMinute()).isEqualTo(1);
+    assertThat(lowest.administratorStatusChangesPerMinute()).isEqualTo(1);
+    var highest = new AdministratorRateLimitProperties(60, 60);
+    assertThat(highest.administratorCreationsPerMinute()).isEqualTo(60);
+    assertThat(highest.administratorStatusChangesPerMinute()).isEqualTo(60);
   }
 
   @Test
-  void refusesZeroAndMoreThanSixty() {
-    assertThatThrownBy(() -> new AdministratorRateLimitProperties(0))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new AdministratorRateLimitProperties(61))
-        .isInstanceOf(IllegalArgumentException.class);
+  void refusesZeroAndMoreThanSixtyForTheCreations() {
+    assertThatThrownBy(() -> new AdministratorRateLimitProperties(0, 3))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("administrator-creations-per-minute");
+    assertThatThrownBy(() -> new AdministratorRateLimitProperties(61, 3))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("administrator-creations-per-minute");
+  }
+
+  @Test
+  void refusesZeroAndMoreThanSixtyForTheStatusChanges() {
+    assertThatThrownBy(() -> new AdministratorRateLimitProperties(3, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("administrator-status-changes-per-minute");
+    assertThatThrownBy(() -> new AdministratorRateLimitProperties(3, 61))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("administrator-status-changes-per-minute");
   }
 }

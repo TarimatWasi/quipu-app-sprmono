@@ -77,15 +77,18 @@ app:
   # upload-burst: subidas seguidas antes de que la recarga por minuto las espacie. Además, cada
   # usuario tiene una sola subida en curso.
   # administrator-creations-per-minute (RF-22): altas de administrador por usuario de la sesión, de 1
-  # a 60.
+  # a 60. administrator-status-changes-per-minute (TAR-127): lo mismo para desactivar y para
+  # reactivar un administrador, cada ruta con su propio contador, de 1 a 60.
   rate-limit:
     per-minute: 60
     per-account-per-minute: 10
     uploads-per-minute: 10
     upload-burst: 3
     administrator-creations-per-minute: 3
+    administrator-status-changes-per-minute: 3
     # TAR-221: todas las peticiones a /bff/admin/** por usuario de sesión y minuto (de 1 a 600);
-    # las subidas y las altas de administrador cuentan aquí y además en su límite propio.
+    # las subidas y las altas, bajas y reactivaciones de administrador cuentan aquí y además en su
+    # límite propio.
     admin-requests-per-minute: 120
   # RF-22: como máximo tantos administradores; cuenta todas las cuentas ADMIN, activas o no.
   administrators:

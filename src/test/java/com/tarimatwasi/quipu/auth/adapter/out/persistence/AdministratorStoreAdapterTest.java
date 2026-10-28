@@ -7,9 +7,11 @@ import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.port.out.AdministratorStorePort.NewAdministrator;
+import com.tarimatwasi.quipu.auth.port.out.AdministratorStorePort.StoredAdministrator;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -172,6 +174,119 @@ class AdministratorStoreAdapterTest {
   @Test
   void theLockNeedsATransaction() {
     assertThatThrownBy(adapter::lockAdministrators).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> adapter.holdAsReference(creatorId))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  /** TAR-127: every ADMIN, active or not, the oldest first; never a guest. */
+  @Test
+  void listsEveryAdministratorTheOldestFirst() {
+    Long inactive = TestIds.next();
+    Long older = TestIds.next();
+    insertUser(inactive, "inactiva@example.test", "22222224", "ADMIN", "INACTIVE");
+    insertUser(older, "antigua@example.test", "AB12", "ADMIN", "ACTIVE");
+    insertUser(TestIds.next(), "huesped@example.test", "22222225", "GUEST", "ACTIVE");
+    jdbc.update("UPDATE users SET document_type = 'PASSPORT' WHERE id = ?", older);
+    setCreated(older, "2026-01-01T10:00:00Z");
+    setCreated(creatorId, "2026-02-01T10:00:00Z");
+    setCreated(inactive, "2026-03-01T10:00:00Z");
+
+    assertThat(adapter.listAdministrators())
+        .containsExactly(
+            new StoredAdministrator(
+                older,
+                DocumentType.PASSPORT,
+                "AB12",
+                "antigua@example.test",
+                "ACTIVE",
+                Instant.parse("2026-01-01T10:00:00Z")),
+            new StoredAdministrator(
+                creatorId,
+                DocumentType.DNI,
+                "11111111",
+                "creador@example.test",
+                "ACTIVE",
+                Instant.parse("2026-02-01T10:00:00Z")),
+            new StoredAdministrator(
+                inactive,
+                DocumentType.DNI,
+                "22222224",
+                "inactiva@example.test",
+                "INACTIVE",
+                Instant.parse("2026-03-01T10:00:00Z")));
+  }
+
+  @Test
+  void onlyTheActiveAdministratorsCountAsActive() {
+    insertUser(TestIds.next(), "activa@example.test", "22222222", "ADMIN", "ACTIVE");
+    insertUser(TestIds.next(), "inactiva@example.test", "22222224", "ADMIN", "INACTIVE");
+    insertUser(TestIds.next(), "huesped@example.test", "22222225", "GUEST", "ACTIVE");
+
+    assertThat(adapter.countActiveAdministrators()).isEqualTo(2);
+    assertThat(adapter.countAdministrators()).isEqualTo(3);
+  }
+
+  /** Only an ADMIN is found, and only inside a transaction (its row stays locked). */
+  @Test
+  void anAdministratorIsLockedByItsIdAndAGuestIsNotFound() {
+    Long guest = TestIds.next();
+    insertUser(guest, "huesped@example.test", "22222225", "GUEST", "ACTIVE");
+
+    assertThatThrownBy(() -> adapter.lockAdministrator(creatorId))
+        .isInstanceOf(IllegalStateException.class);
+    transaction.executeWithoutResult(
+        status -> {
+          assertThat(adapter.lockAdministrator(creatorId))
+              .hasValueSatisfying(
+                  a -> {
+                    assertThat(a.id()).isEqualTo(creatorId);
+                    assertThat(a.email()).isEqualTo("creador@example.test");
+                    assertThat(a.isActive()).isTrue();
+                  });
+          assertThat(adapter.lockAdministrator(guest)).isEmpty();
+          assertThat(adapter.lockAdministrator(TestIds.next())).isEmpty();
+        });
+  }
+
+  @Test
+  void theStatusOfAnAdministratorChangesWithWhoChangedIt() {
+    Long other = TestIds.next();
+    insertUser(other, "otra@example.test", "22222222", "ADMIN", "ACTIVE");
+    jdbc.update("UPDATE users SET last_modified_date = '2026-01-01T00:00:00Z' WHERE id = ?", other);
+
+    adapter.setAdministratorStatus(other, "INACTIVE", creatorId);
+
+    Map<String, @Nullable Object> row =
+        jdbc.queryForMap(
+            "SELECT status, last_modified_by_id, last_modified_date > '2026-01-01T00:00:00Z'"
+                + " AS touched FROM users WHERE id = ?",
+            other);
+    assertThat(row)
+        .containsEntry("status", "INACTIVE")
+        .containsEntry("last_modified_by_id", creatorId)
+        .containsEntry("touched", true);
+    assertThat(
+            jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, creatorId))
+        .isEqualTo("ACTIVE");
+
+    adapter.setAdministratorStatus(other, "ACTIVE", creatorId);
+    assertThat(jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, other))
+        .isEqualTo("ACTIVE");
+  }
+
+  @Test
+  void theStatusOfAGuestAccountIsNeverChangedHere() {
+    Long guest = TestIds.next();
+    insertUser(guest, "huesped@example.test", "22222225", "GUEST", "ACTIVE");
+
+    assertThatThrownBy(() -> adapter.setAdministratorStatus(guest, "INACTIVE", creatorId))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, guest))
+        .isEqualTo("ACTIVE");
+  }
+
+  private void setCreated(Long id, String instant) {
+    jdbc.update("UPDATE users SET created_date = ?::timestamptz WHERE id = ?", instant, id);
   }
 
   /**
