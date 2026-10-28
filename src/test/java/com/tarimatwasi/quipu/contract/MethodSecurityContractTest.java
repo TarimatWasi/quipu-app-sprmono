@@ -11,8 +11,8 @@ import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCas
 import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase;
-import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
-import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;
+import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase;
+import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase.FineCommand;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;

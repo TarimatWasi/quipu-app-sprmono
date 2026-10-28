@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.payment.adapter.out.fine;
 
-import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
+import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.payment.port.out.PaymentFinePort;
 import java.math.BigDecimal;
 import java.time.YearMonth;

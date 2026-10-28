@@ -1,10 +1,10 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.fine.port.in.FineGuestNotFoundException;
-import com.tarimatwasi.quipu.fine.port.in.FineNotFoundException;
-import com.tarimatwasi.quipu.fine.port.in.InvalidFineDescriptionException;
-import com.tarimatwasi.quipu.fine.port.in.InvalidFineException;
-import com.tarimatwasi.quipu.fine.port.in.InvalidFineMonthException;
+import com.tarimatwasi.quipu.fine.application.port.in.FineGuestNotFoundException;
+import com.tarimatwasi.quipu.fine.application.port.in.FineNotFoundException;
+import com.tarimatwasi.quipu.fine.application.port.in.InvalidFineDescriptionException;
+import com.tarimatwasi.quipu.fine.application.port.in.InvalidFineException;
+import com.tarimatwasi.quipu.fine.application.port.in.InvalidFineMonthException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
