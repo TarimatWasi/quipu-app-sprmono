@@ -4,6 +4,8 @@ on:
     branches: [main, development]
   pull_request:
     branches: [main, development]
+    # labeled/unlabeled: migrations-immutable vuelve a decidir cuando cambia la etiqueta migration-reset.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 permissions:
   contents: read
 concurrency:
@@ -45,9 +47,16 @@ jobs:
           fetch-depth: 0
       - env:
           BASE_REF: ${{ github.base_ref }}
+          # Reinicio único de migraciones (TAR-233): solo con la etiqueta migration-reset en el PR se
+          # permite modificar, renombrar o borrar migraciones existentes. Sin ella, la regla no cambia.
+          MIGRATION_RESET: ${{ contains(github.event.pull_request.labels.*.name, 'migration-reset') }}
         run: |
           git fetch origin "$BASE_REF"
           if git diff --name-status --diff-filter=MDR "origin/$BASE_REF"...HEAD -- src/main/resources/db/migration | grep -q .; then
+            if [ "$MIGRATION_RESET" = "true" ]; then
+              echo "::warning::Migraciones existentes modificadas, renombradas o borradas con la etiqueta migration-reset (reinicio autorizado)"
+              exit 0
+            fi
             echo "Una migración existente fue modificada, renombrada o borrada (BE-SPR-DAT-05)"; exit 1
           fi
   docker-build:

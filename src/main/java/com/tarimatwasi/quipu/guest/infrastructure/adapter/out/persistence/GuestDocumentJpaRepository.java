@@ -32,7 +32,7 @@ interface GuestDocumentJpaRepository extends JpaRepository<GuestDocumentJpaEntit
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<GuestDocumentJpaEntity> findWithLockByIdAndGuestId(Long id, Long guestId);
 
-  /** Removes the row; the database refuses it unless its evidence is already written (V18). */
+  /** Removes the row; the database refuses it unless its evidence is already written (trigger). */
   @Modifying(flushAutomatically = true)
   @Query(
       value = "DELETE FROM guest_documents WHERE id = :id AND guest_id = :guestId",

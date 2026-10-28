@@ -11,6 +11,6 @@ public interface PostgresContainers {
   // Every distinct Spring context the suite caches keeps its own connection pool against this one
   // database; the default 100 connections ran out with about ten contexts (TAR-124).
   PostgreSQLContainer POSTGRES =
-      new PostgreSQLContainer("postgres:17-alpine")
+      new PostgreSQLContainer("postgres:18-alpine")
           .withCommand("postgres", "-c", "max_connections=300");
 }

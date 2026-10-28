@@ -16,7 +16,7 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** V21 (TAR-47, RF-19): the fines table and what the base itself refuses. */
+/** TAR-47 (RF-19): the fines table and what the base itself refuses. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
 class FinesMigrationTest {

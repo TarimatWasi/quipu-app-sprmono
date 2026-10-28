@@ -6,8 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +14,7 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** TAR-40 (V12): the contracts table is added over a database that already has data. */
+/** TAR-40: the contracts table, its indexes and what the base itself refuses. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
 class ContractsMigrationTest {
@@ -24,44 +22,29 @@ class ContractsMigrationTest {
   private static final AtomicLong NEXT_ID = new AtomicLong(70_000);
 
   @Autowired JdbcTemplate jdbc;
-  @Autowired DataSource dataSource;
 
-  /** Guests, environments and stays that exist before V12 are untouched by it. */
+  /** A contract takes its id from contracts_seq and starts ACTIVE and not finished. */
   @Test
-  void v12_addsAnEmptyTableOverExistingData() {
-    String schema = "tar40_migration";
-    jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+  void contracts_takeTheirIdFromTheSequenceAndStartActive() {
+    long guest = insertGuest("20000001");
+    long environment = insertEnvironment("301");
     try {
-      migrateTo(schema, "11");
-      long guest = insertGuest(schema, "20000001");
-      long environment = insertEnvironment(schema, "301");
-
-      migrateTo(schema, "12");
-
-      assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".guests", Integer.class))
-          .isEqualTo(1);
-      assertThat(
-              jdbc.queryForObject(
-                  "SELECT count(*) FROM " + schema + ".environments", Integer.class))
-          .isEqualTo(1);
-      assertThat(
-              jdbc.queryForObject("SELECT count(*) FROM " + schema + ".contracts", Integer.class))
-          .isZero();
-      // The new table takes rows for the old guest and environment, and its sequence works.
       jdbc.update(
-          "INSERT INTO "
-              + schema
-              + ".contracts (id, guest_id, environment_id, start_date, monthly_amount, payment_day,"
-              + " grace_days, file_key, original_name, size_bytes)"
-              + " VALUES (nextval('"
-              + schema
-              + ".contracts_seq'), ?, ?, '2026-10-01', 800, 5, 3, 'contracts/a.pdf', 'a.pdf', 10)",
+          "INSERT INTO contracts (id, guest_id, environment_id, start_date, monthly_amount,"
+              + " payment_day, grace_days, file_key, original_name, size_bytes)"
+              + " VALUES (nextval('contracts_seq'), ?, ?, '2026-10-01', 800, 5, 3,"
+              + " 'contracts/a.pdf', 'a.pdf', 10)",
           guest,
           environment);
-      assertThat(jdbc.queryForObject("SELECT status FROM " + schema + ".contracts", String.class))
-          .isEqualTo("ACTIVE");
+
+      assertThat(
+              jdbc.queryForMap(
+                  "SELECT status, version, terminated_at FROM contracts WHERE guest_id = ?", guest))
+          .containsEntry("status", "ACTIVE")
+          .containsEntry("version", 0L)
+          .containsEntry("terminated_at", null);
     } finally {
-      jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+      jdbc.execute("TRUNCATE TABLE contracts, guests, environments CASCADE");
     }
   }
 
@@ -93,8 +76,8 @@ class ContractsMigrationTest {
 
   @Test
   void contracts_refuseTheValuesTheDomainRefuses() {
-    long guest = insertGuest("public", "20000009");
-    long environment = insertEnvironment("public", "399");
+    long guest = insertGuest("20000009");
+    long environment = insertEnvironment("399");
     try {
       refused(
           guest, environment, new Terms("2026-10-01", "2026-10-01", "800", 5, 3, "ACTIVE"), "end");
@@ -110,12 +93,12 @@ class ContractsMigrationTest {
 
   @Test
   void contracts_allowTwoRowsForOneEnvironmentBecauseTheApplicationDecidesRn20() {
-    long guest = insertGuest("public", "20000009");
-    long environment = insertEnvironment("public", "399");
+    long guest = insertGuest("20000009");
+    long environment = insertEnvironment("399");
     try {
       long first =
           insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
-      // From V13 a finished contract also says when (terminated_at).
+      // A finished contract also says when (terminated_at).
       jdbc.update(
           "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", first);
       insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
@@ -124,9 +107,9 @@ class ContractsMigrationTest {
     }
   }
 
-  /** TAR-194 (V19): the transitional trigger of V13 is gone; the CHECK alone guards the instant. */
+  /** TAR-194: no trigger fills the instant a contract was finished; the CHECK alone guards it. */
   @Test
-  void v19_dropsTheTriggerThatFilledTheInstantAFinishedContractWasFinished() {
+  void contracts_haveNoTriggerThatFillsTheInstantAFinishedContractWasFinished() {
     assertThat(
             jdbc.queryForObject(
                 "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.contracts'::regclass"
@@ -142,8 +125,8 @@ class ContractsMigrationTest {
 
   @Test
   void contracts_refuseToFinishWithoutTheInstantItWasFinished() {
-    long guest = insertGuest("public", "20000009");
-    long environment = insertEnvironment("public", "399");
+    long guest = insertGuest("20000009");
+    long environment = insertEnvironment("399");
     try {
       long id =
           insertContract(guest, environment, new Terms("2026-10-01", null, "800", 5, 3, "ACTIVE"));
@@ -197,32 +180,19 @@ class ContractsMigrationTest {
         terms.status());
   }
 
-  private void migrateTo(String schema, String version) {
-    Flyway.configure()
-        .dataSource(dataSource)
-        .schemas(schema)
-        .createSchemas(true)
-        .target(version)
-        .load()
-        .migrate();
-  }
-
-  private long insertGuest(String schema, String number) {
+  private long insertGuest(String number) {
     long id = NEXT_ID.incrementAndGet();
     jdbc.update(
-        "INSERT INTO "
-            + schema
-            + ".guests (id, document_type, document_number, guest_type, status)"
+        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
             + " VALUES (?, 'DNI', ?, 'CONTRACT', 'ACTIVE')",
         id,
         number);
     return id;
   }
 
-  private long insertEnvironment(String schema, String code) {
+  private long insertEnvironment(String code) {
     long id = NEXT_ID.incrementAndGet();
-    jdbc.update(
-        "INSERT INTO " + schema + ".environments (id, code, type) VALUES (?, ?, 'ROOM')", id, code);
+    jdbc.update("INSERT INTO environments (id, code, type) VALUES (?, ?, 'ROOM')", id, code);
     return id;
   }
 }

@@ -16,8 +16,8 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * TAR-137 (V16): a consent and a document are evidence; the database refuses to change them. (V17,
- * D-49): a guest accepts each version of the text once.
+ * TAR-137: a consent and a document are evidence; the database refuses to change them. (D-49): a
+ * guest accepts each version of the text once.
  */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
@@ -84,7 +84,7 @@ class GuestOnboardingMigrationTest {
         .isEqualTo(2L);
   }
 
-  /** TAR-187 (V18): a document leaves only with the evidence of who deleted it and why. */
+  /** TAR-187: a document leaves only with the evidence of who deleted it and why. */
   @Test
   void aDocumentIsDeletedOnlyWithItsEvidence() {
     Long admin = TestIds.next();

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class FineRepositoryAdapter implements FineRepositoryPort {
 
-  /** The foreign key of V21 from fines to guests. */
+  /** The foreign key fk_fines_guest from fines to guests. */
   private static final String GUEST_FOREIGN_KEY = "fk_fines_guest";
 
   private final FineJpaRepository jpaRepository;

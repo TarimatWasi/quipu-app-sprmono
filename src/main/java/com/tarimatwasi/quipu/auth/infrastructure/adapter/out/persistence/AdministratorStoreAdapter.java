@@ -31,10 +31,10 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
    */
   static final long ADMINISTRATORS_LOCK = 0x515549505541444DL;
 
-  /** uq_users_document (V1): the document of any account, administrator or guest. */
+  /** uq_users_document: the document of any account, administrator or guest. */
   static final String DOCUMENT_CONSTRAINT = "uq_users_document";
 
-  /** The UNIQUE of V1 and the case-insensitive index of V2. */
+  /** users_email_key and the case-insensitive index uq_users_email_lower. */
   static final Set<String> EMAIL_CONSTRAINTS = Set.of("users_email_key", "uq_users_email_lower");
 
   /** What a {@link StoredAdministrator} is read from. */
