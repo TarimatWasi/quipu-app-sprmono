@@ -17,20 +17,15 @@ public final class MaskedCursors {
   private MaskedCursors() {}
 
   /**
-   * Checks that the cursor is a single Base64Url part holding a UUID that unmasks, in the current
-   * session, to {@code expected}, and that no internal id of the listing nor the year of its dates
-   * shows in it, decoded or not. The ids should be large (as {@link TestIds} gives them), so that
-   * none of them is in a UUID by chance.
+   * Checks that the cursor is a single Base64Url part holding only a canonical UUID (so no date nor
+   * any other key travels in it) that unmasks, in the current session, to {@code expected}, and
+   * that no internal id of the listing shows in it, decoded or not. The ids should be large (as
+   * {@link TestIds} gives them), so that none of them is in a UUID by chance.
    *
    * @return the masked id, as the cursor carries it
    */
   public static String assertOpaque(
-      String cursor,
-      IdMasker masker,
-      IdKind kind,
-      Long expected,
-      List<Long> internalIds,
-      String year) {
+      String cursor, IdMasker masker, IdKind kind, Long expected, List<Long> internalIds) {
     List<String> parts = CursorToken.decode(cursor, 1);
     String key = parts.get(0);
     assertThat(key).matches(CANONICAL_UUID);
@@ -38,7 +33,6 @@ public final class MaskedCursors {
       assertThat(key).doesNotContain(id.toString());
       assertThat(cursor).doesNotContain(id.toString());
     }
-    assertThat(key).doesNotContain(year);
     assertThat(masker.unmask(kind, UUID.fromString(key))).isEqualTo(expected);
     return key;
   }
@@ -52,9 +46,12 @@ public final class MaskedCursors {
       String key, IdMasker masker, IdKind otherKind, Long internalId, String sortKey) {
     char last = key.charAt(key.length() - 1);
     String altered = key.substring(0, key.length() - 1) + (last == '0' ? '1' : '0');
+    String upper = key.toUpperCase(Locale.ROOT);
+    // a UUID with no letter has no other case: then a spelling one digit too long
+    String otherSpelling = upper.equals(key) ? key + "0" : upper;
     return List.of(
         CursorToken.encode(altered),
-        CursorToken.encode(key.toUpperCase(Locale.ROOT)),
+        CursorToken.encode(otherSpelling),
         CursorToken.encode(internalId.toString()),
         CursorToken.encode(sortKey, internalId.toString()),
         CursorToken.encode(UUID.randomUUID().toString()),

@@ -202,7 +202,7 @@ class ExpenseRepositoryAdapterTest {
 
     String key =
         MaskedCursors.assertOpaque(
-            cursor, masker, IdKind.EXPENSE, second, List.of(first, second, third), "2026");
+            cursor, masker, IdKind.EXPENSE, second, List.of(first, second, third));
     CursorPage<Expense> next = adapter.findByMonth(september, new PageQuery(cursor, 2));
     assertThat(amounts(next)).containsExactly(3);
     assertThat(next.nextCursor()).isNull();

@@ -432,7 +432,7 @@ class PaymentRepositoryAdapterTest {
 
     String key =
         MaskedCursors.assertOpaque(
-            cursor, masker, IdKind.PAYMENT, middle, List.of(oldest, middle, newest), "2026");
+            cursor, masker, IdKind.PAYMENT, middle, List.of(oldest, middle, newest));
     for (String bad :
         MaskedCursors.forgeries(key, masker, IdKind.CONTRACT, middle, "2026-10-02T10:00:00")) {
       assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(bad, 2)))
@@ -488,7 +488,7 @@ class PaymentRepositoryAdapterTest {
 
     String key =
         MaskedCursors.assertOpaque(
-            cursor, masker, IdKind.PAYMENT, middle, List.of(oldest, middle, newest), "2026");
+            cursor, masker, IdKind.PAYMENT, middle, List.of(oldest, middle, newest));
     CursorPage<StoredPayment> second = adapter.findHistory(guest, new PageQuery(cursor, 2));
     assertThat(ids(second)).containsExactly(oldest);
     assertThat(second.nextCursor()).isNull();

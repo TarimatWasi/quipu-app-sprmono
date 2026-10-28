@@ -186,7 +186,7 @@ class StayRepositoryAdapterTest {
 
     String key =
         MaskedCursors.assertOpaque(
-            cursor, masker, IdKind.STAY, middle, List.of(oldest, middle, newest), "2025");
+            cursor, masker, IdKind.STAY, middle, List.of(oldest, middle, newest));
     CursorPage<Stay> second = adapter.findByGuest(guestId, new PageQuery(cursor, 2));
     assertThat(second.content()).extracting(Stay::id).containsExactly(oldest);
     assertThat(second.nextCursor()).isNull();

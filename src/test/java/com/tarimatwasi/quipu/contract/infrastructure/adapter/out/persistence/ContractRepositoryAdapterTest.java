@@ -324,7 +324,7 @@ class ContractRepositoryAdapterTest {
     // one part only, a UUID: neither the internal ids nor the date travel in it
     String key =
         MaskedCursors.assertOpaque(
-            cursor, masker, IdKind.CONTRACT, middle, List.of(oldest, middle, newest), "2026");
+            cursor, masker, IdKind.CONTRACT, middle, List.of(oldest, middle, newest));
     CursorPage<Contract> second = adapter.findAll(null, TODAY, new PageQuery(cursor, 2));
     assertThat(ids(second)).containsExactly(oldest);
     assertThat(second.nextCursor()).isNull();
