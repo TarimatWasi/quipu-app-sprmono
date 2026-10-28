@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.payment.adapter.out.expense;
 
-import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
+import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.payment.port.out.PaymentExpensePort;
 import java.math.BigDecimal;
 import java.time.YearMonth;

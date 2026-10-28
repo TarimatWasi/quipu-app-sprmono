@@ -20,10 +20,10 @@ import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentInactive
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.application.port.in.InvalidEnvironmentCodeException;
-import com.tarimatwasi.quipu.expense.port.in.ExpenseNotFoundException;
-import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseDescriptionException;
-import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseException;
-import com.tarimatwasi.quipu.expense.port.in.InvalidExpenseMonthException;
+import com.tarimatwasi.quipu.expense.application.port.in.ExpenseNotFoundException;
+import com.tarimatwasi.quipu.expense.application.port.in.InvalidExpenseDescriptionException;
+import com.tarimatwasi.quipu.expense.application.port.in.InvalidExpenseException;
+import com.tarimatwasi.quipu.expense.application.port.in.InvalidExpenseMonthException;
 import com.tarimatwasi.quipu.guest.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentActionFailedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestDocumentLockedException;

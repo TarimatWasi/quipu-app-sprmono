@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.expense.port.in;
+package com.tarimatwasi.quipu.expense.application.port.in;
 
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;

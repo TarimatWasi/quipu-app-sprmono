@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.expense.adapter.out.persistence;
+package com.tarimatwasi.quipu.expense.infrastructure.adapter.out.persistence;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

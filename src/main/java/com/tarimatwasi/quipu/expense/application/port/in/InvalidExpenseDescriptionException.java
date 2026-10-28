@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.expense.port.in;
+package com.tarimatwasi.quipu.expense.application.port.in;
 
 /** The description has more than 500 characters, counted as Unicode code points. */
 public class InvalidExpenseDescriptionException extends RuntimeException {

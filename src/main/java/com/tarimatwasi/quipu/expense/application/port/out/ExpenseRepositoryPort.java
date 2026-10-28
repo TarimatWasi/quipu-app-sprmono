@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.expense.port.out;
+package com.tarimatwasi.quipu.expense.application.port.out;
 
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;

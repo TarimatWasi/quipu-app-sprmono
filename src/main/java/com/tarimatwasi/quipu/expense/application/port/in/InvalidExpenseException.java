@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.expense.port.in;
+package com.tarimatwasi.quipu.expense.application.port.in;
 
 /** The amount is not greater than 0, has more than two decimals or does not fit the column. */
 public class InvalidExpenseException extends RuntimeException {

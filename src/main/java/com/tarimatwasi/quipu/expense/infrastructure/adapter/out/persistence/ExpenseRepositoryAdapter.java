@@ -1,8 +1,8 @@
-package com.tarimatwasi.quipu.expense.adapter.out.persistence;
+package com.tarimatwasi.quipu.expense.infrastructure.adapter.out.persistence;
 
+import com.tarimatwasi.quipu.expense.application.port.out.ExpenseRepositoryPort;
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
-import com.tarimatwasi.quipu.expense.port.out.ExpenseRepositoryPort;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;

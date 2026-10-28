@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.expense.port.in;
+package com.tarimatwasi.quipu.expense.application.port.in;
 
 /** No expense has the requested id. */
 public class ExpenseNotFoundException extends RuntimeException {
