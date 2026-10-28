@@ -25,6 +25,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.R
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyResolvedException;
+import com.tarimatwasi.quipu.payment.application.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentReasonRequiredException;
@@ -725,11 +726,8 @@ class PaymentServiceTest {
     when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     when(payments.insertApproved(any())).thenThrow(new LivePaymentExistsException(null));
-
     assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(
-            com.tarimatwasi.quipu.payment.application.port.in.PaymentConcurrentChangeException
-                .class);
+        .isInstanceOf(PaymentConcurrentChangeException.class);
     verify(files).delete(KEY);
   }
 
