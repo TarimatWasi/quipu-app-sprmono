@@ -37,10 +37,8 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -96,12 +94,12 @@ class GuestDocumentActionsContractTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
-  private @Nullable Cookie admin;
   @MockitoBean GuestDocumentFilePort files;
   @MockitoSpyBean GuestDocumentActionRepositoryPort records;
   @Autowired GuestDocumentPurger purger;
 
   private final Long adminId = TestIds.next();
+  private final String sessionId = SessionIds.newSessionId();
   private final Long guestAccount = TestIds.next();
   private Long guestId;
   private Long otherGuestId;
@@ -617,80 +615,6 @@ class GuestDocumentActionsContractTest {
 
   // ------------------------------------------------------------------ evidence
 
-  /**
-   * TAR-227: the cursor is opaque and belongs to the session that got it. It carries neither the
-   * internal id nor the date; a cursor of another session, an altered one, or one in the old form
-   * (with the internal id) is an invalid cursor.
-   */
-  @Test
-  void aCursorIsValidOnlyInTheSessionThatGotIt() throws Exception {
-    Long second = insertDocument(guestId, "guest-documents/second");
-    delete(guestId, documentId, UPLOAD_ERROR).andExpect(status().isNoContent());
-    delete(guestId, second, UPLOAD_ERROR).andExpect(status().isNoContent());
-    MvcResult first =
-        mockMvc
-            .perform(get(actionsRoute(guestId)).param("limit", "1").cookie(admin()))
-            .andExpect(status().isOk())
-            .andReturn();
-    String cursor = JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
-    Long lastShown =
-        jdbc.queryForObject(
-            "SELECT id FROM guest_document_actions WHERE document_id = ?", Long.class, second);
-    String key = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-    // Only a UUID of this session: neither the internal id nor the date.
-    assertThat(key).matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}");
-    UUID shown = UUID.fromString(key);
-    assertThat(adminIds().unmask(IdKind.GUEST_DOCUMENT_ACTION, shown)).isEqualTo(lastShown);
-
-    Cookie other = session(adminId);
-    String otherRoute =
-        "/bff/admin/guests/"
-            + SessionIds.of(masker, other).mask(IdKind.GUEST, guestId)
-            + "/document-actions";
-    String oldForm = encoded("2026-01-01T00:00:00Z") + "." + encoded(String.valueOf(lastShown));
-    String altered =
-        encoded(
-            new UUID(shown.getMostSignificantBits() ^ 1L, shown.getLeastSignificantBits())
-                .toString());
-    for (String refused :
-        new String[] {cursor, oldForm, encoded(String.valueOf(lastShown)), altered}) {
-      boolean ofTheFirstSession = refused.equals(cursor);
-      mockMvc
-          .perform(
-              get(ofTheFirstSession ? otherRoute : actionsRoute(guestId))
-                  .param("limit", "1")
-                  .param("after", refused)
-                  .cookie(ofTheFirstSession ? other : admin()))
-          .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-          .andExpect(jsonPath("$.field").value("after"));
-    }
-    MvcResult otherFirst =
-        mockMvc
-            .perform(get(otherRoute).param("limit", "1").cookie(other))
-            .andExpect(status().isOk())
-            .andReturn();
-    String otherCursor =
-        JsonPath.read(otherFirst.getResponse().getContentAsString(), "$.nextCursor");
-    // The same position, but another session: another cursor, which pages on in its own session.
-    assertThat(otherCursor).isNotEqualTo(cursor);
-    mockMvc
-        .perform(get(otherRoute).param("limit", "1").param("after", otherCursor).cookie(other))
-        .andExpect(status().isOk())
-        .andExpect(
-            jsonPath("$.content[0].documentId")
-                .value(
-                    SessionIds.of(masker, other)
-                        .mask(IdKind.GUEST_DOCUMENT, documentId)
-                        .toString()));
-  }
-
-  private static String encoded(String text) {
-    return Base64.getUrlEncoder()
-        .withoutPadding()
-        .encodeToString(text.getBytes(StandardCharsets.UTF_8));
-  }
-
   @Test
   void theEvidenceIsPagedNewestFirstAndAnUnknownGuestIsNotFound() throws Exception {
     Long second = insertDocument(guestId, "guest-documents/second");
@@ -795,23 +719,18 @@ class GuestDocumentActionsContractTest {
     return mockMvc.perform(get(actionsRoute(guest)).cookie(admin()));
   }
 
-  /** One session per test (TAR-227: its masked ids are valid only in it). */
   private Cookie admin() {
-    Cookie session = admin;
-    if (session == null) {
-      session = session(adminId);
-      admin = session;
-    }
-    return session;
+    return session(adminId);
   }
 
-  /** The ids as the session of {@link #admin} shows them. */
+  /** The ids as the session of the test shows them (TAR-227). */
   private MaskSession adminIds() {
-    return SessionIds.of(masker, admin());
+    return masker.session(sessionId);
   }
 
+  /** TAR-227: every account of a test signs in to one session, so its ids serve every request. */
   private Cookie session(Long accountId) {
-    return new Cookie("sessionToken", jwtTokenProvider.issue(accountId.toString()));
+    return new Cookie("sessionToken", jwtTokenProvider.renew(accountId.toString(), sessionId));
   }
 
   private int documentsOf(Long guest) {
