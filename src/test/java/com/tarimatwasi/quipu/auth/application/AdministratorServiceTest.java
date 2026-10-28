@@ -41,6 +41,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,7 +75,8 @@ class AdministratorServiceTest {
 
   private AdministratorService serviceWithLimit(int max) {
     return new AdministratorService(
-        new AdministratorRegistrar(users, store, encoder, clock, max),
+        new AdministratorRegistrar(
+            new AdministratorReauthentication(users, encoder, clock), store, max),
         new ResetCodeIssuer(users, clock),
         mail,
         notices,
@@ -221,7 +223,10 @@ class AdministratorServiceTest {
 
   @Test
   void aMaximumBelowOneIsRefusedAtStartup() {
-    assertThatThrownBy(() -> new AdministratorRegistrar(users, store, encoder, clock, 0))
+    assertThatThrownBy(
+            () ->
+                new AdministratorRegistrar(
+                    new AdministratorReauthentication(users, encoder, clock), store, 0))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -432,6 +437,31 @@ class AdministratorServiceTest {
           .filter(a -> !a.isDisabled() && !excluded.contains(a.id()))
           .map(a -> Objects.requireNonNull(a.email()))
           .toList();
+    }
+
+    @Override
+    public List<StoredAdministrator> listAdministrators() {
+      throw new UnsupportedOperationException("not part of the creation");
+    }
+
+    @Override
+    public Optional<StoredAdministrator> lockAdministrator(Long id) {
+      throw new UnsupportedOperationException("not part of the creation");
+    }
+
+    @Override
+    public void holdAsReference(Long id) {
+      throw new UnsupportedOperationException("not part of the creation");
+    }
+
+    @Override
+    public int countActiveAdministrators() {
+      throw new UnsupportedOperationException("not part of the creation");
+    }
+
+    @Override
+    public void setAdministratorStatus(Long id, String status, Long modifiedBy) {
+      throw new UnsupportedOperationException("not part of the creation");
     }
   }
 }

@@ -1,11 +1,16 @@
 package com.tarimatwasi.quipu.auth.adapter.out.persistence;
 
+import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.port.out.AdministratorStorePort;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,9 +25,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class AdministratorStoreAdapter implements AdministratorStorePort {
 
   /**
-   * The key of the transaction-level advisory lock that serializes the creation of administrators
-   * (RF-22). Any fixed number works as long as nothing else uses it: these are the bytes of
-   * "QUIPUADM".
+   * The key of the transaction-level advisory lock that serializes the creation (RF-22),
+   * deactivation and reactivation (TAR-127) of administrators. Any fixed number works as long as
+   * nothing else uses it: these are the bytes of "QUIPUADM".
    */
   static final long ADMINISTRATORS_LOCK = 0x515549505541444DL;
 
@@ -31,6 +36,10 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
 
   /** The UNIQUE of V1 and the case-insensitive index of V2. */
   static final Set<String> EMAIL_CONSTRAINTS = Set.of("users_email_key", "uq_users_email_lower");
+
+  /** What a {@link StoredAdministrator} is read from. */
+  private static final String COLUMNS =
+      "id, document_type, document_number, email, status, created_date";
 
   private final JdbcTemplate jdbc;
 
@@ -94,6 +103,78 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
         .filter(admin -> !excluded.contains(admin.id()))
         .map(Admin::email)
         .toList();
+  }
+
+  @Override
+  public List<StoredAdministrator> listAdministrators() {
+    // At most the maximum of administrators (5 by default): no page is needed.
+    return jdbc.query(
+        "SELECT " + COLUMNS + " FROM users WHERE role = 'ADMIN' ORDER BY created_date, id",
+        AdministratorStoreAdapter::administrator);
+  }
+
+  /**
+   * FOR NO KEY UPDATE, the lock that the UPDATE of the status takes anyway: it does not block the
+   * FOR KEY SHARE that the foreign key last_modified_by_id takes on the row of an actor ({@link
+   * #holdAsReference}), so two administrators who change each other wait only for the lock of the
+   * administrators, never in a circle.
+   */
+  @Override
+  public Optional<StoredAdministrator> lockAdministrator(Long id) {
+    if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+      throw new IllegalStateException("The lock of an administrator needs a transaction");
+    }
+    return jdbc
+        .query(
+            "SELECT " + COLUMNS + " FROM users WHERE id = ? AND role = 'ADMIN' FOR NO KEY UPDATE",
+            AdministratorStoreAdapter::administrator,
+            id)
+        .stream()
+        .findFirst();
+  }
+
+  /** FOR KEY SHARE, the lock that the foreign key last_modified_by_id takes on the row. */
+  @Override
+  public void holdAsReference(Long id) {
+    if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+      throw new IllegalStateException("Holding a row needs a transaction");
+    }
+    jdbc.queryForList("SELECT id FROM users WHERE id = ? FOR KEY SHARE", id);
+  }
+
+  @Override
+  public int countActiveAdministrators() {
+    // The same rule as UserAccount.isDisabled() and the initial ADMIN: only INACTIVE is out.
+    Integer active =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE'",
+            Integer.class);
+    return active == null ? 0 : active;
+  }
+
+  @Override
+  public void setAdministratorStatus(Long id, String status, Long modifiedBy) {
+    // The audit columns, as the JPA auditing fills them: when and who changed the row.
+    int updated =
+        jdbc.update(
+            "UPDATE users SET status = ?, last_modified_date = now(), last_modified_by_id = ?"
+                + " WHERE id = ? AND role = 'ADMIN'",
+            status,
+            modifiedBy,
+            id);
+    if (updated != 1) {
+      throw new IllegalStateException("No administrator with id " + id);
+    }
+  }
+
+  private static StoredAdministrator administrator(ResultSet row, int n) throws SQLException {
+    return new StoredAdministrator(
+        row.getLong("id"),
+        DocumentType.valueOf(row.getString("document_type")),
+        row.getString("document_number"),
+        row.getString("email"),
+        row.getString("status"),
+        Objects.requireNonNull(row.getObject("created_date", OffsetDateTime.class)).toInstant());
   }
 
   private record Admin(Long id, String email) {}
