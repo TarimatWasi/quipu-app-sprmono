@@ -6,13 +6,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.tarimatwasi.quipu.auth.config.ProfileRateLimitProperties;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.support.TestIds;
 import jakarta.servlet.http.Cookie;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
 /**
@@ -26,6 +30,8 @@ class GuestProfileContractTest extends PaymentsContractSupport {
   private static final String TEMPORARY_PROFILE = "/bff/temporary-guest/profile";
 
   private final Long temporaryAccountId = TestIds.next();
+
+  @Autowired ProfileRateLimitProperties profileRateLimit;
 
   @BeforeEach
   void personalData() {
@@ -212,5 +218,42 @@ class GuestProfileContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     assertThat(row(contractGuest)).containsEntry("phone", "999111222");
     assertThat(row(temporaryGuest)).containsEntry("phone", "955444333");
+  }
+
+  /**
+   * The limit of the edits of the own profile, through the real chain and with the allowance of the
+   * shared context: both routes spend one counter per session user, and the refusal is the 429 of
+   * the contract. The refill is greedy, so the loop stops at the first refusal instead of counting.
+   */
+  @Test
+  void theEditsOfTheProfileOfASessionUserAreLimitedWithThe429OfTheContract() throws Exception {
+    int allowance = profileRateLimit.profileUpdatesPerMinute();
+    int accepted = 0;
+    @Nullable MvcResult refused = null;
+    for (int sent = 0; sent < allowance * 3 && refused == null; sent++) {
+      MvcResult result = edit(CONTRACT_PROFILE, guest(), "{}").andReturn();
+      if (result.getResponse().getStatus() == 429) {
+        refused = result;
+      } else {
+        assertThat(result.getResponse().getStatus()).isEqualTo(400);
+        accepted++;
+      }
+    }
+
+    assertThat(refused).as("the allowance runs out").isNotNull();
+    assertThat(accepted).isGreaterThanOrEqualTo(allowance);
+    // The other route shares the counter and refuses before the guard of the guest areas.
+    edit(TEMPORARY_PROFILE, guest(), "{\"phone\":\"977000111\"}")
+        .andExpect(status().isTooManyRequests())
+        .andExpect(satisfiesTheContract())
+        .andExpect(header().exists("Retry-After"))
+        .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    edit(CONTRACT_PROFILE, guest(), "{\"phone\":\"977000111\"}")
+        .andExpect(status().isTooManyRequests())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    assertThat(row(contractGuest)).containsEntry("phone", "999111222");
+    // Another session user keeps its own allowance.
+    edit(TEMPORARY_PROFILE, temporary(), "{\"phone\":\"944333222\"}").andExpect(status().isOk());
   }
 }
