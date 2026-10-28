@@ -102,7 +102,8 @@ class BffExceptionHandlerTest {
             "com.tarimatwasi.quipu.payment.adapter.out.persistence.PaymentJpaEntity", 7L);
     var other =
         new org.springframework.orm.ObjectOptimisticLockingFailureException(
-            "com.tarimatwasi.quipu.contract.adapter.out.persistence.ContractJpaEntity", 7L);
+            "com.tarimatwasi.quipu.contract.infrastructure.adapter.out.persistence.ContractJpaEntity",
+            7L);
 
     assertThat(handler.handleObjectConcurrentModification(payment).getBody())
         .extracting(BffErrorResponse::code)

@@ -1,12 +1,12 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.contract.port.in.InvalidContractFileException;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractFile;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractState;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractSummaryView;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractView;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.NewContract;
+import com.tarimatwasi.quipu.contract.application.port.in.InvalidContractFileException;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractFile;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractState;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractSummaryView;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractView;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.NewContract;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;

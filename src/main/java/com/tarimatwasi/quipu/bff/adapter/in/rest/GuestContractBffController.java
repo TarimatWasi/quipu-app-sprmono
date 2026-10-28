@@ -2,8 +2,8 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.ContractsBffController.ContractResponse;
-import com.tarimatwasi.quipu.contract.port.in.ContractNotFoundException;
-import com.tarimatwasi.quipu.contract.port.in.OwnContractUseCase;
+import com.tarimatwasi.quipu.contract.application.port.in.ContractNotFoundException;
+import com.tarimatwasi.quipu.contract.application.port.in.OwnContractUseCase;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;

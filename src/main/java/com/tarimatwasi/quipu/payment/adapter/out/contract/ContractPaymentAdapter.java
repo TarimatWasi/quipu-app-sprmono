@@ -1,7 +1,7 @@
 package com.tarimatwasi.quipu.payment.adapter.out.contract;
 
-import com.tarimatwasi.quipu.contract.port.in.ContractTermsUseCase;
-import com.tarimatwasi.quipu.contract.port.in.ContractTermsUseCase.ContractTermsView;
+import com.tarimatwasi.quipu.contract.application.port.in.ContractTermsUseCase;
+import com.tarimatwasi.quipu.contract.application.port.in.ContractTermsUseCase.ContractTermsView;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.port.out.PaymentContractPort;
 import java.time.Clock;

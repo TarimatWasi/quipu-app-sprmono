@@ -9,11 +9,11 @@ import com.tarimatwasi.quipu.auth.application.port.in.PasswordUnchangedException
 import com.tarimatwasi.quipu.auth.application.port.in.TemporaryPasswordExpiredException;
 import com.tarimatwasi.quipu.auth.application.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException;
-import com.tarimatwasi.quipu.contract.port.in.ContractFileUnavailableException;
-import com.tarimatwasi.quipu.contract.port.in.ContractNotFoundException;
-import com.tarimatwasi.quipu.contract.port.in.InvalidContractDatesException;
-import com.tarimatwasi.quipu.contract.port.in.InvalidContractException;
-import com.tarimatwasi.quipu.contract.port.in.InvalidContractFileException;
+import com.tarimatwasi.quipu.contract.application.port.in.ContractFileUnavailableException;
+import com.tarimatwasi.quipu.contract.application.port.in.ContractNotFoundException;
+import com.tarimatwasi.quipu.contract.application.port.in.InvalidContractDatesException;
+import com.tarimatwasi.quipu.contract.application.port.in.InvalidContractException;
+import com.tarimatwasi.quipu.contract.application.port.in.InvalidContractFileException;
 import com.tarimatwasi.quipu.environment.port.in.EmptyEnvironmentUpdateException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.port.in.EnvironmentInactiveException;

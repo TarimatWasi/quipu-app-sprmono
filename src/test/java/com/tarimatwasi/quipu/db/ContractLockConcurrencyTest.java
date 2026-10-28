@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.ContractFile;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase.NewContract;
-import com.tarimatwasi.quipu.contract.port.out.ContractFilePort;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractFile;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.NewContract;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.payment.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment;

@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.tarimatwasi.quipu.contract.port.out.ContractFilePort;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.support.TestIds;
 import org.junit.jupiter.api.BeforeEach;
