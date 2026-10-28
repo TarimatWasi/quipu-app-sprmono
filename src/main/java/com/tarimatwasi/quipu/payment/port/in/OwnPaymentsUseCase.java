@@ -107,7 +107,8 @@ public interface OwnPaymentsUseCase {
    * @throws OtherGuestTypeException if the guest is temporary
    * @throws OnboardingRequiredException if the guest has not finished the onboarding
    * @throws InvalidPaymentException a field is out of range, or the contract does not charge it
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException the guest is not active
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException the guest is
+   *     not active
    * @throws NoActiveContractException the guest has no contract in force
    * @throws InvalidVoucherFileException the file is not a JPG, PNG or PDF by content, or is over 5
    *     MB
@@ -125,7 +126,8 @@ public interface OwnPaymentsUseCase {
    * @throws OtherGuestTypeException if the guest has a contract
    * @throws OnboardingRequiredException if the guest has not finished the onboarding
    * @throws InvalidPaymentException a field is out of range
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException the guest is not active
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException the guest is
+   *     not active
    * @throws NoActiveStayException the guest has no stay in course nor to come
    * @throws InvalidVoucherFileException the file is not a JPG, PNG or PDF by content, or is over 5
    *     MB

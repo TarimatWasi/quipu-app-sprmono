@@ -127,7 +127,7 @@ public interface ManagePaymentsUseCase {
    * (RF-10), without the voucher URLs. The cursor is checked before the guest.
    *
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException no such guest
    */
   CursorPage<PaymentView> history(Long guestId, PageQuery page);
 
@@ -137,7 +137,7 @@ public interface ManagePaymentsUseCase {
    * guest without contracts, such as a temporary one, has none; an inactive guest still has its
    * periods.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException no such guest
    */
   List<OwnPaymentsUseCase.PeriodView> accountStatus(Long guestId);
 
@@ -179,9 +179,11 @@ public interface ManagePaymentsUseCase {
    * @throws InvalidPaymentException a field is out of range, or both or neither of period and stay
    * @throws InvalidVoucherFileException the file is not a JPG, PNG or PDF by content, or is over 5
    *     MB
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
-   * @throws com.tarimatwasi.quipu.guest.port.in.StayNotFoundException the guest has no such stay
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException the guest is not active
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException no such guest
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException the guest has no
+   *     such stay
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException the guest is
+   *     not active
    * @throws PaymentAlreadyExistsForPeriodException an approved payment already covers it
    * @throws VoucherAlreadyExistsException a voucher is still pending for it
    * @throws PaymentFileUnavailableException the bucket failed; nothing was registered

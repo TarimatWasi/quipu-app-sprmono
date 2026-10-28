@@ -14,7 +14,8 @@ public interface PaymentStayPort {
   /**
    * The stay, only if it belongs to that guest.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.StayNotFoundException if the guest has no such stay
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException if the guest has
+   *     no such stay
    */
   StayInfo stayOf(Long guestId, Long stayId);
 

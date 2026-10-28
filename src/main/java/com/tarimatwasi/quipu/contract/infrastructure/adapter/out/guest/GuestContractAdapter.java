@@ -1,11 +1,11 @@
 package com.tarimatwasi.quipu.contract.infrastructure.adapter.out.guest;
 
 import com.tarimatwasi.quipu.contract.application.port.out.ContractGuestPort;
-import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.application.port.in.LockGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
 import org.springframework.stereotype.Component;
 
 /** The contract module asks the guest module, through its exposed port, about one guest. */

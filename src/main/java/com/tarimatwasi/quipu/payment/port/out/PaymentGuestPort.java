@@ -39,14 +39,14 @@ public interface PaymentGuestPort {
   /**
    * The guest of the session.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if there is none
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if there is none
    */
   OwnGuest ownGuest(Long guestId);
 
   /**
    * One guest.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if there is none
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if there is none
    */
   GuestProfile profileOf(Long guestId);
 
@@ -54,7 +54,7 @@ public interface PaymentGuestPort {
    * Locks the guest until the transaction ends (order: environment, guest, contract, payment), so a
    * deactivation that races a direct payment is seen or waits (TAR-38). Needs a transaction.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if there is none
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if there is none
    */
   void lock(Long guestId);
 

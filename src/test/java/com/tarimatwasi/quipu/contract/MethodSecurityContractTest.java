@@ -13,11 +13,11 @@ import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsU
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase.FineCommand;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
-import com.tarimatwasi.quipu.guest.port.in.OwnProfileUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
 import com.tarimatwasi.quipu.payment.port.in.AdminDashboardUseCase;
 import com.tarimatwasi.quipu.payment.port.in.FinanceSummaryUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;

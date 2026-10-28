@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.payment.application;
 
-import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
 import com.tarimatwasi.quipu.payment.domain.PeriodState;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;

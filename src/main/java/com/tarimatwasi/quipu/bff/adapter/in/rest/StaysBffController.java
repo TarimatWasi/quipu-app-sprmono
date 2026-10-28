@@ -1,10 +1,10 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase.NewStay;
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase.StayChange;
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase.StayView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase.NewStay;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase.StayChange;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase.StayView;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;

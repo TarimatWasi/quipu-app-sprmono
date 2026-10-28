@@ -1,8 +1,8 @@
 package com.tarimatwasi.quipu.payment.adapter.out.stay;
 
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageStaysUseCase.StayView;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase.StayView;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.port.out.PaymentStayPort;
 import java.time.LocalDate;

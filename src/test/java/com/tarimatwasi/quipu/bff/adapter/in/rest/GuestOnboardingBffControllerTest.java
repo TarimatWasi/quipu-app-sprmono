@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.GuestOnboardingBffController.DocumentForm;
-import com.tarimatwasi.quipu.guest.port.in.InvalidOnboardingInputException;
-import com.tarimatwasi.quipu.guest.port.in.OnboardingUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartHttpServletRequest;

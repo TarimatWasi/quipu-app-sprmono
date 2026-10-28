@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
-import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;

@@ -5,10 +5,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase.OwnGuestView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase.OwnGuestView;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;

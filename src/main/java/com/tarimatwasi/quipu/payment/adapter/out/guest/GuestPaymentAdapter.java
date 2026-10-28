@@ -1,13 +1,13 @@
 package com.tarimatwasi.quipu.payment.adapter.out.guest;
 
-import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
-import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestSummaryView;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase.OwnGuestView;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.guest.application.port.in.LockGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase.OwnGuestView;
 import com.tarimatwasi.quipu.payment.port.out.PaymentGuestPort;
 import java.util.Collection;
 import java.util.HashMap;

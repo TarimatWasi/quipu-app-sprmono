@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.payment.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;

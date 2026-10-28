@@ -8,7 +8,7 @@ public interface ContractGuestPort {
   /**
    * What the contract needs to know about the guest.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if none exists
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if none exists
    */
   GuestProfile profileOf(Long guestId);
 
@@ -16,7 +16,7 @@ public interface ContractGuestPort {
    * Locks the guest until the transaction ends, so its debt is read one request at a time. Needs a
    * transaction; taken after the lock of the environment.
    *
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException if none exists
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if none exists
    */
   void lock(Long guestId);
 }

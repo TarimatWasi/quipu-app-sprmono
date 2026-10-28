@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;

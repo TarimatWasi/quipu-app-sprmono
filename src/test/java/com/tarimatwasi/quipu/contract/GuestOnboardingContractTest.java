@@ -22,7 +22,7 @@ import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
-import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;

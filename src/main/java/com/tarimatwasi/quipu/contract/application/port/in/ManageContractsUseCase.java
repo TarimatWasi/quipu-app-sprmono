@@ -90,9 +90,11 @@ public interface ManageContractsUseCase {
    * @throws InvalidContractFileException the file is not a PDF by content, or is over 10 MB
    * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException no
    *     such environment
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException no such guest
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException the guest is not active
-   * @throws com.tarimatwasi.quipu.guest.port.in.GuestNotContractException the guest is temporary
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException no such guest
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException the guest is
+   *     not active
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotContractException the guest is
+   *     temporary
    * @throws com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException the guest owes periods
    * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException a
    *     contract in force holds the environment
