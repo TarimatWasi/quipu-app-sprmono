@@ -1,15 +1,15 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.PaymentsBffController.PaymentResponse;
-import com.tarimatwasi.quipu.payment.port.in.ManagePaymentsUseCase.VoucherUpload;
-import com.tarimatwasi.quipu.payment.port.in.OtherGuestTypeException;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.ChargeState;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.PeriodView;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.PeriodVoucher;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.StayStatusView;
-import com.tarimatwasi.quipu.payment.port.in.OwnPaymentsUseCase.StayVoucher;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
+import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.ChargeState;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodView;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodVoucher;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayStatusView;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayVoucher;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;

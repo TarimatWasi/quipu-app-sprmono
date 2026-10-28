@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.guest.port.in.OwnProfileRefusedException;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileRefusedException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;

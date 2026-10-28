@@ -1,13 +1,13 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase;
-import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase.AdministratorCreated;
-import com.tarimatwasi.quipu.auth.port.in.CreateAdministratorUseCase.CreateAdministratorCommand;
-import com.tarimatwasi.quipu.auth.port.in.LoginUseCase.DocumentKind;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase.AdministratorStatus;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase.AdministratorView;
-import com.tarimatwasi.quipu.auth.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
+import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase.AdministratorCreated;
+import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase.CreateAdministratorCommand;
+import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.DocumentKind;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.AdministratorStatus;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.AdministratorView;
+import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;

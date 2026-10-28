@@ -11,8 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
-import com.tarimatwasi.quipu.payment.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;

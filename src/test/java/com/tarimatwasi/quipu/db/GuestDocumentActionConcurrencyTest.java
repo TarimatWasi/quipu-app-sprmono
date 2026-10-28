@@ -8,8 +8,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
-import com.tarimatwasi.quipu.guest.port.out.GuestDocumentFilePort;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;

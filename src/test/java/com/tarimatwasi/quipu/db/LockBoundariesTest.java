@@ -3,7 +3,7 @@ package com.tarimatwasi.quipu.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tarimatwasi.quipu.guest.port.in.LockGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.LockGuestUseCase;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;

@@ -1,9 +1,9 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
-import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;
-import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineView;
+import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase;
+import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase.FineCommand;
+import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase.FineView;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;

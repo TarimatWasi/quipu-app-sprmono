@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.tarimatwasi.quipu.auth.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestIds;

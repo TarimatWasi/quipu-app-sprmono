@@ -1,7 +1,7 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.payment.port.in.FinanceSummaryUseCase;
-import com.tarimatwasi.quipu.payment.port.in.FinanceSummaryUseCase.FinanceSummaryView;
+import com.tarimatwasi.quipu.payment.application.port.in.FinanceSummaryUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.FinanceSummaryUseCase.FinanceSummaryView;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.regex.Pattern;

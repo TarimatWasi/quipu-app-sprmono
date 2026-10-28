@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;

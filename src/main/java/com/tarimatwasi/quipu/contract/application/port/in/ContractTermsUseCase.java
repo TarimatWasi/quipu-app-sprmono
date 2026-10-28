@@ -1,0 +1,55 @@
+package com.tarimatwasi.quipu.contract.application.port.in;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
+
+/** What the payments need to know of the contracts: their terms, never the file. */
+public interface ContractTermsUseCase {
+
+  /**
+   * The terms of a contract.
+   *
+   * @param endDate {@code null} for an open-ended contract
+   * @param terminatedAt when it was finished by hand, if it was
+   */
+  record ContractTermsView(
+      Long contractId,
+      Long environmentId,
+      LocalDate startDate,
+      @Nullable LocalDate endDate,
+      @Nullable Instant terminatedAt,
+      int paymentDay,
+      int graceDays,
+      BigDecimal monthlyAmount) {}
+
+  /** Every contract of the guest, whatever its state, the oldest first. */
+  List<ContractTermsView> termsOfGuest(Long guestId);
+
+  /**
+   * Like {@link #termsOfGuest} but read with the rows locked until the transaction of the caller
+   * ends, so a termination that races the read is seen or waits. The oldest id first. Needs a
+   * transaction.
+   */
+  List<ContractTermsView> lockedTermsOfGuest(Long guestId);
+
+  /** The environment of each contract; an id with no contract adds nothing. */
+  Map<Long, Long> environmentsOf(Collection<Long> contractIds);
+
+  /**
+   * The current contract of the environment: the one ACTIVE today in the zone of the business
+   * (RN-07), whether it started or not. Empty if there is none (never one, expired or terminated);
+   * RN-20 keeps it to one, and should two be found the oldest start comes first.
+   */
+  List<ContractTermsView> currentTermsOfEnvironment(Long environmentId);
+
+  /**
+   * Every contract ACTIVE today in the zone of the business (RN-07), of any environment, whether it
+   * started or not, read at once (HU-A04); the oldest start first.
+   */
+  List<ContractTermsView> termsInForce();
+}

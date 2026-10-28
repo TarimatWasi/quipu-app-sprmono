@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.architecture;
 
 import static com.tngtech.archunit.lang.SimpleConditionEvent.violated;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.Dependency;
@@ -11,6 +12,7 @@ import com.tngtech.archunit.core.domain.JavaEnumConstant;
 import com.tngtech.archunit.core.domain.JavaMember;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.CompositeArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -61,6 +64,37 @@ final class ArchitectureConditions {
           "adapter.out", Set.of("domain", "port.out"),
           "config",
               Set.of("domain", "application", "port.in", "port.out", "adapter.in", "adapter.out"));
+
+  /** The packages of a hexagonal module (TAR-226, D-72), relative to the module package. */
+  static final List<String> HEXAGONAL_LAYERS =
+      List.of(
+          "domain",
+          "application.service",
+          "application.port.in",
+          "application.port.out",
+          "infrastructure.adapter.in",
+          "infrastructure.adapter.out",
+          "infrastructure.config");
+
+  /**
+   * Package of each layer of the table, relative to the module: the hexagonal packages first, then
+   * the flat ones of the modules not yet moved (bff, until batch 2 of TAR-226). First match wins.
+   */
+  private static final List<Map.Entry<String, String>> LAYER_PACKAGES =
+      List.of(
+          Map.entry("domain", "domain"),
+          Map.entry("application.service", "application"),
+          Map.entry("application.port.in", "port.in"),
+          Map.entry("application.port.out", "port.out"),
+          Map.entry("infrastructure.adapter.in", "adapter.in"),
+          Map.entry("infrastructure.adapter.out", "adapter.out"),
+          Map.entry("infrastructure.config", "config"),
+          Map.entry("application", "application"),
+          Map.entry("port.in", "port.in"),
+          Map.entry("port.out", "port.out"),
+          Map.entry("adapter.in", "adapter.in"),
+          Map.entry("adapter.out", "adapter.out"),
+          Map.entry("config", "config"));
 
   private ArchitectureConditions() {}
 
@@ -220,6 +254,74 @@ final class ArchitectureConditions {
                 }));
   }
 
+  /**
+   * TAR-226 (D-72): every class of a hexagonal module lives in one of {@link #HEXAGONAL_LAYERS},
+   * and no class of its domain or application depends on an infrastructure package.
+   */
+  static ArchRule hexagonalLayout(String rootPackage, Set<String> modules) {
+    DescribedPredicate<JavaClass> inModule =
+        DescribedPredicate.describe(
+            "are in the hexagonal modules " + new TreeSet<>(modules),
+            c -> pathInModule(c.getPackageName(), rootPackage, modules) != null);
+    DescribedPredicate<JavaClass> inCore =
+        DescribedPredicate.describe(
+            "are in domain or application",
+            c -> {
+              var path = pathInModule(c.getPackageName(), rootPackage, modules);
+              return path != null && (isOrUnder(path, "domain") || isOrUnder(path, "application"));
+            });
+    DescribedPredicate<JavaClass> inInfrastructure =
+        DescribedPredicate.describe(
+            "are in an infrastructure package",
+            c -> {
+              var name = c.getPackageName();
+              if (!name.startsWith(rootPackage + ".")) {
+                return false;
+              }
+              var parts = name.substring(rootPackage.length() + 1).split("\\.", 2);
+              return parts.length == 2 && isOrUnder(parts[1], "infrastructure");
+            });
+    return CompositeArchRule.of(
+            classes()
+                .that(inModule)
+                .and()
+                .doNotHaveSimpleName("package-info")
+                .should(
+                    condition(
+                        "reside in one of the layers " + HEXAGONAL_LAYERS,
+                        (c, events) -> {
+                          var path = pathInModule(c.getPackageName(), rootPackage, modules);
+                          if (HEXAGONAL_LAYERS.stream().noneMatch(l -> isOrUnder(path, l))) {
+                            events.add(violated(c, c.getName() + " is outside the layers"));
+                          }
+                        })))
+        .and(
+            noClasses()
+                .that(inModule)
+                .and(inCore)
+                .should()
+                .dependOnClassesThat(inInfrastructure)
+                .because("domain and application never see the infrastructure"));
+  }
+
+  /** The package path after {@code root.<module>} ("" for the module root), or null outside. */
+  private static String pathInModule(String name, String rootPackage, Set<String> modules) {
+    for (var module : modules) {
+      var base = rootPackage + "." + module;
+      if (name.equals(base)) {
+        return "";
+      }
+      if (name.startsWith(base + ".")) {
+        return name.substring(base.length() + 1);
+      }
+    }
+    return null;
+  }
+
+  private static boolean isOrUnder(String path, String layer) {
+    return path.equals(layer) || path.startsWith(layer + ".");
+  }
+
   /** BE-SPR-CFG-01: {@code @ConfigurationProperties} prefixes start with {@code app.}. */
   static ArchRule propertiesPrefixIsApp() {
     return classes()
@@ -364,9 +466,9 @@ final class ArchitectureConditions {
     if (parts[0].equals("shared") || parts.length < 2) {
       return null;
     }
-    for (var layer : ALLOWED_LAYER_DEPENDENCIES.keySet()) {
-      if (parts[1].equals(layer) || parts[1].startsWith(layer + ".")) {
-        return layer;
+    for (var entry : LAYER_PACKAGES) {
+      if (isOrUnder(parts[1], entry.getKey())) {
+        return entry.getValue();
       }
     }
     return null;

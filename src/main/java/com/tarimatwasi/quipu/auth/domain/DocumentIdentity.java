@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -13,7 +14,7 @@ import java.io.Serializable;
  */
 public record DocumentIdentity(DocumentType type, String number) implements Serializable {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
   private static final char SEPARATOR = ':';
 
   /** Refuses a blank number or one that contains the separator. */

@@ -2,12 +2,12 @@ package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.GuestsBffController.GuestSummaryResponse;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestAccessUseCase;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestAccessUseCase.AccessView;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestAccessUseCase.RegisterCommand;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestAccessUseCase.Registration;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.IdDocumentKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.AccessView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.RegisterCommand;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.Registration;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.IdDocumentKind;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;

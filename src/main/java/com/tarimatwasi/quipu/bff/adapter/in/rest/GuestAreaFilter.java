@@ -1,11 +1,11 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
-import com.tarimatwasi.quipu.auth.port.in.GuestAccountUseCase;
-import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.port.in.ManageGuestsUseCase.GuestState;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase;
-import com.tarimatwasi.quipu.guest.port.in.OwnGuestUseCase.OwnGuestView;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase.OwnGuestView;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

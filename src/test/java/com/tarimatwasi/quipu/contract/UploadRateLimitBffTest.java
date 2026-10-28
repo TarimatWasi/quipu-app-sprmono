@@ -13,9 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
-import com.tarimatwasi.quipu.auth.adapter.out.security.JwtTokenProvider;
-import com.tarimatwasi.quipu.contract.port.in.ManageContractsUseCase;
-import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;

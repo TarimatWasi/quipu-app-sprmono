@@ -1,8 +1,8 @@
 package com.tarimatwasi.quipu.bff.adapter.in.rest;
 
 import com.tarimatwasi.quipu.bff.adapter.in.rest.PaymentsBffController.PaymentResponse;
-import com.tarimatwasi.quipu.payment.port.in.AdminDashboardUseCase;
-import com.tarimatwasi.quipu.payment.port.in.AdminDashboardUseCase.DashboardView;
+import com.tarimatwasi.quipu.payment.application.port.in.AdminDashboardUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.AdminDashboardUseCase.DashboardView;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import java.util.List;
 import org.springframework.http.CacheControl;

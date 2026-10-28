@@ -1,0 +1,238 @@
+package com.tarimatwasi.quipu.auth.application.service;
+
+import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import org.jspecify.annotations.Nullable;
+
+/** The user store of the application tests: same behavior as the port, without a database. */
+final class InMemoryUserRepository implements UserRepositoryPort {
+
+  private record ResetToken(String hash, Instant expiresAt) {}
+
+  private final Map<String, UserAccount> byDocument = new HashMap<>();
+  private final Map<Long, UserAccount> byId = new HashMap<>();
+  private final Map<Long, ResetToken> resetTokens = new HashMap<>();
+
+  void save(UserAccount user) {
+    byDocument.put(user.documentType() + ":" + user.documentNumber(), user);
+    byId.put(user.id(), user);
+  }
+
+  UserAccount find(Long id) {
+    return Objects.requireNonNull(byId.get(id));
+  }
+
+  /** The stored hash of the account's reset code, if it has one. */
+  Optional<String> storedResetHash(Long id) {
+    return Optional.ofNullable(resetTokens.get(id)).map(ResetToken::hash);
+  }
+
+  @Override
+  public List<UserAccount> findAllByGuestIds(Collection<Long> guestIds) {
+    return byId.values().stream()
+        .filter(user -> user.guestId() != null && guestIds.contains(user.guestId()))
+        .toList();
+  }
+
+  @Override
+  public Optional<UserAccount> findByDocument(DocumentType documentType, String documentNumber) {
+    return Optional.ofNullable(byDocument.get(documentType + ":" + documentNumber));
+  }
+
+  @Override
+  public Optional<UserAccount> findByDocumentForUpdate(
+      DocumentType documentType, String documentNumber) {
+    return findByDocument(documentType, documentNumber);
+  }
+
+  @Override
+  public Optional<UserAccount> findByIdForUpdate(Long id) {
+    return Optional.ofNullable(byId.get(id));
+  }
+
+  @Override
+  public Optional<Long> findGuestIdOf(Long id) {
+    return findById(id).flatMap(user -> Optional.ofNullable(user.guestId()));
+  }
+
+  @Override
+  public Optional<UserAccount> findById(Long id) {
+    return Optional.ofNullable(byId.get(id));
+  }
+
+  @Override
+  public void changePassword(Long id, String newPasswordHash, Instant changedAt) {
+    UserAccount user = find(id);
+    save(withPassword(user, newPasswordHash, changedAt));
+    resetTokens.remove(id);
+  }
+
+  @Override
+  public Optional<UserAccount> findByEmail(String email) {
+    return byId.values().stream().filter(u -> email.equalsIgnoreCase(u.email())).findFirst();
+  }
+
+  @Override
+  public Optional<Instant> findResetTokenExpiry(Long id) {
+    return Optional.ofNullable(resetTokens.get(id)).map(ResetToken::expiresAt);
+  }
+
+  @Override
+  public void saveResetToken(Long id, String tokenHash, Instant expiresAt) {
+    resetTokens.put(id, new ResetToken(tokenHash, expiresAt));
+  }
+
+  @Override
+  public Optional<PendingReset> findPendingReset(String tokenHash) {
+    return resetTokens.entrySet().stream()
+        .filter(e -> e.getValue().hash().equals(tokenHash))
+        .findFirst()
+        .map(e -> new PendingReset(find(e.getKey()), e.getValue().expiresAt()));
+  }
+
+  @Override
+  public void resetPassword(Long id, String newPasswordHash, Instant changedAt) {
+    changePassword(id, newPasswordHash, changedAt);
+    resetTokens.remove(id);
+  }
+
+  @Override
+  public boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration) {
+    UserAccount user = find(id);
+    int attempts = user.failedLoginAttempts();
+    Instant lockedUntil = user.lockedUntil();
+    if (lockedUntil != null) {
+      if (lockedUntil.isAfter(now)) {
+        return true;
+      }
+      attempts = 0;
+      lockedUntil = null;
+    }
+    attempts++;
+    if (attempts >= maxAttempts) {
+      lockedUntil = now.plus(lockDuration);
+    }
+    save(withLock(user, attempts, lockedUntil));
+    return false;
+  }
+
+  @Override
+  public void setGuestAccountStatus(Long guestId, String status) {
+    findAllByGuestIds(List.of(guestId))
+        .forEach(
+            user ->
+                save(
+                    new UserAccount(
+                        user.id(),
+                        user.email(),
+                        user.documentType(),
+                        user.documentNumber(),
+                        user.passwordHash(),
+                        user.role(),
+                        user.guestId(),
+                        user.mustChangePassword(),
+                        status,
+                        user.failedLoginAttempts(),
+                        user.lockedUntil(),
+                        user.passwordChangedAt())));
+  }
+
+  private long nextId = 1_000_000L;
+
+  @Override
+  public void insertGuestAccount(
+      Long guestId,
+      DocumentType documentType,
+      String documentNumber,
+      @Nullable String email,
+      String unusablePasswordHash) {
+    save(
+        new UserAccount(
+            nextId++,
+            email,
+            documentType,
+            documentNumber,
+            unusablePasswordHash,
+            com.tarimatwasi.quipu.auth.domain.Role.GUEST,
+            guestId,
+            true,
+            "ACTIVE",
+            0,
+            null,
+            null));
+  }
+
+  @Override
+  public void changeGuestDocument(Long guestId, DocumentType documentType, String documentNumber) {
+    findAllByGuestIds(List.of(guestId))
+        .forEach(
+            user ->
+                save(
+                    new UserAccount(
+                        user.id(),
+                        user.email(),
+                        documentType,
+                        documentNumber,
+                        user.passwordHash(),
+                        user.role(),
+                        user.guestId(),
+                        user.mustChangePassword(),
+                        user.status(),
+                        user.failedLoginAttempts(),
+                        user.lockedUntil(),
+                        user.passwordChangedAt())));
+  }
+
+  @Override
+  public Optional<UserAccount> findByGuestIdForUpdate(Long guestId) {
+    return findAllByGuestIds(List.of(guestId)).stream().findFirst();
+  }
+
+  @Override
+  public void clearFailedLogins(Long id) {
+    save(withLock(find(id), 0, null));
+  }
+
+  private static UserAccount withLock(
+      UserAccount user, int attempts, @Nullable Instant lockedUntil) {
+    return new UserAccount(
+        user.id(),
+        user.email(),
+        user.documentType(),
+        user.documentNumber(),
+        user.passwordHash(),
+        user.role(),
+        user.guestId(),
+        user.mustChangePassword(),
+        user.status(),
+        attempts,
+        lockedUntil,
+        user.passwordChangedAt());
+  }
+
+  private static UserAccount withPassword(
+      UserAccount user, String passwordHash, Instant changedAt) {
+    return new UserAccount(
+        user.id(),
+        user.email(),
+        user.documentType(),
+        user.documentNumber(),
+        passwordHash,
+        user.role(),
+        user.guestId(),
+        false,
+        user.status(),
+        0,
+        null,
+        changedAt);
+  }
+}

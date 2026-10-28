@@ -18,6 +18,18 @@ import com.tarimatwasi.fixtures.demo.application.SchedulingEnabled;
 import com.tarimatwasi.fixtures.demo.application.Service;
 import com.tarimatwasi.fixtures.demo.domain.BadDomain;
 import com.tarimatwasi.fixtures.demo.domain.GoodDomain;
+import com.tarimatwasi.fixtures.hexa.adapter.out.OldAdapter;
+import com.tarimatwasi.fixtures.hexa.application.FlatService;
+import com.tarimatwasi.fixtures.hexa.application.port.in.HexUseCase;
+import com.tarimatwasi.fixtures.hexa.application.port.out.HexPort;
+import com.tarimatwasi.fixtures.hexa.application.port.out.LeakyPort;
+import com.tarimatwasi.fixtures.hexa.application.service.HexService;
+import com.tarimatwasi.fixtures.hexa.application.service.LeakyService;
+import com.tarimatwasi.fixtures.hexa.domain.HexDomain;
+import com.tarimatwasi.fixtures.hexa.domain.LeakyDomain;
+import com.tarimatwasi.fixtures.hexa.infrastructure.adapter.in.rest.HexController;
+import com.tarimatwasi.fixtures.hexa.infrastructure.adapter.out.persistence.HexAdapter;
+import com.tarimatwasi.fixtures.hexa.infrastructure.config.HexConfig;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
@@ -142,6 +154,73 @@ class ArchitectureConditionsTest {
     var rule = ArchitectureConditions.layersFollowTheTable("com.tarimatwasi.fixtures");
     assertFails(rule, BadDomain.class, Service.class, GoodDomain.class);
     assertPasses(rule, GoodDomain.class, Service.class);
+  }
+
+  private static final String FIXTURES = "com.tarimatwasi.fixtures";
+
+  private static final Class<?>[] HEXAGONAL_MODULE = {
+    HexDomain.class,
+    HexUseCase.class,
+    HexPort.class,
+    HexService.class,
+    HexController.class,
+    HexAdapter.class,
+    HexConfig.class
+  };
+
+  @Test
+  void hexagonalLayout_accepts_every_layer_of_the_module() {
+    var rule = ArchitectureConditions.hexagonalLayout(FIXTURES, Set.of("hexa"));
+    assertPasses(rule, HEXAGONAL_MODULE);
+  }
+
+  @Test
+  void hexagonalLayout_rejects_the_flat_application_and_the_old_adapter_package() {
+    var rule = ArchitectureConditions.hexagonalLayout(FIXTURES, Set.of("hexa"));
+    assertThatThrownBy(
+            () -> rule.check(classes(FlatService.class, OldAdapter.class, HexDomain.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining(FlatService.class.getName() + " is outside the layers")
+        .hasMessageContaining(OldAdapter.class.getName() + " is outside the layers")
+        .hasMessageNotContaining(HexDomain.class.getName() + " is outside the layers");
+  }
+
+  @Test
+  void hexagonalLayout_rejects_domain_and_application_that_depend_on_infrastructure() {
+    var rule = ArchitectureConditions.hexagonalLayout(FIXTURES, Set.of("hexa"));
+    assertThatThrownBy(
+            () ->
+                rule.check(
+                    classes(
+                        LeakyDomain.class,
+                        LeakyService.class,
+                        LeakyPort.class,
+                        HexAdapter.class,
+                        HexConfig.class,
+                        HexService.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("Field <" + LeakyDomain.class.getName() + ".adapter>")
+        .hasMessageContaining("Field <" + LeakyService.class.getName() + ".config>")
+        .hasMessageContaining("Method <" + LeakyPort.class.getName() + ".adapter()>")
+        .hasMessageNotContaining("<" + HexService.class.getName() + ".")
+        .hasMessageNotContaining("<" + HexConfig.class.getName() + ".");
+  }
+
+  @Test
+  void hexagonalLayout_ignores_the_modules_that_it_does_not_name() {
+    var rule = ArchitectureConditions.hexagonalLayout(FIXTURES, Set.of("other"));
+    assertThatThrownBy(() -> rule.check(classes(FlatService.class, LeakyDomain.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("failed to check any classes");
+  }
+
+  @Test
+  void arq03_maps_the_hexagonal_packages_to_the_layers_of_the_table() {
+    var rule = ArchitectureConditions.layersFollowTheTable(FIXTURES);
+    assertThatThrownBy(() -> rule.check(classes(LeakyService.class, HexConfig.class)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("Field <" + LeakyService.class.getName() + ".config>");
+    assertPasses(rule, HEXAGONAL_MODULE);
   }
 
   @Test

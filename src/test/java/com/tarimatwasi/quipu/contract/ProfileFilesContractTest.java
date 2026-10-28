@@ -2,7 +2,7 @@ package com.tarimatwasi.quipu.contract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.tarimatwasi.quipu.auth.config.CorsProperties;
+import com.tarimatwasi.quipu.auth.infrastructure.config.CorsProperties;
 import com.tarimatwasi.quipu.bff.adapter.in.rest.SessionCookieProperties;
 import java.io.IOException;
 import java.time.Duration;
