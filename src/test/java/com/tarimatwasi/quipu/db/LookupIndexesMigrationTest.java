@@ -13,8 +13,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * V22 (TAR-224): the indexes of the reads by date of the stays and of the payments of the stays and
- * contracts of the dashboard. Each one is checked by name, table, columns in order and that it is
- * neither unique nor partial, so dropping or changing any of them fails here.
+ * contracts of the dashboard. V23 (TAR-225): the index of the monthly sum of the approved payments
+ * of the contracts. Each one is checked by name, table, columns in order and that it is neither
+ * unique nor partial, so dropping or changing any of them fails here.
  */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
@@ -56,6 +57,15 @@ class LookupIndexesMigrationTest {
   @Test
   void payments_haveAnIndexByContractAndPeriodForEveryStatus() {
     assertIndex("ix_payments_contract_period", "payments", "contract_id,period");
+  }
+
+  /**
+   * Not partial on status: the status reaches the query as a bound parameter, and a generic plan of
+   * the prepared statement cannot use an index whose predicate names a status.
+   */
+  @Test
+  void payments_haveAnIndexByPeriodThenStatus() {
+    assertIndex("ix_payments_period_status", "payments", "period,status");
   }
 
   private void assertIndex(String name, String table, String columns) {
