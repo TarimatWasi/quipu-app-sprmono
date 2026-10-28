@@ -56,14 +56,44 @@ class ArchitectureScopesTest {
   }
 
   @Test
+  void hexagonalModules_areTheBusinessModules() {
+    // TAR_226_HEXAGONAL_PACKAGES selects its modules by name: each one must exist.
+    assertThat(ArchitectureRules.HEXAGONAL_MODULES)
+        .containsExactlyInAnyOrder(
+            "auth", "contract", "environment", "expense", "fine", "guest", "payment")
+        .allSatisfy(
+            m ->
+                assertThat(
+                        names(
+                            c ->
+                                c.getPackageName()
+                                    .startsWith(ArchitectureRules.ROOT + "." + m + ".")))
+                    .as("classes of " + m)
+                    .isNotEmpty());
+  }
+
+  @Test
   void moduleScopes_areNotEmpty() {
     // The imported modules (auth, bff) give every structural rule something to select.
     assertThat(names(c -> c.getPackageName().contains(".domain"))).as("domain").isNotEmpty();
-    assertThat(names(c -> c.getPackageName().contains(".application")))
-        .as("application")
+    assertThat(names(c -> c.getPackageName().contains(".application.service")))
+        .as("application.service")
         .isNotEmpty();
-    assertThat(names(c -> c.getPackageName().contains(".port.in"))).as("port.in").isNotEmpty();
-    assertThat(names(c -> c.getPackageName().contains(".port.out"))).as("port.out").isNotEmpty();
+    assertThat(names(c -> c.getPackageName().contains(".application.port.in")))
+        .as("application.port.in")
+        .isNotEmpty();
+    assertThat(names(c -> c.getPackageName().contains(".application.port.out")))
+        .as("application.port.out")
+        .isNotEmpty();
+    assertThat(names(c -> c.getPackageName().contains(".infrastructure.adapter.in")))
+        .as("infrastructure input adapters")
+        .isNotEmpty();
+    assertThat(names(c -> c.getPackageName().contains(".infrastructure.adapter.out")))
+        .as("infrastructure output adapters")
+        .isNotEmpty();
+    assertThat(names(c -> c.getPackageName().contains(".infrastructure.config")))
+        .as("infrastructure config")
+        .isNotEmpty();
     assertThat(names(c -> c.getPackageName().contains(".adapter.in.rest")))
         .as("rest adapters")
         .isNotEmpty();

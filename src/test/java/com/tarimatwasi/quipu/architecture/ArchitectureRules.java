@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +46,10 @@ final class ArchitectureRules {
 
   static final String ROOT = "com.tarimatwasi.quipu";
 
+  /** Business modules already in hexagonal packages (TAR-226, batch 1); bff follows in batch 2. */
+  static final Set<String> HEXAGONAL_MODULES =
+      Set.of("auth", "contract", "environment", "expense", "fine", "guest", "payment");
+
   private ArchitectureRules() {}
 
   // --- Arquitectura (ARQ) ---
@@ -66,6 +71,9 @@ final class ArchitectureRules {
           .and()
           .resideOutsideOfPackages(ROOT, ROOT + ".shared..")
           .and()
+          .resideOutsideOfPackages(
+              HEXAGONAL_MODULES.stream().map(m -> ROOT + "." + m + "..").toArray(String[]::new))
+          .and()
           .doNotHaveSimpleName("package-info")
           .should()
           .resideInAnyPackage(
@@ -76,6 +84,11 @@ final class ArchitectureRules {
               "..adapter.in..",
               "..adapter.out..",
               "..config..");
+
+  /** TAR-226 (D-72): the hexagonal modules follow ARQ-02 with the packages of the new layout. */
+  @ArchTest
+  static final ArchRule TAR_226_HEXAGONAL_PACKAGES =
+      ArchitectureConditions.hexagonalLayout(ROOT, HEXAGONAL_MODULES);
 
   @ArchTest static final ArchRule BE_SPR_ARQ_03 = ArchitectureConditions.layersFollowTheTable(ROOT);
 
@@ -274,7 +287,7 @@ final class ArchitectureRules {
           .implement(
               com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("..port.in.."))
           .should()
-          .resideInAPackage("..application..");
+          .resideInAPackage("..application.service..");
 
   @ArchTest
   static final ArchRule BE_SPR_APP_02 =
@@ -283,7 +296,7 @@ final class ArchitectureRules {
           .areAnnotatedWith(Transactional.class)
           .should()
           .beDeclaredInClassesThat()
-          .resideInAPackage("..application..")
+          .resideInAPackage("..application.service..")
           // empty until the first @Transactional use case
           .allowEmptyShould(true);
 
