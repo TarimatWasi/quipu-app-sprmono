@@ -9,7 +9,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.StatusChangeCommand;
-import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.fine.port.in.ManageFinesUseCase.FineCommand;

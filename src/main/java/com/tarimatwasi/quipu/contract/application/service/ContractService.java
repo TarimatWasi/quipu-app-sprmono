@@ -16,8 +16,8 @@ import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPor
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.domain.Contract.Violation;
 import com.tarimatwasi.quipu.contract.domain.ContractStatus;
-import com.tarimatwasi.quipu.environment.port.in.EnvironmentInactiveException;
-import com.tarimatwasi.quipu.environment.port.in.EnvironmentOccupiedException;
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentInactiveException;
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;

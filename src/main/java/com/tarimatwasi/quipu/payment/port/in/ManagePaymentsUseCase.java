@@ -146,7 +146,8 @@ public interface ManagePaymentsUseCase {
    * today (RN-07), classified and ordered as in {@link #accountStatus}. An environment without a
    * current contract (none, expired or terminated) has none; an inactive one still has its periods.
    *
-   * @throws com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException no such one
+   * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException no
+   *     such one
    */
   List<OwnPaymentsUseCase.PeriodView> environmentAccountStatus(Long environmentId);
 

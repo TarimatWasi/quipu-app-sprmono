@@ -2,8 +2,8 @@ package com.tarimatwasi.quipu.shared.adapter.out.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.tarimatwasi.quipu.environment.application.port.out.EnvironmentRepositoryPort;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
-import com.tarimatwasi.quipu.environment.port.out.EnvironmentRepositoryPort;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import jakarta.persistence.EntityManager;

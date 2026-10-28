@@ -1,6 +1,6 @@
 package com.tarimatwasi.quipu.payment.adapter.out.environment;
 
-import com.tarimatwasi.quipu.environment.port.in.ManageEnvironmentsUseCase;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.payment.port.out.PaymentEnvironmentPort;
 import java.util.Collection;
 import java.util.Map;

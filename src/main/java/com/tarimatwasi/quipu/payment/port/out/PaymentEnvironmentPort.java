@@ -11,7 +11,8 @@ public interface PaymentEnvironmentPort {
   /**
    * Checks that the environment exists, active or not.
    *
-   * @throws com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException no such one
+   * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException no
+   *     such one
    */
   void requireExists(Long environmentId);
 }

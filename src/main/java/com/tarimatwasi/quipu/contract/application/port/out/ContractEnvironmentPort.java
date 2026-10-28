@@ -7,7 +7,8 @@ public interface ContractEnvironmentPort {
    * time. Needs a transaction.
    *
    * @return whether the environment is active, read under the lock
-   * @throws com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException if none exists
+   * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException if
+   *     none exists
    */
   boolean lock(Long environmentId);
 }

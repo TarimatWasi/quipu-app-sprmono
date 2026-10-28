@@ -10,7 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.tarimatwasi.quipu.environment.port.in.EnvironmentNotFoundException;
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException;
 import com.tarimatwasi.quipu.guest.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
