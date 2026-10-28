@@ -29,7 +29,7 @@
 
     <!-- Fuera del BOM de Spring Boot (BE-SPR-DEP-01): versiones verificadas en Maven Central el 2026-09-30.
          Se quitan de aquí si una versión futura de Boot las incorpora a su BOM. -->
-    <spring-modulith.version>2.1.1</spring-modulith.version>
+    <spring-modulith.version>2.1.2</spring-modulith.version>
     <springdoc.version>3.1.1</springdoc.version>
     <archunit.version>1.5.1</archunit.version>
     <error-prone.version>2.51.0</error-prone.version>
