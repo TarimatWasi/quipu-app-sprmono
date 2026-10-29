@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,8 @@ class StaysMigrationTest {
           .dataSource(dataSource)
           .schemas(schema)
           .createSchemas(true)
+          // TAR-214: the privileges script needs the placeholder; empty, it grants nothing
+          .placeholders(Map.of("app_role", ""))
           .load()
           .migrate();
 
