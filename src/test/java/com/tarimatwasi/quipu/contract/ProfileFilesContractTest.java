@@ -32,15 +32,16 @@ class ProfileFilesContractTest {
 
   /**
    * The only optional variables of the strict profiles: once the first ADMIN exists they are no
-   * longer needed (AdminBootstrap), so an empty default is legitimate.
+   * longer needed (AdminBootstrap), so an empty default is legitimate. The same for the separate
+   * migration connection (TAR-214): until the application role exists, Flyway and the application
+   * share DATABASE_URL.
    */
-  private static final Pattern OPTIONAL_ADMIN_VARIABLE =
-      Pattern.compile("\\$\\{ADMIN_(DOCUMENT_NUMBER|EMAIL):}");
+  private static final Pattern OPTIONAL_VARIABLE =
+      Pattern.compile(
+          "\\$\\{(ADMIN_(DOCUMENT_NUMBER|EMAIL)|FLYWAY_(URL|USER|PASSWORD|APP_ROLE)):}");
 
   private static boolean hasDefault(String value) {
-    return PLACEHOLDER_WITH_DEFAULT
-        .matcher(OPTIONAL_ADMIN_VARIABLE.matcher(value).replaceAll(""))
-        .find();
+    return PLACEHOLDER_WITH_DEFAULT.matcher(OPTIONAL_VARIABLE.matcher(value).replaceAll("")).find();
   }
 
   private static Map<String, Object> load(String file) throws IOException {
@@ -187,6 +188,29 @@ class ProfileFilesContractTest {
     assertThat(profile.get("app.admin.required")).isEqualTo(true);
     assertThat(profile)
         .containsKeys("server.port", "spring.datasource.url", "app.cors.allowed-origin");
+  }
+
+  /**
+   * TAR-214: the strict profiles read the owner connection of Flyway and the application role from
+   * optional variables; the base and local never separate them.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
+  void strictProfiles_readTheOptionalMigrationConnection(String file) throws IOException {
+    var profile = load(file);
+
+    assertThat(profile)
+        .containsEntry("app.migration.url", "${FLYWAY_URL:}")
+        .containsEntry("app.migration.user", "${FLYWAY_USER:}")
+        .containsEntry("app.migration.password", "${FLYWAY_PASSWORD:}")
+        .containsEntry("app.migration.app-role", "${FLYWAY_APP_ROLE:}");
+    assertThat(profile.keySet()).noneMatch(key -> key.startsWith("spring.flyway."));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"application.yml", "application-local.yml"})
+  void baseAndLocal_doNotSeparateTheMigrationConnection(String file) throws IOException {
+    assertThat(load(file).keySet()).noneMatch(key -> key.startsWith("app.migration."));
   }
 
   @ParameterizedTest
