@@ -12,10 +12,10 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * V22 (TAR-224): the indexes of the reads by date of the stays and of the payments of the stays and
- * contracts of the dashboard. V23 (TAR-225): the index of the monthly sum of the approved payments
- * of the contracts. Each one is checked by name, table, columns in order and that it is neither
- * unique nor partial, so dropping or changing any of them fails here.
+ * TAR-224: the indexes of the reads by date of the stays and of the payments of the stays and
+ * contracts of the dashboard. TAR-225: the index of the monthly sum of the approved payments of the
+ * contracts. Each one is checked by name, table, columns in order and that it is neither unique nor
+ * partial, so dropping or changing any of them fails here.
  */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)

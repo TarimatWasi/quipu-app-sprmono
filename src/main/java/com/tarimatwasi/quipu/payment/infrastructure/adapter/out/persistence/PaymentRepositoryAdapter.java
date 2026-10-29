@@ -41,7 +41,7 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   private static final Set<PaymentStatus> LIVE =
       EnumSet.of(PaymentStatus.PENDING, PaymentStatus.APPROVED);
 
-  /** The name of the unique indexes of the live payments (V13). */
+  /** The name of the unique indexes of the live payments. */
   private static final String LIVE_INDEX_PREFIX = "uq_payments_live";
 
   /** How many ids a single read binds at most. */

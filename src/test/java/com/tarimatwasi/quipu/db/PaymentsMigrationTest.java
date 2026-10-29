@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,9 +20,7 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/**
- * TAR-43 (V13): the payments table over existing data, its checks and its partial unique indexes.
- */
+/** TAR-43: the payments table, its checks and its partial unique indexes. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @ImportTestcontainers(PostgresContainers.class)
 class PaymentsMigrationTest {
@@ -32,7 +28,6 @@ class PaymentsMigrationTest {
   private static final AtomicLong NEXT_ID = new AtomicLong(90_000);
 
   @Autowired JdbcTemplate jdbc;
-  @Autowired DataSource dataSource;
 
   private long admin;
   private long guest;
@@ -49,12 +44,12 @@ class PaymentsMigrationTest {
             + " must_change_password, status)"
             + " VALUES (?, 'admin@example.test', 'DNI', '00000001', 'hash', 'ADMIN', FALSE, 'ACTIVE')",
         admin);
-    guest = insertGuest("public", "CONTRACT", "60000001");
-    otherGuest = insertGuest("public", "CONTRACT", "60000002");
-    long room = insertEnvironment("public", "601");
-    contract = insertContract("public", guest, room);
-    long temporary = insertGuest("public", "TEMPORARY", "60000003");
-    stay = insertStay("public", temporary);
+    guest = insertGuest("CONTRACT", "60000001");
+    otherGuest = insertGuest("CONTRACT", "60000002");
+    long room = insertEnvironment("601");
+    contract = insertContract(guest, room);
+    long temporary = insertGuest("TEMPORARY", "60000003");
+    stay = insertStay(temporary);
   }
 
   @AfterEach
@@ -62,79 +57,26 @@ class PaymentsMigrationTest {
     TestTables.clear(jdbc);
   }
 
-  /** The table is added over guests, contracts and stays that already exist, and touches none. */
+  /** A payment takes its id from payments_seq and starts PENDING, unreviewed, at version 0. */
   @Test
-  void v13_addsAnEmptyTableOverExistingData() {
-    String schema = "tar43_migration";
-    jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-    try {
-      migrateTo(schema, "12");
-      long g = insertGuest(schema, "CONTRACT", "60000010");
-      long e = insertEnvironment(schema, "611");
-      long c = insertContract(schema, g, e);
+  void payments_takeTheirIdFromTheSequenceAndStartPending() {
+    jdbc.update(
+        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
+            + " content_type, size_bytes, recorded_by) VALUES (nextval('payments_seq'), ?, ?,"
+            + " '2026-10-01', 800, 'vouchers/' || gen_random_uuid(), 'a.pdf', 'application/pdf', 10,"
+            + " 'GUEST')",
+        guest,
+        contract);
 
-      migrateTo(schema, "13");
-
-      assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".payments", Integer.class))
-          .isZero();
-      assertThat(
-              jdbc.queryForObject("SELECT count(*) FROM " + schema + ".contracts", Integer.class))
-          .isEqualTo(1);
-      jdbc.update(
-          "INSERT INTO "
-              + schema
-              + ".payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-              + " content_type, size_bytes, recorded_by) VALUES (nextval('"
-              + schema
-              + ".payments_seq'), ?, ?, '2026-10-01', 800, 'vouchers/' || gen_random_uuid(), 'a.pdf', 'application/pdf',"
-              + " 10, 'GUEST')",
-          g,
-          c);
-      assertThat(jdbc.queryForObject("SELECT status FROM " + schema + ".payments", String.class))
-          .isEqualTo("PENDING");
-    } finally {
-      jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-    }
-  }
-
-  /** The contracts that were finished before V13 get the instant of their last modification. */
-  @Test
-  void v13_backfillsWhenAFinishedContractWasFinished() {
-    String schema = "tar43_backfill";
-    jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-    try {
-      migrateTo(schema, "12");
-      long g = insertGuest(schema, "CONTRACT", "60000020");
-      long e1 = insertEnvironment(schema, "621");
-      long e2 = insertEnvironment(schema, "622");
-      long active = insertContract(schema, g, e1);
-      long finished = insertContract(schema, g, e2);
-      jdbc.update(
-          "UPDATE "
-              + schema
-              + ".contracts SET status = 'TERMINATED', last_modified_date = '2026-09-15T10:00:00Z'"
-              + " WHERE id = ?",
-          finished);
-
-      migrateTo(schema, "13");
-
-      assertThat(
-              jdbc.queryForObject(
-                  "SELECT terminated_at IS NULL FROM " + schema + ".contracts WHERE id = ?",
-                  Boolean.class,
-                  active))
-          .isTrue();
-      assertThat(
-              jdbc.queryForObject(
-                  "SELECT terminated_at = last_modified_date FROM "
-                      + schema
-                      + ".contracts WHERE id = ?",
-                  Boolean.class,
-                  finished))
-          .isTrue();
-    } finally {
-      jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-    }
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT status, version, reviewed_at, reviewed_by_id FROM payments"
+                    + " WHERE contract_id = ?",
+                contract))
+        .containsEntry("status", "PENDING")
+        .containsEntry("version", 0L)
+        .containsEntry("reviewed_at", null)
+        .containsEntry("reviewed_by_id", null);
   }
 
   @Test
@@ -465,22 +407,10 @@ class PaymentsMigrationTest {
             + ("recorded_by".equals(column) ? value : "'GUEST'"));
   }
 
-  private void migrateTo(String schema, String version) {
-    Flyway.configure()
-        .dataSource(dataSource)
-        .schemas(schema)
-        .createSchemas(true)
-        .target(version)
-        .load()
-        .migrate();
-  }
-
-  private long insertGuest(String schema, String type, String number) {
+  private long insertGuest(String type, String number) {
     long id = NEXT_ID.incrementAndGet();
     jdbc.update(
-        "INSERT INTO "
-            + schema
-            + ".guests (id, document_type, document_number, guest_type, status)"
+        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
             + " VALUES (?, 'DNI', ?, ?, 'ACTIVE')",
         id,
         number,
@@ -488,19 +418,16 @@ class PaymentsMigrationTest {
     return id;
   }
 
-  private long insertEnvironment(String schema, String code) {
+  private long insertEnvironment(String code) {
     long id = NEXT_ID.incrementAndGet();
-    jdbc.update(
-        "INSERT INTO " + schema + ".environments (id, code, type) VALUES (?, ?, 'ROOM')", id, code);
+    jdbc.update("INSERT INTO environments (id, code, type) VALUES (?, ?, 'ROOM')", id, code);
     return id;
   }
 
-  private long insertContract(String schema, long guestId, long environmentId) {
+  private long insertContract(long guestId, long environmentId) {
     long id = NEXT_ID.incrementAndGet();
     jdbc.update(
-        "INSERT INTO "
-            + schema
-            + ".contracts (id, guest_id, environment_id, start_date, monthly_amount, payment_day,"
+        "INSERT INTO contracts (id, guest_id, environment_id, start_date, monthly_amount, payment_day,"
             + " grace_days, file_key, original_name, size_bytes)"
             + " VALUES (?, ?, ?, '2026-01-01', 800, 5, 3, 'contracts/a.pdf', 'a.pdf', 10)",
         id,
@@ -509,12 +436,10 @@ class PaymentsMigrationTest {
     return id;
   }
 
-  private long insertStay(String schema, long guestId) {
+  private long insertStay(long guestId) {
     long id = NEXT_ID.incrementAndGet();
     jdbc.update(
-        "INSERT INTO "
-            + schema
-            + ".stays (id, guest_id, start_date, end_date, agreed_amount)"
+        "INSERT INTO stays (id, guest_id, start_date, end_date, agreed_amount)"
             + " VALUES (?, ?, '2026-10-01', '2026-10-10', 150)",
         id,
         guestId);

@@ -59,7 +59,7 @@ class ViolatedConstraintTest {
   interface SpanishPostgres {
     @Container @ServiceConnection
     PostgreSQLContainer POSTGRES =
-        new PostgreSQLContainer("postgres:17")
+        new PostgreSQLContainer("postgres:18")
             .withEnv("LANGUAGE", "es")
             .withCommand("postgres", "-c", "lc_messages=en_US.utf8")
             .waitingFor(Wait.forLogMessage(".*listo para aceptar conexiones.*\\s", 2));
