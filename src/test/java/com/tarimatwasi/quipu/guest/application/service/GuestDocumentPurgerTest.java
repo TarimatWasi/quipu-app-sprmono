@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionRepositoryPort;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentDeletionPendingException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
@@ -124,7 +126,9 @@ class GuestDocumentPurgerTest {
     when(records.pendingDeletionOf(DOCUMENT))
         .thenReturn(Optional.empty())
         .thenReturn(Optional.of(other));
-    doThrow(new DataIntegrityViolationException("uq")).when(records).addPendingDeletion(PENDING);
+    doThrow(new GuestDocumentDeletionPendingException(new DataIntegrityViolationException("uq")))
+        .when(records)
+        .addPendingDeletion(PENDING);
 
     assertThat(purger().begin(PENDING)).containsSame(other);
   }
@@ -133,9 +137,20 @@ class GuestDocumentPurgerTest {
   @Test
   void aDeletionRecordedAndFinishedAtTheSameTimeByAnotherRequestLeavesNothingToDo() {
     when(records.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.empty());
-    doThrow(new DataIntegrityViolationException("uq")).when(records).addPendingDeletion(PENDING);
+    doThrow(new GuestDocumentDeletionPendingException(new DataIntegrityViolationException("uq")))
+        .when(records)
+        .addPendingDeletion(PENDING);
 
     assertThat(purger().begin(PENDING)).isEmpty();
+  }
+
+  /** TAR-234: a failure that is not the rule of one pending deletion is not a race. */
+  @Test
+  void aDeletionThatBreaksAnotherRuleKeepsTheFailure() {
+    DataIntegrityViolationException other = new DataIntegrityViolationException("note");
+    doThrow(other).when(records).addPendingDeletion(PENDING);
+
+    assertThatThrownBy(() -> purger().begin(PENDING)).isSameAs(other);
   }
 
   @Test

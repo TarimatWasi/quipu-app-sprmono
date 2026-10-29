@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentDeletionPendingException;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
@@ -287,6 +288,20 @@ class GuestDocumentActionRepositoryAdapterTest {
     transaction.executeWithoutResult(status -> adapter.removePendingDeletion(5L));
     transaction.executeWithoutResult(status -> adapter.removePendingDeletion(5L));
     assertThat(adapter.pendingDeletionOf(5L)).isEmpty();
+  }
+
+  /** TAR-234: only the rule of one pending deletion per document is the race of two deletions. */
+  @Test
+  void aSecondPendingDeletionOfTheDocumentIsReportedAsSuch() {
+    PendingDeletion pending =
+        new PendingDeletion(guest, 5L, ARCO, "image/png", 42, admin, Instant.now());
+    transaction.executeWithoutResult(status -> adapter.addPendingDeletion(pending));
+
+    assertThatThrownBy(
+            () -> transaction.executeWithoutResult(status -> adapter.addPendingDeletion(pending)))
+        .isInstanceOf(GuestDocumentDeletionPendingException.class);
+    var unknown = new DataIntegrityViolationException("x");
+    assertThat(GuestDocumentActionRepositoryAdapter.pendingConflict(unknown)).isSameAs(unknown);
   }
 
   @Test

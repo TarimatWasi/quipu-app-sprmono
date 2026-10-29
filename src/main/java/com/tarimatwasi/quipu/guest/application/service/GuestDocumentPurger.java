@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.guest.application.service;
 
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionRepositoryPort;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentDeletionPendingException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
@@ -20,7 +21,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -104,7 +104,7 @@ public class GuestDocumentPurger {
                                 records.addPendingDeletion(asked);
                                 return asked;
                               }))));
-    } catch (DataIntegrityViolationException raced) {
+    } catch (GuestDocumentDeletionPendingException raced) {
       // Another request recorded it at the same time: its record is the one kept, unless that
       // request already finished and forgot it.
       return Objects.requireNonNull(

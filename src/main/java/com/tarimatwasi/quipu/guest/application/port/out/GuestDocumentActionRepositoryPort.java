@@ -58,7 +58,12 @@ public interface GuestDocumentActionRepositoryPort {
   /** TAR-234: whether the evidence of that document of the guest is a deletion. */
   boolean wasDeleted(Long guestId, Long documentId);
 
-  /** Records the deletion asked for, before its object leaves the store. */
+  /**
+   * Records the deletion asked for, before its object leaves the store.
+   *
+   * @throws GuestDocumentDeletionPendingException if the deletion of the document is recorded
+   *     already
+   */
   void addPendingDeletion(PendingDeletion deletion);
 
   /** Forgets the deletion of the document: done, or the document is gone. */
