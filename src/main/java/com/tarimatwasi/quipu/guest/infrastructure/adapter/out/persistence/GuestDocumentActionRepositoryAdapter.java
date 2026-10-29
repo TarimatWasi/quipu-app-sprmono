@@ -145,6 +145,11 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   }
 
   @Override
+  public boolean wasDeleted(Long guestId, Long documentId) {
+    return actions.existsByGuestIdAndDocumentIdAndAction(guestId, documentId, Kind.DELETE);
+  }
+
+  @Override
   public void addPendingDeletion(PendingDeletion deletion) {
     deletions.saveAndFlush(new GuestDocumentDeletionJpaEntity(deletion, actor(deletion.actorId())));
   }

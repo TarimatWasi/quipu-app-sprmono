@@ -55,6 +55,9 @@ public interface GuestDocumentActionRepositoryPort {
   /** The deletion of the document still in course, if any. */
   Optional<PendingDeletion> pendingDeletionOf(Long documentId);
 
+  /** TAR-234: whether the evidence of that document of the guest is a deletion. */
+  boolean wasDeleted(Long guestId, Long documentId);
+
   /** Records the deletion asked for, before its object leaves the store. */
   void addPendingDeletion(PendingDeletion deletion);
 

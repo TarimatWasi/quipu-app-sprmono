@@ -88,25 +88,27 @@ public class GuestDocumentPurger {
    * Records the deletion asked for, committed before its object leaves the store. A deletion
    * already recorded (a repeated request) keeps its first record: who asked first, and when.
    *
-   * @return the deletion as recorded
+   * @return the deletion as recorded; empty if another request recorded it at the same time and has
+   *     already finished it (TAR-234)
    */
-  public PendingDeletion begin(PendingDeletion asked) {
+  public Optional<PendingDeletion> begin(PendingDeletion asked) {
     try {
-      return Objects.requireNonNull(
-          separate.execute(
-              status ->
-                  records
-                      .pendingDeletionOf(asked.documentId())
-                      .orElseGet(
-                          () -> {
-                            records.addPendingDeletion(asked);
-                            return asked;
-                          })));
+      return Optional.of(
+          Objects.requireNonNull(
+              separate.execute(
+                  status ->
+                      records
+                          .pendingDeletionOf(asked.documentId())
+                          .orElseGet(
+                              () -> {
+                                records.addPendingDeletion(asked);
+                                return asked;
+                              }))));
     } catch (DataIntegrityViolationException raced) {
-      // Another request recorded it at the same time: its record is the one kept.
+      // Another request recorded it at the same time: its record is the one kept, unless that
+      // request already finished and forgot it.
       return Objects.requireNonNull(
-              separate.execute(status -> records.pendingDeletionOf(asked.documentId())))
-          .orElseThrow(() -> raced);
+          separate.execute(status -> records.pendingDeletionOf(asked.documentId())));
     }
   }
 

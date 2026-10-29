@@ -115,14 +115,15 @@ class GuestDocumentActionConcurrencyTest {
   }
 
   @Test
-  void ofTwoDeletionsAtOnceOnlyOneWins() throws Exception {
+  void ofTwoDeletionsAtOnceOnlyOneWritesTheEvidenceAndBothAreDeleted() throws Exception {
     ExecutorService pool = Executors.newFixedThreadPool(2);
     try {
       for (int round = 0; round < ROUNDS; round++) {
         Long document = insertDocument();
         List<Integer> answers = race(pool, () -> delete(document), () -> delete(document));
 
-        assertThat(answers).containsExactlyInAnyOrder(204, 404);
+        // TAR-234: the loser finds the document already deleted, never a 500
+        assertThat(answers).containsExactly(204, 204);
         assertThat(actionsOn(document)).isOne();
         assertThat(documents()).isZero();
       }

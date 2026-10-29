@@ -100,7 +100,7 @@ class GuestDocumentPurgerTest {
   void theRecordsAreWrittenEachInItsOwnTransaction() {
     purger().schedule(KEY);
 
-    assertThat(purger().begin(PENDING)).isSameAs(PENDING);
+    assertThat(purger().begin(PENDING)).containsSame(PENDING);
 
     verify(records).addPurge(KEY);
     verify(records).addPendingDeletion(PENDING);
@@ -112,7 +112,7 @@ class GuestDocumentPurgerTest {
         new PendingDeletion(GUEST, DOCUMENT, WHY, "application/pdf", 10, 9L, NOW);
     when(records.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.of(first));
 
-    assertThat(purger().begin(PENDING)).isSameAs(first);
+    assertThat(purger().begin(PENDING)).containsSame(first);
 
     verify(records, never()).addPendingDeletion(any());
   }
@@ -126,7 +126,16 @@ class GuestDocumentPurgerTest {
         .thenReturn(Optional.of(other));
     doThrow(new DataIntegrityViolationException("uq")).when(records).addPendingDeletion(PENDING);
 
-    assertThat(purger().begin(PENDING)).isSameAs(other);
+    assertThat(purger().begin(PENDING)).containsSame(other);
+  }
+
+  /** TAR-234: the other request finished and forgot its record before this one read it again. */
+  @Test
+  void aDeletionRecordedAndFinishedAtTheSameTimeByAnotherRequestLeavesNothingToDo() {
+    when(records.pendingDeletionOf(DOCUMENT)).thenReturn(Optional.empty());
+    doThrow(new DataIntegrityViolationException("uq")).when(records).addPendingDeletion(PENDING);
+
+    assertThat(purger().begin(PENDING)).isEmpty();
   }
 
   @Test
