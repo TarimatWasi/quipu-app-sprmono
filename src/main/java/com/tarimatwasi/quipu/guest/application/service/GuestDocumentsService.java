@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -102,14 +103,21 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
    * with no row locked. A store that fails may still have removed the object, so the record stays:
    * the document is no longer listed, and the repeated action or the purger finish it with that
    * same evidence. Only a failure after the object left is the 500 of the contract; one before it
-   * is answered as usual.
+   * is answered as usual. TAR-234: a document already deleted, by another request at the same time
+   * or before, is answered as deleted; its first evidence stays and nothing else is written.
    */
   @Override
   public void delete(Long actorId, Long guestId, Long documentId, DocumentActionRequest request) {
     Why why = request.why(LocalDate.now(clock));
-    GuestDocument document =
-        Objects.requireNonNull(transaction.execute(status -> current(guestId, documentId)));
-    PendingDeletion pending =
+    GuestDocument document;
+    try {
+      document =
+          Objects.requireNonNull(transaction.execute(status -> current(guestId, documentId)));
+    } catch (GuestDocumentNotFoundException e) {
+      goneByADeletion(guestId, documentId);
+      return;
+    }
+    Optional<PendingDeletion> pending =
         purger.begin(
             new PendingDeletion(
                 guestId,
@@ -119,6 +127,11 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
                 document.sizeBytes(),
                 actorId,
                 clock.instant()));
+    if (pending.isEmpty()) {
+      // Another deletion recorded it at the same time and has already finished it.
+      goneByADeletion(guestId, documentId);
+      return;
+    }
     try {
       files.delete(document.storageKey());
     } catch (GuestDocumentStorageException e) {
@@ -126,7 +139,7 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     }
     boolean found;
     try {
-      found = purger.complete(pending);
+      found = purger.complete(pending.get());
     } catch (DataAccessException | TransactionException e) {
       // Internal ids only: never the key, the cause or a personal datum.
       LOGGER.error(
@@ -137,9 +150,20 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     }
     if (!found) {
       // Another action got the document first.
-      throw new GuestDocumentNotFoundException();
+      goneByADeletion(guestId, documentId);
     }
     purger.purge(GuestDocumentPurger.AFTER_AN_ACTION);
+  }
+
+  /**
+   * TAR-234: a document that is gone is deleted already only if its evidence is a deletion; one
+   * that a replacement got, or that never belonged to the guest, is not found.
+   */
+  private void goneByADeletion(Long guestId, Long documentId) {
+    if (!Boolean.TRUE.equals(
+        transaction.execute(status -> actions.wasDeleted(guestId, documentId)))) {
+      throw new GuestDocumentNotFoundException();
+    }
   }
 
   /**

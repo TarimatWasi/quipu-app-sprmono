@@ -365,7 +365,14 @@ class GuestDocumentActionsContractTest {
     assertThat(count("guest_document_actions")).isOne();
     assertThat(count("guest_document_deletions")).isZero();
 
+    // TAR-234: a document already deleted is answered as deleted, and its first evidence stays
     delete(guestId, documentId, UPLOAD_ERROR)
+        .andExpect(status().isNoContent())
+        .andExpect(satisfiesTheContract());
+    assertThat(count("guest_document_actions")).isOne();
+    assertThat(count("guest_document_deletions")).isZero();
+    // but not through another guest: that document never belonged to it
+    delete(otherGuestId, documentId, UPLOAD_ERROR)
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
   }

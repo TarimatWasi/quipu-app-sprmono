@@ -152,7 +152,7 @@ class GuestDocumentsServiceTest {
 
   private void theDeletionIsRecorded() {
     theDocumentIsThere();
-    when(purger.begin(PENDING)).thenReturn(PENDING);
+    when(purger.begin(PENDING)).thenReturn(Optional.of(PENDING));
   }
 
   @Test
@@ -203,7 +203,7 @@ class GuestDocumentsServiceTest {
             10,
             99L,
             NOW.minusSeconds(3600));
-    when(purger.begin(PENDING)).thenReturn(first);
+    when(purger.begin(PENDING)).thenReturn(Optional.of(first));
     when(purger.complete(first)).thenReturn(true);
 
     service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR);
@@ -257,11 +257,56 @@ class GuestDocumentsServiceTest {
   }
 
   @Test
-  void anActionThatLostTheRaceForTheDocumentFindsItGone() {
+  void aDeletionThatLostTheRaceToAReplacementFindsItGone() {
     theDeletionIsRecorded();
     when(purger.complete(PENDING)).thenReturn(false);
     assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
         .isInstanceOf(GuestDocumentNotFoundException.class);
+  }
+
+  /** TAR-234: the other deletion wrote the evidence first; this one writes nothing more. */
+  @Test
+  void aDeletionThatLostTheRaceToAnotherDeletionIsDeleted() {
+    theDeletionIsRecorded();
+    when(purger.complete(PENDING)).thenReturn(false);
+    when(actions.wasDeleted(GUEST, DOCUMENT)).thenReturn(true);
+
+    service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR);
+
+    verify(actions, never()).addAction(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void aDeletionRecordedAndFinishedByAnotherRequestMeanwhileIsDeletedWithoutTheStore() {
+    theDocumentIsThere();
+    when(purger.begin(PENDING)).thenReturn(Optional.empty());
+    when(actions.wasDeleted(GUEST, DOCUMENT)).thenReturn(true);
+
+    service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR);
+
+    verifyNoInteractions(files);
+    verify(purger, never()).complete(any());
+  }
+
+  @Test
+  void aDeletionRecordedAndFinishedByAnotherActionMeanwhileIsNotFound() {
+    theDocumentIsThere();
+    when(purger.begin(PENDING)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR))
+        .isInstanceOf(GuestDocumentNotFoundException.class);
+    verifyNoInteractions(files);
+  }
+
+  @Test
+  void aDocumentAlreadyDeletedBeforeIsDeletedAndWritesNothing() {
+    when(guests.findById(GUEST)).thenReturn(Optional.of(guest()));
+    when(actions.findDocument(GUEST, DOCUMENT)).thenReturn(Optional.empty());
+    when(actions.wasDeleted(GUEST, DOCUMENT)).thenReturn(true);
+
+    service().delete(ACTOR, GUEST, DOCUMENT, UPLOAD_ERROR);
+
+    verifyNoInteractions(files, purger);
   }
 
   @Test

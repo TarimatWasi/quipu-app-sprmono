@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionRepositoryPort;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentDeletionPendingException;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Component;
 public class GuestDocumentActionRepositoryAdapter implements GuestDocumentActionRepositoryPort {
 
   private static final String ONE_ACTION_CONSTRAINT = "uq_guest_document_actions_document";
+  private static final String ONE_DELETION_CONSTRAINT = "uq_guest_document_deletions_document";
 
   private final GuestDocumentJpaRepository documents;
   private final GuestDocumentActionJpaRepository actions;
@@ -145,8 +147,18 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   }
 
   @Override
+  public boolean wasDeleted(Long guestId, Long documentId) {
+    return actions.existsByGuestIdAndDocumentIdAndAction(guestId, documentId, Kind.DELETE);
+  }
+
+  @Override
   public void addPendingDeletion(PendingDeletion deletion) {
-    deletions.saveAndFlush(new GuestDocumentDeletionJpaEntity(deletion, actor(deletion.actorId())));
+    try {
+      deletions.saveAndFlush(
+          new GuestDocumentDeletionJpaEntity(deletion, actor(deletion.actorId())));
+    } catch (DataIntegrityViolationException e) {
+      throw pendingConflict(e);
+    }
   }
 
   @Override
@@ -177,6 +189,13 @@ public class GuestDocumentActionRepositoryAdapter implements GuestDocumentAction
   static RuntimeException conflict(DataIntegrityViolationException e) {
     return ViolatedConstraint.is(e, ONE_ACTION_CONSTRAINT)
         ? new GuestDocumentActionExistsException(e)
+        : e;
+  }
+
+  /** TAR-234: only the rule of one pending deletion per document is translated. */
+  static RuntimeException pendingConflict(DataIntegrityViolationException e) {
+    return ViolatedConstraint.is(e, ONE_DELETION_CONSTRAINT)
+        ? new GuestDocumentDeletionPendingException(e)
         : e;
   }
 

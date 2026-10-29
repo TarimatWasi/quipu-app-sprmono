@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
 
+import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +14,8 @@ interface GuestDocumentActionJpaRepository
 
   List<GuestDocumentActionJpaEntity> findByGuestIdOrderByCreatedDateDescIdDesc(
       Long guestId, Limit limit);
+
+  boolean existsByGuestIdAndDocumentIdAndAction(Long guestId, Long documentId, Kind action);
 
   /** TAR-227: where a page cursor stands, if the action is one of this guest. */
   @Query(
