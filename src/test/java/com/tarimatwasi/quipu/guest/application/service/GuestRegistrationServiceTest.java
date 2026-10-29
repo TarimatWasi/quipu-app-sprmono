@@ -16,7 +16,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenExc
 import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException.Field;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestWithoutAccountException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.RegisterCommand;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.IdDocumentKind;
@@ -108,13 +107,13 @@ class GuestRegistrationServiceTest {
   }
 
   @Test
-  void aGuestWithoutAccountIsRefused() {
+  void aGuestWithoutAccountIsAnInternalError() {
     when(guests.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
     when(accounts.changeAccountEmail(ID, "new@example.com"))
         .thenReturn(new AccountEmailChange(EmailChangeOutcome.NO_ACCOUNT, null));
 
     assertThatThrownBy(() -> service.setAccountEmail(ID, "new@example.com"))
-        .isInstanceOf(GuestWithoutAccountException.class);
+        .isInstanceOf(IllegalStateException.class);
     verify(accounts, never()).noticeAccountEmailChanged(anyString(), anyString());
   }
 

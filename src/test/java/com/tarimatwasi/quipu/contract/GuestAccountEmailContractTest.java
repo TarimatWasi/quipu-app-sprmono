@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -356,21 +357,17 @@ class GuestAccountEmailContractTest {
     verifyNoInteractions(notices);
   }
 
-  /** A guest registered before RF-11 that was never handed an access has no account. */
+  /**
+   * TAR-235: every guest is created with its account, so one without it is corrupt data: an
+   * internal error, not a business 409, and nothing is written.
+   */
   @Test
-  void aGuestWithoutAccountIsAConflict() throws Exception {
+  void aGuestWithoutAccountIsAnInternalError() throws Exception {
     String guestId = registeredGuest("12345678", null);
     jdbc.update("DELETE FROM users WHERE guest_id = ?", guestOf(guestId));
 
-    setEmail(guestId, "nueva@example.com")
-        .andExpect(status().isConflict())
-        .andExpect(satisfiesTheContract())
-        .andExpect(
-            content()
-                .json(
-                    "{\"code\":\"GUEST_WITHOUT_ACCOUNT\",\"message\":\"El huésped aún no tiene"
-                        + " cuenta de acceso; genérale un acceso primero\"}",
-                    JsonCompareMode.STRICT));
+    assertThatThrownBy(() -> setEmail(guestId, "nueva@example.com"))
+        .hasRootCauseInstanceOf(IllegalStateException.class);
     assertThat(count("SELECT count(*) FROM users WHERE lower(email) = 'nueva@example.com'"))
         .isZero();
   }
