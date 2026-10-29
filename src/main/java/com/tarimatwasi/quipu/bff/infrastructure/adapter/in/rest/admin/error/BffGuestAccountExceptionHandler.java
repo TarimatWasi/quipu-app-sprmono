@@ -3,7 +3,6 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.error;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.BffErrorResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.BffExceptionHandler;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestWithoutAccountException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -33,14 +32,5 @@ public class BffGuestAccountExceptionHandler {
         .body(
             new BffErrorResponse(
                 "ACCOUNT_EMAIL_TAKEN", "Ese correo ya pertenece a una cuenta", field));
-  }
-
-  @ExceptionHandler(GuestWithoutAccountException.class)
-  public ResponseEntity<BffErrorResponse> handleGuestWithoutAccount() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "GUEST_WITHOUT_ACCOUNT",
-                "El huésped aún no tiene cuenta de acceso; genérale un acceso primero"));
   }
 }

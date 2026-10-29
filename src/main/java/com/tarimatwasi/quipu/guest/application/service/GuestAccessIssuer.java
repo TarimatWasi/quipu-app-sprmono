@@ -6,7 +6,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentTakenExcepti
 import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestWithoutAccountException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.RegisterCommand;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.application.port.out.AccountEmailAlreadyExistsException;
@@ -125,7 +124,9 @@ class GuestAccessIssuer {
       throw new GuestAccountEmailTakenException(Field.EMAIL, e);
     }
     return switch (change.outcome()) {
-      case NO_ACCOUNT -> throw new GuestWithoutAccountException();
+      // TAR-235: every guest is created with its account, so one without it is corrupt data.
+      case NO_ACCOUNT ->
+          throw new IllegalStateException("The guest " + guestId + " has no account");
       case UNCHANGED -> Optional.empty();
       case CHANGED -> Optional.ofNullable(change.previousEmail());
     };

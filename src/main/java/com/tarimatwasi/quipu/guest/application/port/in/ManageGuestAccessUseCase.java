@@ -70,7 +70,6 @@ public interface ManageGuestAccessUseCase {
    *
    * @throws GuestNotFoundException if there is no guest with that id
    * @throws GuestInactiveException if the guest is inactive
-   * @throws GuestWithoutAccountException if the guest has no access account
    * @throws GuestAccountEmailTakenException if another access account has the email, ignoring case
    */
   void setAccountEmail(Long guestId, String email);
