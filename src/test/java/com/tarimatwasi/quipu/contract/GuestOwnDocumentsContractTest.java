@@ -9,16 +9,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
+import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
@@ -26,6 +29,10 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,12 +45,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 
 /**
- * TAR-242 (RN-37): the guest uploads more documents from «Mis datos» (H5, T3) after the onboarding,
- * against the shared contract. The bucket is a fake of the port.
+ * TAR-242 and TAR-241 (RN-37): the guest uploads and opens its own documents from «Mis datos» (H5,
+ * T3) after the onboarding, against the shared contract. The bucket is a fake of the port.
  *
  * <p>The configuration is the one of GuestOnboardingContractTest and the guest document action
  * tests, so they share one cached context: every new context keeps its own connection pool against
@@ -188,6 +196,85 @@ class GuestOwnDocumentsContractTest {
 
     assertThat(documentsOf(contractGuest)).isZero();
     verify(files, never()).store(any(), any());
+  }
+
+  // ───────────── TAR-241: the guest opens its own documents with a signed link ─────────────
+
+  private static final String SIGNED = "https://r2.test/guest-documents/k?X-Amz-Signature=s";
+
+  @Autowired Clock clock;
+
+  private ResultActions openDocument(String area, Long document, Cookie who) throws Exception {
+    return mockMvc.perform(
+        get(area + "/" + sessionIds().mask(IdKind.GUEST_DOCUMENT, document)).cookie(who));
+  }
+
+  @Test
+  void aGuestOpensItsOwnDocumentWithALinkThatExpiresInFifteenMinutes() throws Exception {
+    when(files.signedUrl(any(), any())).thenReturn(SIGNED);
+    Long document = insertDocument(contractGuest, "dni.pdf");
+    Instant before = clock.instant();
+
+    MvcResult result =
+        openDocument(CONTRACT_DOCUMENTS, document, guest())
+            .andExpect(status().isOk())
+            .andExpect(satisfiesTheContract())
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(
+                jsonPath("$.id")
+                    .value(sessionIds().mask(IdKind.GUEST_DOCUMENT, document).toString()))
+            .andExpect(jsonPath("$.originalName").value("dni.pdf"))
+            .andExpect(jsonPath("$.url").value(SIGNED))
+            .andReturn();
+
+    Instant expires =
+        Instant.parse(JsonPath.read(result.getResponse().getContentAsString(), "$.urlExpiresAt"));
+    assertThat(expires)
+        .isBetween(
+            before.plus(Duration.ofMinutes(15)), clock.instant().plus(Duration.ofMinutes(15)));
+  }
+
+  @Test
+  void aTemporaryGuestOpensItsOwnDocument() throws Exception {
+    when(files.signedUrl(any(), any())).thenReturn(SIGNED);
+    Long document = insertDocument(temporaryGuest, "pasaporte.pdf");
+
+    openDocument(TEMPORARY_DOCUMENTS, document, temporary())
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.originalName").value("pasaporte.pdf"));
+  }
+
+  /** TAR-241, done when: a guest never opens the document of another guest. */
+  @Test
+  void aGuestAskingForTheDocumentOfAnotherGuestGetsTheSame404AsAMissingOne() throws Exception {
+    Long foreign = insertDocument(temporaryGuest, "ajeno.pdf");
+    Long gone = insertDocument(contractGuest, "dni.pdf");
+    jdbc.update("DELETE FROM guest_documents WHERE id = ?", gone);
+
+    openDocument(CONTRACT_DOCUMENTS, foreign, guest())
+        .andExpect(status().isNotFound())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    openDocument(CONTRACT_DOCUMENTS, gone, guest())
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    mockMvc
+        .perform(get(CONTRACT_DOCUMENTS + "/" + UUID.randomUUID()).cookie(guest()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    verify(files, never()).signedUrl(any(), any());
+  }
+
+  @Test
+  void eachTypeOfGuestIsRefusedTheDocumentRouteOfTheOtherOne() throws Exception {
+    Long document = insertDocument(contractGuest, "dni.pdf");
+
+    openDocument(TEMPORARY_DOCUMENTS, document, guest())
+        .andExpect(status().isForbidden())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    verify(files, never()).signedUrl(any(), any());
   }
 
   // ------------------------------------------------------------------ helpers

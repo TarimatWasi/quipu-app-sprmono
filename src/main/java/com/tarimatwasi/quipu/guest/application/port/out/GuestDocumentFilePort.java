@@ -21,8 +21,8 @@ public interface GuestDocumentFilePort {
   void delete(String key);
 
   /**
-   * A URL that downloads the object for 5 minutes, as an attachment with a fixed name. It is signed
-   * on every request and never stored.
+   * A URL that downloads the object for 15 minutes (QP-SPRMONO-INT-01), as an attachment with a
+   * fixed name. It is signed on every request and never stored.
    *
    * @throws GuestDocumentStorageException if the store is not configured or fails
    */
