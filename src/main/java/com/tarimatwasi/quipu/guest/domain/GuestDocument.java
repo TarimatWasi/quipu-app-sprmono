@@ -19,6 +19,6 @@ public record GuestDocument(
   /** The largest document (RF-15). */
   public static final int MAX_BYTES = 5 * 1024 * 1024;
 
-  /** How long the link the administrator gets opens the file (RN-37). */
-  public static final Duration URL_VALIDITY = Duration.ofMinutes(5);
+  /** How long a signed link to the file opens it, for the administrator and the guest (RN-37). */
+  public static final Duration URL_VALIDITY = Duration.ofMinutes(15);
 }

@@ -107,7 +107,7 @@ public class OwnProfileService implements OwnProfileUseCase {
    * RN-09, RN-33: the guard of the guest areas refuses the other type of guest and a guest still
    * onboarding first; checked again here, under the lock when there is one.
    */
-  private static Guest allowed(Guest guest, GuestKind area) {
+  static Guest allowed(Guest guest, GuestKind area) {
     if (!guest.type().name().equals(area.name())) {
       throw new OwnProfileRefusedException(Reason.OTHER_GUEST_TYPE);
     }

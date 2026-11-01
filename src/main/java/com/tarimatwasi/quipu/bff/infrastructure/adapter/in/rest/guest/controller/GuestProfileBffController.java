@@ -11,24 +11,31 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.EmergencyContactBody;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.EmergencyContactResponse;
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentNotFoundException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentsUseCase.GuestDocumentView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnDocumentUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase.OwnProfileView;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase.ProfileChange;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -37,6 +44,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -54,12 +62,17 @@ import org.springframework.web.multipart.MultipartHttpServletRequest;
 public class GuestProfileBffController {
 
   private final OwnProfileUseCase profiles;
+  private final OwnDocumentUseCase documents;
   private final GuestAccountUseCase accounts;
   private final IdMasker ids;
 
   public GuestProfileBffController(
-      OwnProfileUseCase profiles, GuestAccountUseCase accounts, IdMasker ids) {
+      OwnProfileUseCase profiles,
+      OwnDocumentUseCase documents,
+      GuestAccountUseCase accounts,
+      IdMasker ids) {
     this.profiles = profiles;
+    this.documents = documents;
     this.accounts = accounts;
     this.ids = ids;
   }
@@ -217,6 +230,58 @@ public class GuestProfileBffController {
       MultipartHttpServletRequest request,
       Authentication authentication) {
     return upload(GuestKind.TEMPORARY, form, request, authentication);
+  }
+
+  /** GuestDocument (TAR-241): an own document with its signed link, valid 15 minutes. */
+  public record OwnDocumentResponse(
+      UUID id,
+      String originalName,
+      String contentType,
+      long sizeBytes,
+      Instant uploadedAt,
+      String url,
+      Instant urlExpiresAt) {
+
+    static OwnDocumentResponse of(GuestDocumentView view, IdMasker ids) {
+      return new OwnDocumentResponse(
+          ids.mask(IdKind.GUEST_DOCUMENT, view.id()),
+          view.originalName(),
+          view.contentType(),
+          view.sizeBytes(),
+          view.uploadedAt(),
+          view.url(),
+          view.urlExpiresAt());
+    }
+  }
+
+  @GetMapping("/bff/guest/documents/{documentId}")
+  public ResponseEntity<OwnDocumentResponse> getOwnDocument(
+      @PathVariable UUID documentId, Authentication authentication) {
+    return openDocument(GuestKind.CONTRACT, documentId, authentication);
+  }
+
+  @GetMapping("/bff/temporary-guest/documents/{documentId}")
+  public ResponseEntity<OwnDocumentResponse> getTemporaryOwnDocument(
+      @PathVariable UUID documentId, Authentication authentication) {
+    return openDocument(GuestKind.TEMPORARY, documentId, authentication);
+  }
+
+  /**
+   * An id that this session never handed out is the same 404 as a document of another guest: the
+   * answer never tells them apart (RN-09).
+   */
+  private ResponseEntity<OwnDocumentResponse> openDocument(
+      GuestKind area, UUID masked, Authentication authentication) {
+    Long guestId = guestOf(authentication);
+    long documentId;
+    try {
+      documentId = ids.unmask(IdKind.GUEST_DOCUMENT, masked);
+    } catch (UnknownMaskedIdException forged) {
+      throw new GuestDocumentNotFoundException();
+    }
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(OwnDocumentResponse.of(documents.open(guestId, area, documentId), ids));
   }
 
   private ResponseEntity<OwnProfileResponse> own(GuestKind area, Authentication authentication) {
