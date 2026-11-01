@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
+import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
@@ -51,6 +53,67 @@ class BffExceptionHandlerTest {
             new BffErrorResponse(
                 "CONCURRENT_MODIFICATION",
                 "El registro cambió mientras lo editabas; vuelve a cargarlo e inténtalo de nuevo"));
+  }
+
+  // TAR-247: the screens show the `message` of the BFF (QP-UI-17), so it is the literal text of
+  // the error catalog of «SRS 17 - Árbol de Flujo de Pantallas». One test per code.
+
+  @Test
+  void guestEmailTaken_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response = handler.handleGuestEmailTaken();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "GUEST_EMAIL_TAKEN",
+                "Ese correo ya está registrado para otro huésped",
+                "contactEmail"));
+  }
+
+  @Test
+  void documentInvalidFile_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response =
+        handler.handleInvalidOnboardingInput(
+            new InvalidOnboardingInputException(
+                InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "DOCUMENT_INVALID_FILE",
+                "Archivo inválido — sube JPG, PNG o PDF de máx. 5MB",
+                "file"));
+  }
+
+  @Test
+  void documentLimitReached_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response =
+        handler.handleOnboardingConflict(
+            new OnboardingConflictException(
+                OnboardingConflictException.Reason.DOCUMENT_LIMIT_REACHED));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse("DOCUMENT_LIMIT_REACHED", "Ya subiste el máximo de 5 documentos"));
+  }
+
+  @Test
+  void consentNotAccepted_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response =
+        handler.handleInvalidOnboardingInput(
+            new InvalidOnboardingInputException(
+                InvalidOnboardingInputException.Reason.CONSENT_NOT_ACCEPTED));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "CONSENT_NOT_ACCEPTED",
+                "Debes marcar el consentimiento de datos personales",
+                "accepted"));
   }
 
   /** TAR-182: the errors of the stays, with the codes of the contract. */
