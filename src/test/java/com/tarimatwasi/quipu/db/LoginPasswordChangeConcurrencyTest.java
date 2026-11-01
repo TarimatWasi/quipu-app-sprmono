@@ -211,7 +211,7 @@ class LoginPasswordChangeConcurrencyTest {
   }
 
   private void resetPassword() {
-    recovery.resetPassword(RESET_CODE, NEW_PASSWORD);
+    recovery.resetPassword(RESET_CODE, NEW_PASSWORD, null);
   }
 
   private String loginWith(String password) {

@@ -14,6 +14,9 @@ class LoggingPasswordResetMailTest {
 
   private static final String LINK = "http://localhost:4200/reset-password?code=CODE123";
 
+  /** TAR-127 (A0.5): the link of a new administrator opens the activation screen. */
+  private static final String ACTIVATION_LINK = "http://localhost:4200/activate-admin?code=CODE123";
+
   private static String logFor(String email) {
     var logger = (Logger) LoggerFactory.getLogger(LoggingPasswordResetMail.class);
     var appender = new ListAppender<ILoggingEvent>();
@@ -21,7 +24,7 @@ class LoggingPasswordResetMailTest {
     logger.addAppender(appender);
     try {
       new LoggingPasswordResetMail("http://localhost:4200/")
-          .sendResetLink(email, "CODE123", Duration.ofMinutes(30));
+          .sendResetLink(email, "CODE123", Duration.ofMinutes(30), false);
     } finally {
       logger.detachAppender(appender);
     }
@@ -58,7 +61,7 @@ class LoggingPasswordResetMailTest {
         .singleElement()
         .extracting(ILoggingEvent::getFormattedMessage)
         .asString()
-        .contains(LINK)
+        .contains(ACTIVATION_LINK)
         .doesNotContain("admin@quipu.local");
   }
 

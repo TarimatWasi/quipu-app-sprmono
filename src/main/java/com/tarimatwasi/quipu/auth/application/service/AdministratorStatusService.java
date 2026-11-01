@@ -120,7 +120,8 @@ public class AdministratorStatusService implements ManageAdministratorsUseCase {
         administrator.email(),
         administrator.isActive() ? AdministratorStatus.ACTIVE : AdministratorStatus.INACTIVE,
         administrator.createdAt(),
-        administrator.id().equals(sessionUserId));
+        administrator.id().equals(sessionUserId),
+        administrator.name());
   }
 
   /** Only the last 3 characters are visible; a number that short is shown as it is. */

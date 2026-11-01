@@ -70,8 +70,11 @@ public class ResendMailSender {
    * the address. The person asks again once the cooldown passes.
    */
   @Async
-  public void send(String toEmail, String code, Duration validFor) {
-    String link = ResetLink.of(frontendOrigin, code);
+  public void send(String toEmail, String code, Duration validFor, boolean activation) {
+    String link =
+        activation
+            ? ResetLink.activation(frontendOrigin, code)
+            : ResetLink.of(frontendOrigin, code);
     String text =
         "Hola,\n\n"
             + "Recibimos una solicitud para restablecer tu contraseña de Quipu. Abre este enlace"
@@ -112,7 +115,7 @@ public class ResendMailSender {
    * @return true if Resend accepted the email
    */
   public boolean sendAdministratorAccessNow(String toEmail, String code, Duration validFor) {
-    String link = ResetLink.of(frontendOrigin, code);
+    String link = ResetLink.activation(frontendOrigin, code);
     String text =
         "Hola,\n\n"
             + "Se creó tu cuenta de administrador de Quipu. Abre este enlace para elegir tu"

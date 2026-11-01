@@ -4,6 +4,7 @@ import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.open
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -251,7 +252,8 @@ class GuestAccountEmailContractTest {
 
     assertThat(accountEmailOf(guestId)).isEqualTo("nueva@example.com");
     forgot("nueva@example.com").andExpect(status().isAccepted());
-    verify(resetMail).sendResetLink(eq("nueva@example.com"), anyString(), any(Duration.class));
+    verify(resetMail)
+        .sendResetLink(eq("nueva@example.com"), anyString(), any(Duration.class), anyBoolean());
     // No previous email, so nobody is told.
     verifyNoInteractions(notices);
   }
@@ -287,9 +289,10 @@ class GuestAccountEmailContractTest {
     verify(notices).accountEmailChanged("ana@example.com", "ana.nueva@example.com");
 
     forgot("ana@example.com").andExpect(status().isAccepted());
-    verify(resetMail, never()).sendResetLink(eq("ana@example.com"), anyString(), any());
+    verify(resetMail, never())
+        .sendResetLink(eq("ana@example.com"), anyString(), any(), anyBoolean());
     forgot("ana.nueva@example.com").andExpect(status().isAccepted());
-    verify(resetMail).sendResetLink(eq("ana.nueva@example.com"), anyString(), any());
+    verify(resetMail).sendResetLink(eq("ana.nueva@example.com"), anyString(), any(), anyBoolean());
     // Neither email reaches the logs.
     assertThat(output.getAll()).doesNotContain("ana.nueva@example.com").doesNotContain(code);
   }

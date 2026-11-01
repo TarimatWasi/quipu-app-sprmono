@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.contract;
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -252,7 +253,7 @@ class BffContractTest {
         .andExpect(status().isAccepted())
         .andExpect(satisfiesTheContract());
     var code = ArgumentCaptor.forClass(String.class);
-    verify(mail).sendResetLink(eq(ADMIN_EMAIL), code.capture(), any());
+    verify(mail).sendResetLink(eq(ADMIN_EMAIL), code.capture(), any(), anyBoolean());
     return code.getValue();
   }
 

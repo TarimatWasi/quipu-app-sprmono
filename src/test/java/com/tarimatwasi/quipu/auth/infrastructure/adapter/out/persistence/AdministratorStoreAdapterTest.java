@@ -199,21 +199,24 @@ class AdministratorStoreAdapterTest {
                 "AB12",
                 "antigua@example.test",
                 "ACTIVE",
-                Instant.parse("2026-01-01T10:00:00Z")),
+                Instant.parse("2026-01-01T10:00:00Z"),
+                null),
             new StoredAdministrator(
                 creatorId,
                 DocumentType.DNI,
                 "11111111",
                 "creador@example.test",
                 "ACTIVE",
-                Instant.parse("2026-02-01T10:00:00Z")),
+                Instant.parse("2026-02-01T10:00:00Z"),
+                null),
             new StoredAdministrator(
                 inactive,
                 DocumentType.DNI,
                 "22222224",
                 "inactiva@example.test",
                 "INACTIVE",
-                Instant.parse("2026-03-01T10:00:00Z")));
+                Instant.parse("2026-03-01T10:00:00Z"),
+                null));
   }
 
   @Test

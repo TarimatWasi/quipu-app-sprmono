@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error;
 
 import com.tarimatwasi.quipu.auth.application.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNameRequiredException;
 import com.tarimatwasi.quipu.auth.application.port.in.CurrentPasswordMismatchException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
@@ -184,6 +185,16 @@ public class BffExceptionHandler {
                     ? "Elige una contraseña distinta de la temporal"
                     : "Elige una contraseña distinta de la actual",
                 "newPassword"));
+  }
+
+  /**
+   * TAR-127 (A0.5): an administrator without name activates its account without writing it. The
+   * code is not consumed, so the screen asks for the name and sends it again.
+   */
+  @ExceptionHandler(AdministratorNameRequiredException.class)
+  public ResponseEntity<BffErrorResponse> handleAdministratorNameRequired() {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new BffErrorResponse("VALIDATION_ERROR", "Escribe tu nombre completo", "name"));
   }
 
   /**

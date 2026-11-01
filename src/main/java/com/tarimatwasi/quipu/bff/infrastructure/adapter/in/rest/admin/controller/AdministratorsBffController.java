@@ -81,9 +81,13 @@ public class AdministratorsBffController {
     }
   }
 
-  /** AdministratorSummary of the contract; the document number comes masked. */
+  /**
+   * AdministratorSummary of the contract; the document number comes masked. {@code name} is always
+   * present: null while the administrator has not activated the account (A7 «Sin activar»).
+   */
   public record AdministratorSummaryResponse(
       UUID id,
+      @Nullable String name,
       DocumentKind documentType,
       String documentNumber,
       String email,
@@ -157,6 +161,7 @@ public class AdministratorsBffController {
   private AdministratorSummaryResponse summary(AdministratorView view) {
     return new AdministratorSummaryResponse(
         ids.mask(IdKind.USER, view.id()),
+        view.name(),
         view.documentType(),
         view.maskedDocumentNumber(),
         view.email(),

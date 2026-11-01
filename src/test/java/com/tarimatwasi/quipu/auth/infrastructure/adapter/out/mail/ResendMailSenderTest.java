@@ -66,7 +66,7 @@ class ResendMailSenderTest {
             })
         .andRespond(withSuccess("{\"id\":\"1\"}", MediaType.APPLICATION_JSON));
 
-    sender.send("guest@example.test", CODE, Duration.ofMinutes(30));
+    sender.send("guest@example.test", CODE, Duration.ofMinutes(30), false);
 
     server.verify();
     assertThat(logs.list).isEmpty();
@@ -87,7 +87,7 @@ class ResendMailSenderTest {
                     .contains("https://app.example.test/reset-password?code=" + CODE))
         .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-    other.send("guest@example.test", CODE, Duration.ofMinutes(30));
+    other.send("guest@example.test", CODE, Duration.ofMinutes(30), false);
 
     otherServer.verify();
   }
@@ -98,7 +98,7 @@ class ResendMailSenderTest {
         .expect(requestTo("https://api.resend.com/emails"))
         .andRespond(withException(new IOException("connection refused")));
 
-    assertThatCode(() -> sender.send("guest@example.test", CODE, Duration.ofMinutes(30)))
+    assertThatCode(() -> sender.send("guest@example.test", CODE, Duration.ofMinutes(30), false))
         .doesNotThrowAnyException();
 
     assertThat(logs.list).singleElement().extracting(ILoggingEvent::getLevel).hasToString("WARN");
@@ -108,7 +108,7 @@ class ResendMailSenderTest {
   void aRejectedEmailIsLoggedWithoutTheAddressOrTheCode() {
     server.expect(requestTo("https://api.resend.com/emails")).andRespond(withServerError());
 
-    assertThatCode(() -> sender.send("guest@example.test", CODE, Duration.ofMinutes(30)))
+    assertThatCode(() -> sender.send("guest@example.test", CODE, Duration.ofMinutes(30), false))
         .doesNotThrowAnyException();
 
     assertThat(logs.list)
@@ -129,7 +129,7 @@ class ResendMailSenderTest {
         .andExpect(
             request ->
                 assertThat(((MockClientHttpRequest) request).getBodyAsString())
-                    .contains("https://app.example.test/reset-password?code=" + CODE)
+                    .contains("https://app.example.test/activate-admin?code=" + CODE)
                     .contains("30 minutos")
                     .contains("administrador"))
         .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));

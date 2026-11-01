@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Storage of the administrators that another administrator creates (RF-22), lists, deactivates and
@@ -31,6 +32,7 @@ public interface AdministratorStorePort {
    *
    * @param status ACTIVE or INACTIVE
    * @param createdAt when the account was created
+   * @param name the full name written when activating the account (A0.5); null until then
    */
   record StoredAdministrator(
       Long id,
@@ -38,7 +40,8 @@ public interface AdministratorStorePort {
       String documentNumber,
       String email,
       String status,
-      Instant createdAt) {
+      Instant createdAt,
+      @Nullable String name) {
 
     /** The rule of UserAccount.isDisabled(): only INACTIVE cannot log in. */
     public boolean isActive() {

@@ -27,18 +27,20 @@ public class LoggingPasswordResetMail implements PasswordResetMailPort {
   }
 
   @Override
-  public void sendResetLink(String toEmail, String code, Duration validFor) {
+  public void sendResetLink(String toEmail, String code, Duration validFor, boolean activation) {
     LOG.info(
         "[local] Link for {} to choose a password (valid {} minutes): {}",
         masked(toEmail),
         validFor.toMinutes(),
-        ResetLink.of(frontendOrigin, code));
+        activation
+            ? ResetLink.activation(frontendOrigin, code)
+            : ResetLink.of(frontendOrigin, code));
   }
 
   /** The same console line: whoever develops opens it to choose the password of the new ADMIN. */
   @Override
   public boolean sendAccessLinkNow(String toEmail, String code, Duration validFor) {
-    sendResetLink(toEmail, code, validFor);
+    sendResetLink(toEmail, code, validFor, true);
     return true;
   }
 

@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.application.service;
 
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNameRequiredException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
@@ -7,10 +8,13 @@ import com.tarimatwasi.quipu.auth.application.port.out.BackgroundTaskPort;
 import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.auth.domain.Role;
+import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -64,10 +68,16 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
         .ifPresent(
             issued -> {
               try {
+                // TAR-127 (A0.5): an administrator without name gets the link to activate its
+                // account, where it writes the name, not the one of the recovery.
+                UserAccount account = issued.account();
+                boolean activation =
+                    account.role() == Role.ADMIN && userRepository.findName(account.id()).isEmpty();
                 mail.sendResetLink(
-                    Objects.requireNonNull(issued.account().email()),
+                    Objects.requireNonNull(account.email()),
                     issued.code(),
-                    ResetCodeIssuer.CODE_VALIDITY);
+                    ResetCodeIssuer.CODE_VALIDITY,
+                    activation);
               } catch (MailDeliveryException e) {
                 // The caller must not learn whether the account exists, so a failed delivery is
                 // only logged, without the address or the provider's answer (it can echo the
@@ -86,7 +96,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
    */
   @Override
   @Transactional
-  public void resetPassword(String code, String newPassword) {
+  public void resetPassword(String code, String newPassword, @Nullable String name) {
     UserRepositoryPort.PendingReset pending =
         userRepository
             .findPendingReset(ResetCodeIssuer.hash(code))
@@ -96,13 +106,26 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
         || ResetCodeIssuer.neverChosePassword(pending.account())) {
       throw new InvalidResetCodeException();
     }
+    // TAR-127 (A0.5): an administrator without name activates the account and writes it. Checked
+    // before consuming the code, as the password, so the screen can ask for the name again.
+    UserAccount account = pending.account();
+    boolean activation =
+        account.role() == Role.ADMIN && userRepository.findName(account.id()).isEmpty();
+    if (activation && (name == null || name.isBlank())) {
+      throw new AdministratorNameRequiredException();
+    }
     // Checked after the code and before consuming it: a weak password can be corrected.
     PasswordPolicy.require(newPassword);
     PasswordPolicy.requireNotTheCredential(newPassword, code);
     // TAR-205: to the microsecond, as TIMESTAMPTZ stores it, so the database rounds nothing.
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
-    PasswordPolicy.requireNotALiveAccess(grants, pending.account().guestId(), newPassword, now);
-    userRepository.resetPassword(pending.account().id(), passwordEncoder.encode(newPassword), now);
+    PasswordPolicy.requireNotALiveAccess(grants, account.guestId(), newPassword, now);
+    String newHash = passwordEncoder.encode(newPassword);
+    if (activation && name != null) {
+      userRepository.resetPasswordAndName(account.id(), newHash, now, name.strip());
+    } else {
+      userRepository.resetPassword(account.id(), newHash, now);
+    }
     Long guestId = pending.account().guestId();
     if (guestId != null) {
       // A new password ends any access the administrator handed before.

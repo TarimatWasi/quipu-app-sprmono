@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.contract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -95,7 +96,7 @@ class PasswordRecoveryBffTest {
   private String requestCode() throws Exception {
     postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}").andExpect(status().isAccepted());
     var code = ArgumentCaptor.forClass(String.class);
-    verify(mail).sendResetLink(eq(EMAIL), code.capture(), eq(Duration.ofMinutes(30)));
+    verify(mail).sendResetLink(eq(EMAIL), code.capture(), eq(Duration.ofMinutes(30)), anyBoolean());
     return code.getValue();
   }
 
@@ -284,7 +285,7 @@ class PasswordRecoveryBffTest {
         .andExpect(status().isAccepted())
         .andExpect(content().string(""));
 
-    verify(mail).sendResetLink(any(), any(), any());
+    verify(mail).sendResetLink(any(), any(), any(), anyBoolean());
     assertThat(jdbc.queryForObject("SELECT reset_token_hash FROM users", String.class))
         .isEqualTo(hash);
     resetWith(code, NEW_PASSWORD).andExpect(status().isNoContent());
@@ -297,7 +298,7 @@ class PasswordRecoveryBffTest {
 
     postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}").andExpect(status().isAccepted());
 
-    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any());
+    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any(), anyBoolean());
   }
 
   @Test
@@ -307,7 +308,7 @@ class PasswordRecoveryBffTest {
 
     postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}").andExpect(status().isAccepted());
 
-    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any());
+    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any(), anyBoolean());
   }
 
   @Test

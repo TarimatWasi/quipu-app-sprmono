@@ -99,8 +99,8 @@ class MailAsyncConfigTest {
           var provider = context.getBean(Provider.class);
           var mailer = context.getBean(ResendPasswordResetMailer.class);
 
-          mailer.sendResetLink("a@example.test", "code-1", Duration.ofMinutes(30));
-          mailer.sendResetLink("b@example.test", "code-2", Duration.ofMinutes(30));
+          mailer.sendResetLink("a@example.test", "code-1", Duration.ofMinutes(30), false);
+          mailer.sendResetLink("b@example.test", "code-2", Duration.ofMinutes(30), false);
 
           // both sends are inside the provider, which is still blocked, and the caller is back
           assertThat(provider.started.await(5, TimeUnit.SECONDS)).isTrue();
@@ -123,11 +123,11 @@ class MailAsyncConfigTest {
           context -> {
             var provider = context.getBean(Provider.class);
             var mailer = context.getBean(ResendPasswordResetMailer.class);
-            mailer.sendResetLink("a@example.test", "code-1", Duration.ofMinutes(30));
-            mailer.sendResetLink("b@example.test", "code-2", Duration.ofMinutes(30));
+            mailer.sendResetLink("a@example.test", "code-1", Duration.ofMinutes(30), false);
+            mailer.sendResetLink("b@example.test", "code-2", Duration.ofMinutes(30), false);
             assertThat(provider.started.await(5, TimeUnit.SECONDS)).isTrue();
 
-            mailer.sendResetLink("c@example.test", "code-3", Duration.ofMinutes(30));
+            mailer.sendResetLink("c@example.test", "code-3", Duration.ofMinutes(30), false);
 
             assertThat(logs.list)
                 .singleElement()

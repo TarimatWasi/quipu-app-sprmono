@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -28,9 +29,9 @@ class ResendPasswordResetMailerTest {
   @Test
   void handsTheEmailToTheAsyncSender() {
     new ResendPasswordResetMailer(sender)
-        .sendResetLink("guest@example.test", "code", Duration.ofMinutes(30));
+        .sendResetLink("guest@example.test", "code", Duration.ofMinutes(30), false);
 
-    verify(sender).send("guest@example.test", "code", Duration.ofMinutes(30));
+    verify(sender).send("guest@example.test", "code", Duration.ofMinutes(30), false);
   }
 
   /** RF-22: in the caller's thread, and what the provider answered reaches the caller. */
@@ -44,14 +45,14 @@ class ResendPasswordResetMailerTest {
         .isTrue();
     assertThat(mailer.sendAccessLinkNow("admin@example.test", "code", Duration.ofMinutes(30)))
         .isFalse();
-    verify(sender, never()).send(anyString(), anyString(), any());
+    verify(sender, never()).send(anyString(), anyString(), any(), anyBoolean());
   }
 
   @Test
   void anExecutorAtItsLimitDropsTheEmailWithoutTheAddressOrTheCode() {
     doThrow(new TaskRejectedException("limit reached"))
         .when(sender)
-        .send("guest@example.test", "code-123", Duration.ofMinutes(30));
+        .send("guest@example.test", "code-123", Duration.ofMinutes(30), false);
     var logger = (Logger) LoggerFactory.getLogger(ResendPasswordResetMailer.class);
     var logs = new ListAppender<ILoggingEvent>();
     logs.start();
@@ -60,7 +61,8 @@ class ResendPasswordResetMailerTest {
       assertThatCode(
               () ->
                   new ResendPasswordResetMailer(sender)
-                      .sendResetLink("guest@example.test", "code-123", Duration.ofMinutes(30)))
+                      .sendResetLink(
+                          "guest@example.test", "code-123", Duration.ofMinutes(30), false))
           .doesNotThrowAnyException();
     } finally {
       logger.detachAppender(logs);

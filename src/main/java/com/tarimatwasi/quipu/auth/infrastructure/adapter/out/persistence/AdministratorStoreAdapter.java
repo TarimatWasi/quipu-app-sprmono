@@ -39,7 +39,7 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
 
   /** What a {@link StoredAdministrator} is read from. */
   private static final String COLUMNS =
-      "id, document_type, document_number, email, status, created_date";
+      "id, document_type, document_number, email, status, created_date, name";
 
   private final JdbcTemplate jdbc;
 
@@ -174,7 +174,8 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
         row.getString("document_number"),
         row.getString("email"),
         row.getString("status"),
-        Objects.requireNonNull(row.getObject("created_date", OffsetDateTime.class)).toInstant());
+        Objects.requireNonNull(row.getObject("created_date", OffsetDateTime.class)).toInstant(),
+        row.getString("name"));
   }
 
   private record Admin(Long id, String email) {}
