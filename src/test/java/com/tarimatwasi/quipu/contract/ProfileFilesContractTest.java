@@ -149,13 +149,18 @@ class ProfileFilesContractTest {
     assertThat(base.get("app.rate-limit.upload-burst")).isEqualTo(3);
   }
 
-  /** TAR-206: a fixed pool and a short wait for a connection, set once for every profile. */
+  /**
+   * TAR-206: a bounded pool and a short wait for a connection; TAR-277: no fixed idle connections,
+   * so the database compute can scale to zero. Set once for every profile.
+   */
   @Test
   void base_boundsTheConnectionPool() throws IOException {
     var base = load("application.yml");
 
     assertThat(base.get("spring.datasource.hikari.maximum-pool-size")).isEqualTo(10);
     assertThat(base.get("spring.datasource.hikari.connection-timeout")).isEqualTo(5000);
+    assertThat(base.get("spring.datasource.hikari.minimum-idle")).isEqualTo(0);
+    assertThat(base.get("spring.datasource.hikari.idle-timeout")).isEqualTo(60000);
   }
 
   @ParameterizedTest
