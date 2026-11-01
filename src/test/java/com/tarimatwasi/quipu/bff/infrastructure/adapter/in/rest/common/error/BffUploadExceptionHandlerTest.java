@@ -23,6 +23,8 @@ class BffUploadExceptionHandlerTest {
     UploadRoutes.GUEST_PAYMENTS + ", VOUCHER_INVALID_FILE",
     UploadRoutes.TEMPORARY_GUEST_PAYMENTS + ", VOUCHER_INVALID_FILE",
     UploadRoutes.GUEST_ONBOARDING_DOCUMENTS + ", DOCUMENT_INVALID_FILE",
+    UploadRoutes.GUEST_DOCUMENTS + ", DOCUMENT_INVALID_FILE",
+    UploadRoutes.TEMPORARY_GUEST_DOCUMENTS + ", DOCUMENT_INVALID_FILE",
     "/bff/temporary%2Dguest/payments, VOUCHER_INVALID_FILE",
     "/bff/admin/contr%61cts, CONTRACT_INVALID_FILE",
     "/bff/guest/onboarding/documents/, VALIDATION_ERROR",
@@ -71,7 +73,9 @@ class BffUploadExceptionHandlerTest {
     UploadRoutes.ADMIN_PAYMENTS + ", 503, FILE_STORAGE_UNAVAILABLE",
     UploadRoutes.GUEST_PAYMENTS + ", 503, FILE_STORAGE_UNAVAILABLE",
     UploadRoutes.TEMPORARY_GUEST_PAYMENTS + ", 503, FILE_STORAGE_UNAVAILABLE",
-    UploadRoutes.GUEST_ONBOARDING_DOCUMENTS + ", 429, RATE_LIMITED"
+    UploadRoutes.GUEST_ONBOARDING_DOCUMENTS + ", 429, RATE_LIMITED",
+    UploadRoutes.GUEST_DOCUMENTS + ", 429, RATE_LIMITED",
+    UploadRoutes.TEMPORARY_GUEST_DOCUMENTS + ", 429, RATE_LIMITED"
   })
   void aBusyInspectionIsNoVerdictOnTheFile(String uri, int status, String code) {
     // TAR-39: 503 where the route declares it; the documents declare 429 and no 503

@@ -101,7 +101,8 @@ class UploadRateLimitFilterTest {
 
   @Test
   void limitsEveryUploadRouteWithOneAllowancePerUser() throws Exception {
-    var filter = limitedTo(6);
+    int routes = UploadRoutes.ALL.size() + 1; // every POST route and the PUT of a replacement
+    var filter = limitedTo(routes);
     signIn("7");
     for (String route : UploadRoutes.ALL) {
       assertThat(send(filter, "POST", route).getStatus()).isEqualTo(200);
@@ -112,7 +113,7 @@ class UploadRateLimitFilterTest {
       assertThat(send(filter, "POST", route).getStatus()).isEqualTo(429);
     }
     assertThat(send(filter, "PUT", REPLACEMENT).getStatus()).isEqualTo(429);
-    assertThat(chained).hasValue(6);
+    assertThat(chained).hasValue(routes);
   }
 
   @Test

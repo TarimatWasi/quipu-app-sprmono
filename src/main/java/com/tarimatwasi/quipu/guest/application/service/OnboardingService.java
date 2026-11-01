@@ -1,6 +1,5 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
-import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentUnavailableException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
@@ -9,29 +8,21 @@ import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictExcepti
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException.Reason;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestConsentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
-import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.shared.file.FileKind;
-import com.tarimatwasi.quipu.shared.file.FileNames;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Every step locks the row of the guest first, so two requests of one guest are applied one by one
@@ -41,26 +32,21 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @PreAuthorize("hasRole('GUEST')") // BE-SPR-SEC-02: guest use case, besides the URL rule
 public class OnboardingService implements OnboardingUseCase {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(OnboardingService.class);
-
-  /** The name of a document whose browser name is unusable. */
-  private static final String DEFAULT_NAME = "documento";
-
   private final GuestRepositoryPort guests;
   private final OnboardingRepositoryPort records;
-  private final GuestDocumentFilePort files;
+  private final GuestDocumentUploader uploader;
   private final ConsentTexts consents;
   private final Clock clock;
 
   OnboardingService(
       GuestRepositoryPort guests,
       OnboardingRepositoryPort records,
-      GuestDocumentFilePort files,
+      GuestDocumentUploader uploader,
       ConsentTexts consents,
       Clock clock) {
     this.guests = guests;
     this.records = records;
-    this.files = files;
+    this.uploader = uploader;
     this.consents = consents;
     this.clock = clock;
   }
@@ -100,32 +86,12 @@ public class OnboardingService implements OnboardingUseCase {
   @Override
   @Transactional
   public DocumentView uploadDocument(Long guestId, DocumentUpload upload) {
-    byte[] content = upload.content();
-    FileKind kind =
-        (content.length > GuestDocument.MAX_BYTES ? null : FileKind.of(content).orElse(null));
-    if (content.length == 0 || kind == null) {
-      throw new InvalidOnboardingInputException(
-          InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
-    }
+    FileKind kind = GuestDocumentUploader.kindOf(upload);
     Guest guest = onboarding(guestId);
     if (guest.personalDataCompletedAt() == null || guest.documentsStepCompletedAt() != null) {
       throw new OnboardingConflictException(Reason.STEP_OUT_OF_ORDER);
     }
-    if (records.countDocuments(guestId) >= GuestDocument.MAX_PER_GUEST) {
-      throw new OnboardingConflictException(Reason.DOCUMENT_LIMIT_REACHED);
-    }
-    String name = FileNames.sanitized(upload.originalName(), DEFAULT_NAME);
-    String key = store(content, kind);
-    boolean removedIfNotCommitted = removeUnlessCommitted(guestId, key);
-    GuestDocument saved = null;
-    try {
-      saved = records.addDocument(guestId, key, name, kind.contentType(), content.length);
-    } finally {
-      if (saved == null && !removedIfNotCommitted) {
-        discard(guestId, key);
-      }
-    }
-    return document(saved);
+    return uploader.store(guestId, upload, kind);
   }
 
   @Override
@@ -202,7 +168,7 @@ public class OnboardingService implements OnboardingUseCase {
 
   private OnboardingView view(Guest guest) {
     List<DocumentView> documents =
-        records.documentsOf(guest.id()).stream().map(OnboardingService::document).toList();
+        records.documentsOf(guest.id()).stream().map(GuestDocumentUploader::view).toList();
     if (guest.status() == GuestStatus.ACTIVE) {
       // A guest made active before the consents were recorded shows the text in force.
       ConsentView consent =
@@ -238,61 +204,5 @@ public class OnboardingService implements OnboardingUseCase {
       return null;
     }
     return new EmergencyContact(contact.name(), contact.relationship(), contact.phone());
-  }
-
-  private static DocumentView document(GuestDocument document) {
-    return new DocumentView(
-        document.id(),
-        document.originalName(),
-        document.contentType(),
-        document.sizeBytes(),
-        document.uploadedAt());
-  }
-
-  private String store(byte[] content, FileKind kind) {
-    try {
-      return files.store(content, kind);
-    } catch (GuestDocumentStorageException e) {
-      throw new GuestDocumentUnavailableException(e);
-    }
-  }
-
-  /**
-   * Inside a transaction the object is removed whenever the transaction does not commit: the insert
-   * failed, or something after it did. Returns true if it will be; otherwise the caller removes it.
-   */
-  private boolean removeUnlessCommitted(Long guestId, String key) {
-    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-      return false;
-    }
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCompletion(int status) {
-            if (status != STATUS_COMMITTED) {
-              discard(guestId, key);
-            }
-          }
-        });
-    return true;
-  }
-
-  /**
-   * A failed cleanup is logged with the internal id of the guest only: never the storage key, the
-   * name nor the content (TAR-205).
-   */
-  private void discard(Long guestId, String key) {
-    try {
-      files.delete(key);
-    } catch (GuestDocumentStorageException cleanupFailed) {
-      // TAR-205: the class names only; the message and trace of the SDK name the R2 host
-      // (account and bucket) and may name the key.
-      Throwable cause = cleanupFailed.getCause();
-      LOGGER.error(
-          "A document of guest {} stays in the bucket without a row ({}, cause {})",
-          guestId,
-          cleanupFailed.getClass().getName(),
-          cause == null ? "-" : cause.getClass().getName());
-    }
   }
 }

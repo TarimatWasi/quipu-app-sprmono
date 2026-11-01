@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error;
 import com.tarimatwasi.quipu.shared.file.FileInspectionBusyException;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.stream.Stream;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
@@ -38,11 +39,16 @@ public class BffUploadExceptionHandler {
   private static final RequestMatcher VOUCHERS =
       new OrRequestMatcher(UploadRoutes.VOUCHERS.stream().map(PATHS::matcher).toList());
 
-  /** A document of the onboarding, or the one an administrator puts in place of another. */
+  /**
+   * A document a guest uploads (onboarding or «Mis datos», TAR-242), or the one an administrator
+   * puts in place of another.
+   */
   private static final RequestMatcher DOCUMENTS =
       new OrRequestMatcher(
-          PATHS.matcher(UploadRoutes.GUEST_ONBOARDING_DOCUMENTS),
-          PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT));
+          Stream.concat(
+                  UploadRoutes.GUEST_DOCUMENT_UPLOADS.stream().map(PATHS::matcher),
+                  Stream.of(PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT)))
+              .toList());
 
   /** A few seconds: an inspection takes well under one. */
   private static final int RETRY_SECONDS = 5;

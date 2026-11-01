@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -219,6 +220,74 @@ class GuestProfileContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     assertThat(row(contractGuest)).containsEntry("phone", "999111222");
     assertThat(row(temporaryGuest)).containsEntry("phone", "955444333");
+  }
+
+  // ───────────── TAR-242: «Mis datos» reads the profile (the uploads:
+  // GuestOwnDocumentsContractTest) ─────────────
+
+  private Long insertDocument(Long guest, String name) {
+    Long document = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guest_documents (id, guest_id, storage_key, original_name, content_type,"
+            + " size_bytes) VALUES (?, ?, ?, ?, 'application/pdf', 10)",
+        document,
+        guest,
+        "guest-documents/" + document,
+        name);
+    return document;
+  }
+
+  @Test
+  void aGuestWithAContractReadsItsProfileWithTheAccountEmailAndItsDocuments() throws Exception {
+    jdbc.update("UPDATE users SET email = 'cuenta@example.com' WHERE id = ?", guestAccountId);
+    insertDocument(contractGuest, "dni.pdf");
+    insertDocument(temporaryGuest, "ajeno.pdf");
+
+    mockMvc
+        .perform(get(CONTRACT_PROFILE).cookie(guest()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.documentType").value("DNI"))
+        .andExpect(jsonPath("$.documentNumber").value("12345678"))
+        .andExpect(jsonPath("$.name").value("Ana Quispe"))
+        .andExpect(jsonPath("$.phone").value("999111222"))
+        .andExpect(jsonPath("$.contactEmail").value("ana@example.com"))
+        .andExpect(jsonPath("$.emergencyContact.relationship").value("Madre"))
+        .andExpect(jsonPath("$.accountEmail").value("cuenta@example.com"))
+        .andExpect(jsonPath("$.documentsLimit").value(5))
+        .andExpect(jsonPath("$.documents.length()").value(1))
+        .andExpect(jsonPath("$.documents[0].originalName").value("dni.pdf"))
+        .andExpect(jsonPath("$.documents[0].url").doesNotExist());
+  }
+
+  @Test
+  void aTemporaryGuestReadsItsProfileWithTheMissingFieldsAsNull() throws Exception {
+    jdbc.update("UPDATE users SET email = NULL WHERE id = ?", temporaryAccountId);
+
+    mockMvc
+        .perform(get(TEMPORARY_PROFILE).cookie(temporary()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.name").value("Luis Mamani"))
+        .andExpect(jsonPath("$.accountEmail").isEmpty())
+        .andExpect(jsonPath("$.contactEmail").isEmpty())
+        .andExpect(jsonPath("$.emergencyContact").isEmpty())
+        .andExpect(jsonPath("$.documents").isEmpty());
+  }
+
+  @Test
+  void eachTypeOfGuestIsRefusedTheProfileReadOfTheOtherOne() throws Exception {
+    mockMvc
+        .perform(get(TEMPORARY_PROFILE).cookie(guest()))
+        .andExpect(status().isForbidden())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    mockMvc
+        .perform(get(CONTRACT_PROFILE).cookie(temporary()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
   }
 
   /**

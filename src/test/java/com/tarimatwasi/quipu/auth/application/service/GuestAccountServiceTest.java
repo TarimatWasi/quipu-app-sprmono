@@ -44,6 +44,17 @@ class GuestAccountServiceTest {
   }
 
   @Test
+  void accountEmail_ofTheGuest_isTheEmailOfItsOwnAccountOnly() {
+    var guest = TestIds.next();
+    var other = TestIds.next();
+    account(guest, "11111111", false, "ACTIVE");
+    account(other, "22222222", false, "ACTIVE");
+
+    assertThat(service.accountEmail(guest)).contains("11111111@example.test");
+    assertThat(service.accountEmail(TestIds.next())).isEmpty();
+  }
+
+  @Test
   void aGuestWhoChoseItsPasswordCanLogInAndHasChosenIt() {
     var guest = TestIds.next();
     account(guest, "11111111", false, "ACTIVE");

@@ -6,6 +6,8 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentView;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileRefusedException;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileRefusedException.Reason;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
@@ -13,9 +15,13 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
+import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
+import com.tarimatwasi.quipu.shared.file.FileKind;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -36,10 +42,46 @@ public class OwnProfileService implements OwnProfileUseCase {
 
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
+  private final OnboardingRepositoryPort records;
+  private final GuestDocumentUploader uploader;
 
-  OwnProfileService(GuestRepositoryPort guests, GuestAccountPort accounts) {
+  OwnProfileService(
+      GuestRepositoryPort guests,
+      GuestAccountPort accounts,
+      OnboardingRepositoryPort records,
+      GuestDocumentUploader uploader) {
     this.guests = guests;
     this.accounts = accounts;
+    this.records = records;
+    this.uploader = uploader;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public OwnProfileView own(Long guestId, GuestKind area) {
+    Guest guest = allowed(guests.findById(guestId).orElseThrow(GuestNotFoundException::new), area);
+    EmergencyContact contact = guest.emergencyContact();
+    return new OwnProfileView(
+        guest.documentType().name(),
+        guest.documentNumber(),
+        Objects.requireNonNullElse(guest.fullName(), ""),
+        guest.phone(),
+        guest.email(),
+        contact == null
+            ? null
+            : new EmergencyContactView(contact.name(), contact.relationship(), contact.phone()),
+        accounts.accountEmail(guestId).orElse(null),
+        records.documentsOf(guestId).stream().map(GuestDocumentUploader::view).toList(),
+        GuestDocument.MAX_PER_GUEST);
+  }
+
+  @Override
+  @Transactional
+  public DocumentView uploadDocument(Long guestId, GuestKind area, DocumentUpload upload) {
+    // RF-15: the file is checked before the row of the guest is locked.
+    FileKind kind = GuestDocumentUploader.kindOf(upload);
+    allowed(guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new), area);
+    return uploader.store(guestId, upload, kind);
   }
 
   @Override
@@ -48,15 +90,8 @@ public class OwnProfileService implements OwnProfileUseCase {
     if (change.empty()) {
       throw new EmptyGuestUpdateException();
     }
-    Guest guest = guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new);
-    // RN-09, RN-33: the guard of the guest areas refuses both first; checked again under the lock.
-    if (!guest.type().name().equals(area.name())) {
-      throw new OwnProfileRefusedException(Reason.OTHER_GUEST_TYPE);
-    }
-    if (guest.status() == GuestStatus.PENDING_ACTIVATION
-        || guest.status() == GuestStatus.ONBOARDING) {
-      throw new OwnProfileRefusedException(Reason.ONBOARDING_REQUIRED);
-    }
+    Guest guest =
+        allowed(guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new), area);
     Guest saved;
     try {
       saved = guests.save(changed(guest, change));
@@ -66,6 +101,21 @@ public class OwnProfileService implements OwnProfileUseCase {
     AccountState account =
         accounts.stateOf(Set.of(saved.id())).getOrDefault(saved.id(), NO_ACCOUNT);
     return GuestService.summary(saved, account);
+  }
+
+  /**
+   * RN-09, RN-33: the guard of the guest areas refuses the other type of guest and a guest still
+   * onboarding first; checked again here, under the lock when there is one.
+   */
+  private static Guest allowed(Guest guest, GuestKind area) {
+    if (!guest.type().name().equals(area.name())) {
+      throw new OwnProfileRefusedException(Reason.OTHER_GUEST_TYPE);
+    }
+    if (guest.status() == GuestStatus.PENDING_ACTIVATION
+        || guest.status() == GuestStatus.ONBOARDING) {
+      throw new OwnProfileRefusedException(Reason.ONBOARDING_REQUIRED);
+    }
+    return guest;
   }
 
   /** RN-17: only the personal and contact data; the document, the type and the state stay. */

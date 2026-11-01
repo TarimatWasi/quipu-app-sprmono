@@ -192,22 +192,28 @@ public class GuestOnboardingBffController {
       @Valid DocumentForm form,
       MultipartHttpServletRequest request,
       Authentication authentication) {
+    // The form is checked before the guest is looked up, as it always was.
+    DocumentUpload upload = documentUpload(form, request);
+    return DocumentRefResponse.of(onboarding.uploadDocument(guestOf(authentication), upload), ids);
+  }
+
+  /**
+   * The document of a form that carries only {@code file} (RN-37): any other part is refused, and
+   * the declared size is checked before the bytes are read into memory (RF-15). Shared by the
+   * upload of the onboarding and the one of «Mis datos» (TAR-242).
+   */
+  static DocumentUpload documentUpload(DocumentForm form, MultipartHttpServletRequest request) {
     UnknownFieldException.rejectAnyOutside(
         DOCUMENT_FORM,
         Stream.concat(
                 request.getParameterMap().keySet().stream(), request.getFileMap().keySet().stream())
             .toList());
-    // RF-15: the declared size is checked before the bytes are read into memory.
     if (form.file().getSize() > OnboardingUseCase.MAX_DOCUMENT_BYTES) {
       throw new InvalidOnboardingInputException(
           InvalidOnboardingInputException.Reason.DOCUMENT_INVALID_FILE);
     }
     String name = form.file().getOriginalFilename();
-    return DocumentRefResponse.of(
-        onboarding.uploadDocument(
-            guestOf(authentication),
-            new DocumentUpload(name == null ? "" : name, content(form.file()))),
-        ids);
+    return new DocumentUpload(name == null ? "" : name, content(form.file()));
   }
 
   @PostMapping("/bff/guest/onboarding/documents/done")

@@ -115,11 +115,15 @@ class UploadRoutesContractTest {
     Long contractGuest = insertGuest("12345678", "CONTRACT");
     Long temporaryGuest = insertGuest("87654321", "TEMPORARY");
     Long onboardingGuest = insertGuest("11223344", "TEMPORARY");
+    Cookie contractOwner = guestAccount(contractGuest, "12345678");
+    Cookie temporaryOwner = guestAccount(temporaryGuest, "87654321");
     Map<String, Cookie> owners =
         Map.of(
-            UploadRoutes.GUEST_PAYMENTS, guestAccount(contractGuest, "12345678"),
-            UploadRoutes.TEMPORARY_GUEST_PAYMENTS, guestAccount(temporaryGuest, "87654321"),
-            UploadRoutes.GUEST_ONBOARDING_DOCUMENTS, guestAccount(onboardingGuest, "11223344"));
+            UploadRoutes.GUEST_PAYMENTS, contractOwner,
+            UploadRoutes.TEMPORARY_GUEST_PAYMENTS, temporaryOwner,
+            UploadRoutes.GUEST_ONBOARDING_DOCUMENTS, guestAccount(onboardingGuest, "11223344"),
+            UploadRoutes.GUEST_DOCUMENTS, contractOwner,
+            UploadRoutes.TEMPORARY_GUEST_DOCUMENTS, temporaryOwner);
     for (var owner : owners.entrySet()) {
       String route = owner.getKey();
       mockMvc
@@ -135,7 +139,7 @@ class UploadRoutesContractTest {
           .andExpect(
               jsonPath("$.code")
                   .value(
-                      route.equals(UploadRoutes.GUEST_ONBOARDING_DOCUMENTS)
+                      UploadRoutes.GUEST_DOCUMENT_UPLOADS.contains(route)
                           ? "DOCUMENT_INVALID_FILE"
                           : "VALIDATION_ERROR"));
     }
