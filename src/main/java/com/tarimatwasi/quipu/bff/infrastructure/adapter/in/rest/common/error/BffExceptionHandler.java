@@ -340,7 +340,9 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "GUEST_EMAIL_TAKEN", "Ese correo ya pertenece a otro huésped", "contactEmail"));
+                "GUEST_EMAIL_TAKEN",
+                "Ese correo ya está registrado para otro huésped",
+                "contactEmail"));
   }
 
   /** A number the schema let through that does not fit its type (a DNI has 8 digits). */
@@ -646,7 +648,7 @@ public class BffExceptionHandler {
                   "Tu registro ya está completo; edita tus datos desde tu perfil");
           case DOCUMENT_LIMIT_REACHED ->
               new BffErrorResponse(
-                  "DOCUMENT_LIMIT_REACHED", "Ya subiste los 5 documentos que se permiten");
+                  "DOCUMENT_LIMIT_REACHED", "Ya subiste el máximo de 5 documentos");
         };
     return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
   }
@@ -661,7 +663,7 @@ public class BffExceptionHandler {
           case CONSENT_NOT_ACCEPTED ->
               new BffErrorResponse(
                   "CONSENT_NOT_ACCEPTED",
-                  "Debes aceptar el consentimiento para completar tu registro",
+                  "Debes marcar el consentimiento de datos personales",
                   "accepted");
           case CONSENT_VERSION ->
               new BffErrorResponse(
@@ -675,9 +677,7 @@ public class BffExceptionHandler {
   /** The same answer for a document refused by its content and by the multipart limit. */
   static BffErrorResponse invalidDocumentFile() {
     return new BffErrorResponse(
-        "DOCUMENT_INVALID_FILE",
-        "El documento debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
-        "file");
+        "DOCUMENT_INVALID_FILE", "Archivo inválido — sube JPG, PNG o PDF de máx. 5MB", "file");
   }
 
   /** The bucket is not configured or did not answer; nothing was stored. */
