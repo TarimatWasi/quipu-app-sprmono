@@ -249,14 +249,14 @@ class GuestOwnDocumentsContractTest {
   @Test
   void aGuestAskingForTheDocumentOfAnotherGuestGetsTheSame404AsAMissingOne() throws Exception {
     Long foreign = insertDocument(temporaryGuest, "ajeno.pdf");
-    Long gone = insertDocument(contractGuest, "dni.pdf");
-    jdbc.update("DELETE FROM guest_documents WHERE id = ?", gone);
+    // A well-masked id of a document that never existed: one answer with the foreign one.
+    Long missing = TestIds.next();
 
     openDocument(CONTRACT_DOCUMENTS, foreign, guest())
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
-    openDocument(CONTRACT_DOCUMENTS, gone, guest())
+    openDocument(CONTRACT_DOCUMENTS, missing, guest())
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     mockMvc

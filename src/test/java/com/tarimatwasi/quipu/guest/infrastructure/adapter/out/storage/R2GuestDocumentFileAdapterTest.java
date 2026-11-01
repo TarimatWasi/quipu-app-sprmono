@@ -80,13 +80,13 @@ class R2GuestDocumentFileAdapterTest {
   }
 
   @Test
-  void aSignedUrlDownloadsTheDocumentUnderAFixedNameForFiveMinutes() {
+  void aSignedUrlDownloadsTheDocumentUnderAFixedNameForFifteenMinutes() {
     var adapter = adapter();
 
     String url = adapter.signedUrl("guest-documents/abc", FileKind.JPEG);
 
     assertThat(url).contains("/bucket/guest-documents/abc").contains("X-Amz-Signature=");
-    assertThat(url).contains("X-Amz-Expires=300");
+    assertThat(url).contains("X-Amz-Expires=900");
     assertThat(url)
         .contains("response-content-disposition=attachment")
         .contains("documento.jpg")
