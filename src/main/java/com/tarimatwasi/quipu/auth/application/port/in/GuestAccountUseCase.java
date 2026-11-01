@@ -30,6 +30,13 @@ public interface GuestAccountUseCase {
   Optional<Long> guestOf(Long accountId);
 
   /**
+   * TAR-242 (RF-16): the account email of the guest, where the password recovery link goes; empty
+   * if the guest has no account or its account has no email. Read by the guest itself in «Mis
+   * datos», so it is not limited to the administrator.
+   */
+  Optional<String> accountEmail(Long guestId);
+
+  /**
    * Whether an administrator account, active or not, owns that document: one person, one account
    * (D-34e), so a guest cannot be registered under it. An unknown document type is nobody's.
    */

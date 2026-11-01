@@ -103,7 +103,7 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
 
   @Override
   public Optional<String> accountEmail(Long guestId) {
-    return access.accountEmail(guestId);
+    return accounts.accountEmail(guestId);
   }
 
   @Override

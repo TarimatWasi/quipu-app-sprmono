@@ -62,16 +62,6 @@ class GuestAccessServiceTest {
   }
 
   @Test
-  void accountEmail_ofTheGuest_isTheEmailOfItsOwnAccountOnly() {
-    account(1L, Role.GUEST, GUEST, "ana@example.com");
-    account(2L, Role.GUEST, OTHER_GUEST, null);
-
-    assertThat(service.accountEmail(GUEST)).contains("ana@example.com");
-    assertThat(service.accountEmail(OTHER_GUEST)).isEmpty();
-    assertThat(service.accountEmail(99L)).isEmpty();
-  }
-
-  @Test
   void aNewAccountKeepsAFreeEmailAsItsAccountEmail() {
     service.openNewAccount(GUEST, "DNI", "12345678", "ana@example.com");
 

@@ -76,12 +76,6 @@ public interface GuestAccessUseCase {
   /** When the live, unused access of the guest expires; empty if it has none. */
   Optional<Instant> accessExpiry(Long guestId);
 
-  /**
-   * TAR-242 (RF-16): the account email of the guest, where the password recovery link goes; empty
-   * if the guest has no account or its account has no email.
-   */
-  Optional<String> accountEmail(Long guestId);
-
   /** What {@link #changeAccountEmail} did. */
   enum EmailChangeOutcome {
     /** The guest has no account: nothing was written. */

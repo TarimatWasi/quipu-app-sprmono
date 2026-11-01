@@ -110,12 +110,6 @@ public class GuestAccessService implements GuestAccessUseCase {
     }
   }
 
-  @Override
-  @Transactional(readOnly = true)
-  public Optional<String> accountEmail(Long guestId) {
-    return users.findAllByGuestIds(List.of(guestId)).stream().findFirst().map(UserAccount::email);
-  }
-
   /**
    * The same address in other case is the same mailbox (the emails are unique ignoring case): it is
    * left as it is, and its recovery code keeps working.
