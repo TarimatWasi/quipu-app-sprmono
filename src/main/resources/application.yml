@@ -16,10 +16,15 @@ spring:
   datasource:
     hikari:
       connection-init-sql: SET lock_timeout = '15s'
-      # TAR-206: un pool fijo y una espera corta por conexión: con el pool agotado, la petición
+      # TAR-206: un pool acotado y una espera corta por conexión: con el pool agotado, la petición
       # falla a los 5 s en vez de quedarse colgada. Ningún perfil los cambia.
       maximum-pool-size: 10
       connection-timeout: 5000 # ms: HikariConfig la enlaza como número, no como Duration
+      # TAR-277: sin conexiones ociosas fijas. Una conexión sin uso se cierra al minuto (antes del
+      # keepalive de Hikari, 2 min), así Neon apaga el cómputo sin tráfico (scale-to-zero) y el plan
+      # gratuito no se agota con el cómputo encendido todo el mes.
+      minimum-idle: 0
+      idle-timeout: 60000 # ms
       # TAR-207: el driver deja fuera de sus mensajes el detalle del servidor (la clave repetida o
       # la fila que falla, datos personales), así que ningún log de un error lo lleva; el nombre de
       # la restricción sigue en ServerErrorMessage. Va al driver con cualquier URL (también la de

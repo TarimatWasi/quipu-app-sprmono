@@ -59,11 +59,17 @@ class ConfigurationContractTest {
     assertThat(env.getProperty("springdoc.swagger-ui.path")).isEqualTo("/swagger-ui.html");
   }
 
-  /** TAR-206: the pool is bounded and a request waits 5 s at most for a connection. */
+  /**
+   * TAR-206: the pool is bounded and a request waits 5 s at most for a connection. TAR-277: it
+   * keeps no idle connections, and closes an unused one after a minute, so the database can scale
+   * to zero.
+   */
   @Test
   void the_connection_pool_is_bounded() {
     var pool = (HikariDataSource) dataSource;
     assertThat(pool.getMaximumPoolSize()).isEqualTo(10);
     assertThat(pool.getConnectionTimeout()).isEqualTo(5_000);
+    assertThat(pool.getMinimumIdle()).isZero();
+    assertThat(pool.getIdleTimeout()).isEqualTo(60_000);
   }
 }
