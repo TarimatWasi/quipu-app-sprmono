@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.application.service;
 import com.tarimatwasi.quipu.auth.application.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.application.port.in.ChangePasswordUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.CurrentPasswordMismatchException;
 import com.tarimatwasi.quipu.auth.application.port.in.CurrentSessionUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase;
@@ -164,10 +165,10 @@ public class AuthApplicationService
     if (user.isDisabled()) {
       throw new AccountDisabledException();
     }
-    requireCurrentPassword(user, command);
+    boolean firstAccess = requireCurrentPassword(user, command);
     PasswordPolicy.require(command.newPassword());
     if (passwordEncoder.matches(command.newPassword(), user.passwordHash())) {
-      throw new PasswordUnchangedException();
+      throw new PasswordUnchangedException(firstAccess);
     }
     PasswordPolicy.requireNotALiveAccess(grants, guestId, command.newPassword(), clock.instant());
     // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
@@ -260,9 +261,12 @@ public class AuthApplicationService
    * with a temporary password that is still live (not used nor revoked, RF-12): earlier sessions,
    * and a temporary session whose access was revoked, must give it. An account of no guest (the
    * initial administrator) may leave it out while it must replace its first password, which it got
-   * before having any session.
+   * before having any session. Returns whether this is that forced change (the first access,
+   * RF-12).
+   *
+   * @throws CurrentPasswordMismatchException if it is wrong or missing outside the forced change
    */
-  private void requireCurrentPassword(UserAccount user, ChangePasswordCommand command) {
+  private boolean requireCurrentPassword(UserAccount user, ChangePasswordCommand command) {
     String currentPassword = command.currentPassword();
     boolean matches =
         currentPassword != null && passwordEncoder.matches(currentPassword, user.passwordHash());
@@ -274,7 +278,9 @@ public class AuthApplicationService
             : grantId != null && grants.isLiveTemporaryPassword(grantId, guestId, clock.instant());
     boolean skippable = currentPassword == null && exempt;
     if (!matches && !skippable) {
-      throw new InvalidCredentialsException();
+      // TAR-127 (A0.6): a 403 on the field, not the 401 of the login.
+      throw new CurrentPasswordMismatchException();
     }
+    return exempt;
   }
 }

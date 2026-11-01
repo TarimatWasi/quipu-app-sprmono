@@ -94,6 +94,9 @@ app:
     # TAR-229: cambios del correo de cuenta de un huésped por usuario de la sesión y minuto, de 1 a
     # 60 (cada cambio puede escribir al correo anterior).
     guest-account-email-changes-per-minute: 5
+    # TAR-127 (A0.6): cambios de la contraseña propia por usuario de la sesión y minuto, de 1 a 60
+    # (cada intento compara la contraseña actual).
+    password-changes-per-minute: 5
     # TAR-221: todas las peticiones a /bff/admin/** por usuario de sesión y minuto (de 1 a 600);
     # las subidas y las altas, bajas y reactivaciones de administrador cuentan aquí y además en su
     # límite propio.

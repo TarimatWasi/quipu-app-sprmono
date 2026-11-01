@@ -480,7 +480,7 @@ class GuestAccessContractTest {
         login("12345678", temporary).andReturn().getResponse().getCookie("sessionToken");
 
     changePassword(earlier, null, "Otra-clave-2026")
-        .andExpect(status().isUnauthorized())
+        .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
     changePassword(temporarySession, null, "Otra-clave-2026").andExpect(status().isNoContent());
     login("12345678", "Otra-clave-2026").andExpect(status().isOk());
@@ -499,7 +499,7 @@ class GuestAccessContractTest {
     generate(guestId, "TEMPORARY_PASSWORD", admin()).andExpect(status().isOk());
 
     changePassword(session, null, NEW_PASSWORD)
-        .andExpect(status().isUnauthorized())
+        .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
     assertThat(statusOf(guestId)).isEqualTo("PENDING_ACTIVATION");
   }

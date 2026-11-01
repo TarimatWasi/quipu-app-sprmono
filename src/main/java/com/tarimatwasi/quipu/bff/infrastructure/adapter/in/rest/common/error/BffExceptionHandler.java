@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error;
 
 import com.tarimatwasi.quipu.auth.application.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
+import com.tarimatwasi.quipu.auth.application.port.in.CurrentPasswordMismatchException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException;
@@ -172,14 +173,31 @@ public class BffExceptionHandler {
         .body(new BffErrorResponse("AUTH_WEAK_PASSWORD", message, "newPassword"));
   }
 
+  /** TAR-127 (A0.6): out of the first access there is no temporary password to name. */
   @ExceptionHandler(PasswordUnchangedException.class)
-  public ResponseEntity<BffErrorResponse> handlePasswordUnchanged() {
+  public ResponseEntity<BffErrorResponse> handlePasswordUnchanged(PasswordUnchangedException e) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
             new BffErrorResponse(
                 "AUTH_PASSWORD_UNCHANGED",
-                "Elige una contraseña distinta de la temporal",
+                e.firstAccess()
+                    ? "Elige una contraseña distinta de la temporal"
+                    : "Elige una contraseña distinta de la actual",
                 "newPassword"));
+  }
+
+  /**
+   * TAR-127 (A0.6): 403, not the 401 of the login. The session is valid; the confirmation of the
+   * current password is what failed, as in the re-authentication of the administrators.
+   */
+  @ExceptionHandler(CurrentPasswordMismatchException.class)
+  public ResponseEntity<BffErrorResponse> handleCurrentPasswordMismatch() {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(
+            new BffErrorResponse(
+                "AUTH_INVALID_CREDENTIALS",
+                "Tu contraseña actual no es correcta",
+                "currentPassword"));
   }
 
   /** QP-SPRMONO-BFF-01: stable English code, Spanish message, and the first invalid field. */

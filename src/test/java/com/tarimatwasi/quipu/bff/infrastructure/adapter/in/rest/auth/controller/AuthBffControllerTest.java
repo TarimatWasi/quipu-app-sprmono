@@ -262,8 +262,9 @@ class AuthBffControllerTest {
     Cookie session = loginCookie("Temporal123!");
     String body = "{\"currentPassword\":\"%s\",\"newPassword\":\"%s\"}";
     changePassword(session, body.formatted("a".repeat(128), "b".repeat(9)))
-        .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"))
+        .andExpect(jsonPath("$.field").value("currentPassword"));
     changePassword(session, body.formatted("Temporal123!", "b".repeat(128)))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"));
@@ -660,9 +661,10 @@ class AuthBffControllerTest {
                 .getResponse()
                 .getCookie("sessionToken"));
 
-    changePassword(fresh, "{\"newPassword\":\"Otra123456\"}").andExpect(status().isUnauthorized());
+    changePassword(fresh, "{\"newPassword\":\"Otra123456\"}").andExpect(status().isForbidden());
     changePassword(fresh, "{\"currentPassword\":\"equivocada\",\"newPassword\":\"Otra123456\"}")
-        .andExpect(status().isUnauthorized());
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.field").value("currentPassword"));
     changePassword(fresh, "{\"currentPassword\":\"Nueva12345\",\"newPassword\":\"Otra123456\"}")
         .andExpect(status().isNoContent());
   }

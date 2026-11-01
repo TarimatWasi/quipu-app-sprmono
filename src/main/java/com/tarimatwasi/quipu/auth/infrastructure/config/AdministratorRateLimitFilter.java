@@ -48,7 +48,11 @@ final class AdministratorRateLimitFilter extends OncePerRequestFilter {
                 new RateLimitBuckets(statusChanges)),
             new LimitedRoute(
                 paths.matcher(HttpMethod.PUT, "/bff/admin/guests/{id}/account-email"),
-                new RateLimitBuckets(properties.guestAccountEmailChangesPerMinute())));
+                new RateLimitBuckets(properties.guestAccountEmailChangesPerMinute())),
+            // TAR-127 (A0.6): any session, administrator or guest, changing its own password.
+            new LimitedRoute(
+                paths.matcher(HttpMethod.POST, "/bff/auth/change-password"),
+                new RateLimitBuckets(properties.passwordChangesPerMinute())));
   }
 
   @Override
