@@ -489,14 +489,20 @@ public class BffExceptionHandler {
                 "El ambiente está inactivo; reactívalo antes de registrar un contrato"));
   }
 
-  /** RN-12, RN-20: a contract in force holds the environment. */
+  /**
+   * RN-12, RN-20, TAR-237: a contract or a stay holds the environment. The texts are those of the
+   * catalog of SRS 17: one for a contract or a deactivation, one for a stay (A3.5).
+   */
   @ExceptionHandler(EnvironmentOccupiedException.class)
-  public ResponseEntity<BffErrorResponse> handleEnvironmentOccupied() {
+  public ResponseEntity<BffErrorResponse> handleEnvironmentOccupied(
+      EnvironmentOccupiedException e) {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
                 "ENVIRONMENT_OCCUPIED",
-                "El ambiente tiene un contrato vigente; primero finaliza el contrato"));
+                e.isForStay()
+                    ? "El ambiente ya está ocupado en esas fechas"
+                    : "Este ambiente está ocupado: finaliza primero su contrato"));
   }
 
   /** An id of a payment that was never issued answers as a payment that does not exist. */

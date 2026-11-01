@@ -12,14 +12,33 @@ import org.jspecify.annotations.Nullable;
 /** RN-13, RN-17, CU-31: the stays of a temporary guest. A stay is never deleted. */
 public interface ManageStaysUseCase {
 
-  /** A stay as the listings show it. */
-  record StayView(Long id, LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount) {}
+  /**
+   * A stay as the listings show it.
+   *
+   * @param environmentId the environment it occupies (TAR-237); null for a stay registered before
+   * @param version the optimistic-locking version the edit sends back (BE-SPR-DAT-13, TAR-276)
+   */
+  record StayView(
+      Long id,
+      LocalDate startDate,
+      LocalDate endDate,
+      BigDecimal agreedAmount,
+      @Nullable Long environmentId,
+      long version) {}
 
-  /** The data of a new stay. */
-  record NewStay(LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount) {}
+  /** The data of a new stay, with the environment it occupies (RN-20, TAR-237). */
+  record NewStay(
+      Long environmentId, LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount) {}
 
-  /** What changes in a stay; only the present fields change. */
+  /**
+   * What changes in a stay; only the present fields change (the environment too, TAR-237).
+   *
+   * @param version the version the client loaded; a different one is a concurrent change and
+   *     nothing is saved (BE-SPR-DAT-13, TAR-276)
+   */
   record StayChange(
+      long version,
+      @Nullable Long environmentId,
       @Nullable LocalDate startDate,
       @Nullable LocalDate endDate,
       @Nullable BigDecimal agreedAmount) {}
@@ -40,6 +59,10 @@ public interface ManageStaysUseCase {
    * @throws GuestNotActiveException if the guest is not active
    * @throws InvalidGuestStayException if the dates are out of order or the amount is not valid
    * @throws StayOverlapException if the dates cross another stay of the guest
+   * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException if
+   *     the environment is inactive or taken in those dates by a contract or another stay
+   * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException if
+   *     there is no environment with that id
    */
   StayView create(Long guestId, NewStay stay);
 
@@ -51,6 +74,8 @@ public interface ManageStaysUseCase {
    * @throws EmptyGuestUpdateException if no field is present
    * @throws InvalidGuestStayException if the resulting dates or amount are not valid
    * @throws StayOverlapException if the resulting dates cross another stay of the guest
+   * @throws com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException if
+   *     the resulting environment is inactive or taken in the resulting dates
    */
   StayView update(Long guestId, Long stayId, StayChange change);
 

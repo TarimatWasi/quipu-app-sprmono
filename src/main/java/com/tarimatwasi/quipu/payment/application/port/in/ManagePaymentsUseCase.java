@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -189,4 +190,17 @@ public interface ManagePaymentsUseCase {
    * @throws PaymentFileUnavailableException the bucket failed; nothing was registered
    */
   PaymentView registerDirect(DirectPayment payment);
+
+  /**
+   * TAR-237 (A3.2, A3.5): how a stay of a temporary guest stands, as the stays of the guest show
+   * it.
+   *
+   * @param status PAID, UNDER_REVIEW, UNPAID or OVERDUE (OVERDUE once the exit date passed without
+   *     an approved payment)
+   * @param paymentId its payment, if it has one
+   */
+  record StayChargeView(String status, @Nullable Long paymentId) {}
+
+  /** The payment status of the stay, which ends on that day (TAR-237). */
+  StayChargeView stayCharge(Long stayId, LocalDate endDate);
 }

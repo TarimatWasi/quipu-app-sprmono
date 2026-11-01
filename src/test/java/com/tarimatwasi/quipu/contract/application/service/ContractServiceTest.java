@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.contract.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,6 +36,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -76,12 +78,13 @@ class ContractServiceTest {
   @Mock ContractEnvironmentPort environments;
   @Mock ContractGuestPort guests;
   @Mock GuestDebtQuery debts;
+  @Mock StayOccupancyQuery stays;
 
   private ContractService service;
 
   @BeforeEach
   void setUp() {
-    service = new ContractService(contracts, files, environments, guests, debts, clock);
+    service = new ContractService(contracts, files, environments, guests, debts, stays, clock);
     // The environment exists and is active unless a test says otherwise.
     org.mockito.Mockito.lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }
@@ -123,7 +126,7 @@ class ContractServiceTest {
 
   private void freeEnvironmentAndActiveContractGuest() {
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
-    when(contracts.existsInForce(ENVIRONMENT_ID, TODAY)).thenReturn(false);
+    when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(false);
   }
 
   // --- create ---
@@ -190,7 +193,7 @@ class ContractServiceTest {
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(GuestNotContractException.class);
-    verify(contracts, never()).existsInForce(any(), any());
+    verify(contracts, never()).existsCrossing(any(), any(), any());
     verifyNoInteractions(files);
   }
 
@@ -216,7 +219,7 @@ class ContractServiceTest {
     order.verify(environments).lock(ENVIRONMENT_ID); // environment, then guest, then the debt
     order.verify(guests).lock(GUEST_ID);
     order.verify(debts).owedPeriods(GUEST_ID);
-    verify(contracts, never()).existsInForce(any(), any());
+    verify(contracts, never()).existsCrossing(any(), any(), any());
     verifyNoInteractions(files);
     verify(contracts, never()).insert(any());
   }
@@ -230,7 +233,7 @@ class ContractServiceTest {
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentInactiveException.class);
     verify(debts).owedPeriods(GUEST_ID);
-    verify(contracts, never()).existsInForce(any(), any());
+    verify(contracts, never()).existsCrossing(any(), any(), any());
     verifyNoInteractions(files);
     verify(contracts, never()).insert(any());
   }
@@ -249,7 +252,7 @@ class ContractServiceTest {
   @Test
   void anOccupiedEnvironmentRejectsTheContractWithoutTouchingTheBucket() {
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
-    when(contracts.existsInForce(ENVIRONMENT_ID, TODAY)).thenReturn(true);
+    when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(true);
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentOccupiedException.class);
@@ -262,7 +265,7 @@ class ContractServiceTest {
     // 2026-10-15 02:00 UTC is still the 14th in Lima
     clock.advance(java.time.Duration.ofHours(12));
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
-    when(contracts.existsInForce(ENVIRONMENT_ID, TODAY)).thenReturn(true);
+    when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(true);
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentOccupiedException.class);

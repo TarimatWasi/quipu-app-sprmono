@@ -138,6 +138,26 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
   }
 
   /** The contracts of the environment that are ACTIVE on today. */
+  @Override
+  public boolean existsCrossing(Long environmentId, LocalDate start, @Nullable LocalDate end) {
+    return jpaRepository.exists(
+        (root, query, builder) -> {
+          List<Predicate> conditions = new ArrayList<>();
+          conditions.add(builder.equal(root.get("environmentId"), environmentId));
+          // A contract finished by hand (RN-21) no longer holds the environment.
+          conditions.add(builder.isNull(root.get("terminatedAt")));
+          // It reaches the range: open-ended, or it ends on the first day or later.
+          conditions.add(
+              builder.or(
+                  builder.isNull(root.get("endDate")),
+                  builder.greaterThanOrEqualTo(root.get("endDate"), start)));
+          if (end != null) {
+            conditions.add(builder.lessThanOrEqualTo(root.get("startDate"), end));
+          }
+          return builder.and(conditions.toArray(Predicate[]::new));
+        });
+  }
+
   private static Specification<ContractJpaEntity> inForce(Long environmentId, LocalDate today) {
     return (root, query, builder) ->
         builder.and(

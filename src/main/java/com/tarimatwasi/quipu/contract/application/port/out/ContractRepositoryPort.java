@@ -53,6 +53,14 @@ public interface ContractRepositoryPort {
   boolean existsInForce(Long environmentId, LocalDate today);
 
   /**
+   * TAR-237 (RN-20): whether a contract not terminated holds the environment on at least one day of
+   * the range. A contract without end date holds it from its start on.
+   *
+   * @param end the last day of the range; null for an open-ended range
+   */
+  boolean existsCrossing(Long environmentId, LocalDate start, @Nullable LocalDate end);
+
+  /**
    * The ACTIVE contracts (not terminated, not past their end) of the environment on {@code today},
    * the oldest start first. RN-20 keeps it to one at most; none if the environment is free.
    */

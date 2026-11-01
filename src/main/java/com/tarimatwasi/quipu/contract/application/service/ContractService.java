@@ -24,6 +24,7 @@ import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.FileNames;
+import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.time.Clock;
@@ -50,6 +51,7 @@ public class ContractService implements ManageContractsUseCase {
   private final ContractEnvironmentPort environments;
   private final ContractGuestPort guests;
   private final GuestDebtQuery debts;
+  private final StayOccupancyQuery stays;
   private final Clock clock;
 
   ContractService(
@@ -58,12 +60,14 @@ public class ContractService implements ManageContractsUseCase {
       ContractEnvironmentPort environments,
       ContractGuestPort guests,
       GuestDebtQuery debts,
+      StayOccupancyQuery stays,
       Clock clock) {
     this.contracts = contracts;
     this.files = files;
     this.environments = environments;
     this.guests = guests;
     this.debts = debts;
+    this.stays = stays;
     this.clock = clock;
   }
 
@@ -94,7 +98,11 @@ public class ContractService implements ManageContractsUseCase {
       throw new EnvironmentInactiveException();
     }
     LocalDate today = ContractViews.today(clock);
-    if (contracts.existsInForce(contract.environmentId(), today)) {
+    // TAR-237 (RN-20): the dates may not cross another contract not terminated, nor a stay of the
+    // environment. A renewal that starts after the end of the contract in force is accepted.
+    Long environmentId = contract.environmentId();
+    if (contracts.existsCrossing(environmentId, contract.startDate(), contract.endDate())
+        || stays.environmentTaken(environmentId, contract.startDate(), contract.endDate())) {
       throw new EnvironmentOccupiedException();
     }
     return store(contract, today);

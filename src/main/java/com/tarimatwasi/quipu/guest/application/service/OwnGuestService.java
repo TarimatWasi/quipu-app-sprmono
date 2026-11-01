@@ -51,6 +51,12 @@ public class OwnGuestService implements OwnGuestUseCase {
   }
 
   private static StayView view(Stay stay) {
-    return new StayView(stay.id(), stay.startDate(), stay.endDate(), stay.agreedAmount());
+    return new StayView(
+        stay.id(),
+        stay.startDate(),
+        stay.endDate(),
+        stay.agreedAmount(),
+        stay.environmentId(),
+        stay.version());
   }
 }

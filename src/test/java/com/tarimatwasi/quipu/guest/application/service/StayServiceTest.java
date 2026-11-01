@@ -3,10 +3,13 @@ package com.tarimatwasi.quipu.guest.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
@@ -18,12 +21,14 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase.StayCh
 import com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.application.port.out.StayEnvironmentPort;
 import com.tarimatwasi.quipu.guest.application.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -32,10 +37,12 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class StayServiceTest {
@@ -43,11 +50,21 @@ class StayServiceTest {
   private static final Long GUEST_ID = TestIds.next();
   private static final Long STAY_ID = TestIds.next();
 
+  private static final Long ENV_ID = TestIds.next();
+
   @Mock GuestRepositoryPort guests;
   @Mock StayRepositoryPort stays;
+  @Mock StayEnvironmentPort environments;
+  @Mock ContractOccupancyQuery contracts;
+
+  /** TAR-237: the environment of the stay is active unless a test says otherwise. */
+  @BeforeEach
+  void activeEnvironment() {
+    lenient().when(environments.lock(any())).thenReturn(true);
+  }
 
   private StayService service() {
-    return new StayService(guests, stays);
+    return new StayService(guests, stays, environments, contracts);
   }
 
   private static Guest guest(GuestType type, GuestStatus status) {
@@ -71,7 +88,7 @@ class StayServiceTest {
   }
 
   private static NewStay newStay(String start, String end, BigDecimal amount) {
-    return new NewStay(day(start), day(end), amount);
+    return new NewStay(ENV_ID, day(start), day(end), amount);
   }
 
   private static Stay stay(Long id, String start, String end, String amount) {
@@ -117,7 +134,8 @@ class StayServiceTest {
     activeTemporaryGuest();
     when(stays.findAllByGuest(GUEST_ID))
         .thenReturn(List.of(stay(TestIds.next(), "2026-09-01", "2026-09-10", "100")));
-    when(stays.insert(GUEST_ID, day("2026-10-10"), day("2026-10-20"), new BigDecimal("300.50")))
+    when(stays.insert(
+            GUEST_ID, ENV_ID, day("2026-10-10"), day("2026-10-20"), new BigDecimal("300.50")))
         .thenReturn(stay(STAY_ID, "2026-10-10", "2026-10-20", "300.50"));
 
     var created =
@@ -132,7 +150,7 @@ class StayServiceTest {
     activeTemporaryGuest();
     when(stays.findAllByGuest(GUEST_ID))
         .thenReturn(List.of(stay(TestIds.next(), "2026-10-01", "2026-10-20", "100")));
-    when(stays.insert(GUEST_ID, day("2026-10-21"), day("2026-10-21"), BigDecimal.TEN))
+    when(stays.insert(GUEST_ID, ENV_ID, day("2026-10-21"), day("2026-10-21"), BigDecimal.TEN))
         .thenReturn(stay(STAY_ID, "2026-10-21", "2026-10-21", "10"));
 
     assertThat(service().create(GUEST_ID, newStay("2026-10-21", "2026-10-21", BigDecimal.TEN)))
@@ -156,7 +174,7 @@ class StayServiceTest {
     assertThatThrownBy(
             () -> service().create(GUEST_ID, newStay("2026-10-10", "2026-10-20", BigDecimal.TEN)))
         .isInstanceOf(GuestNotTemporaryException.class);
-    verify(stays, never()).insert(any(), any(), any(), any());
+    verify(stays, never()).insert(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -172,7 +190,7 @@ class StayServiceTest {
           .isInstanceOfSatisfying(
               GuestNotActiveException.class, e -> assertThat(e.guestId()).isEqualTo(GUEST_ID));
     }
-    verify(stays, never()).insert(any(), any(), any(), any());
+    verify(stays, never()).insert(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -185,7 +203,7 @@ class StayServiceTest {
     assertThatThrownBy(
             () -> service().create(GUEST_ID, newStay("2026-10-20", "2026-10-25", BigDecimal.TEN)))
         .isInstanceOf(StayOverlapException.class);
-    verify(stays, never()).insert(any(), any(), any(), any());
+    verify(stays, never()).insert(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -222,10 +240,101 @@ class StayServiceTest {
     activeTemporaryGuest();
     BigDecimal limit = new BigDecimal("99999999.99");
     when(stays.findAllByGuest(GUEST_ID)).thenReturn(List.of());
-    when(stays.insert(GUEST_ID, day("2026-10-10"), day("2026-10-20"), limit))
+    when(stays.insert(GUEST_ID, ENV_ID, day("2026-10-10"), day("2026-10-20"), limit))
         .thenReturn(stay(STAY_ID, "2026-10-10", "2026-10-20", "99999999.99"));
 
     assertThat(service().create(GUEST_ID, newStay("2026-10-10", "2026-10-20", limit))).isNotNull();
+  }
+
+  // --- TAR-237: the environment of the stay ---
+
+  @Test
+  void create_inAnEnvironmentHeldByAContract_isRefusedWithTheStayMessage() {
+    activeTemporaryGuest();
+    when(stays.findAllByGuest(GUEST_ID)).thenReturn(List.of());
+    when(contracts.environmentTaken(ENV_ID, day("2026-10-10"), day("2026-10-20"))).thenReturn(true);
+
+    assertThatThrownBy(
+            () -> service().create(GUEST_ID, newStay("2026-10-10", "2026-10-20", BigDecimal.TEN)))
+        .isInstanceOfSatisfying(
+            EnvironmentOccupiedException.class, e -> assertThat(e.isForStay()).isTrue());
+    verify(stays, never()).insert(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void create_inAnEnvironmentHeldByAnotherStay_isRefused() {
+    activeTemporaryGuest();
+    when(stays.findAllByGuest(GUEST_ID)).thenReturn(List.of());
+    when(stays.environmentTaken(eq(ENV_ID), any(), any(), any())).thenReturn(true);
+
+    assertThatThrownBy(
+            () -> service().create(GUEST_ID, newStay("2026-10-10", "2026-10-20", BigDecimal.TEN)))
+        .isInstanceOf(EnvironmentOccupiedException.class);
+  }
+
+  @Test
+  void create_inAnInactiveEnvironment_isRefusedAsOccupied() {
+    when(environments.lock(ENV_ID)).thenReturn(false);
+    activeTemporaryGuest();
+    when(stays.findAllByGuest(GUEST_ID)).thenReturn(List.of());
+
+    assertThatThrownBy(
+            () -> service().create(GUEST_ID, newStay("2026-10-10", "2026-10-20", BigDecimal.TEN)))
+        .isInstanceOf(EnvironmentOccupiedException.class);
+  }
+
+  @Test
+  void update_withAnOldVersion_isAConcurrentChangeAndSavesNothing() {
+    lockedGuestOnly();
+    when(stays.findByIdAndGuest(STAY_ID, GUEST_ID))
+        .thenReturn(
+            Optional.of(
+                new Stay(
+                    STAY_ID,
+                    GUEST_ID,
+                    day("2026-10-10"),
+                    day("2026-10-20"),
+                    BigDecimal.TEN,
+                    ENV_ID,
+                    3L)));
+
+    assertThatThrownBy(
+            () ->
+                service()
+                    .update(
+                        GUEST_ID, STAY_ID, new StayChange(2L, null, null, day("2026-10-25"), null)))
+        .isInstanceOf(OptimisticLockingFailureException.class);
+    verify(stays, never()).update(any());
+  }
+
+  @Test
+  void update_toAnotherEnvironment_checksItIgnoringTheOwnStay() {
+    lockedGuestOnly();
+    Long other = TestIds.next();
+    when(stays.findByIdAndGuest(STAY_ID, GUEST_ID))
+        .thenReturn(
+            Optional.of(
+                new Stay(
+                    STAY_ID,
+                    GUEST_ID,
+                    day("2026-10-10"),
+                    day("2026-10-20"),
+                    BigDecimal.TEN,
+                    ENV_ID,
+                    0L)));
+    when(stays.findAllByGuest(GUEST_ID)).thenReturn(List.of());
+    when(stays.update(any())).thenAnswer(call -> call.getArgument(0));
+
+    var moved = service().update(GUEST_ID, STAY_ID, new StayChange(0L, other, null, null, null));
+
+    assertThat(moved.environmentId()).isEqualTo(other);
+    verify(environments).lock(other);
+    verify(stays).environmentTaken(other, day("2026-10-10"), day("2026-10-20"), STAY_ID);
+  }
+
+  private void lockedGuestOnly() {
+    when(guests.findByIdForUpdate(GUEST_ID))
+        .thenReturn(Optional.of(guest(GuestType.TEMPORARY, GuestStatus.ACTIVE)));
   }
 
   // --- update ---
@@ -239,7 +348,8 @@ class StayServiceTest {
     when(stays.update(any())).thenAnswer(call -> call.getArgument(0));
 
     var updated =
-        service().update(GUEST_ID, STAY_ID, new StayChange(null, day("2026-10-25"), null));
+        service()
+            .update(GUEST_ID, STAY_ID, new StayChange(0L, null, null, day("2026-10-25"), null));
 
     assertThat(updated.startDate()).isEqualTo(day("2026-10-10"));
     assertThat(updated.endDate()).isEqualTo(day("2026-10-25"));
@@ -256,7 +366,9 @@ class StayServiceTest {
 
     assertThatThrownBy(
             () ->
-                service().update(GUEST_ID, STAY_ID, new StayChange(null, day("2026-11-01"), null)))
+                service()
+                    .update(
+                        GUEST_ID, STAY_ID, new StayChange(0L, null, null, day("2026-11-01"), null)))
         .isInstanceOf(StayOverlapException.class);
     verify(stays, never()).update(any());
   }
@@ -267,7 +379,10 @@ class StayServiceTest {
     when(stays.findByIdAndGuest(STAY_ID, GUEST_ID)).thenReturn(Optional.empty());
 
     assertThatThrownBy(
-            () -> service().update(GUEST_ID, STAY_ID, new StayChange(null, null, BigDecimal.ONE)))
+            () ->
+                service()
+                    .update(
+                        GUEST_ID, STAY_ID, new StayChange(0L, null, null, null, BigDecimal.ONE)))
         .isInstanceOf(StayNotFoundException.class);
   }
 
@@ -276,13 +391,17 @@ class StayServiceTest {
     when(guests.findByIdForUpdate(GUEST_ID)).thenReturn(Optional.empty());
 
     assertThatThrownBy(
-            () -> service().update(GUEST_ID, STAY_ID, new StayChange(null, null, BigDecimal.ONE)))
+            () ->
+                service()
+                    .update(
+                        GUEST_ID, STAY_ID, new StayChange(0L, null, null, null, BigDecimal.ONE)))
         .isInstanceOf(GuestNotFoundException.class);
   }
 
   @Test
   void update_needsAtLeastOneField() {
-    assertThatThrownBy(() -> service().update(GUEST_ID, STAY_ID, new StayChange(null, null, null)))
+    assertThatThrownBy(
+            () -> service().update(GUEST_ID, STAY_ID, new StayChange(0L, null, null, null, null)))
         .isInstanceOf(EmptyGuestUpdateException.class);
   }
 
@@ -294,11 +413,16 @@ class StayServiceTest {
 
     assertThatThrownBy(
             () ->
-                service().update(GUEST_ID, STAY_ID, new StayChange(day("2026-10-21"), null, null)))
+                service()
+                    .update(
+                        GUEST_ID, STAY_ID, new StayChange(0L, null, day("2026-10-21"), null, null)))
         .isInstanceOfSatisfying(
             InvalidGuestStayException.class, e -> assertThat(e.field()).isEqualTo("endDate"));
     assertThatThrownBy(
-            () -> service().update(GUEST_ID, STAY_ID, new StayChange(null, null, BigDecimal.ZERO)))
+            () ->
+                service()
+                    .update(
+                        GUEST_ID, STAY_ID, new StayChange(0L, null, null, null, BigDecimal.ZERO)))
         .isInstanceOfSatisfying(
             InvalidGuestStayException.class, e -> assertThat(e.field()).isEqualTo("agreedAmount"));
     verify(stays, never()).update(any());

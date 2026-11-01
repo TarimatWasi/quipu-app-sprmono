@@ -91,10 +91,25 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
 
   @Override
   public Stay insert(
-      Long guestId, LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount) {
+      Long guestId,
+      Long environmentId,
+      LocalDate startDate,
+      LocalDate endDate,
+      BigDecimal agreedAmount) {
     return jpaRepository
-        .saveAndFlush(new StayJpaEntity(guestId, startDate, endDate, agreedAmount))
+        .saveAndFlush(new StayJpaEntity(guestId, environmentId, startDate, endDate, agreedAmount))
         .toDomain();
+  }
+
+  @Override
+  public boolean environmentTaken(
+      Long environmentId, LocalDate start, LocalDate end, Long excludedStayId) {
+    return jpaRepository.existsCrossing(environmentId, start, end, excludedStayId);
+  }
+
+  @Override
+  public boolean environmentTakenFrom(Long environmentId, LocalDate start) {
+    return jpaRepository.existsFrom(environmentId, start);
   }
 
   @Override

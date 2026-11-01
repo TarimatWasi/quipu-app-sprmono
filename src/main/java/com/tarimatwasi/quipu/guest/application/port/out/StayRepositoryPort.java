@@ -24,8 +24,25 @@ public interface StayRepositoryPort {
   /** The stay, only if it belongs to that guest. */
   Optional<Stay> findByIdAndGuest(Long id, Long guestId);
 
-  /** Stores a new stay. */
-  Stay insert(Long guestId, LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount);
+  /** Stores a new stay in the environment it occupies (RN-20, TAR-237). */
+  Stay insert(
+      Long guestId,
+      Long environmentId,
+      LocalDate startDate,
+      LocalDate endDate,
+      BigDecimal agreedAmount);
+
+  /**
+   * TAR-237 (RN-20): whether a stay of the environment, other than the one excluded, shares at
+   * least one day with the range.
+   *
+   * @param excludedStayId the stay being corrected, which does not take its own environment; {@code
+   *     0L} for none
+   */
+  boolean environmentTaken(Long environmentId, LocalDate start, LocalDate end, Long excludedStayId);
+
+  /** TAR-237: whether a stay of the environment ends on that day or later (open-ended ranges). */
+  boolean environmentTakenFrom(Long environmentId, LocalDate start);
 
   /** Stores the new data of an existing stay. */
   Stay update(Stay stay);

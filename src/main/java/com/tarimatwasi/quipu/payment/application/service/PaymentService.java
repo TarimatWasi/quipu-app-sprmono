@@ -26,6 +26,7 @@ import com.tarimatwasi.quipu.payment.domain.DebtCalculator;
 import com.tarimatwasi.quipu.payment.domain.InvalidRejectionReasonException;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -372,5 +373,13 @@ public class PaymentService implements ManagePaymentsUseCase {
                         content.length,
                         clock.instant(),
                         direct.adminId()))));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public StayChargeView stayCharge(Long stayId, LocalDate endDate) {
+    StayPayments.StayStatus status =
+        StayPayments.status(endDate, payments.findAllByStay(stayId), BusinessDay.today(clock));
+    return new StayChargeView(status.state().name(), status.paymentId());
   }
 }

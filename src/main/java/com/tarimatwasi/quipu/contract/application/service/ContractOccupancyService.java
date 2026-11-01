@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +26,12 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
   @Transactional(readOnly = true)
   public boolean environmentOccupied(Long environmentId) {
     return contracts.existsInForce(environmentId, ContractViews.today(clock));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public boolean environmentTaken(Long environmentId, LocalDate start, @Nullable LocalDate end) {
+    return contracts.existsCrossing(environmentId, start, end);
   }
 
   @Override
