@@ -6,29 +6,42 @@ import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller.GuestsBffController.GuestSummaryResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.NullFieldException;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.UnknownFieldException;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.DocumentForm;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.DocumentRefResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.EmergencyContactBody;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.EmergencyContactResponse;
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase.OwnProfileView;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase.ProfileChange;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 /**
  * CU-20, CU-23, RN-17: the guest edits its own personal and contact data. Only GUEST reaches these
@@ -143,6 +156,92 @@ public class GuestProfileBffController {
     }
   }
 
+  /**
+   * OwnProfile (H5, T3; TAR-242). The nullable fields are always present, as null when missing; the
+   * documents never carry a link to their file (TAR-241 adds it apart).
+   */
+  public record OwnProfileResponse(
+      String documentType,
+      String documentNumber,
+      String name,
+      @Nullable String phone,
+      @Nullable String contactEmail,
+      @Nullable EmergencyContactResponse emergencyContact,
+      @Nullable String accountEmail,
+      List<DocumentRefResponse> documents,
+      int documentsLimit) {
+
+    static OwnProfileResponse of(OwnProfileView view, IdMasker ids) {
+      EmergencyContactView contact = view.emergencyContact();
+      return new OwnProfileResponse(
+          view.documentType(),
+          view.documentNumber(),
+          view.name(),
+          view.phone(),
+          view.contactEmail(),
+          contact == null
+              ? null
+              : new EmergencyContactResponse(
+                  contact.name(), contact.relationship(), contact.phone()),
+          view.accountEmail(),
+          view.documents().stream().map(document -> DocumentRefResponse.of(document, ids)).toList(),
+          view.documentsLimit());
+    }
+  }
+
+  @GetMapping("/bff/guest/profile")
+  public ResponseEntity<OwnProfileResponse> getOwnProfile(Authentication authentication) {
+    return own(GuestKind.CONTRACT, authentication);
+  }
+
+  @GetMapping("/bff/temporary-guest/profile")
+  public ResponseEntity<OwnProfileResponse> getOwnProfileTemporary(Authentication authentication) {
+    return own(GuestKind.TEMPORARY, authentication);
+  }
+
+  @PostMapping(path = UploadRoutes.GUEST_DOCUMENTS, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @ResponseStatus(HttpStatus.CREATED)
+  public DocumentRefResponse uploadOwnDocument(
+      @Valid DocumentForm form,
+      MultipartHttpServletRequest request,
+      Authentication authentication) {
+    return upload(GuestKind.CONTRACT, form, request, authentication);
+  }
+
+  @PostMapping(
+      path = UploadRoutes.TEMPORARY_GUEST_DOCUMENTS,
+      consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @ResponseStatus(HttpStatus.CREATED)
+  public DocumentRefResponse uploadTemporaryOwnDocument(
+      @Valid DocumentForm form,
+      MultipartHttpServletRequest request,
+      Authentication authentication) {
+    return upload(GuestKind.TEMPORARY, form, request, authentication);
+  }
+
+  private ResponseEntity<OwnProfileResponse> own(GuestKind area, Authentication authentication) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(OwnProfileResponse.of(profiles.own(guestOf(authentication), area), ids));
+  }
+
+  private DocumentRefResponse upload(
+      GuestKind area,
+      DocumentForm form,
+      MultipartHttpServletRequest request,
+      Authentication authentication) {
+    DocumentUpload upload = GuestOnboardingBffController.documentUpload(form, request);
+    return DocumentRefResponse.of(
+        profiles.uploadDocument(guestOf(authentication), area, upload), ids);
+  }
+
+  /** A GUEST account always belongs to a guest; one that does not is refused (RN-09). */
+  private Long guestOf(Authentication authentication) {
+    return accounts
+        .guestOf(Long.valueOf(authentication.getName()))
+        .orElseThrow(OtherGuestTypeException::new);
+  }
+
   @PatchMapping("/bff/guest/profile")
   public ResponseEntity<GuestSummaryResponse> updateOwnProfile(
       @Valid @RequestBody ProfileBody body, Authentication authentication) {
@@ -158,11 +257,7 @@ public class GuestProfileBffController {
   private ResponseEntity<GuestSummaryResponse> update(
       GuestKind area, ProfileBody body, Authentication authentication) {
     ProfileChange change = body.change();
-    // A GUEST account always belongs to a guest; one that does not is refused (RN-09).
-    Long guestId =
-        accounts
-            .guestOf(Long.valueOf(authentication.getName()))
-            .orElseThrow(OtherGuestTypeException::new);
+    Long guestId = guestOf(authentication);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(GuestSummaryResponse.of(profiles.update(guestId, area, change), ids));

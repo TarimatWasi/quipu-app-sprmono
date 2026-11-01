@@ -39,14 +39,16 @@ class JsonOnlyFilterTest {
   }
 
   @Test
-  void theUploadRoutesAreTheFiveExactOnes() {
+  void theUploadRoutesAreTheSevenExactOnes() {
     assertThat(UploadRoutes.ALL)
         .containsExactlyInAnyOrder(
             "/bff/admin/contracts",
             "/bff/admin/payments",
             "/bff/guest/payments",
             "/bff/temporary-guest/payments",
-            "/bff/guest/onboarding/documents");
+            "/bff/guest/onboarding/documents",
+            "/bff/guest/documents",
+            "/bff/temporary-guest/documents");
     assertThat(UploadRoutes.VOUCHERS).doesNotContain(UploadRoutes.CONTRACTS).hasSize(3);
   }
 

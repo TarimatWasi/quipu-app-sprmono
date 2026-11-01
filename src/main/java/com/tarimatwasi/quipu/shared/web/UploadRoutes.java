@@ -5,7 +5,7 @@ import java.util.Set;
 /**
  * The only routes of the BFF that take a file as {@code multipart/form-data} (RF-03, RF-05, RF-15,
  * RN-37). Every other state-changing route takes JSON only (ADR-006). The routes of {@link #ALL}
- * are exact paths taken by POST: neither a trailing slash nor a sub-path is an upload. The sixth,
+ * are exact paths taken by POST: neither a trailing slash nor a sub-path is an upload. One more,
  * {@link #GUEST_DOCUMENT_REPLACEMENT}, is taken by PUT and carries two ids, so it is a pattern of
  * exactly those segments.
  */
@@ -25,6 +25,16 @@ public final class UploadRoutes {
 
   /** A document of the onboarding of a guest of either type (JPG, PNG or PDF, up to 5 MB). */
   public static final String GUEST_ONBOARDING_DOCUMENTS = "/bff/guest/onboarding/documents";
+
+  /** One more document of a guest with a contract, from «Mis datos» (RN-37, TAR-242). */
+  public static final String GUEST_DOCUMENTS = "/bff/guest/documents";
+
+  /** One more document of a temporary guest, from «Mis datos» (RN-37, TAR-242). */
+  public static final String TEMPORARY_GUEST_DOCUMENTS = "/bff/temporary-guest/documents";
+
+  /** The routes that take a document of a guest by POST, during the onboarding or later. */
+  public static final Set<String> GUEST_DOCUMENT_UPLOADS =
+      Set.of(GUEST_ONBOARDING_DOCUMENTS, GUEST_DOCUMENTS, TEMPORARY_GUEST_DOCUMENTS);
 
   /**
    * An administrator replaces a document of a guest (RN-37), by PUT; a pattern whose two variables
@@ -51,7 +61,9 @@ public final class UploadRoutes {
           ADMIN_PAYMENTS,
           GUEST_PAYMENTS,
           TEMPORARY_GUEST_PAYMENTS,
-          GUEST_ONBOARDING_DOCUMENTS);
+          GUEST_ONBOARDING_DOCUMENTS,
+          GUEST_DOCUMENTS,
+          TEMPORARY_GUEST_DOCUMENTS);
 
   private UploadRoutes() {}
 }

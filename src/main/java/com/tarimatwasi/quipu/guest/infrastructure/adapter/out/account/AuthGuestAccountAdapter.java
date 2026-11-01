@@ -102,6 +102,11 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
   }
 
   @Override
+  public Optional<String> accountEmail(Long guestId) {
+    return access.accountEmail(guestId);
+  }
+
+  @Override
   public Map<Long, AccountState> stateOf(Collection<Long> guestIds) {
     Map<Long, AccountState> states = new HashMap<>();
     accounts

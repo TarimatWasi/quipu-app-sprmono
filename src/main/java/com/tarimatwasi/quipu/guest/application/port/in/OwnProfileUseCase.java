@@ -3,6 +3,9 @@ package com.tarimatwasi.quipu.guest.application.port.in;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentView;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -28,6 +31,46 @@ public interface OwnProfileUseCase {
       return name == null && phone == null && contactEmail == null && emergencyContact == null;
     }
   }
+
+  /**
+   * What «Mis datos» shows (H5, T3; TAR-242): the personal and contact data, the account email
+   * (read-only for the guest) and the documents, never their files.
+   *
+   * @param accountEmail where the password recovery link goes; null when there is none
+   * @param documentsLimit how many documents a guest may have (RN-37)
+   */
+  record OwnProfileView(
+      String documentType,
+      String documentNumber,
+      String name,
+      @Nullable String phone,
+      @Nullable String contactEmail,
+      @Nullable EmergencyContactView emergencyContact,
+      @Nullable String accountEmail,
+      List<DocumentView> documents,
+      int documentsLimit) {}
+
+  /**
+   * The profile of the guest of the session.
+   *
+   * @param area the type of guest the route belongs to
+   * @throws GuestNotFoundException if there is no such guest
+   * @throws OwnProfileRefusedException if the guest is of the other type or still onboarding
+   */
+  OwnProfileView own(Long guestId, GuestKind area);
+
+  /**
+   * Stores one more document of the guest of the session after the onboarding (RN-37, TAR-242),
+   * with the rules of the onboarding upload: JPG, PNG or PDF of up to 5 MB, at most 5 in total.
+   *
+   * @param area the type of guest the route belongs to
+   * @throws InvalidOnboardingInputException if the file is not a JPG, PNG or PDF of up to 5 MB
+   * @throws GuestNotFoundException if there is no such guest
+   * @throws OwnProfileRefusedException if the guest is of the other type or still onboarding
+   * @throws OnboardingConflictException with DOCUMENT_LIMIT_REACHED if it has 5 documents already
+   * @throws GuestDocumentUnavailableException if the file store failed; nothing was saved
+   */
+  DocumentView uploadDocument(Long guestId, GuestKind area, DocumentUpload upload);
 
   /**
    * Applies the present fields to the guest of the session, with its row locked.

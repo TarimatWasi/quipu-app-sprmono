@@ -60,7 +60,8 @@ class OnboardingServiceTest {
   private final ConsentTexts consents = new ConsentTexts("borrador-2026-10");
 
   private OnboardingService service() {
-    return new OnboardingService(guests, records, files, consents, CLOCK);
+    return new OnboardingService(
+        guests, records, new GuestDocumentUploader(records, files), consents, CLOCK);
   }
 
   private static Guest onboarding(@Nullable Instant personalData, @Nullable Instant documents) {

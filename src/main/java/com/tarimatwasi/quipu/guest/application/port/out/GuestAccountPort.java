@@ -72,6 +72,9 @@ public interface GuestAccountPort {
   /** When the live, unused access of the guest expires; empty if it has none. */
   Optional<Instant> accessExpiry(Long guestId);
 
+  /** The account email of the guest (RF-16); empty without an account or without an email. */
+  Optional<String> accountEmail(Long guestId);
+
   /** An access just issued; {@code secret} is the activation URL or the temporary password. */
   record IssuedAccess(AccessMode mode, String secret, Instant expiresAt, String shareMessage) {
     @Override
