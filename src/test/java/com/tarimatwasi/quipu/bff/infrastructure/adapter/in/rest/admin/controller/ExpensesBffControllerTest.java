@@ -39,6 +39,12 @@ class ExpensesBffControllerTest {
 
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
+
+  /** TAR-240: an edit sends back the version it loaded; every edit here is the first one. */
+  private static String edit(String body) {
+    return body.substring(0, body.length() - 1) + ",\"version\":0}";
+  }
+
   @Autowired JwtTokenProvider jwtTokenProvider;
 
   /**
@@ -174,7 +180,7 @@ class ExpensesBffControllerTest {
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
+                .content(edit(body)))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("description"));
   }
@@ -206,7 +212,8 @@ class ExpensesBffControllerTest {
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\"}"))
+                .content(
+                    edit("{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\"}")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.category").value("MAINTENANCE"))
         .andExpect(jsonPath("$.month").value("2026-10"))
@@ -241,14 +248,14 @@ class ExpensesBffControllerTest {
             patch(URL + "/" + UUID.randomUUID())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(UTILITIES))
+                .content(edit(UTILITIES)))
         .andExpect(status().isNotFound());
     mockMvc
         .perform(
             patch(URL + "/not-a-uuid")
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(UTILITIES))
+                .content(edit(UTILITIES)))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("id"));
   }
@@ -271,7 +278,7 @@ class ExpensesBffControllerTest {
             patch(URL + "/" + id)
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(UTILITIES))
+                .content(edit(UTILITIES)))
         .andExpect(status().isForbidden());
     mockMvc.perform(delete(URL + "/" + id).cookie(guest)).andExpect(status().isForbidden());
 
@@ -291,7 +298,7 @@ class ExpensesBffControllerTest {
               patch(URL + "/" + id)
                   .cookie(admin())
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content(body))
+                  .content(edit(body)))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.month").value(month));
       mockMvc
@@ -317,7 +324,7 @@ class ExpensesBffControllerTest {
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(yearZero))
+                .content(edit(yearZero)))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.field").value("month"));
