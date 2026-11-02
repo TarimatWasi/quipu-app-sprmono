@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.contract.application.port.in.ContractTermsUseCase.C
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ public class ContractPaymentAdapter implements PaymentContractPort {
    * The month a contract was finished in is the one of that instant in the zone of the business.
    */
   private ContractInfo info(ContractTermsView view) {
+    Instant terminatedAt = view.terminatedAt();
     return new ContractInfo(
         view.contractId(),
         view.environmentId(),
@@ -61,6 +63,7 @@ public class ContractPaymentAdapter implements PaymentContractPort {
             clock.getZone(),
             view.paymentDay(),
             view.graceDays()),
-        view.monthlyAmount());
+        view.monthlyAmount(),
+        terminatedAt == null ? null : terminatedAt.atZone(clock.getZone()).toLocalDate());
   }
 }

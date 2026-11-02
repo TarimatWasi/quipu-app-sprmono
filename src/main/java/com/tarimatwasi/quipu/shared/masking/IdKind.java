@@ -17,7 +17,8 @@ public enum IdKind {
   GUEST_DOCUMENT("guest-document"),
   GUEST_DOCUMENT_ACTION("guest-document-action"),
   FINE("fine"),
-  PAYMENT_PROOF("payment-proof");
+  PAYMENT_PROOF("payment-proof"),
+  REFUND("refund");
 
   private final long tag;
 

@@ -32,6 +32,11 @@ public class StayPaymentAdapter implements PaymentStayPort {
   }
 
   @Override
+  public List<StayTerms> staysOfGuest(Long guestId) {
+    return stays.allOf(guestId).stream().map(StayPaymentAdapter::terms).toList();
+  }
+
+  @Override
   public Optional<StayTerms> relevantStayOf(Long guestId, LocalDate today) {
     return ownGuests.relevantStay(guestId, today).map(StayPaymentAdapter::terms);
   }

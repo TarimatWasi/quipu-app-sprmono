@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodView;
+import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotCorrectableException;
@@ -23,18 +24,21 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
+import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
-import com.tarimatwasi.quipu.payment.domain.ContractTerms;
+import com.tarimatwasi.quipu.payment.domain.CreditLedger;
 import com.tarimatwasi.quipu.payment.domain.DebtCalculator;
 import com.tarimatwasi.quipu.payment.domain.InvalidRejectionReasonException;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentProof;
 import com.tarimatwasi.quipu.payment.domain.PaymentReview;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.PeriodState;
 import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
 import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;
+import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -63,6 +67,8 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02 (TAR-170): admin use case, besides the URL rule
 public class PaymentService implements ManagePaymentsUseCase {
 
+  private static final BigDecimal NO_CREDIT = BigDecimal.ZERO.setScale(2);
+
   private static final Logger LOGGER = LoggerFactory.getLogger(PaymentService.class);
 
   private final PaymentRepositoryPort payments;
@@ -75,6 +81,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   private final Clock clock;
   private final ProofRecorder recorder;
   private final AccountStatus accountStatus;
+  private final Credits credits;
 
   PaymentService(
       PaymentRepositoryPort payments,
@@ -84,6 +91,7 @@ public class PaymentService implements ManagePaymentsUseCase {
       PaymentEnvironmentPort environments,
       PaymentStayPort stays,
       PaymentReviewerPort reviewers,
+      RefundRepositoryPort refunds,
       Clock clock) {
     this.payments = payments;
     this.files = files;
@@ -95,6 +103,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     this.clock = clock;
     this.recorder = new ProofRecorder(files, payments);
     this.accountStatus = new AccountStatus(payments, contracts, clock);
+    this.credits = new Credits(payments, contracts, stays, refunds, clock);
   }
 
   // --- the queue and the detail ---
@@ -254,7 +263,87 @@ public class PaymentService implements ManagePaymentsUseCase {
         charge.lastPeriod(),
         reviewer(payment, names),
         proofs,
-        payments.findReviews(id).stream().map(ProofRecorder::reviewView).toList());
+        payments.findReviews(id).stream().map(ProofRecorder::reviewView).toList(),
+        payment.status() == PaymentStatus.APPROVED
+            ? credits.of(payment.guestId(), false).surplusOf(payment)
+            : null);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<PayablePeriodView> payablePeriods(Long guestId) {
+    GuestProfile guest = guests.profileOf(guestId);
+    LocalDate today = BusinessDay.today(clock);
+    List<PayablePeriodView> payable = new ArrayList<>();
+    if (guest.contractType()) {
+      for (ContractInfo contract : contracts.contractsOf(guestId)) {
+        CreditLedger ledger =
+            CreditLedger.of(
+                contract.terms(),
+                contract.monthlyAmount(),
+                payments.findAllByContract(contract.id()),
+                today);
+        for (CreditLedger.Line line : ledger.lines()) {
+          PayableState state = payableState(line.status().state(), line.status().paymentId());
+          if (state != null) {
+            payable.add(
+                new PayablePeriodView(
+                    contract.id(),
+                    line.period(),
+                    null,
+                    null,
+                    null,
+                    state,
+                    line.status().dueDate(),
+                    line.amount(),
+                    line.creditApplied(),
+                    line.amountDue(),
+                    line.last(),
+                    line.status().paymentId()));
+          }
+        }
+      }
+      return payable;
+    }
+    List<StayTerms> ofGuest =
+        stays.staysOfGuest(guestId).stream()
+            .sorted(Comparator.comparing(StayTerms::startDate).thenComparing(StayTerms::id))
+            .toList();
+    for (StayTerms stay : ofGuest) {
+      StayPayments.StayStatus status =
+          StayPayments.status(stay.endDate(), payments.findAllByStay(stay.id()), today);
+      PayableState state = payableState(status.state(), status.paymentId());
+      if (state != null) {
+        payable.add(
+            new PayablePeriodView(
+                null,
+                null,
+                stay.id(),
+                stay.startDate(),
+                stay.endDate(),
+                state,
+                stay.endDate(),
+                stay.agreedAmount(),
+                NO_CREDIT,
+                stay.agreedAmount(),
+                true,
+                status.paymentId()));
+      }
+    }
+    return payable;
+  }
+
+  /**
+   * A5.1: a paid one is left out; one without a live payment but with a rejected one is REJECTED
+   * (it is corrected, not paid again); the rest keep their state.
+   */
+  private static @Nullable PayableState payableState(PeriodState state, @Nullable Long paymentId) {
+    return switch (state) {
+      case PAID -> null;
+      case UNDER_REVIEW -> PayableState.UNDER_REVIEW;
+      case UNPAID -> paymentId == null ? PayableState.UNPAID : PayableState.REJECTED;
+      case OVERDUE -> paymentId == null ? PayableState.OVERDUE : PayableState.REJECTED;
+    };
   }
 
   private @Nullable String signedUrl(PaymentProof proof) {
@@ -270,8 +359,8 @@ public class PaymentService implements ManagePaymentsUseCase {
   }
 
   /**
-   * What a payment pays: the monthly amount of the contract or the agreed amount of the stay, less
-   * the credit applied (RN-38; none until the credit arrives, TAR-239 part 2).
+   * What a payment pays: the monthly amount of the contract less the credit the period takes
+   * (RN-38), or the agreed amount of a stay, which takes no credit.
    *
    * @param lastPeriod the last month the contract charges, or a stay
    */
@@ -286,11 +375,11 @@ public class PaymentService implements ManagePaymentsUseCase {
 
     static Charge of(
         BigDecimal expected,
+        BigDecimal credit,
         boolean lastPeriod,
         @Nullable Long environmentId,
         @Nullable LocalDate start,
         @Nullable LocalDate end) {
-      BigDecimal credit = BigDecimal.ZERO.setScale(2);
       return new Charge(
           expected, credit, expected.subtract(credit), lastPeriod, environmentId, start, end);
     }
@@ -304,7 +393,12 @@ public class PaymentService implements ManagePaymentsUseCase {
         throw new IllegalStateException("The stay of payment " + payment.id() + " is gone");
       }
       return Charge.of(
-          stay.agreedAmount(), true, stay.environmentId(), stay.startDate(), stay.endDate());
+          stay.agreedAmount(),
+          NO_CREDIT,
+          true,
+          stay.environmentId(),
+          stay.startDate(),
+          stay.endDate());
     }
     ContractInfo contract =
         contracts.contractsOf(payment.guestId()).stream()
@@ -312,25 +406,24 @@ public class PaymentService implements ManagePaymentsUseCase {
             .findFirst()
             .orElseThrow(
                 () -> new IllegalStateException("The contract of payment " + payment.id()));
+    YearMonth period = Objects.requireNonNull(payment.period());
     return Charge.of(
         contract.monthlyAmount(),
-        isLastPeriod(contract.terms(), Objects.requireNonNull(payment.period())),
+        creditFor(contract, period),
+        period.equals(contract.terms().lastPeriod()),
         contract.environmentId(),
         null,
         null);
   }
 
-  /** The month of the end date, or of the termination: what is left over is refunded (RN-38). */
-  static boolean isLastPeriod(ContractTerms terms, YearMonth period) {
-    LocalDate end = terms.endDate();
-    YearMonth terminated = terms.terminatedIn();
-    YearMonth last =
-        terminated != null
-            ? end == null || terminated.isBefore(YearMonth.from(end))
-                ? terminated
-                : YearMonth.from(end)
-            : end == null ? null : YearMonth.from(end);
-    return period.equals(last);
+  /** RN-38: the credit the period takes from the ones before it in its contract. */
+  private BigDecimal creditFor(ContractInfo contract, YearMonth period) {
+    return CreditLedger.of(
+            contract.terms(),
+            contract.monthlyAmount(),
+            payments.findAllByContract(contract.id()),
+            BusinessDay.today(clock))
+        .creditFor(period, contract.monthlyAmount());
   }
 
   // --- the review ---
@@ -581,11 +674,20 @@ public class PaymentService implements ManagePaymentsUseCase {
     if (!guest.active() && !owes(target, period, today)) {
       throw new GuestNotActiveException(guest.id());
     }
-    return new Target(target.id(), null, period, target.monthlyAmount());
+    BigDecimal due = target.monthlyAmount().subtract(creditFor(target, period));
+    // RN-38: a period the credit covers whole is already paid.
+    if (due.signum() <= 0) {
+      throw new PaymentAlreadyExistsForPeriodException();
+    }
+    return new Target(target.id(), null, period, due);
   }
 
   private boolean owes(ContractInfo contract, YearMonth period, LocalDate today) {
-    return DebtCalculator.debt(contract.terms(), payments.findAllByContract(contract.id()), today)
+    return DebtCalculator.debt(
+            contract.terms(),
+            contract.monthlyAmount(),
+            payments.findAllByContract(contract.id()),
+            today)
         .stream()
         .anyMatch(d -> d.period().equals(period));
   }

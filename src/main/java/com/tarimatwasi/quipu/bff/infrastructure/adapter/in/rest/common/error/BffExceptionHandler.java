@@ -788,6 +788,8 @@ public class BffExceptionHandler {
       // A proof travels in the body of a correction or a review, which names it as a field.
       case PAYMENT_PROOF ->
           throw new IllegalStateException("A payment proof id is never part of a BFF path");
+      // A refund is only listed (TAR-240); it is not edited nor deleted, so no path carries it.
+      case REFUND -> throw new IllegalStateException("A refund id is never part of a BFF path");
     };
   }
 

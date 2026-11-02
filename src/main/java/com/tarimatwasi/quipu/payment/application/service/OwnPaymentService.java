@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.NoActiveStayException;
 import com.tarimatwasi.quipu.payment.application.port.in.NoStayYetException;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
+import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotCorrectableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
@@ -23,12 +24,16 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewPayment;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
+import com.tarimatwasi.quipu.payment.domain.GuestCredit;
+import com.tarimatwasi.quipu.payment.domain.GuestCredit.Source;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentReview;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.PeriodState;
 import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
+import com.tarimatwasi.quipu.payment.domain.Refund;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.StayPayments.StayStatus;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
@@ -40,8 +45,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,6 +59,8 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('GUEST')") // BE-SPR-SEC-02: guest use case, besides the URL rule
 public class OwnPaymentService implements OwnPaymentsUseCase {
 
+  private static final BigDecimal NO_CREDIT = BigDecimal.ZERO.setScale(2);
+
   private final PaymentRepositoryPort payments;
   private final PaymentGuestPort guests;
   private final PaymentContractPort contracts;
@@ -61,6 +68,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
   private final Clock clock;
   private final ProofRecorder recorder;
   private final AccountStatus accountStatus;
+  private final Credits credits;
 
   OwnPaymentService(
       PaymentRepositoryPort payments,
@@ -68,6 +76,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
       PaymentGuestPort guests,
       PaymentContractPort contracts,
       PaymentStayPort stays,
+      RefundRepositoryPort refunds,
       Clock clock) {
     this.payments = payments;
     this.guests = guests;
@@ -76,6 +85,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     this.clock = clock;
     this.recorder = new ProofRecorder(files, payments);
     this.accountStatus = new AccountStatus(payments, contracts, clock);
+    this.credits = new Credits(payments, contracts, stays, refunds, clock);
   }
 
   // --- the state of the payments ---
@@ -102,19 +112,90 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
         state(status.state()),
         stay.agreedAmount(),
         status.paymentId(),
-        status.rejectionReason());
+        status.rejectionReason(),
+        staySurplus(guestId, status));
+  }
+
+  /** RN-38, RN-39 (T1): what the stay was paid over the agreed amount, and whether it came back. */
+  private @Nullable StaySurplusView staySurplus(Long guestId, StayStatus status) {
+    Long paymentId = status.paymentId();
+    if (status.state() != PeriodState.PAID || paymentId == null) {
+      return null;
+    }
+    Credits.Ledger ledger = credits.of(guestId, true);
+    BigDecimal over = ledger.staySurplus().get(paymentId);
+    if (over == null) {
+      return null;
+    }
+    Source source = ledger.sourceOf(paymentId);
+    boolean refunded = source != null && source.refundedWhole();
+    Refund last = source != null && refunded ? source.lastRefund() : null;
+    return new StaySurplusView(
+        over, refunded, last == null ? null : last.date(), last == null ? null : last.method());
   }
 
   @Override
   @Transactional(readOnly = true)
-  public CursorPage<GuestPaymentView> history(Long guestId, PageQuery page) {
+  public GuestHistoryView history(Long guestId, PageQuery page) {
     admitted(guestId, true);
     CursorPage<StoredPayment> found = payments.findHistory(guestId, page);
     Map<Long, List<PaymentReview>> reviews =
         payments.findReviewsOf(found.content().stream().map(s -> s.payment().id()).toList());
-    Terms terms = termsOf(guestId, true);
-    return found.map(
-        stored -> guestView(stored, reviews.getOrDefault(stored.payment().id(), List.of()), terms));
+    Credits.Ledger ledger = credits.of(guestId, true);
+    // TAR-240: a refund goes among the payments by when it was registered. The page holds the
+    // refunds from the position of its cursor down to its last payment; the last page holds the
+    // rest.
+    String after = page.after();
+    Instant upTo = after == null ? null : payments.historyPosition(guestId, after);
+    Instant downTo =
+        found.nextCursor() == null || found.content().isEmpty()
+            ? null
+            : found.content().get(found.content().size() - 1).createdAt();
+    List<Dated> items = new ArrayList<>();
+    for (StoredPayment stored : found.content()) {
+      GuestPaymentView view =
+          guestView(stored, reviews.getOrDefault(stored.payment().id(), List.of()), ledger);
+      items.add(new Dated(stored.createdAt(), new HistoryItem(view, null)));
+    }
+    Map<Long, Source> sources = ledger.credit().sourcesByPayment();
+    for (Refund refund : ledger.credit().refunds()) {
+      boolean belowCursor = upTo == null || refund.createdAt().isBefore(upTo);
+      boolean aboveLast = downTo == null || !refund.createdAt().isBefore(downTo);
+      if (belowCursor && aboveLast) {
+        Source source = sources.get(refund.fromPaymentId());
+        items.add(
+            new Dated(
+                refund.createdAt(),
+                new HistoryItem(
+                    null,
+                    new GuestRefundView(
+                        refund.id(),
+                        refund.date(),
+                        refund.method(),
+                        refund.amount(),
+                        refund.fromPaymentId(),
+                        source == null ? null : source.period()))));
+      }
+    }
+    items.sort(Comparator.comparing(Dated::at).reversed());
+    return new GuestHistoryView(
+        new CursorPage<>(items.stream().map(Dated::item).toList(), found.nextCursor()),
+        ledger.credit().balance());
+  }
+
+  /** An item of the history with when it was registered, the order of the history. */
+  private record Dated(Instant at, HistoryItem item) {}
+
+  @Override
+  @Transactional(readOnly = true)
+  public GuestCreditView credit(Long guestId) {
+    admitted(guestId, true);
+    GuestCredit credit = credits.of(guestId, true).credit();
+    Refund last = credit.lastRefund();
+    return new GuestCreditView(
+        credit.balance(),
+        credit.toRefund(),
+        last == null ? null : new LastRefundView(last.amount(), last.date(), last.method()));
   }
 
   @Override
@@ -122,7 +203,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
   public GuestPaymentView payment(Long guestId, Long paymentId, boolean contractType) {
     admitted(guestId, contractType);
     StoredPayment stored = ownPayment(guestId, payments.findById(paymentId).orElse(null));
-    return guestView(stored, payments.findReviews(paymentId), termsOf(guestId, contractType));
+    return guestView(stored, payments.findReviews(paymentId), credits.of(guestId, true));
   }
 
   /** RN-09: a payment of another guest is, for this one, a payment that does not exist. */
@@ -133,35 +214,24 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     return stored;
   }
 
-  /** The amounts and dates the payments of the guest are read with. */
-  private record Terms(Map<Long, BigDecimal> monthlyAmounts, Map<Long, StayTerms> stays) {}
-
-  private Terms termsOf(Long guestId, boolean contractType) {
-    Map<Long, BigDecimal> monthly = new HashMap<>();
-    Map<Long, StayTerms> byId = new HashMap<>();
-    if (contractType) {
-      contracts.contractsOf(guestId).forEach(c -> monthly.put(c.id(), c.monthlyAmount()));
-    } else {
-      stays.staysOf(guestId).forEach(s -> byId.put(s.id(), s));
-    }
-    return new Terms(monthly, byId);
-  }
-
   /** What the guest sees: never who reviewed it (TAR-230) nor a voucher URL. */
   private static GuestPaymentView guestView(
-      StoredPayment stored, List<PaymentReview> reviews, Terms terms) {
+      StoredPayment stored, List<PaymentReview> reviews, Credits.Ledger ledger) {
     Payment payment = stored.payment();
     Long stayId = payment.stayId();
-    StayTerms stay = stayId == null ? null : terms.stays().get(stayId);
+    StayTerms stay = stayId == null ? null : ledger.stays().get(stayId);
     Long contractId = payment.contractId();
+    ContractInfo contract = contractId == null ? null : ledger.contracts().get(contractId);
+    YearMonth period = payment.period();
     BigDecimal expected =
         stay != null
             ? stay.agreedAmount()
-            : contractId == null
-                ? payment.amount()
-                : terms.monthlyAmounts().getOrDefault(contractId, payment.amount());
-    // RN-38: the credit arrives with TAR-239 part 2; until then nothing is discounted.
-    BigDecimal credit = BigDecimal.ZERO.setScale(2);
+            : contract == null ? payment.amount() : contract.monthlyAmount();
+    // RN-38: a period takes the credit the ones before it left; a stay takes none.
+    BigDecimal credit =
+        contract == null || period == null
+            ? NO_CREDIT
+            : ledger.creditFor(contract.id(), period, contract.monthlyAmount());
     List<ReviewView> decisions = reviews.stream().map(ProofRecorder::reviewView).toList();
     return new GuestPaymentView(
         payment.id(),
@@ -179,7 +249,8 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
         payment.submittedAt(),
         stored.createdAt(),
         stored.proofs().stream().map(p -> ProofRecorder.proofView(p, null)).toList(),
-        decisions);
+        decisions,
+        ledger.surplusOf(payment));
   }
 
   private static ChargeState state(PeriodState state) {
@@ -212,6 +283,12 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
             .orElseThrow(() -> new InvalidPaymentException("period"));
     Map<Integer, VoucherType> types = typesOf(payment.proofs());
     ProofRecorder.rejectLive(payments.findLiveByPeriod(contract.id(), period));
+    // RN-38: a period the credit covers whole is already paid.
+    BigDecimal credit =
+        credits.of(guestId, true).creditFor(contract.id(), period, contract.monthlyAmount());
+    if (credit.compareTo(contract.monthlyAmount()) >= 0) {
+      throw new PaymentAlreadyExistsForPeriodException();
+    }
     return send(guestId, payment.proofs(), types, contract.id(), null, period);
   }
 

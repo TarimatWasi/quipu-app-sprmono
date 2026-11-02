@@ -213,7 +213,7 @@ class MethodSecurityContractTest {
                 .page()
                 .content())
         .isEmpty();
-    assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();
+    assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).page().content()).isEmpty();
     assertThat(fines.list(YearMonth.of(2026, 10))).isEmpty();
     assertThat(finance.summary(YearMonth.of(2026, 10)).net()).hasToString("0.00");
     assertThat(dashboard.dashboard().pendingVouchers()).isEmpty();

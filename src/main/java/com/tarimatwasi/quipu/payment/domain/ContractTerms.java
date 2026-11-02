@@ -73,6 +73,19 @@ public record ContractTerms(
     return periods(today).contains(period);
   }
 
+  /**
+   * The last month the contract charges: the earlier of the month of its end date and the month of
+   * its termination; {@code null} for an open-ended contract that is not finished. What is left
+   * over once it is reached is refunded (RN-38, RN-39).
+   */
+  public @Nullable YearMonth lastPeriod() {
+    YearMonth ended = endDate == null ? null : YearMonth.from(endDate);
+    if (terminatedIn == null) {
+      return ended;
+    }
+    return ended == null || terminatedIn.isBefore(ended) ? terminatedIn : ended;
+  }
+
   /** The payment day of the month, or its last day when the month is shorter (RN-10). */
   public LocalDate dueDate(YearMonth period) {
     return period.atDay(Math.min(paymentDay, period.lengthOfMonth()));

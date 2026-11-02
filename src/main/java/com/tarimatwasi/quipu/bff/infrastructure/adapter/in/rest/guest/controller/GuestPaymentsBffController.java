@@ -9,19 +9,26 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.SurplusOutcome;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.SurplusView;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.ChargeState;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestCreditView;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestHistoryView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestPaymentView;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestRefundView;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.HistoryItem;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.LastRefundView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayStatusView;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StaySurplusView;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
-import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -111,8 +118,9 @@ public class GuestPaymentsBffController {
       BigDecimal agreedAmount,
       @Nullable UUID paymentId,
       @Nullable String rejectionReason,
-      @Nullable Object surplus) {
+      @Nullable StaySurplusResponse surplus) {
     static StayPaymentStatusResponse of(StayStatusView view, IdMasker ids) {
+      StaySurplusView surplus = view.surplus();
       return new StayPaymentStatusResponse(
           ids.mask(IdKind.STAY, view.stayId()),
           view.startDate(),
@@ -121,10 +129,56 @@ public class GuestPaymentsBffController {
           view.agreedAmount(),
           view.paymentId() == null ? null : ids.mask(IdKind.PAYMENT, view.paymentId()),
           view.rejectionReason(),
-          // RN-38, RN-39: the surplus of a stay arrives with the refunds (TAR-239 part 2).
-          null);
+          surplus == null
+              ? null
+              : new StaySurplusResponse(
+                  surplus.amount(),
+                  surplus.refunded() ? "REFUNDED" : "PENDING",
+                  surplus.refundedOn(),
+                  surplus.refundMethod()));
     }
   }
+
+  /** What a stay was paid over the agreed amount; a stay keeps no credit (RN-38, RN-39, T1). */
+  public record StaySurplusResponse(
+      BigDecimal amount,
+      String refundStatus,
+      @Nullable LocalDate refundedOn,
+      @Nullable String refundMethod) {}
+
+  /** PaymentSurplus: what an approved payment left over and what became of it (RN-38, RN-39). */
+  public record SurplusResponse(BigDecimal amount, SurplusOutcome outcome) {
+    public static @Nullable SurplusResponse of(@Nullable SurplusView view) {
+      return view == null ? null : new SurplusResponse(view.amount(), view.outcome());
+    }
+  }
+
+  /** GuestRefund: a refund Quipu made to the guest, shown in H4 as Devuelto (RN-39). */
+  public record GuestRefundResponse(
+      UUID id,
+      LocalDate date,
+      String method,
+      BigDecimal amount,
+      UUID fromPaymentId,
+      @Nullable String fromPeriod) {
+    static GuestRefundResponse of(GuestRefundView view, IdMasker ids) {
+      YearMonth period = view.fromPeriod();
+      return new GuestRefundResponse(
+          ids.mask(IdKind.REFUND, view.id()),
+          view.date(),
+          view.method(),
+          view.amount(),
+          ids.mask(IdKind.PAYMENT, view.fromPaymentId()),
+          period == null ? null : period.toString());
+    }
+  }
+
+  /** GuestCredit (H1): the own credit, whether it is refunded, and the last refund. */
+  public record GuestCreditResponse(
+      BigDecimal balance, boolean toRefund, @Nullable LastRefundResponse lastRefund) {}
+
+  /** The last refund Quipu made to the guest. */
+  public record LastRefundResponse(BigDecimal amount, LocalDate date, String method) {}
 
   /** GuestPayment of the contract: an own payment without URLs nor who reviewed it. */
   public record GuestPaymentResponse(
@@ -139,7 +193,7 @@ public class GuestPaymentsBffController {
       @Nullable BigDecimal verifiedAmount,
       BigDecimal creditApplied,
       BigDecimal amountDue,
-      @Nullable Object surplus,
+      @Nullable SurplusResponse surplus,
       @Nullable String rejectionReason,
       Instant submittedAt,
       Instant createdAt,
@@ -161,8 +215,7 @@ public class GuestPaymentsBffController {
           view.verifiedAmount(),
           view.creditApplied(),
           view.amountDue(),
-          // RN-38: the surplus arrives with the credit (TAR-239 part 2).
-          null,
+          SurplusResponse.of(view.surplus()),
           view.rejectionReason(),
           view.submittedAt(),
           view.createdAt(),
@@ -171,11 +224,11 @@ public class GuestPaymentsBffController {
     }
   }
 
-  /** GuestHistoryItem: a payment, or (with the refunds, TAR-239 part 2) a refund. */
+  /** GuestHistoryItem: a payment or a refund, by {@code kind}. */
   public record HistoryItemResponse(
-      String kind, @Nullable GuestPaymentResponse payment, @Nullable Object refund) {}
+      String kind, @Nullable GuestPaymentResponse payment, @Nullable GuestRefundResponse refund) {}
 
-  /** PagedGuestHistory; the credit arrives with TAR-239 part 2, so the balance is still 0. */
+  /** PagedGuestHistory, with the credit the guest has now (RN-38). */
   public record GuestHistoryResponse(
       List<HistoryItemResponse> content, @Nullable String nextCursor, BigDecimal creditBalance) {}
 
@@ -197,16 +250,37 @@ public class GuestPaymentsBffController {
       @RequestParam(name = "after", required = false) @Nullable String after,
       Authentication authentication) {
     var page = PageParams.query(after, limit);
-    CursorPage<GuestPaymentView> found = payments.history(guestOf(authentication), page);
+    GuestHistoryView found = payments.history(guestOf(authentication), page);
     List<HistoryItemResponse> items =
-        found.content().stream()
-            .map(
-                view ->
-                    new HistoryItemResponse("PAYMENT", GuestPaymentResponse.of(view, ids), null))
-            .toList();
+        found.page().content().stream().map(item -> historyItem(item, ids)).toList();
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(new GuestHistoryResponse(items, found.nextCursor(), BigDecimal.ZERO.setScale(2)));
+        .body(new GuestHistoryResponse(items, found.page().nextCursor(), found.creditBalance()));
+  }
+
+  private static HistoryItemResponse historyItem(HistoryItem item, IdMasker ids) {
+    GuestPaymentView payment = item.payment();
+    GuestRefundView refund = item.refund();
+    return payment != null
+        ? new HistoryItemResponse("PAYMENT", GuestPaymentResponse.of(payment, ids), null)
+        : new HistoryItemResponse(
+            "REFUND", null, GuestRefundResponse.of(Objects.requireNonNull(refund), ids));
+  }
+
+  /** RN-38, RN-39, H1: the own credit of a guest with a contract. */
+  @GetMapping("/bff/guest/credit")
+  public ResponseEntity<GuestCreditResponse> credit(Authentication authentication) {
+    GuestCreditView credit = payments.credit(guestOf(authentication));
+    LastRefundView last = credit.lastRefund();
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            new GuestCreditResponse(
+                credit.balance(),
+                credit.toRefund(),
+                last == null
+                    ? null
+                    : new LastRefundResponse(last.amount(), last.date(), last.method())));
   }
 
   /** H3 «Tu pago»: one own payment of a guest with a contract. */

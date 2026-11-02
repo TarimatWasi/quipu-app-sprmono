@@ -659,9 +659,12 @@ class PaymentRepositoryAdapterTest {
     }
     stays.add(stay);
 
-    assertThat(adapter.sumApprovedOfPeriod(OCTOBER)).isEqualByComparingTo("800.50");
-    assertThat(adapter.sumApprovedOfPeriod(YearMonth.of(2026, 11))).isEqualByComparingTo("0");
-    assertThat(adapter.sumApprovedOfStays(stays)).isEqualByComparingTo("150");
-    assertThat(adapter.sumApprovedOfStays(List.of(TestIds.next()))).isEqualByComparingTo("0");
+    assertThat(adapter.approvedOfPeriod(OCTOBER).amount()).isEqualByComparingTo("800.50");
+    assertThat(adapter.approvedOfPeriod(OCTOBER).count()).isEqualTo(1);
+    assertThat(adapter.approvedOfPeriod(YearMonth.of(2026, 11)).amount()).isEqualByComparingTo("0");
+    assertThat(adapter.approvedOfPeriod(YearMonth.of(2026, 11)).count()).isZero();
+    assertThat(adapter.approvedOfStays(stays).amount()).isEqualByComparingTo("150");
+    assertThat(adapter.approvedOfStays(stays).count()).isEqualTo(1);
+    assertThat(adapter.approvedOfStays(List.of(TestIds.next())).amount()).isEqualByComparingTo("0");
   }
 }

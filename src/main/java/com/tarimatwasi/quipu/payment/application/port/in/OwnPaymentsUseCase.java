@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.P
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ReviewView;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.SurplusView;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -63,7 +64,51 @@ public interface OwnPaymentsUseCase {
       ChargeState status,
       BigDecimal agreedAmount,
       @Nullable Long paymentId,
-      @Nullable String rejectionReason) {}
+      @Nullable String rejectionReason,
+      @Nullable StaySurplusView surplus) {}
+
+  /**
+   * What a stay was paid over its agreed amount: a stay keeps no credit, Quipu refunds it (RN-38,
+   * RN-39, T1).
+   *
+   * @param refundedOn the day of the last refund that returned it, once returned whole
+   */
+  record StaySurplusView(
+      BigDecimal amount,
+      boolean refunded,
+      @Nullable LocalDate refundedOn,
+      @Nullable String refundMethod) {}
+
+  /** A refund Quipu made to the guest (RN-39), as H4 shows it with the label Devuelto. */
+  record GuestRefundView(
+      Long id,
+      LocalDate date,
+      String method,
+      BigDecimal amount,
+      Long fromPaymentId,
+      @Nullable YearMonth fromPeriod) {}
+
+  /** An item of the history: a payment or a refund; exactly one is set. */
+  record HistoryItem(@Nullable GuestPaymentView payment, @Nullable GuestRefundView refund) {}
+
+  /**
+   * One page of the history and the credit the guest has now.
+   *
+   * @param creditBalance what is discounted from the next period, or is to be refunded (RN-38)
+   */
+  record GuestHistoryView(CursorPage<HistoryItem> page, BigDecimal creditBalance) {}
+
+  /** The last refund Quipu made to the guest (H1 «Te devolvimos S/ 120.00 el 3 de noviembre»). */
+  record LastRefundView(BigDecimal amount, LocalDate date, String method) {}
+
+  /**
+   * The credit of a guest with a contract (RN-38, RN-39, H1).
+   *
+   * @param balance the credit it has now; 0 when none
+   * @param toRefund no period is left where to use it, so Quipu refunds it
+   */
+  record GuestCreditView(
+      BigDecimal balance, boolean toRefund, @Nullable LastRefundView lastRefund) {}
 
   /**
    * One own payment as the guest sees it (H3 «Tu pago», H4): its proofs without URLs, its
@@ -89,7 +134,8 @@ public interface OwnPaymentsUseCase {
       Instant submittedAt,
       Instant createdAt,
       List<ProofView> proofs,
-      List<ReviewView> reviews) {}
+      List<ReviewView> reviews,
+      @Nullable SurplusView surplus) {}
 
   /** The payment of a month that a guest with a contract sends (H3). */
   record PeriodPayment(Long guestId, YearMonth period, List<ProofUpload> proofs) {}
@@ -117,15 +163,23 @@ public interface OwnPaymentsUseCase {
 
   /**
    * One page of the own payment history of a guest with a contract, newest first and read by last
-   * index (RF-10, CU-19, H4), each payment with its proofs and decisions. An inactive guest still
-   * reads it.
+   * index (RF-10, CU-19, H4), each payment with its proofs and decisions, and among them the
+   * refunds Quipu made, by when they were registered (TAR-240). An inactive guest still reads it.
    *
    * @throws OtherGuestTypeException if the guest is temporary
    * @throws OnboardingRequiredException if the guest has not finished the onboarding
    * @throws com.tarimatwasi.quipu.shared.paging.InvalidCursorException if the cursor is not one
    *     this service issued
    */
-  CursorPage<GuestPaymentView> history(Long guestId, PageQuery page);
+  GuestHistoryView history(Long guestId, PageQuery page);
+
+  /**
+   * The own credit of a guest with a contract, whether Quipu will refund it, and the last refund
+   * (RN-38, RN-39, H1). The guest cannot ask for a refund while a period is left where to use it.
+   *
+   * @throws OtherGuestTypeException if the guest is temporary
+   */
+  GuestCreditView credit(Long guestId);
 
   /**
    * One own payment (H3, T2 «Tu pago»).

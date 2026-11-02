@@ -2,14 +2,44 @@ package com.tarimatwasi.quipu.payment.application.port.out;
 
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 public interface PaymentContractPort {
 
-  /** A contract with the terms the payments are counted from and the amount of each month. */
-  record ContractInfo(Long id, Long environmentId, ContractTerms terms, BigDecimal monthlyAmount) {}
+  /**
+   * A contract with the terms the payments are counted from and the amount of each month.
+   *
+   * @param terminatedOn the day of Lima an administrator finished it by hand, if one did
+   */
+  record ContractInfo(
+      Long id,
+      Long environmentId,
+      ContractTerms terms,
+      BigDecimal monthlyAmount,
+      @Nullable LocalDate terminatedOn) {
+
+    /** A contract nobody finished by hand. */
+    public ContractInfo(
+        Long id, Long environmentId, ContractTerms terms, BigDecimal monthlyAmount) {
+      this(id, environmentId, terms, monthlyAmount, null);
+    }
+
+    /**
+     * The day the contract ended, once it is over: the earlier of its end date and the day it was
+     * finished; {@code null} for an open-ended contract nobody finished.
+     */
+    public @Nullable LocalDate endedOn() {
+      LocalDate end = terms.endDate();
+      if (terminatedOn == null) {
+        return end;
+      }
+      return end == null || terminatedOn.isBefore(end) ? terminatedOn : end;
+    }
+  }
 
   /** Every contract of the guest, whatever its state, the oldest first. */
   List<ContractInfo> contractsOf(Long guestId);

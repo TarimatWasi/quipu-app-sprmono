@@ -34,6 +34,13 @@ interface PaymentJpaRepository
 
   List<PaymentJpaEntity> findByContractId(Long contractId);
 
+  /** RN-38: every payment of the guest; read by ix_payments_history (guest_id, ...). */
+  List<PaymentJpaEntity> findByGuestId(Long guestId);
+
+  /** RN-38: the guests with a payment in that state. */
+  @Query("SELECT DISTINCT p.guestId FROM PaymentJpaEntity p WHERE p.status = :status")
+  List<Long> findGuestIdsByStatus(@Param("status") PaymentStatus status);
+
   List<PaymentJpaEntity> findByStayId(Long stayId);
 
   List<PaymentJpaEntity> findByContractIdInAndPeriod(
@@ -48,16 +55,23 @@ interface PaymentJpaRepository
    * there are none.
    */
   @Query(
-      "SELECT SUM(p.verifiedAmount) FROM PaymentJpaEntity p WHERE p.contractId IS NOT NULL"
-          + " AND p.period = :period AND p.status = :status")
-  @Nullable BigDecimal sumAmountOfPeriod(
+      "SELECT SUM(p.verifiedAmount) AS total, COUNT(p) AS count FROM PaymentJpaEntity p"
+          + " WHERE p.contractId IS NOT NULL AND p.period = :period AND p.status = :status")
+  SumAndCount totalOfPeriod(
       @Param("period") LocalDate period, @Param("status") PaymentStatus status);
+
+  /** A sum and how many rows it added up; the sum is null when there were none. */
+  interface SumAndCount {
+    @Nullable BigDecimal getTotal();
+
+    long getCount();
+  }
 
   /** RF-18: what was verified of the payments of those stays in that state; null when none. */
   @Query(
-      "SELECT SUM(p.verifiedAmount) FROM PaymentJpaEntity p WHERE p.stayId IN :stayIds"
-          + " AND p.status = :status")
-  @Nullable BigDecimal sumAmountOfStays(
+      "SELECT SUM(p.verifiedAmount) AS total, COUNT(p) AS count FROM PaymentJpaEntity p"
+          + " WHERE p.stayId IN :stayIds AND p.status = :status")
+  SumAndCount totalOfStays(
       @Param("stayIds") Collection<Long> stayIds, @Param("status") PaymentStatus status);
 
   /** Read by ix_payments_guest_status_period (guest_id, status, period). */

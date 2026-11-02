@@ -100,6 +100,12 @@ public class StayService implements ManageStaysUseCase {
 
   @Override
   @Transactional(readOnly = true)
+  public List<StayView> allOf(Long guestId) {
+    return stays.findAllByGuest(guestId).stream().map(StayService::view).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<StayView> byIds(Collection<Long> ids) {
     return ids.isEmpty()
         ? List.of()

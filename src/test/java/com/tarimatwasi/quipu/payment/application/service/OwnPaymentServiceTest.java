@@ -40,6 +40,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewProof;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
@@ -60,6 +61,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
@@ -95,12 +97,13 @@ class OwnPaymentServiceTest {
   @Mock PaymentGuestPort guests;
   @Mock PaymentContractPort contracts;
   @Mock PaymentStayPort stays;
+  @Mock RefundRepositoryPort refunds;
 
   private OwnPaymentService service;
 
   @BeforeEach
   void setUp() {
-    service = new OwnPaymentService(payments, files, guests, contracts, stays, clock);
+    service = new OwnPaymentService(payments, files, guests, contracts, stays, refunds, clock);
   }
 
   private void guest(boolean contractType, Standing standing) {
@@ -561,12 +564,12 @@ class OwnPaymentServiceTest {
 
     var history = service.history(GUEST, page);
 
-    assertThat(history.nextCursor()).isEqualTo("next");
-    var view = history.content().get(0);
+    assertThat(history.page().nextCursor()).isEqualTo("next");
+    var view = Objects.requireNonNull(history.page().content().get(0).payment());
     assertThat(view.status()).isEqualTo(PaymentState.REJECTED);
     assertThat(view.rejectionReason()).isEqualTo("Monto incompleto");
     assertThat(view.createdAt()).isEqualTo(CREATED);
-    // RN-38: no credit yet (TAR-239 part 2), so what is due is the monthly amount.
+    // RN-38: no credit before it, so what is due is the monthly amount.
     assertThat(view.amountDue()).isEqualByComparingTo("800.00");
   }
 

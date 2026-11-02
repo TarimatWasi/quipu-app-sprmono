@@ -12,13 +12,22 @@ import org.jspecify.annotations.Nullable;
 
 public interface ExpenseRepositoryPort {
 
+  /** What the expenses of a month add up to, and how many they are. */
+  record Total(BigDecimal amount, long count) {}
+
   /** Stores a new expense. */
   Expense insert(
       ExpenseCategory category, BigDecimal amount, YearMonth month, @Nullable String description);
 
-  /** Replaces the data of the expense; empty if there is none with that id. */
+  /**
+   * Replaces the data of the expense; empty if there is none with that id.
+   *
+   * @throws org.springframework.dao.OptimisticLockingFailureException if its version is not {@code
+   *     version}
+   */
   Optional<Expense> update(
       Long id,
+      long version,
       ExpenseCategory category,
       BigDecimal amount,
       YearMonth month,
@@ -34,6 +43,6 @@ public interface ExpenseRepositoryPort {
    */
   CursorPage<Expense> findByMonth(YearMonth month, PageQuery page);
 
-  /** The sum of the amounts of the expenses of the month, added up by the base; 0 if none. */
-  BigDecimal sumByMonth(YearMonth month);
+  /** The sum of the amounts of the expenses of the month and their count; 0 if none. */
+  Total totalOfMonth(YearMonth month);
 }

@@ -54,9 +54,10 @@ public class FineRepositoryAdapter implements FineRepositoryPort {
   }
 
   @Override
-  public BigDecimal sumByMonth(YearMonth month) {
+  public Total totalOfMonth(YearMonth month) {
     BigDecimal sum = jpaRepository.sumAmountByMonth(month.atDay(1));
-    return sum == null ? BigDecimal.ZERO : sum;
+    return new Total(
+        sum == null ? BigDecimal.ZERO : sum, jpaRepository.countByMonth(month.atDay(1)));
   }
 
   /**

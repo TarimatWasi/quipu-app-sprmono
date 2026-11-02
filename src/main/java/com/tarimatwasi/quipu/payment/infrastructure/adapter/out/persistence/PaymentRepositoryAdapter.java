@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
+import com.tarimatwasi.quipu.payment.domain.MonthTotal;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentProof;
 import com.tarimatwasi.quipu.payment.domain.PaymentReview;
@@ -324,6 +325,21 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
+  public List<Payment> findAllOfGuest(Long guestId) {
+    return jpaRepository.findByGuestId(guestId).stream().map(PaymentJpaEntity::toDomain).toList();
+  }
+
+  @Override
+  public List<Long> guestsWithApprovedPayments() {
+    return jpaRepository.findGuestIdsByStatus(PaymentStatus.APPROVED);
+  }
+
+  @Override
+  public Instant historyPosition(Long guestId, String cursor) {
+    return keyOf(cursor, id -> jpaRepository.findCreatedDateOfGuest(id, guestId)).at();
+  }
+
+  @Override
   public List<Payment> findAllByContract(Long contractId) {
     return jpaRepository.findByContractId(contractId).stream()
         .map(PaymentJpaEntity::toDomain)
@@ -373,24 +389,25 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
-  public BigDecimal sumApprovedOfPeriod(YearMonth period) {
-    return orZero(jpaRepository.sumAmountOfPeriod(period.atDay(1), PaymentStatus.APPROVED));
+  public MonthTotal approvedOfPeriod(YearMonth period) {
+    return totalOf(jpaRepository.totalOfPeriod(period.atDay(1), PaymentStatus.APPROVED));
   }
 
   /** In slices, so that a long list of stays never nears the limit of bound parameters. */
   @Override
-  public BigDecimal sumApprovedOfStays(Collection<Long> stayIds) {
+  public MonthTotal approvedOfStays(Collection<Long> stayIds) {
     List<Long> ids = List.copyOf(stayIds);
-    BigDecimal total = BigDecimal.ZERO;
+    MonthTotal total = MonthTotal.NONE;
     for (int from = 0; from < ids.size(); from += STAY_SLICE) {
       List<Long> slice = ids.subList(from, Math.min(from + STAY_SLICE, ids.size()));
-      total = total.add(orZero(jpaRepository.sumAmountOfStays(slice, PaymentStatus.APPROVED)));
+      total = total.plus(totalOf(jpaRepository.totalOfStays(slice, PaymentStatus.APPROVED)));
     }
     return total;
   }
 
-  private static BigDecimal orZero(@Nullable BigDecimal sum) {
-    return sum == null ? BigDecimal.ZERO : sum;
+  private static MonthTotal totalOf(PaymentJpaRepository.SumAndCount read) {
+    BigDecimal sum = read.getTotal();
+    return new MonthTotal(sum == null ? BigDecimal.ZERO : sum, read.getCount());
   }
 
   /** Where the cursor stands: the sort key of its payment, read again from the row. */

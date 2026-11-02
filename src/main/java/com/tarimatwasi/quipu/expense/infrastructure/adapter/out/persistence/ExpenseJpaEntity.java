@@ -58,8 +58,17 @@ public class ExpenseJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> 
     this.description = newDescription;
   }
 
+  long version() {
+    return version;
+  }
+
   Expense toDomain() {
     return new Expense(
-        Objects.requireNonNull(getId()), category, amount, YearMonth.from(month), description);
+        Objects.requireNonNull(getId()),
+        category,
+        amount,
+        YearMonth.from(month),
+        description,
+        version);
   }
 }

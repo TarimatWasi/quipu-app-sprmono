@@ -41,6 +41,9 @@ public interface PaymentStayPort {
   /** Every stay of the guest of the session. */
   List<StayTerms> staysOf(Long guestId);
 
+  /** Every stay of the guest, read by the administrator (A5.1, TAR-240). */
+  List<StayTerms> staysOfGuest(Long guestId);
+
   /** The stay a summary of the guest of the session shows: in course, else next, else last. */
   Optional<StayTerms> relevantStayOf(Long guestId, LocalDate today);
 

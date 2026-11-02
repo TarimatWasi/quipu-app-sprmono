@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.payment.application.port.out;
 
+import com.tarimatwasi.quipu.payment.domain.MonthTotal;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentProof;
 import com.tarimatwasi.quipu.payment.domain.PaymentReview;
@@ -135,6 +136,23 @@ public interface PaymentRepositoryPort {
   /** Every payment of the stay, whatever its state. */
   List<Payment> findAllByStay(Long stayId);
 
+  /** Every payment of the guest, whatever its state and of any contract or stay (RN-38). */
+  List<Payment> findAllOfGuest(Long guestId);
+
+  /**
+   * The guests with an approved payment: the only ones that can have credit to refund (RN-38),
+   * since a credit always starts with a payment verified over what it owed.
+   */
+  List<Long> guestsWithApprovedPayments();
+
+  /**
+   * When the payment of a history cursor was created, to place the refunds of the guest between the
+   * pages of its history (H4, TAR-240).
+   *
+   * @throws InvalidCursorException if the cursor is not one this service issued for the guest
+   */
+  Instant historyPosition(Long guestId, String cursor);
+
   /**
    * Every payment, whatever its state, of that period of any of those contracts, in as few reads as
    * the list allows (HU-A04); none for no contracts.
@@ -157,14 +175,14 @@ public interface PaymentRepositoryPort {
   List<Payment> findApprovedOfContracts(Long guestId);
 
   /**
-   * The sum of what was verified of the approved payments of that period, of every contract
-   * (RF-18); 0 if there are none. Pending and rejected payments do not count.
+   * The sum of what was verified of the approved payments of that period, of every contract, and
+   * how many they are (RF-18); 0 if there are none. Pending and rejected payments do not count.
    */
-  BigDecimal sumApprovedOfPeriod(YearMonth period);
+  MonthTotal approvedOfPeriod(YearMonth period);
 
   /**
-   * The sum of what was verified of the approved payments of those stays (RF-18); 0 if there are
-   * none. Pending and rejected payments do not count.
+   * The sum of what was verified of the approved payments of those stays and how many they are
+   * (RF-18); 0 if there are none. Pending and rejected payments do not count.
    */
-  BigDecimal sumApprovedOfStays(Collection<Long> stayIds);
+  MonthTotal approvedOfStays(Collection<Long> stayIds);
 }

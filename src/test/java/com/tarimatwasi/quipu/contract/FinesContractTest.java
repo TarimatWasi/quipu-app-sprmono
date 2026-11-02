@@ -71,9 +71,20 @@ class FinesContractTest {
     insertUser(guestUserId, "GUEST", "00000002");
     Long guestId = TestIds.next();
     jdbc.update(
-        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
-            + " VALUES (?, 'DNI', '40000001', 'TEMPORARY', 'INACTIVE')",
+        "INSERT INTO guests (id, full_name, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'Ana Quispe', 'DNI', '40000001', 'TEMPORARY', 'INACTIVE')",
         guestId);
+    // TAR-240: the environment it held in the month of the fine goes in the row (A6 «Multas»)
+    Long room = TestIds.next();
+    jdbc.update(
+        "INSERT INTO environments (id, code, type, status) VALUES (?, '105', 'ROOM', 'ACTIVE')",
+        room);
+    jdbc.update(
+        "INSERT INTO stays (id, guest_id, environment_id, start_date, end_date, agreed_amount)"
+            + " VALUES (?, ?, ?, '2026-09-10', '2026-09-20', 300)",
+        TestIds.next(),
+        guestId,
+        room);
     maskedGuest = sessionIds().mask(IdKind.GUEST, guestId);
   }
 
@@ -122,6 +133,8 @@ class FinesContractTest {
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].guestName").value("Ana Quispe"))
+        .andExpect(jsonPath("$[0].environmentCode").value("105"))
         .andExpect(satisfiesTheContract());
     mockMvc
         .perform(delete(URL + "/" + id).cookie(admin()))

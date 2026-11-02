@@ -22,6 +22,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.GuestProfile;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
@@ -63,6 +64,7 @@ class AccountStatusTest {
   @Mock PaymentContractPort contracts;
   @Mock PaymentEnvironmentPort environments;
   @Mock PaymentStayPort stays;
+  @Mock RefundRepositoryPort refunds;
   @Mock com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort reviewers;
 
   private PaymentService service;
@@ -71,7 +73,7 @@ class AccountStatusTest {
   void setUp() {
     service =
         new PaymentService(
-            payments, files, guests, contracts, environments, stays, reviewers, clock);
+            payments, files, guests, contracts, environments, stays, reviewers, refunds, clock);
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {

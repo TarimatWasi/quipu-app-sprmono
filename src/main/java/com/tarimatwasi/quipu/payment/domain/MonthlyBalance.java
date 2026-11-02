@@ -6,15 +6,21 @@ import java.time.YearMonth;
 
 /**
  * RF-18: the income and the expenses of one month, in soles with two decimals. The income is the
- * approved payments attributed to the month plus its fines; the net is the income minus the
- * expenses, negative when the expenses are higher.
+ * approved payments attributed to the month plus its fines minus the refunds dated in it (RN-39);
+ * the net is the income minus the expenses, negative when the expenses are higher. Each part
+ * carries how many movements it adds up (A6, TAR-240).
  */
 public record MonthlyBalance(
     YearMonth month,
     BigDecimal incomeFromPayments,
+    long paymentsCount,
     BigDecimal incomeFromFines,
+    long finesCount,
+    BigDecimal refundsTotal,
+    long refundsCount,
     BigDecimal totalIncome,
     BigDecimal totalExpenses,
+    long expensesCount,
     BigDecimal net) {
 
   /**
@@ -40,19 +46,34 @@ public record MonthlyBalance(
   }
 
   /**
-   * The balance of the three sums of the month, each with at most two decimals as the base keeps
+   * The balance of the four totals of the month, each with at most two decimals as the base keeps
    * them. Added up as decimals, never as floating point.
    *
    * @throws ArithmeticException if an amount has more than two decimals: it is not rounded
    */
   public static MonthlyBalance of(
-      YearMonth month, BigDecimal payments, BigDecimal fines, BigDecimal expenses) {
-    BigDecimal fromPayments = cents(payments);
-    BigDecimal fromFines = cents(fines);
-    BigDecimal outgoing = cents(expenses);
-    BigDecimal income = fromPayments.add(fromFines);
+      YearMonth month,
+      MonthTotal payments,
+      MonthTotal fines,
+      MonthTotal refunds,
+      MonthTotal expenses) {
+    BigDecimal fromPayments = cents(payments.amount());
+    BigDecimal fromFines = cents(fines.amount());
+    BigDecimal returned = cents(refunds.amount());
+    BigDecimal outgoing = cents(expenses.amount());
+    BigDecimal income = fromPayments.add(fromFines).subtract(returned);
     return new MonthlyBalance(
-        month, fromPayments, fromFines, income, outgoing, income.subtract(outgoing));
+        month,
+        fromPayments,
+        payments.count(),
+        fromFines,
+        fines.count(),
+        returned,
+        refunds.count(),
+        income,
+        outgoing,
+        expenses.count(),
+        income.subtract(outgoing));
   }
 
   private static BigDecimal cents(BigDecimal amount) {

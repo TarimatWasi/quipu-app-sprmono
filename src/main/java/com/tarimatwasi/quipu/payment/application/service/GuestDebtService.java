@@ -50,7 +50,7 @@ public class GuestDebtService implements GuestDebtQuery {
     for (ContractInfo contract : owned) {
       List<Payment> ofContract =
           approved.stream().filter(p -> contract.id().equals(p.contractId())).toList();
-      DebtCalculator.debt(contract.terms(), ofContract, today).stream()
+      DebtCalculator.debt(contract.terms(), contract.monthlyAmount(), ofContract, today).stream()
           .map(DebtPeriod::period)
           .forEach(owed::add);
     }

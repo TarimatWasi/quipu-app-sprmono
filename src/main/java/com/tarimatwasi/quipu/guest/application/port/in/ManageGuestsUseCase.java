@@ -7,6 +7,8 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** RF-02: list, read and edit the guests the administrator registered. */
@@ -117,6 +119,21 @@ public interface ManageGuestsUseCase {
    */
   record UpdateCommand(
       long version, @Nullable IdDocumentKind documentType, @Nullable String documentNumber) {}
+
+  /**
+   * Who a guest is for a row of the finance screens (TAR-240): a fine, a refund, a pending credit.
+   *
+   * @param environment the contract or stay that crosses the range asked, the latest one to start;
+   *     else its last one; null if it never had one (a stay registered before TAR-237 has none)
+   */
+  record GuestRef(
+      Long id, @Nullable String name, GuestKind type, @Nullable Occupancy environment) {}
+
+  /**
+   * The guests of those ids that exist, whatever their state, each with its environment in the
+   * range of days.
+   */
+  Map<Long, GuestRef> refsOf(Collection<Long> ids, LocalDate from, LocalDate to);
 
   /**
    * Lists one page of the guests of the filter, ordered by document type and number and read by

@@ -101,4 +101,7 @@ public interface ManageStaysUseCase {
 
   /** TAR-239 (A5): those stays, of any guest; an id with no stay adds nothing. */
   List<StayView> byIds(Collection<Long> ids);
+
+  /** TAR-240 (A5.1): every stay of the guest, active or inactive; none for an unknown guest. */
+  List<StayView> allOf(Long guestId);
 }

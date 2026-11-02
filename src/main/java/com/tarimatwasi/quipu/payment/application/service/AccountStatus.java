@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.ContractInfo;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
+import com.tarimatwasi.quipu.payment.domain.CreditLedger;
 import com.tarimatwasi.quipu.payment.domain.PeriodStatus;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -44,17 +45,23 @@ final class AccountStatus {
     LocalDate today = BusinessDay.today(clock);
     List<PeriodView> periods = new ArrayList<>();
     for (ContractInfo contract : read) {
-      for (PeriodStatus period :
-          contract.terms().statuses(payments.findAllByContract(contract.id()), today)) {
+      // RN-38: each period takes the credit the ones before left (TAR-240).
+      CreditLedger ledger =
+          CreditLedger.of(
+              contract.terms(),
+              contract.monthlyAmount(),
+              payments.findAllByContract(contract.id()),
+              today);
+      for (CreditLedger.Line line : ledger.lines()) {
+        PeriodStatus period = line.status();
         periods.add(
             new PeriodView(
                 period.period(),
                 ChargeState.valueOf(period.state().name()),
                 period.dueDate(),
-                contract.monthlyAmount(),
-                // RN-38: the credit arrives with TAR-239 part 2; until then nothing is discounted.
-                java.math.BigDecimal.ZERO.setScale(2),
-                contract.monthlyAmount(),
+                line.amount(),
+                line.creditApplied(),
+                line.amountDue(),
                 contract.id(),
                 period.paymentId(),
                 period.rejectionReason()));

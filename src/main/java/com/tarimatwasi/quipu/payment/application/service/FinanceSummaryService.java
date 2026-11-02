@@ -6,8 +6,9 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentExpensePort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFinePort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
+import com.tarimatwasi.quipu.payment.domain.MonthTotal;
 import com.tarimatwasi.quipu.payment.domain.MonthlyBalance;
-import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,12 +27,15 @@ public class FinanceSummaryService implements FinanceSummaryUseCase {
   private final PaymentStayPort stays;
   private final PaymentFinePort fines;
   private final PaymentExpensePort expenses;
+  private final RefundRepositoryPort refunds;
 
   FinanceSummaryService(
       PaymentRepositoryPort payments,
       PaymentStayPort stays,
       PaymentFinePort fines,
-      PaymentExpensePort expenses) {
+      PaymentExpensePort expenses,
+      RefundRepositoryPort refunds) {
+    this.refunds = refunds;
     this.payments = payments;
     this.stays = stays;
     this.fines = fines;
@@ -45,19 +49,28 @@ public class FinanceSummaryService implements FinanceSummaryUseCase {
       throw new InvalidFinanceMonthException();
     }
     // D-68: a contract payment counts in its period, a stay payment in the month its stay starts.
-    BigDecimal ofPeriods = payments.sumApprovedOfPeriod(month);
+    MonthTotal ofPeriods = payments.approvedOfPeriod(month);
     List<Long> staysOfTheMonth = stays.idsStartingIn(month);
-    BigDecimal ofStays =
-        staysOfTheMonth.isEmpty() ? BigDecimal.ZERO : payments.sumApprovedOfStays(staysOfTheMonth);
+    MonthTotal ofStays =
+        staysOfTheMonth.isEmpty() ? MonthTotal.NONE : payments.approvedOfStays(staysOfTheMonth);
     MonthlyBalance balance =
         MonthlyBalance.of(
-            month, ofPeriods.add(ofStays), fines.totalOf(month), expenses.totalOf(month));
+            month,
+            ofPeriods.plus(ofStays),
+            fines.totalOf(month),
+            refunds.totalOfMonth(month),
+            expenses.totalOf(month));
     return new FinanceSummaryView(
         balance.month(),
         balance.incomeFromPayments(),
+        balance.paymentsCount(),
         balance.incomeFromFines(),
+        balance.finesCount(),
+        balance.refundsTotal(),
+        balance.refundsCount(),
         balance.totalIncome(),
         balance.totalExpenses(),
+        balance.expensesCount(),
         balance.net());
   }
 }

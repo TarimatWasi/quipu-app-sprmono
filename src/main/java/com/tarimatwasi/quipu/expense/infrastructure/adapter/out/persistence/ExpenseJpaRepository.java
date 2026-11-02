@@ -26,6 +26,9 @@ interface ExpenseJpaRepository
   @Query("select sum(e.amount) from ExpenseJpaEntity e where e.month = :month")
   @Nullable BigDecimal sumAmountByMonth(@Param("month") LocalDate month);
 
+  /** TAR-240: how many expenses the month has, for A6 «Mostrando X de Y» and the balance. */
+  long countByMonth(LocalDate month);
+
   /**
    * TAR-227: where a page cursor stands, if the expense is one of that month. createdDate is mapped
    * as an Instant (the field of AbstractAuditable; only its getter is a LocalDateTime).

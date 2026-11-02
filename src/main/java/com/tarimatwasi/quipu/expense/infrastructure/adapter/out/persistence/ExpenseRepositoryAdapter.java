@@ -13,11 +13,13 @@ import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
@@ -37,13 +39,14 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
   public Expense insert(
       ExpenseCategory category, BigDecimal amount, YearMonth month, @Nullable String description) {
     return jpaRepository
-        .save(new ExpenseJpaEntity(category, amount, month, description))
+        .saveAndFlush(new ExpenseJpaEntity(category, amount, month, description))
         .toDomain();
   }
 
   @Override
   public Optional<Expense> update(
       Long id,
+      long version,
       ExpenseCategory category,
       BigDecimal amount,
       YearMonth month,
@@ -52,8 +55,15 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
         .findById(id)
         .map(
             entity -> {
+              // TAR-240 (BE-SPR-DAT-13): the client loaded another version; the version column
+              // still guards two edits that read the same one at the same time.
+              if (entity.version() != version) {
+                throw new OptimisticLockingFailureException(
+                    "The expense changed since it was loaded");
+              }
               entity.replace(category, amount, month, description);
-              return jpaRepository.save(entity).toDomain();
+              // Flushed here so that the answer carries the new version
+              return jpaRepository.saveAndFlush(entity).toDomain();
             });
   }
 
@@ -99,9 +109,10 @@ public class ExpenseRepositoryAdapter implements ExpenseRepositoryPort {
   }
 
   @Override
-  public BigDecimal sumByMonth(YearMonth month) {
-    BigDecimal sum = jpaRepository.sumAmountByMonth(month.atDay(1));
-    return sum == null ? BigDecimal.ZERO : sum;
+  public Total totalOfMonth(YearMonth month) {
+    LocalDate first = month.atDay(1);
+    BigDecimal sum = jpaRepository.sumAmountByMonth(first);
+    return new Total(sum == null ? BigDecimal.ZERO : sum, jpaRepository.countByMonth(first));
   }
 
   /** Where the cursor stands: the sort key of its expense, read again from the row. */

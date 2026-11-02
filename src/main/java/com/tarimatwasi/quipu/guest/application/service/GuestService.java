@@ -35,6 +35,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -177,6 +178,49 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     }
     Set<Long> ids = new LinkedHashSet<>();
     page.forEach(guest -> ids.add(guest.id()));
+    Map<Long, List<Occupancy>> byGuest = occupanciesOf(ids);
+    LocalDate today = LocalDate.now(clock);
+    Map<Long, Occupancy> chosen = new HashMap<>();
+    for (Guest guest : page) {
+      relevant(
+              byGuest.getOrDefault(guest.id(), List.of()),
+              today,
+              guest.status() == GuestStatus.INACTIVE)
+          .ifPresent(occupancy -> chosen.put(guest.id(), occupancy));
+    }
+    return chosen;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, GuestRef> refsOf(Collection<Long> ids, LocalDate from, LocalDate to) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+    Map<Long, List<Occupancy>> byGuest = occupanciesOf(ids);
+    Map<Long, GuestRef> refs = new HashMap<>();
+    for (Guest guest : guests.findAllByIds(ids)) {
+      refs.put(
+          guest.id(),
+          new GuestRef(
+              guest.id(),
+              guest.fullName(),
+              GuestKind.valueOf(guest.type().name()),
+              inRange(byGuest.getOrDefault(guest.id(), List.of()), from, to).orElse(null)));
+    }
+    return refs;
+  }
+
+  /** The one that crosses the range and starts last, else the one that starts last of all. */
+  static Optional<Occupancy> inRange(List<Occupancy> occupancies, LocalDate from, LocalDate to) {
+    Comparator<Occupancy> byStart = Comparator.comparing(Occupancy::startDate);
+    Optional<Occupancy> crossing =
+        occupancies.stream().filter(o -> o.crosses(from, to)).max(byStart);
+    return crossing.isPresent() ? crossing : occupancies.stream().max(byStart);
+  }
+
+  /** The contracts and the stays with an environment of those guests, by guest. */
+  private Map<Long, List<Occupancy>> occupanciesOf(Collection<Long> ids) {
     Map<Long, List<Occupancy>> byGuest = new HashMap<>();
     for (Occupancy contract : contracts.occupanciesOfGuests(ids)) {
       byGuest.computeIfAbsent(contract.guestId(), key -> new ArrayList<>()).add(contract);
@@ -197,16 +241,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
                     stay.endDate()));
       }
     }
-    LocalDate today = LocalDate.now(clock);
-    Map<Long, Occupancy> chosen = new HashMap<>();
-    for (Guest guest : page) {
-      relevant(
-              byGuest.getOrDefault(guest.id(), List.of()),
-              today,
-              guest.status() == GuestStatus.INACTIVE)
-          .ifPresent(occupancy -> chosen.put(guest.id(), occupancy));
-    }
-    return chosen;
+    return byGuest;
   }
 
   /** The one in course today, else the next one, else (with {@code includePast}) the last one. */

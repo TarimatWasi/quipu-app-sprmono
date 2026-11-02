@@ -45,6 +45,54 @@ public interface ManagePaymentsUseCase {
     CASH
   }
 
+  /**
+   * What became of what an approved payment left over (RN-38, RN-39): CREDIT is discounted from the
+   * next period; REFUND_PENDING and REFUNDED belong to the last period of a contract or to a stay,
+   * which Quipu returns.
+   */
+  enum SurplusOutcome {
+    CREDIT,
+    REFUND_PENDING,
+    REFUNDED
+  }
+
+  /** What an approved payment verified over what it owed, and what became of it. */
+  record SurplusView(BigDecimal amount, SurplusOutcome outcome) {}
+
+  /**
+   * Where a period or a stay of a direct payment stands (A5.1): UNPAID and OVERDUE take a direct
+   * payment; UNDER_REVIEW and REJECTED have one, completed in the correction.
+   */
+  enum PayableState {
+    UNPAID,
+    OVERDUE,
+    UNDER_REVIEW,
+    REJECTED
+  }
+
+  /**
+   * A period of a contract, or a stay, that the guest can pay or has pending (A5.1, TAR-240).
+   *
+   * @param dueDate the payment day of the period, or the exit date of the stay
+   * @param creditApplied the credit of the guest discounted from it (RN-38)
+   * @param amountDue {@code expectedAmount - creditApplied}
+   * @param lastPeriod the last period of its contract, or a stay
+   * @param paymentId set when UNDER_REVIEW or REJECTED
+   */
+  record PayablePeriodView(
+      @Nullable Long contractId,
+      @Nullable YearMonth period,
+      @Nullable Long stayId,
+      @Nullable LocalDate stayStartDate,
+      @Nullable LocalDate stayEndDate,
+      PayableState status,
+      LocalDate dueDate,
+      BigDecimal expectedAmount,
+      BigDecimal creditApplied,
+      BigDecimal amountDue,
+      boolean lastPeriod,
+      @Nullable Long paymentId) {}
+
   /** Who added a proof (RN-22). */
   enum ProofSource {
     GUEST,
@@ -196,6 +244,7 @@ public interface ManagePaymentsUseCase {
    * @param amountDue what the verified sum must cover to approve
    * @param lastPeriod the last period of the contract, or a stay: what is left over is refunded
    * @param reviewedBy {@code null} while pending
+   * @param surplus what it verified over {@code amountDue} once approved; null otherwise
    */
   record PaymentDetailView(
       PaymentView payment,
@@ -211,7 +260,8 @@ public interface ManagePaymentsUseCase {
       boolean lastPeriod,
       @Nullable ReviewerView reviewedBy,
       List<ProofView> proofs,
-      List<ReviewView> reviews) {}
+      List<ReviewView> reviews,
+      @Nullable SurplusView surplus) {}
 
   /**
    * The administrator's decision; the reviewer is the one of the session.
@@ -282,6 +332,17 @@ public interface ManagePaymentsUseCase {
    * @throws PaymentFileUnavailableException if a voucher cannot be signed
    */
   PaymentDetailView get(Long id);
+
+  /**
+   * What the guest can pay or has pending, for a direct payment (A5.1, CU-14, CU-28, RN-27, RN-38):
+   * of a guest with a contract, every period its contracts charge up to the current month that is
+   * not paid; of a temporary guest, every stay without an approved payment. Oldest first, for an
+   * active or an inactive guest.
+   *
+   * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if there is no
+   *     such guest
+   */
+  List<PayablePeriodView> payablePeriods(Long guestId);
 
   /**
    * Approves or rejects a pending payment, or a rejected one the administrator corrected (TAR-239).

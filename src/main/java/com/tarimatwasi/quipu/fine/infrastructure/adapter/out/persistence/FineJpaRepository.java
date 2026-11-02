@@ -24,4 +24,7 @@ interface FineJpaRepository extends JpaRepository<FineJpaEntity, Long> {
   /** RF-18: read by ix_fines_month; null when the month has no fines. */
   @Query("select sum(f.amount) from FineJpaEntity f where f.month = :month")
   @Nullable BigDecimal sumAmountByMonth(@Param("month") LocalDate month);
+
+  /** TAR-240: how many fines the month has, for the A6 breakdown of the balance. */
+  long countByMonth(LocalDate month);
 }

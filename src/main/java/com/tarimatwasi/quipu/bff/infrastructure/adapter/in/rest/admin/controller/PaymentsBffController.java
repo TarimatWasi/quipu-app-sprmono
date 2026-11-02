@@ -6,11 +6,14 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.Unk
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.PagedResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestPaymentsBffController.PeriodStatusResponse;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestPaymentsBffController.SurplusResponse;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.Decision;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.GuestKind;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PayablePeriodView;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PayableState;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentDetailView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentView;
@@ -225,7 +228,7 @@ public class PaymentsBffController {
       @Nullable BigDecimal verifiedAmount,
       PaymentState status,
       @Nullable String rejectionReason,
-      @Nullable Object surplus,
+      @Nullable SurplusResponse surplus,
       @Nullable Instant reviewedAt,
       @Nullable ReviewerResponse reviewedBy,
       Instant submittedAt,
@@ -254,8 +257,7 @@ public class PaymentsBffController {
           payment.verifiedAmount(),
           payment.status(),
           payment.rejectionReason(),
-          // RN-38: the surplus arrives with the credit (TAR-239 part 2).
-          null,
+          SurplusResponse.of(detail.surplus()),
           payment.reviewedAt(),
           ReviewerResponse.of(detail.reviewedBy(), ids),
           payment.submittedAt(),
@@ -356,6 +358,53 @@ public class PaymentsBffController {
             PagedResponse.of(
                 payments.history(unmaskOrMissing(IdKind.GUEST, id), page),
                 payment -> PaymentResponse.of(payment, ids)));
+  }
+
+  /** PayablePeriod (A5.1): a period or a stay the guest can pay or has pending. */
+  public record PayablePeriodResponse(
+      @Nullable UUID contractId,
+      @Nullable String period,
+      @Nullable UUID stayId,
+      @Nullable LocalDate stayStartDate,
+      @Nullable LocalDate stayEndDate,
+      PayableState status,
+      LocalDate dueDate,
+      BigDecimal expectedAmount,
+      BigDecimal creditApplied,
+      BigDecimal amountDue,
+      boolean lastPeriod,
+      @Nullable UUID paymentId) {
+    static PayablePeriodResponse of(PayablePeriodView view, IdMasker ids) {
+      Long contractId = view.contractId();
+      Long stayId = view.stayId();
+      Long paymentId = view.paymentId();
+      YearMonth period = view.period();
+      return new PayablePeriodResponse(
+          contractId == null ? null : ids.mask(IdKind.CONTRACT, contractId),
+          period == null ? null : period.toString(),
+          stayId == null ? null : ids.mask(IdKind.STAY, stayId),
+          view.stayStartDate(),
+          view.stayEndDate(),
+          view.status(),
+          view.dueDate(),
+          view.expectedAmount(),
+          view.creditApplied(),
+          view.amountDue(),
+          view.lastPeriod(),
+          paymentId == null ? null : ids.mask(IdKind.PAYMENT, paymentId));
+    }
+  }
+
+  /** A5.1 (TAR-240): what the guest can pay or has pending, for a direct payment. */
+  @GetMapping("/bff/admin/guests/{id}/payable-periods")
+  public ResponseEntity<List<PayablePeriodResponse>> payablePeriods(@PathVariable UUID id) {
+    // What a person owes: no cache keeps it.
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            payments.payablePeriods(unmaskOrMissing(IdKind.GUEST, id)).stream()
+                .map(view -> PayablePeriodResponse.of(view, ids))
+                .toList());
   }
 
   /** RF-06: the status by period of a guest of either type, as the guest sees it. */
