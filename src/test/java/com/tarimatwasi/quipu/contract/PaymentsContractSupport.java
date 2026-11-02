@@ -24,6 +24,9 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -167,8 +170,47 @@ abstract class PaymentsContractSupport {
             .content(body));
   }
 
+  /** A direct payment form with one file in {@code files} and no other part yet. */
   protected static MockMultipartHttpServletRequestBuilder builder(byte[] content) {
-    return multipart(URL).file(new MockMultipartFile("file", "v.pdf", "application/pdf", content));
+    return multipart(URL).file(new MockMultipartFile("files", "v.pdf", "application/pdf", content));
+  }
+
+  /**
+   * The JSON part {@code proofs} with one voucher that points to the first file (TAR-239). The
+   * amount is written as it comes, so a malformed one makes the part unreadable.
+   */
+  protected static MockMultipartFile proofs(String amount, @Nullable String method) {
+    return proofsPart(
+        "[{\"kind\":\"VOUCHER\",\"amount\":"
+            + amount
+            + (method == null ? "" : ",\"method\":\"" + method + "\"")
+            + ",\"fileIndex\":0}]");
+  }
+
+  /** The JSON part {@code proofs}, written by hand. */
+  protected static MockMultipartFile proofsPart(String json) {
+    return new MockMultipartFile(
+        "proofs", "", MediaType.APPLICATION_JSON_VALUE, json.getBytes(StandardCharsets.UTF_8));
+  }
+
+  /**
+   * The body that approves a payment with every proof verified at its declared amount (RN-16), the
+   * ids masked in the session of the test.
+   */
+  protected String approval(Long paymentId) {
+    List<String> verified = new ArrayList<>();
+    jdbc.query(
+        "SELECT id, declared_amount FROM payment_proofs WHERE payment_id = ? ORDER BY id",
+        row -> {
+          verified.add(
+              "{\"id\":\""
+                  + id(IdKind.PAYMENT_PROOF, row.getLong(1))
+                  + "\",\"verifiedAmount\":"
+                  + row.getBigDecimal(2).toPlainString()
+                  + "}");
+        },
+        paymentId);
+    return "{\"status\":\"APPROVED\",\"proofs\":[" + String.join(",", verified) + "]}";
   }
 
   protected ResultActions postForm(MockMultipartHttpServletRequestBuilder request)
@@ -182,11 +224,10 @@ abstract class PaymentsContractSupport {
       throws Exception {
     return postForm(
         multipart(URL)
-            .file(new MockMultipartFile("file", name, "application/pdf", content))
+            .file(new MockMultipartFile("files", name, "application/pdf", content))
+            .file(proofs(amount, "Efectivo"))
             .param("guestId", id(IdKind.GUEST, guestId))
-            .param(targetName, target)
-            .param("amount", amount)
-            .param("paymentMethod", "Efectivo"));
+            .param(targetName, target));
   }
 
   protected void insertAccount(Long id, String role, String document, @Nullable Long guestId) {

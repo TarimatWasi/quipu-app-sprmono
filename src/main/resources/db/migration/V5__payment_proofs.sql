@@ -137,7 +137,10 @@ ORDER BY id;
 -- SUPERSEDED: un rechazo que quedó como historia. Antes un rechazo liberaba el período y se subía otro pago; ahora el
 -- rechazado se corrige, así que cada período o estadía conserva a lo sumo uno rechazado: el más reciente, y solo si
 -- no tiene un pago pendiente o aprobado.
+-- Las tres reglas que nombran los estados se quitan antes del UPDATE y vuelven conociendo SUPERSEDED.
 ALTER TABLE payments DROP CONSTRAINT ck_payments_status;
+ALTER TABLE payments DROP CONSTRAINT ck_payments_rejection_reason;
+ALTER TABLE payments DROP CONSTRAINT ck_payments_review;
 ALTER TABLE payments
     ADD CONSTRAINT ck_payments_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'SUPERSEDED'));
 
@@ -152,13 +155,11 @@ WHERE p.status = 'REJECTED'
         AND (q.status IN ('PENDING', 'APPROVED')
             OR (q.status = 'REJECTED' AND (q.submitted_at, q.id) > (p.submitted_at, p.id))));
 
-ALTER TABLE payments DROP CONSTRAINT ck_payments_rejection_reason;
 ALTER TABLE payments
     ADD CONSTRAINT ck_payments_rejection_reason CHECK (
         status NOT IN ('REJECTED', 'SUPERSEDED')
         OR (rejection_reason IS NOT NULL AND length(btrim(rejection_reason)) > 0));
 
-ALTER TABLE payments DROP CONSTRAINT ck_payments_review;
 ALTER TABLE payments
     ADD CONSTRAINT ck_payments_review CHECK (
         (status = 'PENDING' AND reviewed_at IS NULL AND reviewed_by_id IS NULL)

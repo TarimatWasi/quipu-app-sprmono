@@ -41,7 +41,13 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
             .andExpect(jsonPath("$.content[0].environmentCode").value("201"))
             .andExpect(jsonPath("$.content[0].period").value("2026-09"))
             .andExpect(jsonPath("$.content[0].amount").doesNotExist())
+            .andExpect(jsonPath("$.content[0].proofCount").value(1))
+            .andExpect(jsonPath("$.content[0].voucherCount").value(1))
+            .andExpect(jsonPath("$.content[0].hasCash").value(false))
+            .andExpect(jsonPath("$.content[0].submittedAt").value("2026-10-01T10:00:00Z"))
             .andExpect(jsonPath("$.content[1].guestType").value("TEMPORARY"))
+            .andExpect(jsonPath("$.content[1].stayStartDate").value("2026-10-01"))
+            .andExpect(jsonPath("$.content[1].stayEndDate").value("2026-10-20"))
             .andReturn();
     // The temporary guest has no environment, no period and, until the onboarding, no name: all
     // of them in the answer as an explicit null, because the contract requires the fields.
@@ -112,7 +118,17 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(header().string("Cache-Control", "no-store"))
-        .andExpect(jsonPath("$.voucherUrl").value(SIGNED))
+        .andExpect(jsonPath("$.proofs[0].fileUrl").value(SIGNED))
+        .andExpect(jsonPath("$.proofs[0].kind").value("VOUCHER"))
+        .andExpect(jsonPath("$.proofs[0].declaredAmount").value(800))
+        .andExpect(jsonPath("$.guestName").value("Ana Quispe"))
+        .andExpect(jsonPath("$.environmentCode").value("201"))
+        .andExpect(jsonPath("$.expectedAmount").value(800))
+        .andExpect(jsonPath("$.creditApplied").value(0))
+        .andExpect(jsonPath("$.amountDue").value(800))
+        .andExpect(jsonPath("$.lastPeriod").value(false))
+        .andExpect(jsonPath("$.reviewedBy").value((Object) null))
+        .andExpect(jsonPath("$.reviews.length()").value(0))
         .andExpect(jsonPath("$.amount").value(800))
         .andExpect(jsonPath("$.contractId").value(ids().mask(IdKind.CONTRACT, contract).toString()))
         .andExpect(jsonPath("$.period").value("2026-09"));
@@ -160,12 +176,25 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
     Long id =
         insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
 
-    resolve(id, "{\"status\":\"APPROVED\"}")
+    resolve(id, approval(id))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.status").value("APPROVED"))
+        .andExpect(jsonPath("$.verifiedAmount").value(800))
         .andExpect(jsonPath("$.voucherUrl").doesNotExist())
         .andExpect(jsonPath("$.rejectionReason").doesNotExist());
+    // TAR-230: the queue and the detail say who resolved it
+    mockMvc
+        .perform(get(URL + "/" + ids().mask(IdKind.PAYMENT, id)).cookie(admin()))
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.reviewedBy.id").value(id(IdKind.USER, adminId)))
+        .andExpect(jsonPath("$.reviewedBy.name").value("00000001@example.test"))
+        .andExpect(jsonPath("$.reviews[0].decision").value("APPROVED"))
+        .andExpect(jsonPath("$.proofs[0].verifiedAmount").value(800));
+    mockMvc
+        .perform(get(URL).cookie(admin()))
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.content[0].reviewedBy.id").value(id(IdKind.USER, adminId)));
 
     assertThat(
             jdbc.queryForObject("SELECT reviewed_by_id FROM payments WHERE id = ?", Long.class, id))
@@ -177,8 +206,85 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .isEqualTo(Instant.parse("2026-10-14T14:00:00Z"));
   }
 
+  /** RN-16: an approval names what was verified of every proof, and it covers what is due. */
   @Test
-  void rejectingKeepsTheReasonAndLeavesThePeriodOpenForAnotherVoucher() throws Exception {
+  void anApprovalWithoutWhatWasVerifiedOrShortOfWhatIsDueIsAValidationError() throws Exception {
+    Long id =
+        insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
+
+    resolve(id, "{\"status\":\"APPROVED\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("proofs"));
+    resolve(id, approval(id).replace("\"verifiedAmount\":800.00", "\"verifiedAmount\":799.99"))
+        .andExpect(status().isBadRequest())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.field").value("proofs"));
+    resolve(
+            id,
+            "{\"status\":\"APPROVED\",\"proofs\":[{\"id\":\""
+                + UUID.randomUUID()
+                + "\",\"verifiedAmount\":800}]}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("proofs"));
+    assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
+        .isEqualTo("PENDING");
+  }
+
+  /**
+   * A5.2, TAR-239: the administrator adds the cash a rejected payment lacked, the status stays, and
+   * then approves it at once.
+   */
+  @Test
+  void theAdministratorCompletesARejectedPaymentAndApprovesIt() throws Exception {
+    Long id =
+        insertPayment(contractGuest, contract, null, "2026-09", "REJECTED", "2026-10-01T10:00:00Z");
+    Long voucher =
+        jdbc.queryForObject("SELECT id FROM payment_proofs WHERE payment_id = ?", Long.class, id);
+
+    mockMvc
+        .perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(
+                    org.springframework.http.HttpMethod.PUT,
+                    URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
+                .file(
+                    proofsPart(
+                        "[{\"id\":\""
+                            + id(IdKind.PAYMENT_PROOF, voucher)
+                            + "\",\"kind\":\"VOUCHER\",\"amount\":600},"
+                            + "{\"kind\":\"CASH\",\"amount\":200}]"))
+                .header("Origin", ORIGIN)
+                .cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.status").value("REJECTED"))
+        .andExpect(jsonPath("$.amount").value(800.00))
+        .andExpect(jsonPath("$.proofCount").value(2))
+        .andExpect(jsonPath("$.hasCash").value(true));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT uploaded_by FROM payment_proofs WHERE payment_id = ? AND kind = 'CASH'",
+                String.class,
+                id))
+        .isEqualTo("ADMIN");
+
+    resolve(id, approval(id))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("APPROVED"));
+    mockMvc
+        .perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(
+                    org.springframework.http.HttpMethod.PUT,
+                    URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
+                .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800}]"))
+                .header("Origin", ORIGIN)
+                .cookie(admin()))
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("PAYMENT_NOT_CORRECTABLE"));
+  }
+
+  @Test
+  void rejectingKeepsTheReasonAndThePaymentKeepsItsPeriod() throws Exception {
     Long id =
         insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
 
@@ -188,8 +294,16 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.status").value("REJECTED"))
         .andExpect(jsonPath("$.rejectionReason").value("El monto no coincide"));
 
-    // the period is open again: a new voucher can be pending for it
-    insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-05T10:00:00Z");
+    // TAR-239: the rejected payment is corrected, so another one cannot take its period
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () ->
+                insertPayment(
+                    contractGuest, contract, null, "2026-09", "PENDING", "2026-10-05T10:00:00Z"))
+        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT reason FROM payment_reviews WHERE payment_id = ?", String.class, id))
+        .isEqualTo("El monto no coincide");
   }
 
   @Test
@@ -241,7 +355,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
   void aPaymentIsResolvedOnlyOnce() throws Exception {
     Long id =
         insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
-    resolve(id, "{\"status\":\"APPROVED\"}").andExpect(status().isOk());
+    resolve(id, approval(id)).andExpect(status().isOk());
 
     resolve(id, "{\"status\":\"APPROVED\"}")
         .andExpect(status().isConflict())
@@ -267,7 +381,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
             + " WHERE id = ?",
         contract);
 
-    resolve(id, "{\"status\":\"APPROVED\"}")
+    resolve(id, approval(id))
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("PAYMENT_PERIOD_NOT_PAYABLE"))
@@ -292,10 +406,10 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
             + " WHERE id = ?",
         contract);
 
-    resolve(period, "{\"status\":\"APPROVED\"}")
+    resolve(period, approval(period))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("APPROVED"));
-    resolve(ofStay, "{\"status\":\"APPROVED\"}")
+    resolve(ofStay, approval(ofStay))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("APPROVED"));
   }

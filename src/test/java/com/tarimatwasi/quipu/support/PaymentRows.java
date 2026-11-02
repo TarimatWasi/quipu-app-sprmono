@@ -70,5 +70,17 @@ public final class PaymentRows {
         fileKey,
         contentType,
         recordedBy);
+    if (!"PENDING".equals(status) && reviewerId != null) {
+      // As V5 records it: the decision of a resolved payment, a past rejection as REJECTED.
+      jdbc.update(
+          "INSERT INTO payment_reviews (id, payment_id, decision, reason, reviewed_at,"
+              + " reviewed_by_id) VALUES (?, ?, ?, CASE WHEN ? = 'APPROVED' THEN NULL"
+              + " ELSE 'No coincide' END, now(), ?)",
+          TestIds.next(),
+          id,
+          "APPROVED".equals(status) ? "APPROVED" : "REJECTED",
+          status,
+          reviewerId);
+    }
   }
 }
