@@ -48,6 +48,12 @@ interface PaymentJpaRepository
 
   List<PaymentJpaEntity> findByStayIdIn(Collection<Long> stayIds);
 
+  /** TAR-236: every payment of those contracts. */
+  List<PaymentJpaEntity> findByContractIdIn(Collection<Long> contractIds);
+
+  /** TAR-236: the payments in that state; read by ix_payments_queue (status, ...). */
+  List<PaymentJpaEntity> findByStatus(PaymentStatus status);
+
   long countByStatus(PaymentStatus status);
 
   /**

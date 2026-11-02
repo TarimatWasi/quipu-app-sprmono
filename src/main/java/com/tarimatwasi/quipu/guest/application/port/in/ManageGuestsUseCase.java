@@ -120,6 +120,24 @@ public interface ManageGuestsUseCase {
   record UpdateCommand(
       long version, @Nullable IdDocumentKind documentType, @Nullable String documentNumber) {}
 
+  /** A guest pending activation as the home names it (A1, RN-32). */
+  record PendingGuestView(
+      Long id,
+      IdDocumentKind documentType,
+      String documentNumber,
+      @Nullable Instant accessExpiresAt) {}
+
+  /**
+   * The guests pending activation (A1 «También pendiente», RN-32, RN-36).
+   *
+   * @param expired how many of them have their access expired
+   * @param first an expired one first, else the one whose access ends first; null without any
+   */
+  record NotActivatedView(long count, long expired, @Nullable PendingGuestView first) {}
+
+  /** TAR-236: the guests pending activation, whatever the filters of the listing. */
+  NotActivatedView notActivated();
+
   /**
    * Who a guest is for a row of the finance screens (TAR-240): a fine, a refund, a pending credit.
    *

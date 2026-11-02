@@ -92,4 +92,7 @@ public interface ContractRepositoryPort {
 
   /** The contracts with those ids; an id with no contract adds nothing. */
   List<Contract> findAllByIds(Collection<Long> ids);
+
+  /** Every contract, whatever its state, the oldest start first (TAR-236). */
+  List<Contract> findEvery();
 }

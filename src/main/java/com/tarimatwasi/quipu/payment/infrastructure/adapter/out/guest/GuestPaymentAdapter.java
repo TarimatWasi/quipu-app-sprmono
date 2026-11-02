@@ -6,6 +6,8 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.NotActivatedView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.PendingGuestView;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase.OwnGuestView;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
@@ -57,7 +59,24 @@ public class GuestPaymentAdapter implements PaymentGuestPort {
         guest.documentNumber(),
         guest.type() == GuestKind.CONTRACT,
         guest.status() == GuestState.ACTIVE,
-        guest.status() == GuestState.INACTIVE);
+        guest.status() == GuestState.INACTIVE,
+        guest.documentType().name());
+  }
+
+  @Override
+  public NotActivated notActivated() {
+    NotActivatedView found = guests.notActivated();
+    PendingGuestView first = found.first();
+    return new NotActivated(
+        found.count(),
+        found.expired(),
+        first == null
+            ? null
+            : new PendingGuest(
+                first.id(),
+                first.documentType().name(),
+                first.documentNumber(),
+                first.accessExpiresAt()));
   }
 
   // ponytail: one call to the guest module per distinct guest of the page (at most 100); a batch

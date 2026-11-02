@@ -358,6 +358,16 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
+  public List<Payment> findAllByContracts(Collection<Long> contractIds) {
+    return inSlices(contractIds, jpaRepository::findByContractIdIn);
+  }
+
+  @Override
+  public List<Payment> findByStatus(PaymentStatus status) {
+    return jpaRepository.findByStatus(status).stream().map(PaymentJpaEntity::toDomain).toList();
+  }
+
+  @Override
   public List<Payment> findAllByStays(Collection<Long> stayIds) {
     return inSlices(stayIds, jpaRepository::findByStayIdIn);
   }

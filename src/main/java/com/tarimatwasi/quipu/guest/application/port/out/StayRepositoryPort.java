@@ -28,6 +28,9 @@ public interface StayRepositoryPort {
   /** TAR-239: those stays, in no particular order; an id with no stay adds nothing. */
   List<Stay> findAllByIds(Collection<Long> ids);
 
+  /** Every stay of every guest (TAR-236). */
+  List<Stay> findEvery();
+
   /** The stay, only if it belongs to that guest. */
   Optional<Stay> findByIdAndGuest(Long id, Long guestId);
 

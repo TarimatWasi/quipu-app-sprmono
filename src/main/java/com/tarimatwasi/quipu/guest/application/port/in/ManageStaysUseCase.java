@@ -21,6 +21,7 @@ public interface ManageStaysUseCase {
    */
   record StayView(
       Long id,
+      Long guestId,
       LocalDate startDate,
       LocalDate endDate,
       BigDecimal agreedAmount,
@@ -104,4 +105,7 @@ public interface ManageStaysUseCase {
 
   /** TAR-240 (A5.1): every stay of the guest, active or inactive; none for an unknown guest. */
   List<StayView> allOf(Long guestId);
+
+  /** TAR-236 (A1): every stay of every guest, for the overdue charges of the home (RN-25). */
+  List<StayView> all();
 }

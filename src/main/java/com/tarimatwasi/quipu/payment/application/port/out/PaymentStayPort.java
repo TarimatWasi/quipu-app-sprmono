@@ -27,6 +27,12 @@ public interface PaymentStayPort {
       BigDecimal agreedAmount,
       @Nullable Long environmentId) {}
 
+  /** A stay with the guest it belongs to (TAR-236). */
+  record ChargedStay(Long guestId, StayRef stay) {}
+
+  /** TAR-236 (A1): every stay of every guest, in one read. Admin views only. */
+  List<ChargedStay> allStays();
+
   /** Those stays, of any guest; an id with no stay adds nothing. Admin views only. */
   Map<Long, StayRef> staysByIds(Collection<Long> stayIds);
 

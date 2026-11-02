@@ -95,6 +95,13 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
   }
 
   @Override
+  public List<Contract> findEvery() {
+    return jpaRepository.findAll(Sort.by("startDate", "id")).stream()
+        .map(ContractJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Contract> findAllByIds(Collection<Long> ids) {
     return jpaRepository.findAllById(ids).stream().map(ContractJpaEntity::toDomain).toList();
   }

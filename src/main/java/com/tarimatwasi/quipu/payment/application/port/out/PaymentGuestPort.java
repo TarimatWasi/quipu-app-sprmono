@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.payment.application.port.out;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -12,6 +13,7 @@ public interface PaymentGuestPort {
    * @param name {@code null} until the guest gives it in the onboarding
    * @param contractType a guest with a contract; otherwise a temporary one
    * @param inactive deactivated by the administrator (RN-12); never true with {@code active}
+   * @param documentType DNI, CE, PASSPORT or OTHER, as the contract names it
    */
   record GuestProfile(
       Long id,
@@ -19,7 +21,20 @@ public interface PaymentGuestPort {
       String documentNumber,
       boolean contractType,
       boolean active,
-      boolean inactive) {}
+      boolean inactive,
+      String documentType) {}
+
+  /** A guest pending activation as the home names it (A1, RN-32). */
+  record PendingGuest(
+      Long id, String documentType, String documentNumber, @Nullable Instant accessExpiresAt) {}
+
+  /**
+   * The guests pending activation (A1, RN-32, RN-36).
+   *
+   * @param expired how many of them have their access expired
+   * @param first an expired one first, else the one whose access ends first
+   */
+  record NotActivated(long count, long expired, @Nullable PendingGuest first) {}
 
   /** Where the guest of a session is in its lifecycle (RN-36), as the payments read it. */
   enum Standing {
@@ -57,6 +72,9 @@ public interface PaymentGuestPort {
    * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException if there is none
    */
   void lock(Long guestId);
+
+  /** TAR-236: the guests pending activation. */
+  NotActivated notActivated();
 
   /** The guests with those ids by id. */
   Map<Long, GuestProfile> profilesOf(Collection<Long> guestIds);

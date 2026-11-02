@@ -56,6 +56,22 @@ public class StayPaymentAdapter implements PaymentStayPort {
   }
 
   @Override
+  public List<ChargedStay> allStays() {
+    return stays.all().stream()
+        .map(
+            stay ->
+                new ChargedStay(
+                    stay.guestId(),
+                    new StayRef(
+                        stay.id(),
+                        stay.startDate(),
+                        stay.endDate(),
+                        stay.agreedAmount(),
+                        stay.environmentId())))
+        .toList();
+  }
+
+  @Override
   public Map<Long, StayRef> staysByIds(Collection<Long> stayIds) {
     Map<Long, StayRef> found = new HashMap<>();
     if (!stayIds.isEmpty()) {

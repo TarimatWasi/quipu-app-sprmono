@@ -44,6 +44,13 @@ public class ContractPaymentAdapter implements PaymentContractPort {
   }
 
   @Override
+  public List<GuestContract> allContracts() {
+    return contracts.allTerms().stream()
+        .map(view -> new GuestContract(view.guestId(), info(view)))
+        .toList();
+  }
+
+  @Override
   public List<ContractInfo> contractsInForce() {
     return contracts.termsInForce().stream().map(this::info).toList();
   }

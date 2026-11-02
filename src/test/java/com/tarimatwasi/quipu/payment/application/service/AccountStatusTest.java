@@ -77,7 +77,7 @@ class AccountStatusTest {
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
-    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, !active);
+    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, !active, "DNI");
   }
 
   private static ContractInfo contractFromSeptember() {

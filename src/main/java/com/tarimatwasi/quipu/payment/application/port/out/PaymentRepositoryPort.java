@@ -133,6 +133,15 @@ public interface PaymentRepositoryPort {
   /** Every payment of the contract, whatever its state. */
   List<Payment> findAllByContract(Long contractId);
 
+  /**
+   * Every payment, whatever its state, of any of those contracts, in as few reads as the list
+   * allows (TAR-236); none for no contracts.
+   */
+  List<Payment> findAllByContracts(Collection<Long> contractIds);
+
+  /** Every payment in exactly that state (TAR-236: the rejected ones nobody corrected yet). */
+  List<Payment> findByStatus(PaymentStatus status);
+
   /** Every payment of the stay, whatever its state. */
   List<Payment> findAllByStay(Long stayId);
 

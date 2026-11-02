@@ -155,7 +155,7 @@ class PaymentServiceTest {
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
-    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, false);
+    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, false, "DNI");
   }
 
   private static ContractInfo contract(
@@ -241,7 +241,7 @@ class PaymentServiceTest {
                 GUEST,
                 guest(true, true),
                 temporaryGuest,
-                new GuestProfile(temporaryGuest, null, "87654321", false, true, false)));
+                new GuestProfile(temporaryGuest, null, "87654321", false, true, false, "DNI")));
     when(contracts.environmentsOf(any())).thenReturn(Map.of(CONTRACT, ENVIRONMENT));
     when(environments.codesOf(any())).thenReturn(Map.of(ENVIRONMENT, "201"));
 
@@ -629,7 +629,8 @@ class PaymentServiceTest {
   @Test
   void registerDirect_anInactiveGuestPaysOnlyAMonthItOwes() {
     contractGuestWithOpenContract();
-    when(guests.profileOf(GUEST)).thenReturn(new GuestProfile(GUEST, null, "1", true, false, true));
+    when(guests.profileOf(GUEST))
+        .thenReturn(new GuestProfile(GUEST, null, "1", true, false, true, "DNI"));
     var paid = payment(PaymentStatus.APPROVED, OCTOBER, null);
     when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(paid));
     when(payments.insert(any())).thenReturn(stored(paid));

@@ -100,6 +100,12 @@ public class StayService implements ManageStaysUseCase {
 
   @Override
   @Transactional(readOnly = true)
+  public List<StayView> all() {
+    return stays.findEvery().stream().map(StayService::view).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<StayView> allOf(Long guestId) {
     return stays.findAllByGuest(guestId).stream().map(StayService::view).toList();
   }
@@ -236,6 +242,7 @@ public class StayService implements ManageStaysUseCase {
   private static StayView view(Stay stay) {
     return new StayView(
         stay.id(),
+        stay.guestId(),
         stay.startDate(),
         stay.endDate(),
         stay.agreedAmount(),

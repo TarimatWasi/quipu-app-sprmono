@@ -211,6 +211,34 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     return refs;
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public NotActivatedView notActivated() {
+    List<Guest> pending = guests.findAllMatching(List.of(GuestStatus.PENDING_ACTIVATION), null);
+    if (pending.isEmpty()) {
+      return new NotActivatedView(0, 0, null);
+    }
+    Set<Long> ids = new LinkedHashSet<>();
+    pending.forEach(guest -> ids.add(guest.id()));
+    Map<Long, Instant> expiries = accounts.unusedAccessExpiries(ids);
+    Instant now = clock.instant();
+    long expired = expiries.values().stream().filter(expiry -> !expiry.isAfter(now)).count();
+    // An expired one first, else the one whose access ends first; the earliest expiry is both.
+    Guest first =
+        pending.stream()
+            .filter(guest -> expiries.containsKey(guest.id()))
+            .min(Comparator.comparing((Guest guest) -> expiries.get(guest.id())))
+            .orElse(pending.get(0));
+    return new NotActivatedView(
+        pending.size(),
+        expired,
+        new PendingGuestView(
+            first.id(),
+            IdDocumentKind.valueOf(first.documentType().name()),
+            first.documentNumber(),
+            expiries.get(first.id())));
+  }
+
   /** The one that crosses the range and starts last, else the one that starts last of all. */
   static Optional<Occupancy> inRange(List<Occupancy> occupancies, LocalDate from, LocalDate to) {
     Comparator<Occupancy> byStart = Comparator.comparing(Occupancy::startDate);

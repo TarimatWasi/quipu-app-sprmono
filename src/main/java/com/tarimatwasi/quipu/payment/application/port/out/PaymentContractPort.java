@@ -56,6 +56,12 @@ public interface PaymentContractPort {
   /** The current (ACTIVE) contract of the environment, if it has one (RN-07). */
   List<ContractInfo> currentContractsOf(Long environmentId);
 
+  /** A contract with the guest it belongs to (TAR-236). */
+  record GuestContract(Long guestId, ContractInfo contract) {}
+
+  /** TAR-236 (A1): every contract, whatever its state, with its guest, in one read. */
+  List<GuestContract> allContracts();
+
   /** Every ACTIVE contract today, of any environment, in one read (HU-A04). */
   List<ContractInfo> contractsInForce();
 }
