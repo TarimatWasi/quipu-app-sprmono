@@ -3,8 +3,11 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controlle
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller.ContractsBffController.ContractResponse;
 import com.tarimatwasi.quipu.contract.application.port.in.ContractNotFoundException;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractView;
 import com.tarimatwasi.quipu.contract.application.port.in.OwnContractUseCase;
+import com.tarimatwasi.quipu.contract.application.port.in.OwnContractUseCase.OwnContracts;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,9 +29,22 @@ public class GuestContractBffController {
     this.ids = ids;
   }
 
+  /**
+   * TAR-237: the contract in force (or the first or the last one) and a renewal already loaded,
+   * which H2 shows below as «Tu próximo contrato».
+   */
+  public record OwnContractsResponse(ContractResponse current, @Nullable ContractResponse next) {
+    static OwnContractsResponse of(OwnContracts contracts, IdMasker ids) {
+      ContractView next = contracts.next();
+      return new OwnContractsResponse(
+          ContractResponse.of(contracts.current(), ids),
+          next == null ? null : ContractResponse.of(next, ids));
+    }
+  }
+
   /** The guest is the one of the session, never one named in the request (RN-09). */
   @GetMapping("/bff/guest/contract")
-  public ResponseEntity<ContractResponse> get(Authentication authentication) {
+  public ResponseEntity<OwnContractsResponse> get(Authentication authentication) {
     try {
       Long guestId =
           accounts
@@ -37,7 +53,7 @@ public class GuestContractBffController {
       // The body carries a freshly signed URL: no cache may keep it (contract v0.7.0).
       return ResponseEntity.ok()
           .cacheControl(CacheControl.noStore())
-          .body(ContractResponse.of(ownContract.ownContract(guestId), ids));
+          .body(OwnContractsResponse.of(ownContract.ownContracts(guestId), ids));
     } catch (ContractNotFoundException never) {
       // The contract answers this 404 without a body: "no contract was ever associated".
       return ResponseEntity.notFound().build();

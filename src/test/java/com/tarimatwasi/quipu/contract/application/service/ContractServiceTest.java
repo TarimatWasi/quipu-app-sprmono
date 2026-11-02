@@ -378,7 +378,7 @@ class ContractServiceTest {
     when(contracts.findAll(ContractStatus.ACTIVE, TODAY, page))
         .thenReturn(new CursorPage<>(List.of(stored(false, "2026-11-01")), "next"));
 
-    var result = service.list(ContractState.ACTIVE, page);
+    var result = service.list(ContractState.ACTIVE, false, page);
 
     assertThat(result.nextCursor()).isEqualTo("next");
     assertThat(result.content())
@@ -397,7 +397,7 @@ class ContractServiceTest {
     when(contracts.findAll(null, TODAY, page))
         .thenReturn(new CursorPage<>(List.of(stored(false, "2026-10-01")), null));
 
-    assertThat(service.list(null, page).content())
+    assertThat(service.list(null, false, page).content())
         .singleElement()
         .satisfies(c -> assertThat(c.status()).isEqualTo(ContractState.EXPIRED));
   }
@@ -456,24 +456,23 @@ class ContractServiceTest {
   }
 
   @Test
-  void aBucketThatCannotSignMakesTheFileUnavailable() {
+  // TAR-237: the contract is still read; only its file link comes null.
+  void aBucketThatCannotSignGivesTheContractWithoutFileUrl() {
     when(contracts.findById(CONTRACT_ID)).thenReturn(Optional.of(stored(false, null)));
     when(files.signedUrl(KEY)).thenThrow(new ContractFileStorageException("down"));
 
-    assertThatThrownBy(() -> service.get(CONTRACT_ID))
-        .isInstanceOf(ContractFileUnavailableException.class)
-        .hasCauseInstanceOf(ContractFileStorageException.class);
+    assertThat(service.get(CONTRACT_ID).fileUrl()).isNull();
   }
 
   @Test
-  void ifTheUrlCannotBeSignedAfterTheInsertTheStoredObjectIsRemoved() {
+  // TAR-237: the contract is stored; only the link of the answer comes null.
+  void ifTheUrlCannotBeSignedAfterTheInsertTheContractStaysWithoutFileUrl() {
     freeEnvironmentAndActiveContractGuest();
     when(files.store(PDF)).thenReturn(KEY);
     when(contracts.insert(any())).thenReturn(stored(false, null));
     when(files.signedUrl(KEY)).thenThrow(new ContractFileStorageException("down"));
 
-    assertThatThrownBy(() -> service.create(request()))
-        .isInstanceOf(ContractFileUnavailableException.class);
-    verify(files).delete(KEY);
+    assertThat(service.create(request()).fileUrl()).isNull();
+    verify(files, never()).delete(KEY);
   }
 }

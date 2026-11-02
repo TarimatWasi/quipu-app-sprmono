@@ -65,7 +65,7 @@ public interface ManageContractsUseCase {
       LocalDate startDate,
       @Nullable LocalDate endDate,
       ContractState status,
-      String fileUrl) {}
+      @Nullable String fileUrl) {}
 
   /** A contract in a list: no file URL, so listing does not sign one file per row. */
   record ContractSummaryView(
@@ -103,10 +103,13 @@ public interface ManageContractsUseCase {
 
   /**
    * One page, newest first and read by last index; {@code status == null} lists every contract.
+   * With {@code expiringSoon}, only the ACTIVE contracts with 30 days or fewer to their end come,
+   * soonest first, in one page (TAR-237, D-27).
    *
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
-  CursorPage<ContractSummaryView> list(@Nullable ContractState status, PageQuery page);
+  CursorPage<ContractSummaryView> list(
+      @Nullable ContractState status, boolean expiringSoon, PageQuery page);
 
   /**
    * Reads one contract with the signed URL of its file.

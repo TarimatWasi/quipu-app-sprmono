@@ -30,7 +30,9 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -170,8 +172,22 @@ public class ContractService implements ManageContractsUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public CursorPage<ContractSummaryView> list(@Nullable ContractState status, PageQuery page) {
+  public CursorPage<ContractSummaryView> list(
+      @Nullable ContractState status, boolean expiringSoon, PageQuery page) {
     LocalDate today = ContractViews.today(clock);
+    if (expiringSoon) {
+      // TAR-237 (D-27): the ACTIVE ones with 30 days or fewer to their end, soonest first, all
+      // in one page so that the A4 notice is right whatever page the list is on. They are few.
+      return new CursorPage<>(
+          contracts.findAllInForce(today).stream()
+              .filter(c -> c.expiringSoon(today))
+              .sorted(
+                  Comparator.comparing((Contract c) -> Objects.requireNonNull(c.endDate()))
+                      .thenComparing(Contract::id))
+              .map(c -> ContractViews.summary(c, today))
+              .toList(),
+          null);
+    }
     ContractStatus filter = status == null ? null : ContractStatus.valueOf(status.name());
     return contracts.findAll(filter, today, page).map(c -> ContractViews.summary(c, today));
   }

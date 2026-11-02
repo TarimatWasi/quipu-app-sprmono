@@ -72,7 +72,7 @@ public class ContractsBffController {
       LocalDate startDate,
       @Nullable LocalDate endDate,
       ContractState status,
-      String fileUrl) {
+      @Nullable String fileUrl) {
     public static ContractResponse of(ContractView contract, IdMasker ids) {
       return new ContractResponse(
           ids.mask(IdKind.CONTRACT, contract.id()),
@@ -118,9 +118,15 @@ public class ContractsBffController {
   public PagedResponse<ContractSummaryResponse> list(
       @RequestParam(name = "status", required = false) @Nullable String status,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
-      @RequestParam(name = "after", required = false) @Nullable String after) {
+      @RequestParam(name = "after", required = false) @Nullable String after,
+      @RequestParam(name = "expiringSoon", defaultValue = "false") boolean expiringSoon) {
+    ContractState state = state(status);
+    // TAR-237: expiringSoon implies ACTIVE; with another status the query is not valid.
+    if (expiringSoon && state != null && state != ContractState.ACTIVE) {
+      throw new InvalidQueryParameterException("status");
+    }
     return PagedResponse.of(
-        contracts.list(state(status), PageParams.query(after, limit)),
+        contracts.list(state, expiringSoon, PageParams.query(after, limit)),
         contract -> ContractSummaryResponse.of(contract, ids));
   }
 

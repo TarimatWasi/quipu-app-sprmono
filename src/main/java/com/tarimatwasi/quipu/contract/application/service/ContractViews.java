@@ -1,6 +1,5 @@
 package com.tarimatwasi.quipu.contract.application.service;
 
-import com.tarimatwasi.quipu.contract.application.port.in.ContractFileUnavailableException;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractState;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractSummaryView;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractView;
@@ -10,6 +9,7 @@ import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.domain.ContractStatus;
 import java.time.Clock;
 import java.time.LocalDate;
+import org.jspecify.annotations.Nullable;
 
 /** How a contract is shown, on the day of the request (America/Lima, from the injected clock). */
 final class ContractViews {
@@ -35,11 +35,15 @@ final class ContractViews {
         signedUrl(contract, files));
   }
 
-  private static String signedUrl(Contract contract, ContractFilePort files) {
+  /**
+   * TAR-237: a failure of the bucket no longer fails the read of the contract; the file link comes
+   * null and the screen offers to try again.
+   */
+  private static @Nullable String signedUrl(Contract contract, ContractFilePort files) {
     try {
       return files.signedUrl(contract.fileKey());
     } catch (ContractFileStorageException e) {
-      throw new ContractFileUnavailableException(e);
+      return null;
     }
   }
 
