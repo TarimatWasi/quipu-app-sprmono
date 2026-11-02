@@ -191,8 +191,12 @@ class AdministratorsContractTest {
             post("/bff/auth/reset-password")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"code\":\"%s\",\"newPassword\":\"Nueva12345\"}".formatted(code.getValue())))
+                    "{\"code\":\"%s\",\"newPassword\":\"Nueva12345\",\"name\":\"Rosa Huaman\"}"
+                        .formatted(code.getValue())))
         .andExpect(status().isNoContent());
+    org.assertj.core.api.Assertions.assertThat(
+            jdbc.queryForObject("SELECT name FROM users WHERE id = ?", String.class, id))
+        .isEqualTo("Rosa Huaman");
     login(NEW_DOCUMENT, "Nueva12345")
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.role").value("ADMIN"))

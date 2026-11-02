@@ -143,6 +143,7 @@ class AdministratorManagementContractTest {
   void listsEveryAdministratorTheOldestFirstWithTheDocumentMaskedAndSelfWithoutCache()
       throws Exception {
     jdbc.update("UPDATE users SET status = 'INACTIVE' WHERE id = ?", targetId);
+    jdbc.update("UPDATE users SET name = 'Ana Quispe Mamani' WHERE id = ?", actorId);
 
     list(session(actorId))
         .andExpect(status().isOk())
@@ -151,13 +152,13 @@ class AdministratorManagementContractTest {
             exactly(
                 """
                 [
-                  {"id":"%s","documentType":"DNI","documentNumber":"*****678",
+                  {"id":"%s","name":"Ana Quispe Mamani","documentType":"DNI","documentNumber":"*****678",
                    "email":"actor@example.com","status":"ACTIVE",
                    "createdAt":"2026-01-15T14:00:00Z","self":true},
-                  {"id":"%s","documentType":"DNI","documentNumber":"*****113",
+                  {"id":"%s","name":null,"documentType":"DNI","documentNumber":"*****113",
                    "email":"tercera@example.com","status":"ACTIVE",
                    "createdAt":"2026-02-01T09:00:00Z","self":false},
-                  {"id":"%s","documentType":"CE","documentNumber":"***321",
+                  {"id":"%s","name":null,"documentType":"CE","documentNumber":"***321",
                    "email":"destino@example.com","status":"INACTIVE",
                    "createdAt":"2026-03-02T16:30:00Z","self":false}
                 ]

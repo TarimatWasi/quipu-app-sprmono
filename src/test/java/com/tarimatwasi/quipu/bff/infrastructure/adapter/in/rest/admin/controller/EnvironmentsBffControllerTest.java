@@ -142,10 +142,13 @@ class EnvironmentsBffControllerTest {
   }
 
   @Test
-  void aCodeWithAccentsAndSeparatorsIsAccepted() throws Exception {
-    create("Caba\u00f1a 3-A/1.b_2", "CABIN")
+  void aCodeWithSeparatorsIsAcceptedAndOneWithAccentsIsNot() throws Exception {
+    create("Cabana 3-A/1.b_2", "CABIN")
         .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.code").value("Caba\u00f1a 3-A/1.b_2"));
+        .andExpect(jsonPath("$.code").value("Cabana 3-A/1.b_2"));
+    create("Caba\u00f1a 4", "CABIN")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("code"));
   }
 
   @Test
@@ -194,14 +197,17 @@ class EnvironmentsBffControllerTest {
         .andExpect(jsonPath("$.code").value("ENVIRONMENT_CODE_TAKEN"));
   }
 
-  /** Two administrators edit the same environment at once: both win in turn, none gets a 500. */
+  /**
+   * Several administrators change the same environment at once from the same version: one wins, the
+   * rest get 409 (TAR-276) and none gets a 500.
+   */
   @Test
   void simultaneousEditsOfOneEnvironmentNeverFailWithAServerError() throws Exception {
     var id = createdId("201", "ROOM");
     var token = admin();
+    long version = versionOf(id);
     var edits = new ArrayList<Callable<Integer>>();
     for (int i = 0; i < 8; i++) {
-      var type = i % 2 == 0 ? "CABIN" : "ROOM";
       edits.add(
           () ->
               mockMvc
@@ -209,17 +215,38 @@ class EnvironmentsBffControllerTest {
                       patch(URL + "/" + id)
                           .cookie(token)
                           .contentType(MediaType.APPLICATION_JSON)
-                          .content("{\"type\":\"" + type + "\"}"))
+                          .content("{\"version\":" + version + ",\"type\":\"CABIN\"}"))
                   .andReturn()
                   .getResponse()
                   .getStatus());
     }
 
+    var statuses = new ArrayList<Integer>();
     try (var pool = Executors.newFixedThreadPool(8)) {
       for (var result : pool.invokeAll(edits)) {
-        org.assertj.core.api.Assertions.assertThat(result.get()).isEqualTo(200);
+        statuses.add(result.get());
       }
     }
+    org.assertj.core.api.Assertions.assertThat(statuses)
+        .containsOnly(200, 409)
+        .containsOnlyOnce(200);
+  }
+
+  /** TAR-276: an edit from a version the environment no longer has is 409. */
+  @Test
+  void anEditFromAnOldVersionIs409() throws Exception {
+    var id = createdId("201", "ROOM");
+    long version = versionOf(id);
+    update(id, "{\"type\":\"CABIN\"}").andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            patch(URL + "/" + id)
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + version + ",\"type\":\"ROOM\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
   }
 
   @Test
@@ -421,12 +448,25 @@ class EnvironmentsBffControllerTest {
         .andExpect(status().isNoContent());
   }
 
+  /** Edits from the version the environment has now, as a client that just loaded it. */
   private ResultActions update(String id, String json) throws Exception {
+    String fields = json.substring(1).strip();
+    String versioned = "{\"version\":" + versionOf(id) + (fields.equals("}") ? "" : ",") + fields;
     return mockMvc.perform(
         patch(URL + "/" + id)
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
-            .content(json));
+            .content(versioned));
+  }
+
+  /** The version the environment has now; 0 for one that does not exist. */
+  private long versionOf(String id) throws Exception {
+    var response = mockMvc.perform(get(URL + "/" + id).cookie(admin())).andReturn().getResponse();
+    if (response.getStatus() != 200) {
+      return 0;
+    }
+    Number version = com.jayway.jsonpath.JsonPath.read(response.getContentAsString(), "$.version");
+    return version.longValue();
   }
 
   private void insertUser(Long id, String role, String document) {

@@ -58,7 +58,7 @@ class UsersMigrationTest {
     var code = ArgumentCaptor.forClass(String.class);
     verify(mail).sendResetLink(eq("admin@example.com"), code.capture(), any(), anyBoolean());
 
-    recovery.resetPassword(code.getValue(), "Elegida12345", null);
+    recovery.resetPassword(code.getValue(), "Elegida12345", "Ana Quispe Mamani");
 
     var hash =
         jdbc.queryForObject(

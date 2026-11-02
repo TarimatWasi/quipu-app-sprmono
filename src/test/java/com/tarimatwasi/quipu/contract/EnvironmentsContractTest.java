@@ -101,7 +101,7 @@ class EnvironmentsContractTest {
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"type\":\"CABIN\"}"))
+                .content("{\"version\":0,\"type\":\"CABIN\"}"))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract());
     mockMvc
@@ -135,7 +135,7 @@ class EnvironmentsContractTest {
             patch(URL + "/" + id)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"))
+                .content("{\"version\":0}"))
         .andExpect(status().isBadRequest())
         .andExpect(
             answersTheContractToARequestWith("validation.request.body.schema.minProperties"));
