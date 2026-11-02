@@ -10,6 +10,8 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,22 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
   @Transactional(readOnly = true)
   public List<Occupancy> occupanciesOf(Collection<Long> environmentIds) {
     return contracts.findAllByEnvironments(environmentIds).stream().map(this::occupancy).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<Occupancy> occupanciesOfGuests(Collection<Long> guestIds) {
+    return contracts.findAllByGuests(guestIds).stream().map(this::occupancy).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Set<Long> guestsWithContractInForce(Collection<Long> guestIds) {
+    LocalDate today = ContractViews.today(clock);
+    return contracts.findAllByGuests(guestIds).stream()
+        .filter(contract -> contract.occupies(today))
+        .map(Contract::guestId)
+        .collect(Collectors.toSet());
   }
 
   /** A contract finished by hand (RN-21) ends on the day it was finished, in the zone of Quipu. */

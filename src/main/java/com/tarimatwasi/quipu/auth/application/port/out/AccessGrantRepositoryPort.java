@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.application.port.out;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -54,6 +55,9 @@ public interface AccessGrantRepositoryPort {
    * When the access of the guest that is unused, not revoked and not expired at {@code now} ends.
    */
   Optional<Instant> liveExpiry(Long guestId, Instant now);
+
+  /** When the unused, not revoked access of each guest ends, expired or not (TAR-237). */
+  Map<Long, Instant> unusedExpiries(Collection<Long> guestIds);
 
   /** The hash of a temporary password and when it expires. */
   record LiveTemporaryPassword(Long id, String tokenHash, Instant expiresAt) {}

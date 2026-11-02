@@ -102,6 +102,11 @@ public class AuthGuestAccountAdapter implements GuestAccountPort {
   }
 
   @Override
+  public Map<Long, Instant> unusedAccessExpiries(Collection<Long> guestIds) {
+    return access.unusedAccessExpiries(guestIds);
+  }
+
+  @Override
   public Optional<String> accountEmail(Long guestId) {
     return accounts.accountEmail(guestId);
   }

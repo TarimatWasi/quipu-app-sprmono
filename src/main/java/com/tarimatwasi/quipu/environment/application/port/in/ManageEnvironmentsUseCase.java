@@ -126,4 +126,10 @@ public interface ManageEnvironmentsUseCase {
 
   /** The code of each environment; an id with no environment adds nothing. */
   Map<Long, String> codesOf(Collection<Long> ids);
+
+  /** How another screen names an environment: its code and type (A3, TAR-237). */
+  record EnvironmentLabel(String code, EnvironmentKind type) {}
+
+  /** The label of each environment; an id with no environment adds nothing. */
+  Map<Long, EnvironmentLabel> labelsOf(Collection<Long> ids);
 }

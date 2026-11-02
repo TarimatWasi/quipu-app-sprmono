@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,4 +30,13 @@ public interface ContractOccupancyQuery {
 
   /** The id of a contract of the guest in force today, if it has one (RN-12). */
   Optional<Long> guestContractInForce(Long guestId);
+
+  /** TAR-237 (A3): every contract of those guests, as the range it occupies. */
+  List<Occupancy> occupanciesOfGuests(Collection<Long> guestIds);
+
+  /**
+   * TAR-237 (A4.1): which of those guests have a contract in force today, as {@link
+   * #guestContractInForce} says.
+   */
+  Set<Long> guestsWithContractInForce(Collection<Long> guestIds);
 }

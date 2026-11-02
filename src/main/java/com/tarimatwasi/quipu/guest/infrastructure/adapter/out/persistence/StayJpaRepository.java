@@ -14,6 +14,8 @@ interface StayJpaRepository
 
   List<StayJpaEntity> findByGuestId(Long guestId);
 
+  List<StayJpaEntity> findByGuestIdIn(Collection<Long> guestIds);
+
   /** TAR-237 (A2): every stay of those environments. */
   List<StayJpaEntity> findByEnvironmentIdIn(Collection<Long> environmentIds);
 

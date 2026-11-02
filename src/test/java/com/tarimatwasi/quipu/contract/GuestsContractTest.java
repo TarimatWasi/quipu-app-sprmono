@@ -112,6 +112,98 @@ class GuestsContractTest {
         .andExpect(jsonPath("$.content.length()").value(1));
   }
 
+  /** A3 (TAR-237): the notices count every guest, whatever the filters of the page. */
+  @Test
+  void theListCountsThePendingAndOnboardingGuestsAcrossTheFilters() throws Exception {
+    insertGuest("11111111", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
+    insertGuest("22222222", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
+    insertGuest("33333333", "DNI", "TEMPORARY", "ONBOARDING", null);
+    insertGuest("44444444", "DNI", "CONTRACT", "INACTIVE", "Eva Paz");
+
+    mockMvc
+        .perform(get(URL).param("status", "INACTIVE").cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.pendingActivationCount").value(2))
+        .andExpect(jsonPath("$.onboardingCount").value(1));
+  }
+
+  /** A3 (TAR-237): each row names the environment it occupies and, if pending, its access. */
+  @Test
+  void eachRowShowsItsEnvironmentAndThePendingOneWhenItsAccessExpires() throws Exception {
+    var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"));
+    var withContract = insertGuest("11111111", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
+    var withStay = insertGuest("22222222", "DNI", "TEMPORARY", "ACTIVE", "Luis Mamani");
+    var pending = insertGuest("33333333", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
+    var room = insertEnvironment("201", "ROOM");
+    var cabin = insertEnvironment("C1", "CABIN");
+    insertContract(withContract, room, today.minusDays(10), today.plusDays(300));
+    insertStay(withStay, cabin, today.plusDays(30), today.plusDays(35));
+    jdbc.update(
+        "INSERT INTO access_grants (id, guest_id, mode, token_hash, expires_at)"
+            + " VALUES (?, ?, 'LINK', ?, now() - interval '1 hour')",
+        TestIds.next(),
+        pending,
+        "a".repeat(64));
+
+    mockMvc
+        .perform(get(URL).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.content[0].environment.code").value("201"))
+        .andExpect(jsonPath("$.content[0].environment.type").value("ROOM"))
+        .andExpect(jsonPath("$.content[0].environment.kind").value("CONTRACT"))
+        .andExpect(
+            jsonPath("$.content[0].environment.endDate").value(today.plusDays(300).toString()))
+        .andExpect(jsonPath("$.content[0].accessExpiresAt").value((Object) null))
+        .andExpect(jsonPath("$.content[1].environment.code").value("C1"))
+        .andExpect(jsonPath("$.content[1].environment.kind").value("STAY"))
+        .andExpect(
+            jsonPath("$.content[1].environment.startDate").value(today.plusDays(30).toString()))
+        .andExpect(jsonPath("$.content[2].environment").value((Object) null))
+        .andExpect(jsonPath("$.content[2].accessExpiresAt").isString());
+  }
+
+  /** A4.1 (TAR-237): to load a contract only the guests without one in force are offered. */
+  @Test
+  void withoutContractLeavesOutTheGuestsWithAContractInForce() throws Exception {
+    var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"));
+    var withContract = insertGuest("11111111", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
+    insertGuest("22222222", "DNI", "CONTRACT", "ACTIVE", "Luis Mamani");
+    insertGuest("33333333", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
+    insertContract(
+        withContract, insertEnvironment("201", "ROOM"), today.minusDays(10), today.plusDays(300));
+
+    var first =
+        mockMvc
+            .perform(
+                get(URL)
+                    .param("type", "CONTRACT")
+                    .param("withoutContract", "true")
+                    .param("limit", "1")
+                    .cookie(admin()))
+            .andExpect(status().isOk())
+            .andExpect(satisfiesTheContract())
+            .andExpect(jsonPath("$.content.length()").value(1))
+            .andExpect(jsonPath("$.content[0].documentNumber").value("22222222"))
+            .andReturn();
+    String cursor =
+        com.jayway.jsonpath.JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
+    mockMvc
+        .perform(
+            get(URL)
+                .param("type", "CONTRACT")
+                .param("withoutContract", "true")
+                .param("limit", "1")
+                .param("after", cursor)
+                .cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.content[0].documentNumber").value("33333333"))
+        .andExpect(jsonPath("$.nextCursor").value((Object) null));
+  }
+
   @Test
   void aGuestWithAnAccountThatChoseItsPasswordHasLoginAccess() throws Exception {
     var id = insertGuest("12345678", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
@@ -156,6 +248,8 @@ class GuestsContractTest {
     }
     mockMvc
         .perform(get(URL + "/" + masked(pending)).cookie(admin()))
+        .andExpect(jsonPath("$.version").value(versionOf(pending)))
+        .andExpect(jsonPath("$.accountEmail").value((Object) null))
         .andExpect(jsonPath("$.onboardingProgress").value("NOT_STARTED"))
         .andExpect(jsonPath("$.documentCount").value(0))
         .andExpect(jsonPath("$.paymentHistory.length()").value(0));
@@ -185,6 +279,28 @@ class GuestsContractTest {
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.documentType").value("PASSPORT"))
         .andExpect(jsonPath("$.documentNumber").value("AB123456"));
+  }
+
+  /** TAR-276: an edit from a version the guest no longer has saves nothing. */
+  @Test
+  void anEditFromAnOldVersionIsAConcurrentModification() throws Exception {
+    var id = insertGuest("12345678", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
+    long loaded = versionOf(id);
+    patchGuest(id, "{\"documentNumber\":\"87654321\"}").andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            patch(URL + "/" + masked(id))
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + loaded + ",\"documentNumber\":\"11112222\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
+    org.assertj.core.api.Assertions.assertThat(
+            jdbc.queryForObject(
+                "SELECT document_number FROM guests WHERE id = ?", String.class, id))
+        .isEqualTo("87654321");
   }
 
   @Test
@@ -249,7 +365,7 @@ class GuestsContractTest {
         .andExpect(status().isBadRequest())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.field").value("documentNumber"));
-    patchGuest(contract, "{}")
+    patchGuest(contract, "{}") // only the version
         .andExpect(status().isBadRequest())
         .andExpect(
             answersTheContractToARequestWith("validation.request.body.schema.minProperties"));
@@ -294,12 +410,57 @@ class GuestsContractTest {
     return new Cookie("sessionToken", jwtTokenProvider.renew(adminId.toString(), sessionId));
   }
 
+  /** Edits from the version the guest has now, as a client that just loaded it (TAR-276). */
   private ResultActions patchGuest(Long id, String body) throws Exception {
+    String rest = body.substring(1).strip();
+    String versioned = "{\"version\":" + versionOf(id) + (rest.equals("}") ? "" : ",") + rest;
     return mockMvc.perform(
         patch(URL + "/" + masked(id))
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body));
+            .content(versioned));
+  }
+
+  /** The version the guest has now; 0 for one that does not exist. */
+  private long versionOf(Long id) {
+    return jdbc.queryForList("SELECT version FROM guests WHERE id = ?", Long.class, id).stream()
+        .findFirst()
+        .orElse(0L);
+  }
+
+  private Long insertEnvironment(String code, String type) {
+    Long id = TestIds.next();
+    jdbc.update(
+        "INSERT INTO environments (id, code, type, status) VALUES (?, ?, ?, 'ACTIVE')",
+        id,
+        code,
+        type);
+    return id;
+  }
+
+  private void insertContract(
+      Long guest, Long environment, java.time.LocalDate start, java.time.LocalDate end) {
+    jdbc.update(
+        "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
+            + " payment_day, grace_days, file_key, original_name, size_bytes, status)"
+            + " VALUES (?, ?, ?, ?, ?, 800, 5, 3, 'contracts/seed.pdf', 'seed.pdf', 10, 'ACTIVE')",
+        TestIds.next(),
+        guest,
+        environment,
+        start,
+        end);
+  }
+
+  private void insertStay(
+      Long guest, Long environment, java.time.LocalDate start, java.time.LocalDate end) {
+    jdbc.update(
+        "INSERT INTO stays (id, guest_id, environment_id, start_date, end_date, agreed_amount)"
+            + " VALUES (?, ?, ?, ?, ?, 100)",
+        TestIds.next(),
+        guest,
+        environment,
+        start,
+        end);
   }
 
   private Long insertGuest(

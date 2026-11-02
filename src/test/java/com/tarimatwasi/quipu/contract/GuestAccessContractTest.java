@@ -181,6 +181,41 @@ class GuestAccessContractTest {
         sessionIds().unmask(IdKind.GUEST, UUID.fromString(maskedGuestId)));
   }
 
+  /** TAR-237: the patterns of GuestInput for the document and the phone; nothing is created. */
+  @Test
+  void aDocumentOrAPhoneOutsideTheirPatternsIsAValidationError() throws Exception {
+    for (var field :
+        new String[] {
+          "\"documentNumber\":\"1234 5678\"",
+          "\"documentNumber\":\"12345678\",\"phone\":\"abc123456\"",
+          "\"documentNumber\":\"12345678\",\"phone\":\"12\""
+        }) {
+      mockMvc
+          .perform(
+              post(GUESTS)
+                  .cookie(admin())
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      "{\"documentType\":\"DNI\",%s,\"type\":\"CONTRACT\",\"accessMode\":\"LINK\"}"
+                          .formatted(field)))
+          .andExpect(status().isBadRequest())
+          .andExpect(satisfiesTheContractToAnInvalidRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+    mockMvc
+        .perform(
+            post(GUESTS)
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"documentType\":\"CE\",\"documentNumber\":\"ab-123\",\"phone\":\"+51 999-111"
+                        + " 222\",\"type\":\"CONTRACT\",\"accessMode\":\"LINK\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.guest.documentNumber").value("AB-123"));
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM guests", Integer.class)).isEqualTo(1);
+  }
+
   @Test
   void aLinkRegistrationAnswersTheContractUncacheableAndStoresOnlyTheHash() throws Exception {
     MvcResult created =
@@ -526,6 +561,15 @@ class GuestAccessContractTest {
   @Test
   void correctingTheDocumentAlsoCorrectsTheAccount() throws Exception {
     String guestId = read(register("12345678", "LINK", null).andReturn(), "$.guest.id");
+    // TAR-276: the edit sends back the version the detail showed.
+    Number version =
+        com.jayway.jsonpath.JsonPath.read(
+            mockMvc
+                .perform(get(GUESTS + "/" + guestId).cookie(admin()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString(),
+            "$.version");
 
     mockMvc
         .perform(
@@ -533,7 +577,7 @@ class GuestAccessContractTest {
                     GUESTS + "/" + guestId)
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"documentNumber\":\"87654321\"}"))
+                .content("{\"version\":" + version + ",\"documentNumber\":\"87654321\"}"))
         .andExpect(status().isOk());
 
     assertThat(

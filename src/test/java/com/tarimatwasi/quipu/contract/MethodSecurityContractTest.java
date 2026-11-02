@@ -71,7 +71,7 @@ class MethodSecurityContractTest {
   @WithMockUser(roles = "GUEST")
   void guestUseCases_withoutAdminRole_areForbidden() {
     assertThatThrownBy(
-            () -> guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, PageQuery.first()))
+            () -> guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, false, PageQuery.first()))
         .isInstanceOf(AccessDeniedException.class);
   }
 
@@ -201,7 +201,11 @@ class MethodSecurityContractTest {
   @Test
   @WithMockUser(roles = "ADMIN")
   void adminUseCases_withAdminRole_areAllowed() {
-    assertThat(guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, PageQuery.first()).content())
+    assertThat(
+            guests
+                .list(ManageGuestsUseCase.StatusFilter.ALL, null, false, PageQuery.first())
+                .page()
+                .content())
         .isEmpty();
     assertThat(
             environments

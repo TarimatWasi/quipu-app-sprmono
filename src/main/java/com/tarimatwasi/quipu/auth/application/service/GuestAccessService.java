@@ -17,7 +17,9 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -182,6 +184,12 @@ public class GuestAccessService implements GuestAccessUseCase {
   @Transactional(readOnly = true)
   public Optional<Instant> accessExpiry(Long guestId) {
     return grants.liveExpiry(guestId, clock.instant());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, Instant> unusedAccessExpiries(Collection<Long> guestIds) {
+    return guestIds.isEmpty() ? Map.of() : grants.unusedExpiries(guestIds);
   }
 
   private static String temporaryPassword() {

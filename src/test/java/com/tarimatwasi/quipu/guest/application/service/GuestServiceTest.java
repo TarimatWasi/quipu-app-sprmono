@@ -37,6 +37,7 @@ import com.tarimatwasi.quipu.guest.domain.Stay;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -56,6 +57,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class GuestServiceTest {
@@ -142,12 +144,12 @@ class GuestServiceTest {
         .thenReturn(pageOf(guest(GuestStatus.PENDING_ACTIVATION)));
     noAccount();
 
-    var list = service().list(StatusFilter.CURRENT, null, page).content();
+    var list = service().list(StatusFilter.CURRENT, null, false, page).page().content();
 
     assertThat(list).hasSize(1);
-    assertThat(list.get(0).status()).isEqualTo(GuestState.PENDING_ACTIVATION);
-    assertThat(list.get(0).hasLoginAccess()).isFalse();
-    assertThat(list.get(0).name()).isNull();
+    assertThat(list.get(0).summary().status()).isEqualTo(GuestState.PENDING_ACTIVATION);
+    assertThat(list.get(0).summary().hasLoginAccess()).isFalse();
+    assertThat(list.get(0).summary().name()).isNull();
   }
 
   @Test
@@ -155,7 +157,8 @@ class GuestServiceTest {
     PageQuery page = PageQuery.first();
     when(repository.findAll(null, GuestType.TEMPORARY, page)).thenReturn(pageOf());
 
-    assertThat(service().list(StatusFilter.ALL, GuestKind.TEMPORARY, page).content()).isEmpty();
+    assertThat(service().list(StatusFilter.ALL, GuestKind.TEMPORARY, false, page).page().content())
+        .isEmpty();
   }
 
   @Test
@@ -163,7 +166,7 @@ class GuestServiceTest {
     PageQuery page = PageQuery.first();
     when(repository.findAll(List.of(GuestStatus.INACTIVE), null, page)).thenReturn(pageOf());
 
-    assertThat(service().list(StatusFilter.INACTIVE, null, page).content()).isEmpty();
+    assertThat(service().list(StatusFilter.INACTIVE, null, false, page).page().content()).isEmpty();
   }
 
   @Test
@@ -172,7 +175,14 @@ class GuestServiceTest {
     when(repository.findAll(null, null, page)).thenReturn(pageOf(guest(GuestStatus.ACTIVE)));
     accountIs(true, true);
 
-    assertThat(service().list(StatusFilter.ALL, null, page).content().get(0).hasLoginAccess())
+    assertThat(
+            service()
+                .list(StatusFilter.ALL, null, false, page)
+                .page()
+                .content()
+                .get(0)
+                .summary()
+                .hasLoginAccess())
         .isTrue();
   }
 
@@ -183,7 +193,144 @@ class GuestServiceTest {
         .thenReturn(new CursorPage<>(List.of(guest(GuestStatus.ACTIVE)), "next"));
     accountIs(true, true);
 
-    assertThat(service().list(StatusFilter.ALL, null, page).nextCursor()).isEqualTo("next");
+    assertThat(service().list(StatusFilter.ALL, null, false, page).page().nextCursor())
+        .isEqualTo("next");
+  }
+
+  // --- list: A3 notices, environment, access expiry and withoutContract (TAR-237) ---
+
+  private static Guest guest(Long id, GuestStatus status, String number) {
+    return new Guest(
+        id,
+        DocumentType.DNI,
+        number,
+        null,
+        null,
+        null,
+        GuestType.CONTRACT,
+        status,
+        null,
+        null,
+        null,
+        null);
+  }
+
+  private static Occupancy contract(
+      Long guest, Long environment, String start, @Nullable String end) {
+    return new Occupancy(
+        environment,
+        Occupancy.Kind.CONTRACT,
+        guest,
+        TestIds.next(),
+        null,
+        LocalDate.parse(start),
+        end == null ? null : LocalDate.parse(end));
+  }
+
+  @Test
+  void theNoticesCountEveryGuestWhateverTheFilters() {
+    PageQuery page = PageQuery.first();
+    when(repository.findAll(List.of(GuestStatus.INACTIVE), null, page)).thenReturn(pageOf());
+    when(repository.countByStatus(GuestStatus.PENDING_ACTIVATION)).thenReturn(3L);
+    when(repository.countByStatus(GuestStatus.ONBOARDING)).thenReturn(2L);
+
+    var list = service().list(StatusFilter.INACTIVE, null, false, page);
+
+    assertThat(list.pendingActivationCount()).isEqualTo(3);
+    assertThat(list.onboardingCount()).isEqualTo(2);
+  }
+
+  @Test
+  void onlyAGuestPendingActivationShowsWhenItsAccessExpiresEvenIfItAlreadyDid() {
+    PageQuery page = PageQuery.first();
+    Long active = TestIds.next();
+    Instant expired = NOW.minusSeconds(60);
+    when(repository.findAll(null, null, page))
+        .thenReturn(
+            pageOf(
+                guest(GuestStatus.PENDING_ACTIVATION),
+                guest(active, GuestStatus.ACTIVE, "87654321")));
+    when(accounts.unusedAccessExpiries(Set.of(ID))).thenReturn(Map.of(ID, expired));
+
+    var rows = service().list(StatusFilter.ALL, null, false, page).page().content();
+
+    assertThat(rows.get(0).accessExpiresAt()).isEqualTo(expired);
+    assertThat(rows.get(1).accessExpiresAt()).isNull();
+  }
+
+  @Test
+  void theEnvironmentOfARowIsTheOneInCourseElseTheNextElseNone() {
+    PageQuery page = PageQuery.first();
+    Long next = TestIds.next();
+    Long past = TestIds.next();
+    when(repository.findAll(null, null, page))
+        .thenReturn(
+            pageOf(
+                guest(GuestStatus.ACTIVE),
+                guest(next, GuestStatus.ACTIVE, "22222222"),
+                guest(past, GuestStatus.ACTIVE, "33333333")));
+    when(contracts.occupanciesOfGuests(Set.of(ID, next, past)))
+        .thenReturn(
+            List.of(
+                contract(ID, 1L, "2026-01-01", "2026-12-31"),
+                contract(next, 2L, "2026-11-01", null),
+                contract(past, 3L, "2026-01-01", "2026-03-31")));
+    when(stays.findAllByGuests(Set.of(ID, next, past)))
+        .thenReturn(
+            List.of(
+                new Stay(
+                    TestIds.next(),
+                    next,
+                    LocalDate.parse("2026-12-01"),
+                    LocalDate.parse("2026-12-05"),
+                    BigDecimal.TEN,
+                    4L,
+                    0L)));
+
+    var rows = service().list(StatusFilter.ALL, null, false, page).page().content();
+
+    assertThat(rows)
+        .extracting(
+            row -> Optional.ofNullable(row.environment()).map(Occupancy::environmentId).orElse(0L))
+        .containsExactly(1L, 2L, 0L);
+  }
+
+  @Test
+  void anInactiveGuestShowsTheLastEnvironmentItOccupied() {
+    var occupancies =
+        List.of(
+            contract(ID, 1L, "2025-01-01", "2025-06-30"),
+            contract(ID, 2L, "2025-07-01", "2026-03-31"));
+    LocalDate today = LocalDate.parse("2026-10-06");
+
+    assertThat(GuestService.relevant(occupancies, today, true))
+        .map(Occupancy::environmentId)
+        .contains(2L);
+    assertThat(GuestService.relevant(occupancies, today, false)).isEmpty();
+  }
+
+  @Test
+  void withoutContractLeavesOutTheGuestsWithAContractInForceAndPagesTheRest() {
+    Long second = TestIds.next();
+    Long third = TestIds.next();
+    var guests =
+        List.of(
+            guest(GuestStatus.ACTIVE),
+            guest(second, GuestStatus.ACTIVE, "22222222"),
+            guest(third, GuestStatus.ACTIVE, "33333333"));
+    when(repository.findAllMatching(any(), any())).thenReturn(guests);
+    when(contracts.guestsWithContractInForce(Set.of(ID, second, third))).thenReturn(Set.of(ID));
+
+    var first = service().list(StatusFilter.CURRENT, null, true, new PageQuery(null, 1)).page();
+
+    assertThat(first.content()).extracting(row -> row.summary().id()).containsExactly(second);
+    assertThat(first.nextCursor()).isNotNull();
+    var rest =
+        service()
+            .list(StatusFilter.CURRENT, null, true, new PageQuery(first.nextCursor(), 1))
+            .page();
+    assertThat(rest.content()).extracting(row -> row.summary().id()).containsExactly(third);
+    assertThat(rest.nextCursor()).isNull();
   }
 
   // --- get / onboarding progress ---
@@ -259,8 +406,32 @@ class GuestServiceTest {
   // --- update ---
 
   @Test
+  void anEditFromAVersionTheGuestNoLongerHasIsAConcurrentModification() {
+    when(repository.findByIdForUpdate(ID))
+        .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
+    when(repository.versionOf(ID)).thenReturn(3L);
+
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(2L, null, "87654321")))
+        .isInstanceOf(OptimisticLockingFailureException.class);
+    verify(repository, never()).save(any());
+  }
+
+  @Test
+  void theDetailCarriesTheVersionAndTheAccountEmail() {
+    when(repository.findById(ID)).thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
+    when(repository.versionOf(ID)).thenReturn(4L);
+    when(accounts.accountEmail(ID)).thenReturn(Optional.of("ana@example.com"));
+    noAccount();
+
+    var detail = service().get(ID);
+
+    assertThat(detail.version()).isEqualTo(4);
+    assertThat(detail.accountEmail()).isEqualTo("ana@example.com");
+  }
+
+  @Test
   void anUpdateWithNoFieldIsRejected() {
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, null)))
         .isInstanceOf(EmptyGuestUpdateException.class);
     verify(repository, never()).findByIdForUpdate(any());
   }
@@ -269,7 +440,7 @@ class GuestServiceTest {
   void updatingAnUnknownGuestIsNotFound() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, "87654321")))
         .isInstanceOf(GuestNotFoundException.class);
   }
 
@@ -280,7 +451,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     noAccount();
 
-    var summary = service().update(ID, new UpdateCommand(null, " 87654321 "));
+    var summary = service().update(ID, new UpdateCommand(0L, null, " 87654321 "));
 
     assertThat(summary.documentNumber()).isEqualTo("87654321");
     var saved = ArgumentCaptor.forClass(Guest.class);
@@ -296,7 +467,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     noAccount();
 
-    var summary = service().update(ID, new UpdateCommand(IdDocumentKind.PASSPORT, "ab123456"));
+    var summary = service().update(ID, new UpdateCommand(0L, IdDocumentKind.PASSPORT, "ab123456"));
 
     assertThat(summary.documentType()).isEqualTo(IdDocumentKind.PASSPORT);
     assertThat(summary.documentNumber()).isEqualTo("AB123456");
@@ -306,7 +477,7 @@ class GuestServiceTest {
   void theDocumentCannotChangeOnceTheGuestStartedTheOnboarding() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ONBOARDING)));
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, "87654321")))
         .isInstanceOf(GuestDocumentLockedException.class);
     verify(repository, never()).save(any());
   }
@@ -318,7 +489,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     accountIs(true, true);
 
-    var summary = service().update(ID, new UpdateCommand(IdDocumentKind.DNI, "12345678"));
+    var summary = service().update(ID, new UpdateCommand(0L, IdDocumentKind.DNI, "12345678"));
 
     assertThat(summary.documentNumber()).isEqualTo("12345678");
     assertThat(summary.hasLoginAccess()).isTrue();
@@ -330,7 +501,7 @@ class GuestServiceTest {
         .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
 
     for (var bad : List.of("1234567", "123456789", "1234567A", "", "   ")) {
-      assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, bad)))
+      assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, bad)))
           .as(bad)
           .isInstanceOf(InvalidGuestDocumentException.class);
     }
@@ -342,7 +513,7 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID))
         .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION, GuestType.CONTRACT, "123")));
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(IdDocumentKind.DNI, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, IdDocumentKind.DNI, null)))
         .isInstanceOf(InvalidGuestDocumentException.class);
   }
 
@@ -353,7 +524,7 @@ class GuestServiceTest {
     when(repository.save(any()))
         .thenThrow(new GuestDocumentAlreadyExistsException(new RuntimeException("unique")));
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, "87654321")))
         .isInstanceOf(GuestDocumentTakenException.class);
   }
 
@@ -370,7 +541,7 @@ class GuestServiceTest {
         .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
     when(accounts.documentBelongsToAdministrator("DNI", "87654321")).thenReturn(true);
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, "87654321")))
         .isInstanceOf(GuestDocumentTakenException.class);
 
     verify(repository, never()).save(any());
@@ -383,7 +554,7 @@ class GuestServiceTest {
     when(repository.save(any()))
         .thenThrow(new GuestEmailAlreadyExistsException(new RuntimeException("unique")));
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, "87654321")))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, "87654321")))
         .isInstanceOf(GuestEmailTakenException.class);
   }
 

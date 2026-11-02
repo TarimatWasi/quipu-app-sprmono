@@ -86,6 +86,14 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
   }
 
   @Override
+  public List<Stay> findAllByGuests(Collection<Long> guestIds) {
+    if (guestIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository.findByGuestIdIn(guestIds).stream().map(StayJpaEntity::toDomain).toList();
+  }
+
+  @Override
   public Optional<Stay> findByIdAndGuest(Long id, Long guestId) {
     return jpaRepository.findByIdAndGuestId(id, guestId).map(StayJpaEntity::toDomain);
   }

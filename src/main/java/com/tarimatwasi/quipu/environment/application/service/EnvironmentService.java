@@ -144,6 +144,22 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   @Override
   @Transactional(readOnly = true)
+  public Map<Long, EnvironmentLabel> labelsOf(Collection<Long> ids) {
+    Map<Long, EnvironmentLabel> labels = new HashMap<>();
+    if (!ids.isEmpty()) {
+      environments
+          .findAllByIds(ids)
+          .forEach(
+              e ->
+                  labels.put(
+                      e.id(),
+                      new EnvironmentLabel(e.code(), EnvironmentKind.valueOf(e.type().name()))));
+    }
+    return labels;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public EnvironmentView get(Long id) {
     Environment environment =
         environments.findById(id).orElseThrow(EnvironmentNotFoundException::new);

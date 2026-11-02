@@ -74,6 +74,20 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
   }
 
   @Override
+  public List<Contract> findAllByGuests(Collection<Long> guestIds) {
+    if (guestIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository
+        .findAll(
+            (root, query, builder) -> root.get("guestId").in(guestIds),
+            Sort.by(Sort.Order.asc("startDate"), Sort.Order.asc("id")))
+        .stream()
+        .map(ContractJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Contract> findAllByGuestForUpdate(Long guestId) {
     return jpaRepository.findWithLockByGuestIdOrderByIdAsc(guestId).stream()
         .map(ContractJpaEntity::toDomain)

@@ -77,4 +77,8 @@ interface AccessGrantJpaRepository extends JpaRepository<AccessGrantJpaEntity, L
 
   Optional<AccessGrantJpaEntity> findByGuestIdAndUsedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(
       Long guestId, Instant now);
+
+  /** At most one per guest: uq_access_grants_live. */
+  List<AccessGrantJpaEntity> findByGuestIdInAndUsedAtIsNullAndRevokedAtIsNull(
+      Collection<Long> guestIds);
 }
