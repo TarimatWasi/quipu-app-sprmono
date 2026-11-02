@@ -1,8 +1,13 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
 import com.tarimatwasi.quipu.guest.application.port.out.StayRepositoryPort;
+import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,5 +37,26 @@ public class StayOccupancyService implements StayOccupancyQuery {
   @Transactional(readOnly = true)
   public boolean environmentOccupiedFrom(Long environmentId, LocalDate today) {
     return stays.environmentTakenFrom(environmentId, today);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<Occupancy> occupanciesOf(Collection<Long> environmentIds) {
+    List<Occupancy> occupancies = new ArrayList<>();
+    for (Stay stay : stays.findAllByEnvironments(environmentIds)) {
+      Long environmentId = stay.environmentId();
+      if (environmentId != null) {
+        occupancies.add(
+            new Occupancy(
+                environmentId,
+                Occupancy.Kind.STAY,
+                stay.guestId(),
+                null,
+                stay.id(),
+                stay.startDate(),
+                stay.endDate()));
+      }
+    }
+    return occupancies;
   }
 }

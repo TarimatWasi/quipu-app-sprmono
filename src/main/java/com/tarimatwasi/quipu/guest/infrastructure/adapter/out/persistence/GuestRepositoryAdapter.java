@@ -42,6 +42,13 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
   }
 
   @Override
+  public List<Guest> findAllByIds(Collection<Long> ids) {
+    return ids.isEmpty()
+        ? List.of()
+        : jpaRepository.findAllById(ids).stream().map(GuestJpaEntity::toDomain).toList();
+  }
+
+  @Override
   public Optional<Guest> findByIdForUpdate(Long id) {
     return jpaRepository.findWithLockById(id).map(GuestJpaEntity::toDomain);
   }

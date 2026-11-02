@@ -60,6 +60,20 @@ public class ContractRepositoryAdapter implements ContractRepositoryPort {
   }
 
   @Override
+  public List<Contract> findAllByEnvironments(Collection<Long> environmentIds) {
+    if (environmentIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository
+        .findAll(
+            (root, query, builder) -> root.get("environmentId").in(environmentIds),
+            Sort.by(Sort.Order.asc("startDate"), Sort.Order.asc("id")))
+        .stream()
+        .map(ContractJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Contract> findAllByGuestForUpdate(Long guestId) {
     return jpaRepository.findWithLockByGuestIdOrderByIdAsc(guestId).stream()
         .map(ContractJpaEntity::toDomain)

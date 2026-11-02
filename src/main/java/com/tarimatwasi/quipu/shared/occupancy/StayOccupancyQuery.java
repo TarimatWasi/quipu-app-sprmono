@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.shared.occupancy;
 
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,4 +22,7 @@ public interface StayOccupancyQuery {
 
   /** Whether a stay holds the environment today or later, so it cannot be deactivated (RN-12). */
   boolean environmentOccupiedFrom(Long environmentId, LocalDate today);
+
+  /** TAR-237 (A2): every stay of those environments, as the range it occupies. */
+  List<Occupancy> occupanciesOf(Collection<Long> environmentIds);
 }

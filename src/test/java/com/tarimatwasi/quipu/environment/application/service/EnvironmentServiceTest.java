@@ -28,6 +28,10 @@ import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -39,16 +43,28 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class EnvironmentServiceTest {
 
   private static final Long ID = TestIds.next();
+  private static final Instant CREATED = Instant.parse("2026-10-01T15:00:00Z");
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-11-01T15:00:00Z"), ZoneId.of("America/Lima"));
   private static final Environment ROOM_201 =
-      new Environment(ID, "201", EnvironmentType.ROOM, EnvironmentStatus.ACTIVE);
+      new Environment(ID, "201", EnvironmentType.ROOM, EnvironmentStatus.ACTIVE, CREATED, null, 0L);
   private static final EnvironmentView VIEW_201 =
-      new EnvironmentView(ID, "201", EnvironmentKind.ROOM, EnvironmentState.ACTIVE);
+      new EnvironmentView(
+          ID,
+          "201",
+          EnvironmentKind.ROOM,
+          EnvironmentState.ACTIVE,
+          null,
+          null,
+          LocalDate.of(2026, 10, 1),
+          null,
+          0L);
 
   @Mock EnvironmentRepositoryPort repository;
   @Mock EnvironmentOccupancyPort occupancy;
 
   private EnvironmentService service() {
-    return new EnvironmentService(repository, occupancy);
+    return new EnvironmentService(repository, occupancy, CLOCK);
   }
 
   @Test
@@ -62,11 +78,24 @@ class EnvironmentServiceTest {
 
   @Test
   void theViewKeepsTheTypeAndTheStatusOfTheDomain() {
-    var cabin = new Environment(ID, "C1", EnvironmentType.CABIN, EnvironmentStatus.INACTIVE);
+    Instant deactivated = Instant.parse("2026-10-20T15:00:00Z");
+    var cabin =
+        new Environment(
+            ID, "C1", EnvironmentType.CABIN, EnvironmentStatus.INACTIVE, CREATED, deactivated, 4L);
     when(repository.findById(ID)).thenReturn(Optional.of(cabin));
 
     assertThat(service().get(ID))
-        .isEqualTo(new EnvironmentView(ID, "C1", EnvironmentKind.CABIN, EnvironmentState.INACTIVE));
+        .isEqualTo(
+            new EnvironmentView(
+                ID,
+                "C1",
+                EnvironmentKind.CABIN,
+                EnvironmentState.INACTIVE,
+                null,
+                null,
+                LocalDate.of(2026, 10, 1),
+                deactivated,
+                4L));
   }
 
   @Test
@@ -79,11 +108,16 @@ class EnvironmentServiceTest {
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().create(new CreateCommand("<b>1", EnvironmentKind.ROOM)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
+    // TAR-237: only ASCII letters, as the contract fixes it.
+    assertThatThrownBy(() -> service().create(new CreateCommand("Cabaña 3", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
+    assertThatThrownBy(() -> service().create(new CreateCommand("ÁTICO 2", EnvironmentKind.ROOM)))
+        .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().create(new CreateCommand("​", EnvironmentKind.ROOM)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().create(new CreateCommand("2​01", EnvironmentKind.ROOM)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand("﻿201", null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, "﻿201", null)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     verify(repository, never()).insert(any(), any());
     verify(repository, never()).update(any(), any(), any());
@@ -91,7 +125,7 @@ class EnvironmentServiceTest {
 
   @Test
   void aCodeInTheAlphabetIsKeptAsIs() {
-    for (var code : new String[] {"201", "C1", "Cabaña 3", "A-1/b_2.3", "ÁTICO 2"}) {
+    for (var code : new String[] {"201", "C1", "Cabana 3", "A-1/b_2.3", "ATICO 2"}) {
       when(repository.insert(code, EnvironmentType.ROOM)).thenReturn(ROOM_201);
 
       service().create(new CreateCommand(code, EnvironmentKind.ROOM));
@@ -115,7 +149,7 @@ class EnvironmentServiceTest {
         .isInstanceOf(InvalidEnvironmentCodeException.class);
     assertThatThrownBy(() -> service().create(new CreateCommand(" ", EnvironmentKind.ROOM)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(" ", null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, " ", null)))
         .isInstanceOf(InvalidEnvironmentCodeException.class);
 
     verify(repository, never()).insert(any(), any());
@@ -133,16 +167,17 @@ class EnvironmentServiceTest {
 
   @Test
   void updatesOnlyThePresentFieldsAndTrimsTheCode() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
     when(repository.update(ID, "202", null)).thenReturn(Optional.of(ROOM_201));
 
-    var updated = service().update(ID, new UpdateCommand(" 202 ", null));
+    var updated = service().update(ID, new UpdateCommand(0L, " 202 ", null));
 
     assertThat(updated).isEqualTo(VIEW_201);
   }
 
   @Test
   void anUpdateWithoutFieldsIsRejectedBeforeTouchingTheStore() {
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, null)))
         .isInstanceOf(EmptyEnvironmentUpdateException.class);
 
     verify(repository, never()).update(any(), any(), any());
@@ -150,18 +185,20 @@ class EnvironmentServiceTest {
 
   @Test
   void updatingAnUnknownEnvironmentIsNotFound() {
-    when(repository.update(eq(ID), any(), any())).thenReturn(Optional.empty());
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(null, EnvironmentKind.CABIN)))
+    assertThatThrownBy(
+            () -> service().update(ID, new UpdateCommand(0L, null, EnvironmentKind.CABIN)))
         .isInstanceOf(EnvironmentNotFoundException.class);
   }
 
   @Test
   void aDuplicateCodeOnUpdateIsReportedAsTaken() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
     when(repository.update(ID, "202", null))
         .thenThrow(new EnvironmentCodeAlreadyExistsException(new RuntimeException()));
 
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand("202", null)))
+    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, "202", null)))
         .isInstanceOf(EnvironmentCodeTakenException.class);
   }
 
@@ -177,20 +214,20 @@ class EnvironmentServiceTest {
   @Test
   void deactivatingAndReactivatingSetTheStatus() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
-    when(repository.updateStatus(ID, EnvironmentStatus.INACTIVE)).thenReturn(true);
-    when(repository.updateStatus(ID, EnvironmentStatus.ACTIVE)).thenReturn(true);
+    when(repository.updateStatus(eq(ID), eq(EnvironmentStatus.INACTIVE), any())).thenReturn(true);
+    when(repository.updateStatus(eq(ID), eq(EnvironmentStatus.ACTIVE), any())).thenReturn(true);
 
     service().deactivate(ID);
     service().reactivate(ID);
 
-    verify(repository).updateStatus(ID, EnvironmentStatus.INACTIVE);
-    verify(repository).updateStatus(ID, EnvironmentStatus.ACTIVE);
+    verify(repository).updateStatus(eq(ID), eq(EnvironmentStatus.INACTIVE), any());
+    verify(repository).updateStatus(eq(ID), eq(EnvironmentStatus.ACTIVE), any());
   }
 
   @Test
   void changingTheStatusOfAnUnknownEnvironmentIsNotFound() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
-    when(repository.updateStatus(eq(ID), any())).thenReturn(false);
+    when(repository.updateStatus(eq(ID), any(), any())).thenReturn(false);
 
     assertThatThrownBy(() -> service().deactivate(ID))
         .isInstanceOf(EnvironmentNotFoundException.class);
@@ -205,7 +242,7 @@ class EnvironmentServiceTest {
 
     assertThatThrownBy(() -> service().deactivate(ID))
         .isInstanceOf(EnvironmentOccupiedException.class);
-    verify(repository, never()).updateStatus(any(), any());
+    verify(repository, never()).updateStatus(any(), any(), any());
   }
 
   @Test
@@ -215,7 +252,7 @@ class EnvironmentServiceTest {
 
     service().deactivate(ID);
 
-    verify(repository, never()).updateStatus(any(), any());
+    verify(repository, never()).updateStatus(any(), any(), any());
   }
 
   @Test
@@ -245,9 +282,11 @@ class EnvironmentServiceTest {
         .thenReturn(new CursorPage<>(List.of(), null));
     when(repository.findAll(null, page)).thenReturn(new CursorPage<>(List.of(ROOM_201), null));
 
-    assertThat(service().list(StatusFilter.ACTIVE, page).content()).containsExactly(VIEW_201);
-    assertThat(service().list(StatusFilter.INACTIVE, page).content()).isEmpty();
-    assertThat(service().list(StatusFilter.ALL, page).content()).containsExactly(VIEW_201);
+    assertThat(service().list(StatusFilter.ACTIVE, page, null, null).page().content())
+        .containsExactly(VIEW_201);
+    assertThat(service().list(StatusFilter.INACTIVE, page, null, null).page().content()).isEmpty();
+    assertThat(service().list(StatusFilter.ALL, page, null, null).page().content())
+        .containsExactly(VIEW_201);
   }
 
   @Test
@@ -256,7 +295,8 @@ class EnvironmentServiceTest {
     when(repository.findAll(EnvironmentStatus.ACTIVE, page))
         .thenReturn(new CursorPage<>(List.of(ROOM_201), "next"));
 
-    assertThat(service().list(StatusFilter.ACTIVE, page).nextCursor()).isEqualTo("next");
+    assertThat(service().list(StatusFilter.ACTIVE, page, null, null).page().nextCursor())
+        .isEqualTo("next");
   }
 
   @Test

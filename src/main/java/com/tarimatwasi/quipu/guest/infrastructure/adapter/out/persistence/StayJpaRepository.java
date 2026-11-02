@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,9 @@ interface StayJpaRepository
     extends JpaRepository<StayJpaEntity, Long>, JpaSpecificationExecutor<StayJpaEntity> {
 
   List<StayJpaEntity> findByGuestId(Long guestId);
+
+  /** TAR-237 (A2): every stay of those environments. */
+  List<StayJpaEntity> findByEnvironmentIdIn(Collection<Long> environmentIds);
 
   /** TAR-237: a stay of the environment, other than the excluded one, crossing the range. */
   @Query(

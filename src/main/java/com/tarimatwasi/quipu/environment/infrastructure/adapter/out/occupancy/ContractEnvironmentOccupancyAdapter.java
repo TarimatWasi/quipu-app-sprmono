@@ -2,9 +2,13 @@ package com.tarimatwasi.quipu.environment.infrastructure.adapter.out.occupancy;
 
 import com.tarimatwasi.quipu.environment.application.port.out.EnvironmentOccupancyPort;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,5 +34,15 @@ public class ContractEnvironmentOccupancyAdapter implements EnvironmentOccupancy
   public boolean isOccupied(Long environmentId) {
     return contracts.environmentOccupied(environmentId)
         || stays.environmentOccupiedFrom(environmentId, LocalDate.now(clock));
+  }
+
+  @Override
+  public List<Occupancy> occupanciesOf(Collection<Long> environmentIds) {
+    if (environmentIds.isEmpty()) {
+      return List.of();
+    }
+    List<Occupancy> all = new ArrayList<>(contracts.occupanciesOf(environmentIds));
+    all.addAll(stays.occupanciesOf(environmentIds));
+    return all;
   }
 }

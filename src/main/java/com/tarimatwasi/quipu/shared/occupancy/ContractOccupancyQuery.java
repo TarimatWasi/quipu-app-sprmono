@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.shared.occupancy;
 
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -21,6 +23,9 @@ public interface ContractOccupancyQuery {
    * @param end the last day of the range; null for an open-ended range
    */
   boolean environmentTaken(Long environmentId, LocalDate start, @Nullable LocalDate end);
+
+  /** TAR-237 (A2): every contract of those environments, as the range it occupies. */
+  List<Occupancy> occupanciesOf(Collection<Long> environmentIds);
 
   /** The id of a contract of the guest in force today, if it has one (RN-12). */
   Optional<Long> guestContractInForce(Long guestId);

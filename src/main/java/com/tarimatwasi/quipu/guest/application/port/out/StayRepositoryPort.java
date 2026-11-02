@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,6 +44,9 @@ public interface StayRepositoryPort {
 
   /** TAR-237: whether a stay of the environment ends on that day or later (open-ended ranges). */
   boolean environmentTakenFrom(Long environmentId, LocalDate start);
+
+  /** TAR-237 (A2): every stay of those environments. */
+  List<Stay> findAllByEnvironments(Collection<Long> environmentIds);
 
   /** Stores the new data of an existing stay. */
   Stay update(Stay stay);

@@ -8,12 +8,16 @@ import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 public interface GuestRepositoryPort {
 
   Optional<Guest> findById(Long id);
+
+  /** TAR-237: the guests with those ids; an id with no guest adds nothing. */
+  List<Guest> findAllByIds(Collection<Long> ids);
 
   /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so two simultaneous

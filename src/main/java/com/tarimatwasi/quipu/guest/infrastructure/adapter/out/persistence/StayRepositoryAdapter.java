@@ -12,6 +12,7 @@ import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -110,6 +111,16 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
   @Override
   public boolean environmentTakenFrom(Long environmentId, LocalDate start) {
     return jpaRepository.existsFrom(environmentId, start);
+  }
+
+  @Override
+  public List<Stay> findAllByEnvironments(Collection<Long> environmentIds) {
+    if (environmentIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository.findByEnvironmentIdIn(environmentIds).stream()
+        .map(StayJpaEntity::toDomain)
+        .toList();
   }
 
   @Override

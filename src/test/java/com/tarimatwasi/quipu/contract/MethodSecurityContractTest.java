@@ -122,7 +122,9 @@ class MethodSecurityContractTest {
   @WithMockUser(roles = "GUEST")
   void environmentUseCases_withoutAdminRole_areForbidden() {
     assertThatThrownBy(
-            () -> environments.list(ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first()))
+            () ->
+                environments.list(
+                    ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first(), null, null))
         .isInstanceOf(AccessDeniedException.class);
   }
 
@@ -203,7 +205,8 @@ class MethodSecurityContractTest {
         .isEmpty();
     assertThat(
             environments
-                .list(ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first())
+                .list(ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first(), null, null)
+                .page()
                 .content())
         .isEmpty();
     assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();

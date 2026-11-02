@@ -3,8 +3,12 @@ package com.tarimatwasi.quipu.contract.application.service;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -32,6 +36,29 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
   @Transactional(readOnly = true)
   public boolean environmentTaken(Long environmentId, LocalDate start, @Nullable LocalDate end) {
     return contracts.existsCrossing(environmentId, start, end);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<Occupancy> occupanciesOf(Collection<Long> environmentIds) {
+    return contracts.findAllByEnvironments(environmentIds).stream().map(this::occupancy).toList();
+  }
+
+  /** A contract finished by hand (RN-21) ends on the day it was finished, in the zone of Quipu. */
+  private Occupancy occupancy(Contract contract) {
+    Instant terminatedAt = contract.terminatedAt();
+    LocalDate end =
+        terminatedAt != null
+            ? LocalDate.ofInstant(terminatedAt, clock.getZone())
+            : contract.endDate();
+    return new Occupancy(
+        contract.environmentId(),
+        Occupancy.Kind.CONTRACT,
+        contract.guestId(),
+        contract.id(),
+        null,
+        contract.startDate(),
+        end);
   }
 
   @Override

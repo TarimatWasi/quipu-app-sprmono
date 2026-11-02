@@ -78,6 +78,9 @@ public interface ContractRepositoryPort {
   /** Every contract of the guest, whatever its state, the oldest start first. */
   List<Contract> findAllByGuest(Long guestId);
 
+  /** TAR-237 (A2): every contract of those environments, finished ones included. */
+  List<Contract> findAllByEnvironments(Collection<Long> environmentIds);
+
   /**
    * Like {@link #findAllByGuest} but every row stays locked until the transaction ends, taken in
    * the order of the ids; the oldest id first. Needs a transaction.
