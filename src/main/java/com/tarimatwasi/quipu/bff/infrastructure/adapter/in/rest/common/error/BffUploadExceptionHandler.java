@@ -36,8 +36,14 @@ public class BffUploadExceptionHandler {
 
   private static final RequestMatcher CONTRACTS = PATHS.matcher(UploadRoutes.CONTRACTS);
 
+  /** A payment sent with its vouchers, or one whose proofs are corrected (TAR-239). */
   private static final RequestMatcher VOUCHERS =
-      new OrRequestMatcher(UploadRoutes.VOUCHERS.stream().map(PATHS::matcher).toList());
+      new OrRequestMatcher(
+          Stream.concat(
+                  UploadRoutes.VOUCHERS.stream().map(PATHS::matcher),
+                  UploadRoutes.PAYMENT_CORRECTIONS.stream()
+                      .map(route -> PATHS.matcher(HttpMethod.PUT, route)))
+              .toList());
 
   /**
    * A document a guest uploads (onboarding or «Mis datos», TAR-242), or the one an administrator

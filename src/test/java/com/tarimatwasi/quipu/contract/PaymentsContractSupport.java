@@ -18,6 +18,7 @@ import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
+import com.tarimatwasi.quipu.support.PaymentRows;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -235,25 +236,20 @@ abstract class PaymentsContractSupport {
       String status,
       String createdDate) {
     Long id = TestIds.next();
-    jdbc.update(
-        "INSERT INTO payments (id, guest_id, contract_id, stay_id, period, amount, voucher_key,"
-            + " original_name, content_type, size_bytes, status, rejection_reason, reviewed_at,"
-            + " reviewed_by_id, recorded_by, created_date) VALUES (?, ?, ?, ?, ?::date, 800, ?,"
-            + " 'v.pdf', 'application/pdf', 10, ?, CASE WHEN ? = 'REJECTED' THEN 'No coincide' END,"
-            + " CASE WHEN ? = 'PENDING' THEN NULL ELSE now() END,"
-            + " CASE WHEN ? = 'PENDING' THEN NULL ELSE ?::bigint END, 'GUEST', ?::timestamptz)",
+    PaymentRows.insert(
+        jdbc,
         id,
         guest,
         contractId,
         stayId,
         period == null ? null : period + "-01",
-        KEY + "-" + id,
-        status,
-        status,
-        status,
+        "800",
         status,
         adminId,
-        createdDate);
+        "GUEST",
+        createdDate,
+        KEY + "-" + id,
+        "application/pdf");
     return id;
   }
 }

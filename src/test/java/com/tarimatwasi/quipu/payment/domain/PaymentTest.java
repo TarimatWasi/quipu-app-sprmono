@@ -23,29 +23,31 @@ class PaymentTest {
         null,
         YearMonth.of(2026, 10),
         new BigDecimal("800.00"),
-        "Yape",
+        null,
         PaymentStatus.PENDING,
         null,
         null,
-        null);
+        null,
+        AT.minusSeconds(3600));
   }
 
   @Test
-  void aNewVoucherIsPendingAndAlive() {
+  void aNewPaymentIsPendingAndResolvable() {
     assertThat(pending().pending()).isTrue();
-    assertThat(pending().alive()).isTrue();
+    assertThat(pending().resolvable()).isTrue();
   }
 
   @Test
   void approving_resolvesItWithWhoAndWhen() {
-    Payment approved = pending().approve(9L, AT);
+    Payment approved = pending().approve(9L, new BigDecimal("800.00"), AT);
 
     assertThat(approved.status()).isEqualTo(PaymentStatus.APPROVED);
     assertThat(approved.reviewedById()).isEqualTo(9L);
     assertThat(approved.reviewedAt()).isEqualTo(AT);
     assertThat(approved.rejectionReason()).isNull();
     assertThat(approved.pending()).isFalse();
-    assertThat(approved.alive()).isTrue();
+    assertThat(approved.resolvable()).isFalse();
+    assertThat(approved.verifiedAmount()).isEqualByComparingTo("800.00");
     assertThat(approved.id()).isEqualTo(1L);
     assertThat(approved.amount()).isEqualByComparingTo("800.00");
     assertThat(approved.period()).isEqualTo(YearMonth.of(2026, 10));
@@ -58,7 +60,8 @@ class PaymentTest {
     assertThat(rejected.status()).isEqualTo(PaymentStatus.REJECTED);
     assertThat(rejected.rejectionReason()).isEqualTo("Voucher ilegible");
     assertThat(rejected.reviewedById()).isEqualTo(9L);
-    assertThat(rejected.alive()).isFalse();
+    // TAR-239: a rejected payment is corrected, so the administrator can still decide on it.
+    assertThat(rejected.resolvable()).isTrue();
   }
 
   @ParameterizedTest
@@ -79,23 +82,78 @@ class PaymentTest {
   }
 
   @Test
-  void aResolvedPaymentIsNotResolvedAgain() {
-    Payment approved = pending().approve(9L, AT);
+  void anApprovedPaymentIsNotResolvedAgainButARejectedOneIs() {
+    Payment approved = pending().approve(9L, new BigDecimal("800.00"), AT);
     Payment rejected = pending().reject(9L, "No coincide", AT);
 
-    assertThatThrownBy(() -> approved.approve(9L, AT))
+    assertThatThrownBy(() -> approved.approve(9L, new BigDecimal("800.00"), AT))
         .isInstanceOf(PaymentNotPendingException.class);
     assertThatThrownBy(() -> approved.reject(9L, "Tarde", AT))
         .isInstanceOf(PaymentNotPendingException.class);
-    assertThatThrownBy(() -> rejected.approve(9L, AT))
-        .isInstanceOf(PaymentNotPendingException.class);
-    assertThatThrownBy(() -> rejected.reject(9L, "Otra vez", AT))
+    assertThat(rejected.approve(9L, new BigDecimal("800.00"), AT).status())
+        .isEqualTo(PaymentStatus.APPROVED);
+    assertThat(rejected.reject(9L, "Otra vez", AT).rejectionReason()).isEqualTo("Otra vez");
+  }
+
+  @Test
+  void aSupersededRejectionIsHistoryAndNotResolvedAgain() {
+    Payment old =
+        new Payment(
+            1L,
+            2L,
+            3L,
+            null,
+            YearMonth.of(2026, 10),
+            BigDecimal.TEN,
+            null,
+            PaymentStatus.SUPERSEDED,
+            "No coincide",
+            AT,
+            9L,
+            AT);
+
+    assertThat(old.resolvable()).isFalse();
+    assertThat(old.status().shown()).isEqualTo(PaymentStatus.REJECTED);
+    assertThatThrownBy(() -> old.reject(9L, "Otra", AT))
         .isInstanceOf(PaymentNotPendingException.class);
   }
 
   @Test
+  void theGuestCorrectsOnlyARejectedPaymentAndSendsItAgain() {
+    Payment rejected = pending().reject(9L, "No coincide", AT);
+    Instant later = AT.plusSeconds(60);
+
+    Payment sent = rejected.corrected(new BigDecimal("850.00"), true, later);
+
+    assertThat(sent.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(sent.amount()).isEqualByComparingTo("850.00");
+    assertThat(sent.submittedAt()).isEqualTo(later);
+    assertThat(sent.rejectionReason()).isNull();
+    assertThat(sent.reviewedAt()).isNull();
+    assertThat(sent.reviewedById()).isNull();
+    assertThatThrownBy(() -> pending().corrected(BigDecimal.TEN, true, later))
+        .isInstanceOf(CorrectionNotAllowedException.class);
+  }
+
+  @Test
+  void theAdministratorCorrectsAPendingOrRejectedPaymentAndItsStatusStays() {
+    Payment rejected = pending().reject(9L, "No coincide", AT);
+
+    Payment corrected = rejected.corrected(new BigDecimal("850.00"), false, AT.plusSeconds(60));
+
+    assertThat(corrected.status()).isEqualTo(PaymentStatus.REJECTED);
+    assertThat(corrected.submittedAt()).isEqualTo(rejected.submittedAt());
+    assertThat(pending().corrected(BigDecimal.TEN, false, AT).status())
+        .isEqualTo(PaymentStatus.PENDING);
+    Payment approved = pending().approve(9L, new BigDecimal("800.00"), AT);
+    assertThatThrownBy(() -> approved.corrected(BigDecimal.TEN, false, AT))
+        .isInstanceOf(CorrectionNotAllowedException.class);
+  }
+
+  @Test
   void aResolvedPaymentIsReportedBeforeABadReason() {
-    assertThatThrownBy(() -> pending().approve(9L, AT).reject(9L, " ", AT))
+    assertThatThrownBy(
+            () -> pending().approve(9L, new BigDecimal("800.00"), AT).reject(9L, " ", AT))
         .isInstanceOf(PaymentNotPendingException.class);
   }
 
@@ -103,10 +161,21 @@ class PaymentTest {
   void aPaymentOfAStayHasNoPeriod() {
     Payment stay =
         new Payment(
-            1L, 2L, null, 7L, null, BigDecimal.TEN, null, PaymentStatus.PENDING, null, null, null);
+            1L,
+            2L,
+            null,
+            7L,
+            null,
+            BigDecimal.TEN,
+            null,
+            PaymentStatus.PENDING,
+            null,
+            null,
+            null,
+            AT);
 
-    assertThat(stay.approve(9L, AT).stayId()).isEqualTo(7L);
-    assertThat(stay.approve(9L, AT).period()).isNull();
+    assertThat(stay.approve(9L, new BigDecimal("800.00"), AT).stayId()).isEqualTo(7L);
+    assertThat(stay.approve(9L, new BigDecimal("800.00"), AT).period()).isNull();
   }
 
   @org.junit.jupiter.params.ParameterizedTest

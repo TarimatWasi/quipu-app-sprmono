@@ -63,12 +63,15 @@ class AccountStatusTest {
   @Mock PaymentContractPort contracts;
   @Mock PaymentEnvironmentPort environments;
   @Mock PaymentStayPort stays;
+  @Mock com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort reviewers;
 
   private PaymentService service;
 
   @BeforeEach
   void setUp() {
-    service = new PaymentService(payments, files, guests, contracts, environments, stays, clock);
+    service =
+        new PaymentService(
+            payments, files, guests, contracts, environments, stays, reviewers, clock);
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
@@ -91,11 +94,12 @@ class AccountStatusTest {
         null,
         period,
         new BigDecimal("800.00"),
-        "Yape",
+        new BigDecimal("800.00"),
         PaymentStatus.APPROVED,
         null,
         Instant.parse("2026-09-03T15:00:00Z"),
-        ADMIN);
+        ADMIN,
+        java.time.Instant.EPOCH);
   }
 
   @Test

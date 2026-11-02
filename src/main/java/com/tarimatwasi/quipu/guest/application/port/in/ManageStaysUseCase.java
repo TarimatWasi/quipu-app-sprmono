@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -97,4 +98,7 @@ public interface ManageStaysUseCase {
    * stays of a guest never overlap; should two be found anyway, the lowest id is kept.
    */
   List<StayView> inForceOn(LocalDate day);
+
+  /** TAR-239 (A5): those stays, of any guest; an id with no stay adds nothing. */
+  List<StayView> byIds(Collection<Long> ids);
 }

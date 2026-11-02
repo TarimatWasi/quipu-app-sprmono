@@ -22,6 +22,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -95,6 +96,14 @@ public class StayService implements ManageStaysUseCase {
         .filter(stay -> seen.add(stay.guestId()))
         .map(StayService::view)
         .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<StayView> byIds(Collection<Long> ids) {
+    return ids.isEmpty()
+        ? List.of()
+        : stays.findAllByIds(ids).stream().map(StayService::view).toList();
   }
 
   @Override

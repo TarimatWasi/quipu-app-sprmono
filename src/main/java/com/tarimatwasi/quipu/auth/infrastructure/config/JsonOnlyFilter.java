@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -52,6 +53,13 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
   /** The replacement of a document of a guest: the only upload by PUT (RN-37). */
   private static final RequestMatcher DOCUMENT_REPLACEMENT =
       PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT);
+
+  /** The corrections of a payment, multipart by PUT (TAR-239). */
+  private static final RequestMatcher PAYMENT_CORRECTIONS =
+      new OrRequestMatcher(
+          UploadRoutes.PAYMENT_CORRECTIONS.stream()
+              .map(route -> PATHS.matcher(HttpMethod.PUT, route))
+              .toList());
 
   /** The deletion of a document of a guest: JSON, under the check of the uploads (RN-37). */
   private static final RequestMatcher DOCUMENT_DELETION =
@@ -118,7 +126,8 @@ final class JsonOnlyFilter extends OncePerRequestFilter {
     String contentType = request.getContentType();
     boolean route =
         ("POST".equals(request.getMethod()) && UploadRoutes.ALL.contains(request.getRequestURI()))
-            || DOCUMENT_REPLACEMENT.matches(request);
+            || DOCUMENT_REPLACEMENT.matches(request)
+            || PAYMENT_CORRECTIONS.matches(request);
     if (!route || contentType == null) {
       return false;
     }

@@ -7,7 +7,10 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +48,24 @@ public class StayPaymentAdapter implements PaymentStayPort {
   @Override
   public List<Long> idsStartingIn(YearMonth month) {
     return stays.idsStartingIn(month);
+  }
+
+  @Override
+  public Map<Long, StayRef> staysByIds(Collection<Long> stayIds) {
+    Map<Long, StayRef> found = new HashMap<>();
+    if (!stayIds.isEmpty()) {
+      for (StayView stay : stays.byIds(stayIds)) {
+        found.put(
+            stay.id(),
+            new StayRef(
+                stay.id(),
+                stay.startDate(),
+                stay.endDate(),
+                stay.agreedAmount(),
+                stay.environmentId()));
+      }
+    }
+    return found;
   }
 
   @Override

@@ -8,22 +8,26 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** RF-05, CU-05, CU-14: review the vouchers and register a payment by hand. */
+/** RF-05, CU-05, CU-14: review the payments and their proofs, and register a payment by hand. */
 public interface ManagePaymentsUseCase {
 
   /** RF-15: the largest voucher; the BFF checks it before it reads the bytes. */
   int MAX_VOUCHER_BYTES = 5 * 1024 * 1024;
 
-  /** Where a voucher is in its review (RN-04). */
+  /** RN-22: a payment gathers at most five proofs. */
+  int MAX_PROOFS = 5;
+
+  /** Where a payment is in its review (RN-04). */
   enum PaymentState {
     PENDING,
     APPROVED,
     REJECTED
   }
 
-  /** What an administrator can decide about a pending voucher. */
+  /** What an administrator can decide about a payment. */
   enum Decision {
     APPROVED,
     REJECTED
@@ -35,51 +39,19 @@ public interface ManagePaymentsUseCase {
     TEMPORARY
   }
 
-  /**
-   * A row of the review queue: no amount, because the administrator compares the declared one with
-   * the voucher before resolving (RN-16).
-   *
-   * @param environmentCode {@code null} for a temporary guest
-   * @param period {@code null} for a temporary guest
-   */
-  record QueueItemView(
-      Long id,
-      Long guestId,
-      @Nullable String guestName,
-      String documentNumber,
-      GuestKind guestType,
-      @Nullable String environmentCode,
-      @Nullable YearMonth period,
-      PaymentState status,
-      Instant createdAt) {}
+  /** What a proof is (RN-22). */
+  enum ProofType {
+    VOUCHER,
+    CASH
+  }
 
-  /**
-   * A payment without its voucher URL.
-   *
-   * @param contractId {@code null} for the payment of a stay
-   * @param stayId {@code null} for the payment of a period
-   * @param period {@code null} for the payment of a stay
-   */
-  record PaymentView(
-      Long id,
-      Long guestId,
-      @Nullable Long contractId,
-      @Nullable Long stayId,
-      @Nullable YearMonth period,
-      BigDecimal amount,
-      @Nullable String paymentMethod,
-      PaymentState status,
-      @Nullable String rejectionReason,
-      @Nullable Instant reviewedAt,
-      Instant createdAt) {}
+  /** Who added a proof (RN-22). */
+  enum ProofSource {
+    GUEST,
+    ADMIN
+  }
 
-  /** A payment with the signed URL of its voucher (it expires and is not stored). */
-  record PaymentDetailView(PaymentView payment, String voucherUrl) {}
-
-  /** The administrator's decision; the reviewer is the one of the session. */
-  record Resolution(Long reviewerId, Decision decision, @Nullable String reason) {}
-
-  /** The voucher the administrator uploaded, as the browser named it and as it arrived. */
+  /** The voucher of a proof, as the browser named it and as it arrived. */
   final class VoucherUpload {
 
     private final String originalName;
@@ -103,21 +75,172 @@ public interface ManagePaymentsUseCase {
   }
 
   /**
+   * A proof sent with a new payment.
+   *
+   * @param file the voucher; {@code null} for cash
+   */
+  record ProofUpload(
+      ProofType kind, BigDecimal amount, @Nullable String method, @Nullable VoucherUpload file) {}
+
+  /**
+   * A proof of a correction (TAR-239): with {@code id}, a proof of the payment that is kept, its
+   * amount or method changed and, with a file, its voucher replaced; without {@code id}, a new one.
+   * A proof of the payment that is not listed is removed.
+   *
+   * @param file required for a new voucher, optional for a kept one; {@code null} for cash
+   */
+  record ProofEdit(
+      @Nullable Long id,
+      ProofType kind,
+      BigDecimal amount,
+      @Nullable String method,
+      @Nullable VoucherUpload file) {}
+
+  /** The file of a voucher, without its URL. */
+  record ProofFileView(String name, String contentType, long sizeBytes) {}
+
+  /**
+   * A proof as a payment shows it.
+   *
+   * @param verifiedAmount {@code null} until the payment is approved
+   * @param receivedOn when the administration received the money (direct payments only)
+   * @param file {@code null} for cash
+   * @param fileUrl signed for the administrator's detail only; {@code null} for cash and elsewhere
+   */
+  record ProofView(
+      Long id,
+      ProofType kind,
+      @Nullable String method,
+      BigDecimal declaredAmount,
+      @Nullable BigDecimal verifiedAmount,
+      ProofSource uploadedBy,
+      Instant addedAt,
+      @Nullable LocalDate receivedOn,
+      @Nullable ProofFileView file,
+      @Nullable String fileUrl) {}
+
+  /** One decision on a payment (RN-05); the lists go oldest first. */
+  record ReviewView(Decision decision, @Nullable String reason, Instant at) {}
+
+  /** The administrator who resolved a payment (TAR-230); only in the administrator's views. */
+  record ReviewerView(Long id, String name) {}
+
+  /**
+   * A row of the review queue: no amount, because the administrator compares the declared amounts
+   * with the proofs before resolving (RN-16).
+   *
+   * @param environmentCode the environment of the contract, or of the stay (TAR-237); {@code null}
+   *     for a stay without environment
+   * @param period {@code null} for a temporary guest
+   * @param stayStartDate {@code null} for a guest with a contract
+   * @param stayEndDate {@code null} for a guest with a contract
+   * @param reviewedBy {@code null} while pending
+   * @param submittedAt the last time it was sent; it orders the queue
+   */
+  record QueueItemView(
+      Long id,
+      Long guestId,
+      @Nullable String guestName,
+      String documentNumber,
+      GuestKind guestType,
+      @Nullable String environmentCode,
+      @Nullable YearMonth period,
+      @Nullable LocalDate stayStartDate,
+      @Nullable LocalDate stayEndDate,
+      PaymentState status,
+      int proofCount,
+      int voucherCount,
+      boolean hasCash,
+      @Nullable ReviewerView reviewedBy,
+      Instant submittedAt,
+      Instant createdAt) {}
+
+  /**
+   * A payment without its proofs' URLs.
+   *
+   * @param contractId {@code null} for the payment of a stay
+   * @param stayId {@code null} for the payment of a period
+   * @param period {@code null} for the payment of a stay
+   * @param amount the sum of the declared amounts of its proofs
+   * @param verifiedAmount the sum of the verified amounts; {@code null} until approved
+   * @param paymentMethod the method of its first proof (deprecated in the contract)
+   * @param submittedAt the last time it was sent
+   */
+  record PaymentView(
+      Long id,
+      Long guestId,
+      @Nullable Long contractId,
+      @Nullable Long stayId,
+      @Nullable YearMonth period,
+      BigDecimal amount,
+      @Nullable BigDecimal verifiedAmount,
+      @Nullable String paymentMethod,
+      PaymentState status,
+      @Nullable String rejectionReason,
+      int proofCount,
+      int voucherCount,
+      boolean hasCash,
+      @Nullable Instant reviewedAt,
+      Instant submittedAt,
+      Instant createdAt) {}
+
+  /**
+   * The administrator's detail of a payment (A5.2): what is paid, its proofs with their signed URLs
+   * and its decisions.
+   *
+   * @param environmentCode {@code null} for a stay without environment
+   * @param stayStartDate {@code null} for a guest with a contract
+   * @param stayEndDate {@code null} for a guest with a contract
+   * @param expectedAmount the monthly amount of the contract or the agreed amount of the stay
+   * @param creditApplied the credit of the guest discounted from it (RN-38)
+   * @param amountDue what the verified sum must cover to approve
+   * @param lastPeriod the last period of the contract, or a stay: what is left over is refunded
+   * @param reviewedBy {@code null} while pending
+   */
+  record PaymentDetailView(
+      PaymentView payment,
+      @Nullable String guestName,
+      String documentNumber,
+      GuestKind guestType,
+      @Nullable String environmentCode,
+      @Nullable LocalDate stayStartDate,
+      @Nullable LocalDate stayEndDate,
+      BigDecimal expectedAmount,
+      BigDecimal creditApplied,
+      BigDecimal amountDue,
+      boolean lastPeriod,
+      @Nullable ReviewerView reviewedBy,
+      List<ProofView> proofs,
+      List<ReviewView> reviews) {}
+
+  /**
+   * The administrator's decision; the reviewer is the one of the session.
+   *
+   * @param verified what was verified of each proof of the payment, by its id; required to approve
+   */
+  record Resolution(
+      Long reviewerId,
+      Decision decision,
+      @Nullable String reason,
+      Map<Long, BigDecimal> verified) {}
+
+  /**
    * A payment the administrator registers on behalf of a guest: exactly one of {@code period} (a
    * guest with a contract) or {@code stayId} (a temporary guest).
+   *
+   * @param receivedOn when the money was received; {@code null} for the day of the registration
    */
   record DirectPayment(
       Long adminId,
       Long guestId,
       @Nullable YearMonth period,
       @Nullable Long stayId,
-      BigDecimal amount,
-      @Nullable String paymentMethod,
-      VoucherUpload voucher) {}
+      @Nullable LocalDate receivedOn,
+      List<ProofUpload> proofs) {}
 
   /**
-   * One page of the queue, oldest first and read by last index; {@code status == null} lists every
-   * payment.
+   * One page of the queue, the payment sent longest ago first, read by last index; {@code status ==
+   * null} lists every payment.
    *
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
@@ -153,40 +276,55 @@ public interface ManagePaymentsUseCase {
   List<OwnPaymentsUseCase.PeriodView> environmentAccountStatus(Long environmentId);
 
   /**
-   * One payment with the signed URL of its voucher.
+   * One payment with what it pays, its proofs with their signed URLs and its decisions.
    *
    * @throws PaymentNotFoundException if there is no payment with that id
-   * @throws PaymentFileUnavailableException if the voucher cannot be signed
+   * @throws PaymentFileUnavailableException if a voucher cannot be signed
    */
   PaymentDetailView get(Long id);
 
   /**
-   * Approves or rejects a pending payment, once. Rejecting does not close the period: the guest can
-   * upload another voucher (RN-05). A reason is given with a rejection and is ignored with an
-   * approval.
+   * Approves or rejects a pending payment, or a rejected one the administrator corrected (TAR-239).
+   * To approve, every proof of the payment comes with what was verified, and their sum must cover
+   * what is due (RN-16). Rejecting keeps the proofs: they are corrected and the payment is sent
+   * again (RN-05). A reason is given with a rejection and is ignored with an approval.
    *
    * @throws PaymentNotFoundException if there is no payment with that id
    * @throws PaymentReasonRequiredException a rejection without a reason, or with a blank one
-   * @throws InvalidPaymentException the reason is over 500 characters or has control characters
-   * @throws PaymentAlreadyResolvedException the payment is no longer pending
+   * @throws InvalidPaymentException the reason is over 500 characters or has control characters, or
+   *     ({@code proofs}) an approval lacks a proof, names another one or falls short
+   * @throws PaymentAlreadyResolvedException the payment is already approved
    */
   PaymentView resolve(Long id, Resolution resolution);
 
   /**
-   * Registers a payment already approved (RN-23). The checks go in this order: the amount and the
-   * choice of period or stay, the guest and the stay exist, the guest is active, the period or the
-   * stay can be paid, the file is a voucher, and the period or the stay has no live payment.
+   * Replaces the proofs of a pending or rejected payment (A5.2, TAR-239); its status does not
+   * change. Every proof the administrator adds is recorded as added by the administration.
    *
-   * @throws InvalidPaymentException a field is out of range, or both or neither of period and stay
-   * @throws InvalidVoucherFileException the file is not a JPG, PNG or PDF by content, or is over 5
-   *     MB
+   * @throws PaymentNotFoundException if there is no payment with that id
+   * @throws InvalidPaymentException a proof is out of range, or names a proof of another payment
+   * @throws InvalidVoucherFileException a file is not a JPG, PNG or PDF by content
+   * @throws PaymentNotCorrectableException the payment is already approved
+   * @throws PaymentFileUnavailableException the bucket failed; nothing was changed
+   */
+  PaymentView correct(Long adminId, Long id, List<ProofEdit> proofs);
+
+  /**
+   * Registers a payment already approved, each proof verified at its amount (RN-23). The checks go
+   * in this order: the proofs and the choice of period or stay, the guest and the stay exist, the
+   * guest is active, the period or the stay can be paid, the files are vouchers, the period or the
+   * stay has no payment, and the proofs cover what is due.
+   *
+   * @throws InvalidPaymentException a field is out of range, both or neither of period and stay, or
+   *     ({@code proofs}) none, more than five, or short of what is due
+   * @throws InvalidVoucherFileException a file is not a JPG, PNG or PDF by content, or is over 5 MB
    * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException no such guest
    * @throws com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException the guest has no
    *     such stay
    * @throws com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException the guest is
    *     not active
    * @throws PaymentAlreadyExistsForPeriodException an approved payment already covers it
-   * @throws VoucherAlreadyExistsException a voucher is still pending for it
+   * @throws VoucherAlreadyExistsException a payment is pending or rejected for it: correct it
    * @throws PaymentFileUnavailableException the bucket failed; nothing was registered
    */
   PaymentView registerDirect(DirectPayment payment);

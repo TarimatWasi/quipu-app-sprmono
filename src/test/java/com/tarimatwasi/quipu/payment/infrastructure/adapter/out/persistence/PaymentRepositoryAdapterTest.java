@@ -4,9 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.DirectDraft;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewPayment;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewProof;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
+import com.tarimatwasi.quipu.payment.domain.PaymentProof;
+import com.tarimatwasi.quipu.payment.domain.PaymentReview;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
+import com.tarimatwasi.quipu.payment.domain.ProofFile;
+import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -17,11 +23,13 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.AdminSessions;
 import com.tarimatwasi.quipu.support.MaskedCursors;
+import com.tarimatwasi.quipu.support.PaymentRows;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
@@ -111,58 +119,75 @@ class PaymentRepositoryAdapterTest {
     return id;
   }
 
-  private DirectDraft draftForPeriod(String month) {
-    return new DirectDraft(
-        guest,
-        contract,
-        null,
-        YearMonth.parse(month),
-        new BigDecimal("800.50"),
-        "Yape",
-        "vouchers/" + TestIds.next(),
-        "v.pdf",
-        VoucherType.PDF,
-        1234,
+  private static NewProof voucher(
+      String amount, @Nullable String method, VoucherType type, long size) {
+    return new NewProof(
+        ProofKind.VOUCHER,
+        new BigDecimal(amount),
+        new BigDecimal(amount),
+        method,
+        new ProofFile("vouchers/" + TestIds.next(), "v." + type.extension(), type, size),
+        ProofAuthor.ADMIN,
+        LocalDate.of(2026, 10, 14));
+  }
+
+  /** A payment the administrator registers by hand: approved at once (RN-23). */
+  private NewPayment approved(
+      Long guestId,
+      @Nullable Long contractId,
+      @Nullable Long stayId,
+      @Nullable YearMonth period,
+      List<NewProof> proofs) {
+    return new NewPayment(
+        guestId,
+        contractId,
+        stayId,
+        period,
+        PaymentStatus.APPROVED,
+        ProofAuthor.ADMIN,
+        proofs,
+        REVIEWED,
         REVIEWED,
         admin);
   }
 
-  private DirectDraft draftForStay() {
-    return new DirectDraft(
-        temporaryGuest,
+  private NewPayment draftForPeriod(String month) {
+    return approved(
+        guest,
+        contract,
         null,
-        stay,
-        null,
-        new BigDecimal("150"),
-        null,
-        "vouchers/" + TestIds.next(),
-        "v.png",
-        VoucherType.PNG,
-        99,
-        REVIEWED,
-        admin);
+        YearMonth.parse(month),
+        List.of(voucher("800.50", "Yape", VoucherType.PDF, 1234)));
+  }
+
+  private NewPayment draftForStay() {
+    return approved(
+        temporaryGuest, null, stay, null, List.of(voucher("150", null, VoucherType.PNG, 99)));
   }
 
   /** A voucher a guest uploaded, which the next PRs create through their own port. */
   private Long insertPending(String month, @Nullable String createdDate) {
     Long id = TestIds.next();
-    jdbc.update(
-        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-            + " content_type, size_bytes, status, recorded_by, created_date) VALUES (?, ?, ?,"
-            + " ?::date, 800, ?, 'v.jpg', 'image/jpeg', 10, 'PENDING', 'GUEST',"
-            + " COALESCE(?::timestamptz, now()))",
+    PaymentRows.insert(
+        jdbc,
         id,
         guest,
         contract,
+        null,
         month + "-01",
+        "800",
+        "PENDING",
+        null,
+        "GUEST",
+        createdDate,
         "vouchers/" + id,
-        createdDate);
+        "image/jpeg");
     return id;
   }
 
   @Test
   void insertApproved_storesTheVoucherOfAPeriodApprovedByTheAdmin() {
-    StoredPayment stored = adapter.insertApproved(draftForPeriod("2026-10"));
+    StoredPayment stored = adapter.insert(draftForPeriod("2026-10"));
 
     assertThat(stored.payment().status()).isEqualTo(PaymentStatus.APPROVED);
     assertThat(stored.payment().period()).isEqualTo(OCTOBER);
@@ -171,7 +196,21 @@ class PaymentRepositoryAdapterTest {
     assertThat(stored.payment().amount()).isEqualByComparingTo("800.50");
     assertThat(stored.payment().reviewedById()).isEqualTo(admin);
     assertThat(stored.payment().reviewedAt()).isEqualTo(REVIEWED);
-    assertThat(stored.voucherType()).isEqualTo(VoucherType.PDF);
+    assertThat(stored.payment().verifiedAmount()).isEqualByComparingTo("800.50");
+    assertThat(stored.payment().submittedAt()).isEqualTo(REVIEWED);
+    assertThat(stored.proofs())
+        .singleElement()
+        .satisfies(
+            proof -> {
+              assertThat(proof.kind()).isEqualTo(ProofKind.VOUCHER);
+              assertThat(proof.method()).isEqualTo("Yape");
+              assertThat(proof.uploadedBy()).isEqualTo(ProofAuthor.ADMIN);
+              assertThat(proof.verifiedAmount()).isEqualByComparingTo("800.50");
+              assertThat(proof.file()).isNotNull();
+            });
+    assertThat(adapter.findReviews(stored.payment().id()))
+        .singleElement()
+        .satisfies(review -> assertThat(review.decision()).isEqualTo(PaymentStatus.APPROVED));
     assertThat(stored.createdAt()).isNotNull();
     assertThat(adapter.findById(stored.payment().id()).orElseThrow().payment())
         .isEqualTo(stored.payment());
@@ -185,12 +224,80 @@ class PaymentRepositoryAdapterTest {
 
   @Test
   void insertApproved_storesTheVoucherOfAStay() {
-    StoredPayment stored = adapter.insertApproved(draftForStay());
+    StoredPayment stored = adapter.insert(draftForStay());
 
     assertThat(stored.payment().stayId()).isEqualTo(stay);
     assertThat(stored.payment().contractId()).isNull();
     assertThat(stored.payment().period()).isNull();
-    assertThat(stored.voucherType()).isEqualTo(VoucherType.PNG);
+    assertThat(stored.proofs().get(0).file()).extracting(f -> f.type()).isEqualTo(VoucherType.PNG);
+  }
+
+  /** RN-22: a payment gathers vouchers and cash; its amount is the sum of what they declare. */
+  @Test
+  void insert_storesEveryProofAndTheirSum() {
+    var cash =
+        new NewProof(
+            ProofKind.CASH,
+            new BigDecimal("300"),
+            new BigDecimal("300"),
+            null,
+            null,
+            ProofAuthor.ADMIN,
+            null);
+    StoredPayment stored =
+        adapter.insert(
+            approved(
+                guest,
+                contract,
+                null,
+                OCTOBER,
+                List.of(voucher("500", "Yape", VoucherType.JPEG, 10), cash)));
+
+    assertThat(stored.payment().amount()).isEqualByComparingTo("800");
+    assertThat(stored.proofs())
+        .extracting(p -> p.kind())
+        .containsExactly(ProofKind.VOUCHER, ProofKind.CASH);
+    assertThat(adapter.findById(stored.payment().id()).orElseThrow().proofs()).hasSize(2);
+  }
+
+  /** TAR-239: a correction adds, changes and removes proofs; a review is kept per decision. */
+  @Test
+  void theProofsAndTheReviewsOfAPaymentChangeOneByOne() {
+    Long id = insertPending("2026-10", null);
+    StoredPayment stored = adapter.findById(id).orElseThrow();
+    var first = stored.proofs().get(0);
+
+    adapter.addProof(
+        id,
+        new NewProof(
+            ProofKind.CASH, new BigDecimal("50"), null, null, null, ProofAuthor.GUEST, null));
+    adapter.updateProof(
+        new PaymentProof(
+            first.id(),
+            first.kind(),
+            new BigDecimal("750"),
+            null,
+            "Plin",
+            first.file(),
+            first.uploadedBy(),
+            first.receivedOn(),
+            first.addedAt()));
+    var proofs = adapter.findById(id).orElseThrow().proofs();
+    assertThat(proofs)
+        .extracting(p -> p.declaredAmount().toPlainString())
+        .containsExactlyInAnyOrder("750.00", "50.00");
+    var cash = proofs.stream().filter(p -> p.kind() == ProofKind.CASH).findFirst().orElseThrow();
+    adapter.removeProofs(id, List.of(cash.id()));
+    assertThat(adapter.findById(id).orElseThrow().proofs()).hasSize(1);
+
+    adapter.addReview(
+        id, new PaymentReview(PaymentStatus.REJECTED, "No coincide", REVIEWED, admin));
+    adapter.addReview(
+        id, new PaymentReview(PaymentStatus.APPROVED, null, REVIEWED.plusSeconds(60), admin));
+    assertThat(adapter.findReviews(id))
+        .extracting(PaymentReview::decision)
+        .containsExactly(PaymentStatus.REJECTED, PaymentStatus.APPROVED);
+    assertThat(adapter.findReviewsOf(List.of(id)).get(id)).hasSize(2);
   }
 
   /**
@@ -200,22 +307,20 @@ class PaymentRepositoryAdapterTest {
   @Test
   void insertApproved_tellsWhichPaymentIsAlreadyThere() {
     insertPending("2026-10", null);
-    adapter.insertApproved(draftForPeriod("2026-11"));
+    adapter.insert(draftForPeriod("2026-11"));
 
     // As in a request, the exception leaves the transaction and rolls it back.
     assertThatThrownBy(
             () ->
                 new TransactionTemplate(transactionManager)
-                    .executeWithoutResult(
-                        status -> adapter.insertApproved(draftForPeriod("2026-10"))))
+                    .executeWithoutResult(status -> adapter.insert(draftForPeriod("2026-10"))))
         .isInstanceOfSatisfying(
             LivePaymentExistsException.class,
             e -> assertThat(e.liveStatus()).isEqualTo(PaymentStatus.PENDING));
     assertThatThrownBy(
             () ->
                 new TransactionTemplate(transactionManager)
-                    .executeWithoutResult(
-                        status -> adapter.insertApproved(draftForPeriod("2026-11"))))
+                    .executeWithoutResult(status -> adapter.insert(draftForPeriod("2026-11"))))
         .isInstanceOfSatisfying(
             LivePaymentExistsException.class,
             e -> assertThat(e.liveStatus()).isEqualTo(PaymentStatus.APPROVED));
@@ -223,9 +328,9 @@ class PaymentRepositoryAdapterTest {
 
   @Test
   void insertApproved_aStayWithALivePaymentIsRefusedWithItsStatus() {
-    adapter.insertApproved(draftForStay());
+    adapter.insert(draftForStay());
 
-    assertThatThrownBy(() -> adapter.insertApproved(draftForStay()))
+    assertThatThrownBy(() -> adapter.insert(draftForStay()))
         .isInstanceOfSatisfying(
             LivePaymentExistsException.class,
             e -> assertThat(e.liveStatus()).isEqualTo(PaymentStatus.APPROVED));
@@ -234,26 +339,14 @@ class PaymentRepositoryAdapterTest {
   @Test
   void insertApproved_anotherIntegrityViolationIsNotMistakenForALivePayment() {
     var unknownGuest =
-        new DirectDraft(
-            -9L,
-            contract,
-            null,
-            OCTOBER,
-            BigDecimal.TEN,
-            null,
-            "vouchers/x",
-            "v.pdf",
-            VoucherType.PDF,
-            1,
-            REVIEWED,
-            admin);
+        approved(-9L, contract, null, OCTOBER, List.of(voucher("10", null, VoucherType.PDF, 1)));
 
-    assertThatThrownBy(() -> adapter.insertApproved(unknownGuest))
+    assertThatThrownBy(() -> adapter.insert(unknownGuest))
         .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   @Test
-  void findLive_seesThePendingAndTheApprovedAndNeverTheRejected() {
+  void findLive_seesThePendingTheApprovedAndTheRejectedButNeverTheSuperseded() {
     assertThat(adapter.findLiveByPeriod(contract, OCTOBER)).isEmpty();
     Long rejected = insertPending("2026-10", null);
     jdbc.update(
@@ -261,6 +354,12 @@ class PaymentRepositoryAdapterTest {
             + " reviewed_at = now(), reviewed_by_id = ? WHERE id = ?",
         admin,
         rejected);
+    // TAR-239: a rejected payment is corrected, so it still holds the period.
+    assertThat(adapter.findLiveByPeriod(contract, OCTOBER))
+        .get()
+        .extracting(p -> p.status())
+        .isEqualTo(PaymentStatus.REJECTED);
+    jdbc.update("UPDATE payments SET status = 'SUPERSEDED' WHERE id = ?", rejected);
     assertThat(adapter.findLiveByPeriod(contract, OCTOBER)).isEmpty();
 
     insertPending("2026-10", null);
@@ -270,7 +369,7 @@ class PaymentRepositoryAdapterTest {
         .isEqualTo(PaymentStatus.PENDING);
     assertThat(adapter.findLiveByPeriod(contract, YearMonth.of(2026, 11))).isEmpty();
 
-    adapter.insertApproved(draftForStay());
+    adapter.insert(draftForStay());
     assertThat(adapter.findLiveByStay(stay)).isPresent();
     assertThat(adapter.findLiveByStay(-1L)).isEmpty();
     assertThat(adapter.findAllByContract(contract)).hasSize(2);
@@ -278,9 +377,9 @@ class PaymentRepositoryAdapterTest {
 
   @Test
   void findApprovedOfContracts_readsOnlyTheApprovedPeriodsOfThatGuest() {
-    StoredPayment september = adapter.insertApproved(draftForPeriod("2026-09"));
+    StoredPayment september = adapter.insert(draftForPeriod("2026-09"));
     insertPending("2026-10", null);
-    adapter.insertApproved(draftForStay()); // of the temporary guest, and of a stay
+    adapter.insert(draftForStay()); // of the temporary guest, and of a stay
 
     assertThat(adapter.findApprovedOfContracts(guest))
         .extracting(p -> p.id())
@@ -341,7 +440,7 @@ class PaymentRepositoryAdapterTest {
   void findQueue_filtersByStatusAndKeepsTheIdAsTheTieBreaker() {
     Long first = insertPending("2026-01", "2026-10-01T10:00:00Z");
     Long second = insertPending("2026-02", "2026-10-01T10:00:00Z");
-    adapter.insertApproved(draftForStay());
+    adapter.insert(draftForStay());
 
     assertThat(adapter.findQueue(PaymentStatus.PENDING, PageQuery.first()).content())
         .extracting(p -> p.payment().id())
@@ -371,7 +470,7 @@ class PaymentRepositoryAdapterTest {
     for (int month = 1; month <= 5; month++) {
       created.add(0, insertPending("2026-0" + month, "2026-10-0" + month + "T10:00:00Z"));
     }
-    adapter.insertApproved(draftForStay());
+    adapter.insert(draftForStay());
     List<Long> seen = new ArrayList<>();
     String cursor = null;
     do {
@@ -442,7 +541,8 @@ class PaymentRepositoryAdapterTest {
 
     // reviewing the payment of the cursor does not lose the place in the queue of pending ones
     jdbc.update(
-        "UPDATE payments SET status = 'APPROVED', reviewed_at = now(), reviewed_by_id = ?"
+        "UPDATE payments SET status = 'APPROVED', verified_amount = amount, reviewed_at = now(),"
+            + " reviewed_by_id = ?"
             + " WHERE id = ?",
         admin,
         middle);
@@ -461,6 +561,8 @@ class PaymentRepositoryAdapterTest {
     assertThat(ids(adapter.findQueue(null, new PageQuery(again, 2)))).containsExactly(newest);
 
     // the payment of the cursor is no longer there
+    jdbc.update("DELETE FROM payment_reviews WHERE payment_id = ?", middle);
+    jdbc.update("DELETE FROM payment_proofs WHERE payment_id = ?", middle);
     jdbc.update("DELETE FROM payments WHERE id = ?", middle);
     assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(again, 2)))
         .isInstanceOf(InvalidCursorException.class);
@@ -480,7 +582,7 @@ class PaymentRepositoryAdapterTest {
     Long oldest = insertPending("2026-01", "2026-10-01T10:00:00Z");
     Long middle = insertPending("2026-02", "2026-10-02T10:00:00Z");
     Long newest = insertPending("2026-03", "2026-10-03T10:00:00Z");
-    adapter.insertApproved(draftForStay());
+    adapter.insert(draftForStay());
 
     CursorPage<StoredPayment> first = adapter.findHistory(guest, new PageQuery(null, 2));
     assertThat(ids(first)).containsExactly(newest, middle);
@@ -513,6 +615,8 @@ class PaymentRepositoryAdapterTest {
     assertThat(ids(adapter.findHistory(guest, new PageQuery(again, 2)))).containsExactly(oldest);
 
     // the payment of the cursor is no longer there
+    jdbc.update("DELETE FROM payment_reviews WHERE payment_id = ?", middle);
+    jdbc.update("DELETE FROM payment_proofs WHERE payment_id = ?", middle);
     jdbc.update("DELETE FROM payments WHERE id = ?", middle);
     assertThatThrownBy(() -> adapter.findHistory(guest, new PageQuery(again, 2)))
         .isInstanceOf(InvalidCursorException.class);
@@ -534,19 +638,20 @@ class PaymentRepositoryAdapterTest {
 
   @Test
   void theQueueWithoutAStatusHasAnIndexForItsOrder() {
+    // TAR-239: the queue goes by the last time a payment was sent.
     assertThat(
             jdbc.queryForObject(
-                "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_payments_created'",
+                "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_payments_submitted'",
                 String.class))
-        .contains("(created_date, id)");
+        .contains("(submitted_at, id)");
   }
 
   /** RF-18: only approved payments add up; a long list of stays is read in slices. */
   @Test
   void theSumsOfTheMonthCountOnlyApprovedPaymentsAndEveryStayOfALongList() {
-    adapter.insertApproved(draftForPeriod("2026-10"));
-    adapter.insertApproved(draftForPeriod("2026-09"));
-    adapter.insertApproved(draftForStay());
+    adapter.insert(draftForPeriod("2026-10"));
+    adapter.insert(draftForPeriod("2026-09"));
+    adapter.insert(draftForStay());
     insertPending("2026-11", null);
     List<Long> stays = new ArrayList<>();
     for (int i = 0; i < 2500; i++) {

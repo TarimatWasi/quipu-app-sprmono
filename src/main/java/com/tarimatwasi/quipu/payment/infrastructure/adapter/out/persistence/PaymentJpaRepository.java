@@ -43,16 +43,19 @@ interface PaymentJpaRepository
 
   long countByStatus(PaymentStatus status);
 
-  /** RF-18: the payments of a period of any contract in that state; null when there are none. */
+  /**
+   * RF-18: what was verified of the payments of a period of any contract in that state; null when
+   * there are none.
+   */
   @Query(
-      "SELECT SUM(p.amount) FROM PaymentJpaEntity p WHERE p.contractId IS NOT NULL"
+      "SELECT SUM(p.verifiedAmount) FROM PaymentJpaEntity p WHERE p.contractId IS NOT NULL"
           + " AND p.period = :period AND p.status = :status")
   @Nullable BigDecimal sumAmountOfPeriod(
       @Param("period") LocalDate period, @Param("status") PaymentStatus status);
 
-  /** RF-18: the payments of those stays in that state; null when there are none. */
+  /** RF-18: what was verified of the payments of those stays in that state; null when none. */
   @Query(
-      "SELECT SUM(p.amount) FROM PaymentJpaEntity p WHERE p.stayId IN :stayIds"
+      "SELECT SUM(p.verifiedAmount) FROM PaymentJpaEntity p WHERE p.stayId IN :stayIds"
           + " AND p.status = :status")
   @Nullable BigDecimal sumAmountOfStays(
       @Param("stayIds") Collection<Long> stayIds, @Param("status") PaymentStatus status);
@@ -63,9 +66,9 @@ interface PaymentJpaRepository
 
   // createdDate is mapped as an Instant (the field of AbstractAuditable; only its getter is a
   // LocalDateTime).
-  /** TAR-227: where a page cursor of the queue stands. */
-  @Query("SELECT p.createdDate FROM PaymentJpaEntity p WHERE p.id = :id")
-  Optional<Instant> findCreatedDate(@Param("id") Long id);
+  /** TAR-227, TAR-239: where a page cursor of the queue stands (the last send). */
+  @Query("SELECT p.submittedAt FROM PaymentJpaEntity p WHERE p.id = :id")
+  Optional<Instant> findSubmittedAt(@Param("id") Long id);
 
   /** TAR-227: where a page cursor of the history stands, if the payment is one of that guest. */
   @Query("SELECT p.createdDate FROM PaymentJpaEntity p WHERE p.id = :id AND p.guestId = :guestId")

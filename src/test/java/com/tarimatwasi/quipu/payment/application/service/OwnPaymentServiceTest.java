@@ -21,10 +21,10 @@ import com.tarimatwasi.quipu.payment.application.port.in.NoActiveStayException;
 import com.tarimatwasi.quipu.payment.application.port.in.NoStayYetException;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.ChargeState;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodView;
-import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodVoucher;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayStatusView;
-import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayVoucher;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
@@ -36,12 +36,16 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.OwnGuest;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.Standing;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewPayment;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewProof;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.VoucherDraft;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
+import com.tarimatwasi.quipu.payment.domain.ProofFile;
+import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
@@ -131,21 +135,33 @@ class OwnPaymentServiceTest {
         status,
         status == PaymentStatus.REJECTED ? "Monto incompleto" : null,
         status == PaymentStatus.PENDING ? null : Instant.parse("2026-10-11T15:00:00Z"),
-        status == PaymentStatus.PENDING ? null : 1L);
+        status == PaymentStatus.PENDING ? null : 1L,
+        CREATED);
   }
 
-  private static PeriodVoucher forPeriod(String period, String amount, byte[] content) {
-    return new PeriodVoucher(
+  private static PeriodPayment forPeriod(String period, String amount, byte[] content) {
+    return new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment(
         GUEST,
         YearMonth.parse(period),
-        new BigDecimal(amount),
-        " Yape ",
-        new VoucherUpload("../yape.pdf", content));
+        java.util.List.of(
+            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
+                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
+                    .VOUCHER,
+                new BigDecimal(amount),
+                " Yape ",
+                new VoucherUpload("../yape.pdf", content))));
   }
 
-  private static StayVoucher forStay(String amount, byte[] content) {
-    return new StayVoucher(
-        GUEST, new BigDecimal(amount), null, new VoucherUpload("v.pdf", content));
+  private static StayPayment forStay(String amount, byte[] content) {
+    return new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayPayment(
+        GUEST,
+        java.util.List.of(
+            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
+                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
+                    .VOUCHER,
+                new BigDecimal(amount),
+                null,
+                new VoucherUpload("v.pdf", content))));
   }
 
   private static StayTerms stay(Long id, String start, String end) {
@@ -161,10 +177,14 @@ class OwnPaymentServiceTest {
   private void storedAs(PaymentStatus status) {
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     lenient()
-        .when(payments.insertPending(any()))
+        .when(payments.insert(any()))
         .thenAnswer(
             call -> {
-              VoucherDraft draft = call.getArgument(0);
+              NewPayment draft = call.getArgument(0);
+              BigDecimal declared =
+                  draft.proofs().stream()
+                      .map(NewProof::declaredAmount)
+                      .reduce(BigDecimal.ZERO, BigDecimal::add);
               return new StoredPayment(
                   new Payment(
                       PAYMENT,
@@ -172,14 +192,14 @@ class OwnPaymentServiceTest {
                       draft.contractId(),
                       draft.stayId(),
                       draft.period(),
-                      draft.amount(),
-                      draft.paymentMethod(),
+                      declared,
+                      null,
                       status,
                       null,
                       null,
-                      null),
-                  draft.voucherKey(),
-                  draft.voucherType(),
+                      null,
+                      draft.submittedAt()),
+                  List.of(),
                   CREATED);
             });
   }
@@ -228,21 +248,27 @@ class OwnPaymentServiceTest {
 
     PaymentView view = service.uploadForPeriod(forPeriod("2026-10", "850.5", PDF));
 
-    ArgumentCaptor<VoucherDraft> draft = ArgumentCaptor.forClass(VoucherDraft.class);
-    verify(payments).insertPending(draft.capture());
-    assertThat(draft.getValue())
-        .isEqualTo(
-            new VoucherDraft(
-                GUEST,
-                CONTRACT,
-                null,
-                OCTOBER,
-                new BigDecimal("850.50"),
-                "Yape",
-                KEY,
-                "yape.pdf",
-                VoucherType.PDF,
-                PDF.length));
+    ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
+    verify(payments).insert(draft.capture());
+    NewPayment sent = draft.getValue();
+    assertThat(sent.guestId()).isEqualTo(GUEST);
+    assertThat(sent.contractId()).isEqualTo(CONTRACT);
+    assertThat(sent.stayId()).isNull();
+    assertThat(sent.period()).isEqualTo(OCTOBER);
+    assertThat(sent.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(sent.recordedBy()).isEqualTo(ProofAuthor.GUEST);
+    assertThat(sent.proofs())
+        .singleElement()
+        .satisfies(
+            proof -> {
+              assertThat(proof.kind()).isEqualTo(ProofKind.VOUCHER);
+              assertThat(proof.declaredAmount()).isEqualTo(new BigDecimal("850.50"));
+              assertThat(proof.verifiedAmount()).isNull();
+              assertThat(proof.method()).isEqualTo("Yape");
+              assertThat(proof.uploadedBy()).isEqualTo(ProofAuthor.GUEST);
+              assertThat(proof.file())
+                  .isEqualTo(new ProofFile(KEY, "yape.pdf", VoucherType.PDF, PDF.length));
+            });
     assertThat(view.status()).isEqualTo(PaymentState.PENDING);
     assertThat(view.guestId()).isEqualTo(GUEST);
     verify(files, never()).signedUrl(any(), any());
@@ -256,14 +282,23 @@ class OwnPaymentServiceTest {
       assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", amount, PDF)))
           .isInstanceOf(InvalidPaymentException.class)
           .extracting(e -> ((InvalidPaymentException) e).field())
-          .isEqualTo("amount");
+          .isEqualTo("proofs[0].amount");
     }
-    PeriodVoucher hidden =
-        new PeriodVoucher(
-            GUEST, OCTOBER, BigDecimal.TEN, "Yape\u202E", new VoucherUpload("v.pdf", PDF));
+    PeriodPayment hidden =
+        new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment(
+            GUEST,
+            OCTOBER,
+            java.util.List.of(
+                new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                    .ProofUpload(
+                    com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                        .ProofType.VOUCHER,
+                    BigDecimal.TEN,
+                    "Yape\u202E",
+                    new VoucherUpload("v.pdf", PDF))));
     assertThatThrownBy(() -> service.uploadForPeriod(hidden))
         .extracting(e -> ((InvalidPaymentException) e).field())
-        .isEqualTo("paymentMethod");
+        .isEqualTo("proofs[0].method");
     verifyNoInteractions(contracts, files, payments);
   }
 
@@ -321,7 +356,7 @@ class OwnPaymentServiceTest {
     openContract(); // no live payment: Mockito answers an empty Optional
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
-    when(payments.insertPending(any())).thenThrow(failure);
+    when(payments.insert(any())).thenThrow(failure);
     var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
     doThrow(cleanup).when(files).delete(KEY);
 
@@ -337,7 +372,7 @@ class OwnPaymentServiceTest {
     openContract(); // no live payment: Mockito answers an empty Optional
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
-    when(payments.insertPending(any())).thenThrow(failure);
+    when(payments.insert(any())).thenThrow(failure);
     var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
     doThrow(cleanup).when(files).delete(KEY);
     TransactionSynchronizationManager.initSynchronization();
@@ -387,8 +422,7 @@ class OwnPaymentServiceTest {
     openContract();
     when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertPending(any()))
-        .thenThrow(new LivePaymentExistsException(PaymentStatus.PENDING));
+    when(payments.insert(any())).thenThrow(new LivePaymentExistsException(PaymentStatus.PENDING));
 
     assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)))
         .isInstanceOf(VoucherAlreadyExistsException.class);
@@ -401,7 +435,7 @@ class OwnPaymentServiceTest {
     when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
     when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
     var failure = new IllegalStateException("insert failed");
-    when(payments.insertPending(any())).thenThrow(failure);
+    when(payments.insert(any())).thenThrow(failure);
 
     assertThatThrownBy(() -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)))
         .isSameAs(failure);
@@ -419,12 +453,12 @@ class OwnPaymentServiceTest {
 
     PaymentView view = service.uploadForStay(forStay("150", PDF));
 
-    ArgumentCaptor<VoucherDraft> draft = ArgumentCaptor.forClass(VoucherDraft.class);
-    verify(payments).insertPending(draft.capture());
+    ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
+    verify(payments).insert(draft.capture());
     assertThat(draft.getValue().stayId()).isEqualTo(STAY);
     assertThat(draft.getValue().contractId()).isNull();
     assertThat(draft.getValue().period()).isNull();
-    assertThat(draft.getValue().paymentMethod()).isNull();
+    assertThat(draft.getValue().proofs().get(0).method()).isNull();
     assertThat(view.stayId()).isEqualTo(STAY);
   }
 
@@ -518,18 +552,22 @@ class OwnPaymentServiceTest {
                 List.of(
                     new StoredPayment(
                         payment(PAYMENT, PaymentStatus.REJECTED, OCTOBER, null),
-                        KEY,
-                        VoucherType.PDF,
+                        List.of(),
                         CREATED)),
                 "next"));
 
-    CursorPage<PaymentView> history = service.history(GUEST, page);
+    when(contracts.contractsOf(GUEST))
+        .thenReturn(List.of(contract(CONTRACT, "2026-01-01", null, null)));
+
+    var history = service.history(GUEST, page);
 
     assertThat(history.nextCursor()).isEqualTo("next");
-    PaymentView view = history.content().get(0);
+    var view = history.content().get(0);
     assertThat(view.status()).isEqualTo(PaymentState.REJECTED);
     assertThat(view.rejectionReason()).isEqualTo("Monto incompleto");
     assertThat(view.createdAt()).isEqualTo(CREATED);
+    // RN-38: no credit yet (TAR-239 part 2), so what is due is the monthly amount.
+    assertThat(view.amountDue()).isEqualByComparingTo("800.00");
   }
 
   @Test

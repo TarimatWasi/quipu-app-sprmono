@@ -52,6 +52,9 @@ final class AccountStatus {
                 ChargeState.valueOf(period.state().name()),
                 period.dueDate(),
                 contract.monthlyAmount(),
+                // RN-38: the credit arrives with TAR-239 part 2; until then nothing is discounted.
+                java.math.BigDecimal.ZERO.setScale(2),
+                contract.monthlyAmount(),
                 contract.id(),
                 period.paymentId(),
                 period.rejectionReason()));

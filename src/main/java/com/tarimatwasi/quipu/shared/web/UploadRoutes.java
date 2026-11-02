@@ -54,6 +54,22 @@ public final class UploadRoutes {
   public static final Set<String> VOUCHERS =
       Set.of(ADMIN_PAYMENTS, GUEST_PAYMENTS, TEMPORARY_GUEST_PAYMENTS);
 
+  /** The administrator adds or corrects the proofs of a payment (TAR-239), by PUT. */
+  public static final String ADMIN_PAYMENT_PROOFS = "/bff/admin/payments/{id}/proofs";
+
+  /** A guest with a contract corrects its rejected payment and sends it again, by PUT. */
+  public static final String GUEST_PAYMENT = "/bff/guest/payments/{id}";
+
+  /** A temporary guest corrects the rejected payment of its stay and sends it again, by PUT. */
+  public static final String TEMPORARY_GUEST_PAYMENT = "/bff/temporary-guest/payments/{id}";
+
+  /**
+   * The corrections of a payment (TAR-239): multipart by PUT, under the same checks as the uploads
+   * (ADR-006); patterns whose variable is one segment.
+   */
+  public static final Set<String> PAYMENT_CORRECTIONS =
+      Set.of(ADMIN_PAYMENT_PROOFS, GUEST_PAYMENT, TEMPORARY_GUEST_PAYMENT);
+
   /** Every exact route that takes a file by POST. */
   public static final Set<String> ALL =
       Set.of(

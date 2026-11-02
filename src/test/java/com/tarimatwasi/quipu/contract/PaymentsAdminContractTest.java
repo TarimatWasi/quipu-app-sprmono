@@ -138,6 +138,8 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
   void anUnknownPaymentIsNotFoundWhetherTheIdIsForgedOrMissing() throws Exception {
     Long id =
         insertPayment(contractGuest, contract, null, "2026-09", "PENDING", "2026-10-01T10:00:00Z");
+    jdbc.update("DELETE FROM payment_reviews WHERE payment_id = ?", id);
+    jdbc.update("DELETE FROM payment_proofs WHERE payment_id = ?", id);
     jdbc.update("DELETE FROM payments WHERE id = ?", id);
 
     for (UUID unknown :

@@ -56,6 +56,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsFor
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
+import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotCorrectableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentReasonRequiredException;
@@ -492,13 +493,25 @@ public class BffExceptionHandler {
 
   /** RF-15: a JPG, a PNG or a PDF by content, up to 5 MB. */
   @ExceptionHandler(InvalidVoucherFileException.class)
-  public ResponseEntity<BffErrorResponse> handleInvalidVoucherFile() {
+  public ResponseEntity<BffErrorResponse> handleInvalidVoucherFile(InvalidVoucherFileException e) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
             new BffErrorResponse(
                 "VOUCHER_INVALID_FILE",
                 "El comprobante debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
-                "file"));
+                e.field()));
+  }
+
+  /**
+   * TAR-239: the guest corrects only a rejected payment, the administrator a pending or rejected
+   * one.
+   */
+  @ExceptionHandler(PaymentNotCorrectableException.class)
+  public ResponseEntity<BffErrorResponse> handlePaymentNotCorrectable() {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new BffErrorResponse(
+                "PAYMENT_NOT_CORRECTABLE", "Este pago ya no se puede corregir; vuelve a cargarlo"));
   }
 
   /** The payment is no longer pending: another process resolved it first. */
@@ -772,6 +785,9 @@ public class BffExceptionHandler {
       // An action is only listed, never addressed by its id.
       case GUEST_DOCUMENT_ACTION ->
           throw new IllegalStateException("A document action id is never part of a BFF path");
+      // A proof travels in the body of a correction or a review, which names it as a field.
+      case PAYMENT_PROOF ->
+          throw new IllegalStateException("A payment proof id is never part of a BFF path");
     };
   }
 

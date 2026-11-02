@@ -1,11 +1,8 @@
 package com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.DirectDraft;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.VoucherDraft;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewPayment;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
-import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,8 +22,8 @@ import org.springframework.data.jpa.domain.AbstractAuditable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 /**
- * A payment is resolved under a version (BE-SPR-DAT-13) and never deleted. The period is stored as
- * the first day of its month.
+ * A payment is resolved and corrected under a version (BE-SPR-DAT-13) and never deleted. The period
+ * is stored as the first day of its month; its proofs are rows of payment_proofs.
  */
 @Entity
 @EntityListeners(AuditingEntityListener.class)
@@ -46,20 +43,8 @@ public class PaymentJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> 
 
   private BigDecimal amount;
 
-  @Column(name = "payment_method")
-  private @Nullable String paymentMethod;
-
-  @Column(name = "voucher_key")
-  private String voucherKey;
-
-  @Column(name = "original_name")
-  private String originalName;
-
-  @Column(name = "content_type")
-  private String contentType;
-
-  @Column(name = "size_bytes")
-  private long sizeBytes;
+  @Column(name = "verified_amount")
+  private @Nullable BigDecimal verifiedAmount;
 
   @Enumerated(EnumType.STRING)
   private PaymentStatus status;
@@ -76,50 +61,37 @@ public class PaymentJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> 
   @Column(name = "recorded_by")
   private String recordedBy;
 
+  @Column(name = "submitted_at")
+  private Instant submittedAt;
+
   @Version private long version;
 
   protected PaymentJpaEntity() {}
 
-  /** A payment registered by the administrator, approved at once (RN-23). */
-  PaymentJpaEntity(DirectDraft draft) {
+  /** A new payment: the declared amount is the sum of its proofs. */
+  PaymentJpaEntity(NewPayment draft, BigDecimal declared, @Nullable BigDecimal verified) {
     this.guestId = draft.guestId();
     this.contractId = draft.contractId();
     this.stayId = draft.stayId();
     this.period = draft.period() == null ? null : draft.period().atDay(1);
-    this.amount = draft.amount();
-    this.paymentMethod = draft.paymentMethod();
-    this.voucherKey = draft.voucherKey();
-    this.originalName = draft.originalName();
-    this.contentType = draft.voucherType().contentType();
-    this.sizeBytes = draft.sizeBytes();
-    this.status = PaymentStatus.APPROVED;
+    this.amount = declared;
+    this.verifiedAmount = verified;
+    this.status = draft.status();
     this.reviewedAt = draft.reviewedAt();
     this.reviewedById = draft.reviewedById();
-    this.recordedBy = "ADMIN";
+    this.recordedBy = draft.recordedBy().name();
+    this.submittedAt = draft.submittedAt();
   }
 
-  /** A voucher uploaded by the guest, waiting for the review (RN-04). */
-  PaymentJpaEntity(VoucherDraft draft) {
-    this.guestId = draft.guestId();
-    this.contractId = draft.contractId();
-    this.stayId = draft.stayId();
-    this.period = draft.period() == null ? null : draft.period().atDay(1);
-    this.amount = draft.amount();
-    this.paymentMethod = draft.paymentMethod();
-    this.voucherKey = draft.voucherKey();
-    this.originalName = draft.originalName();
-    this.contentType = draft.voucherType().contentType();
-    this.sizeBytes = draft.sizeBytes();
-    this.status = PaymentStatus.PENDING;
-    this.recordedBy = "GUEST";
-  }
-
-  /** Copies the only things that change after the upload: the resolution. */
-  void apply(Payment resolved) {
-    this.status = resolved.status();
-    this.rejectionReason = resolved.rejectionReason();
-    this.reviewedAt = resolved.reviewedAt();
-    this.reviewedById = resolved.reviewedById();
+  /** Copies what changes after the payment was sent: its amounts, its review and its last send. */
+  void apply(Payment changed) {
+    this.amount = changed.amount();
+    this.verifiedAmount = changed.verifiedAmount();
+    this.status = changed.status();
+    this.rejectionReason = changed.rejectionReason();
+    this.reviewedAt = changed.reviewedAt();
+    this.reviewedById = changed.reviewedById();
+    this.submittedAt = changed.submittedAt();
   }
 
   Payment toDomain() {
@@ -130,17 +102,18 @@ public class PaymentJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> 
         stayId,
         period == null ? null : YearMonth.from(period),
         amount,
-        paymentMethod,
+        verifiedAmount,
         status,
         rejectionReason,
         reviewedAt,
-        reviewedById);
+        reviewedById,
+        submittedAt);
   }
 
-  StoredPayment toStored() {
-    // The auditing stamps the creation with the clock of the machine; it is read back the same way.
-    Instant createdAt = getCreatedDate().orElseThrow().atZone(ZoneId.systemDefault()).toInstant();
-    return new StoredPayment(
-        toDomain(), voucherKey, VoucherType.ofContentType(contentType), createdAt);
+  /**
+   * The auditing stamps the creation with the clock of the machine; it is read back the same way.
+   */
+  Instant createdAt() {
+    return getCreatedDate().orElseThrow().atZone(ZoneId.systemDefault()).toInstant();
   }
 }

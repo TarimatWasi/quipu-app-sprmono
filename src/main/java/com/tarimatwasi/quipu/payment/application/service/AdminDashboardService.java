@@ -64,7 +64,7 @@ public class AdminDashboardService implements AdminDashboardUseCase {
             .findQueue(PaymentStatus.PENDING, new PageQuery(null, MAX_PENDING_VOUCHERS))
             .content()
             .stream()
-            .map(VoucherRecorder::view)
+            .map(ProofRecorder::view)
             .toList();
     // Read after the page: a voucher that arrives in between is counted, never one listed more.
     long total = Math.max(payments.countByStatus(PaymentStatus.PENDING), pending.size());

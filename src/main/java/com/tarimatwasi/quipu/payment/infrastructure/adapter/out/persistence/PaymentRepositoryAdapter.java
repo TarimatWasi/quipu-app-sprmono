@@ -3,6 +3,8 @@ package com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence;
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.Payment;
+import com.tarimatwasi.quipu.payment.domain.PaymentProof;
+import com.tarimatwasi.quipu.payment.domain.PaymentReview;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -19,7 +21,9 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,9 +41,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
-  /** The payments that count for a period or a stay: a rejected one leaves it open (RN-05). */
+  /**
+   * The payments that hold a period or a stay: a rejected one is corrected and sent again, so it
+   * holds it too (RN-05, TAR-239). A SUPERSEDED one is history.
+   */
   private static final Set<PaymentStatus> LIVE =
-      EnumSet.of(PaymentStatus.PENDING, PaymentStatus.APPROVED);
+      EnumSet.of(PaymentStatus.PENDING, PaymentStatus.APPROVED, PaymentStatus.REJECTED);
 
   /** The name of the unique indexes of the live payments. */
   private static final String LIVE_INDEX_PREFIX = "uq_payments_live";
@@ -48,14 +55,20 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   private static final int STAY_SLICE = 1000;
 
   private final PaymentJpaRepository jpaRepository;
+  private final PaymentProofJpaRepository proofRepository;
+  private final PaymentReviewJpaRepository reviewRepository;
   private final TransactionTemplate separateTransaction;
   private final IdMasker masker;
 
   PaymentRepositoryAdapter(
       PaymentJpaRepository jpaRepository,
+      PaymentProofJpaRepository proofRepository,
+      PaymentReviewJpaRepository reviewRepository,
       PlatformTransactionManager transactionManager,
       IdMasker masker) {
     this.jpaRepository = jpaRepository;
+    this.proofRepository = proofRepository;
+    this.reviewRepository = reviewRepository;
     this.masker = masker;
     this.separateTransaction = new TransactionTemplate(transactionManager);
     this.separateTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -63,28 +76,42 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
-  public StoredPayment insertPending(VoucherDraft draft) {
-    return insert(new PaymentJpaEntity(draft), draft.contractId(), draft.stayId(), draft.period());
-  }
-
-  @Override
-  public StoredPayment insertApproved(DirectDraft draft) {
-    return insert(new PaymentJpaEntity(draft), draft.contractId(), draft.stayId(), draft.period());
-  }
-
-  private StoredPayment insert(
-      PaymentJpaEntity entity,
-      @Nullable Long contractId,
-      @Nullable Long stayId,
-      @Nullable YearMonth period) {
+  public StoredPayment insert(NewPayment draft) {
+    BigDecimal declared = BigDecimal.ZERO;
+    BigDecimal verified = BigDecimal.ZERO;
+    for (NewProof proof : draft.proofs()) {
+      declared = declared.add(proof.declaredAmount());
+      BigDecimal checked = proof.verifiedAmount();
+      verified = verified.add(checked == null ? BigDecimal.ZERO : checked);
+    }
+    boolean approved = draft.status() == PaymentStatus.APPROVED;
+    PaymentJpaEntity saved;
     try {
-      return jpaRepository.saveAndFlush(entity).toStored();
+      saved =
+          jpaRepository.saveAndFlush(
+              new PaymentJpaEntity(draft, declared, approved ? verified : null));
     } catch (DataIntegrityViolationException e) {
       if (!isLiveIndexViolation(e)) {
         throw e;
       }
-      throw new LivePaymentExistsException(liveStatusOf(contractId, stayId, period));
+      throw new LivePaymentExistsException(
+          liveStatusOf(draft.contractId(), draft.stayId(), draft.period()));
     }
+    Long id = Objects.requireNonNull(saved.getId());
+    List<PaymentProofJpaEntity> proofs = new ArrayList<>();
+    for (NewProof proof : draft.proofs()) {
+      proofs.add(new PaymentProofJpaEntity(id, proof));
+    }
+    proofRepository.saveAllAndFlush(proofs);
+    Instant reviewedAt = draft.reviewedAt();
+    Long reviewer = draft.reviewedById();
+    if (approved && reviewedAt != null && reviewer != null) {
+      addReview(id, new PaymentReview(PaymentStatus.APPROVED, null, reviewedAt, reviewer));
+    }
+    return new StoredPayment(
+        saved.toDomain(),
+        proofs.stream().map(PaymentProofJpaEntity::toDomain).toList(),
+        saved.createdAt());
   }
 
   /** Which of the two unique indexes of the live payments refused the row. */
@@ -112,7 +139,7 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   @Override
   public Optional<StoredPayment> findById(Long id) {
-    return jpaRepository.findById(id).map(PaymentJpaEntity::toStored);
+    return jpaRepository.findById(id).map(this::stored);
   }
 
   @Override
@@ -122,54 +149,109 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   @Override
   public Optional<StoredPayment> findByIdForUpdate(Long id) {
-    return jpaRepository.findWithLockById(id).map(PaymentJpaEntity::toStored);
+    return jpaRepository.findWithLockById(id).map(this::stored);
   }
 
   @Override
-  public StoredPayment save(Payment resolved) {
+  public StoredPayment save(Payment changed) {
     PaymentJpaEntity entity =
         jpaRepository
-            .findById(resolved.id())
-            .orElseThrow(() -> new NoSuchElementException("payment " + resolved.id()));
-    entity.apply(resolved);
-    return jpaRepository.saveAndFlush(entity).toStored();
+            .findById(changed.id())
+            .orElseThrow(() -> new NoSuchElementException("payment " + changed.id()));
+    entity.apply(changed);
+    return stored(jpaRepository.saveAndFlush(entity));
+  }
+
+  @Override
+  public void addReview(Long paymentId, PaymentReview review) {
+    reviewRepository.saveAndFlush(new PaymentReviewJpaEntity(paymentId, review));
+  }
+
+  @Override
+  public List<PaymentReview> findReviews(Long paymentId) {
+    return reviewRepository.findByPaymentIdOrderByReviewedAtAscIdAsc(paymentId).stream()
+        .map(PaymentReviewJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
+  public Map<Long, List<PaymentReview>> findReviewsOf(Collection<Long> paymentIds) {
+    List<Long> ids = List.copyOf(paymentIds);
+    Map<Long, List<PaymentReview>> reviews = new HashMap<>();
+    for (int from = 0; from < ids.size(); from += STAY_SLICE) {
+      List<Long> slice = ids.subList(from, Math.min(from + STAY_SLICE, ids.size()));
+      for (PaymentReviewJpaEntity row :
+          reviewRepository.findByPaymentIdInOrderByReviewedAtAscIdAsc(slice)) {
+        reviews.computeIfAbsent(row.paymentId(), key -> new ArrayList<>()).add(row.toDomain());
+      }
+    }
+    return reviews;
+  }
+
+  @Override
+  public void addProof(Long paymentId, NewProof proof) {
+    proofRepository.saveAndFlush(new PaymentProofJpaEntity(paymentId, proof));
+  }
+
+  @Override
+  public void updateProof(PaymentProof proof) {
+    PaymentProofJpaEntity entity =
+        proofRepository
+            .findById(proof.id())
+            .orElseThrow(() -> new NoSuchElementException("proof " + proof.id()));
+    entity.apply(proof);
+    proofRepository.saveAndFlush(entity);
+  }
+
+  @Override
+  public void removeProofs(Long paymentId, Collection<Long> proofIds) {
+    if (!proofIds.isEmpty()) {
+      proofRepository.deleteAllInBatch(proofRepository.findByPaymentIdAndIdIn(paymentId, proofIds));
+    }
   }
 
   @Override
   public CursorPage<StoredPayment> findQueue(@Nullable PaymentStatus status, PageQuery page) {
-    // The status is not where the cursor belongs: it changes while the queue is reviewed.
-    return findByCreation(
-        status == null ? null : (root, query, builder) -> builder.equal(root.get("status"), status),
-        jpaRepository::findCreatedDate,
-        Sort.Direction.ASC,
-        page);
+    // The status is not where the cursor belongs: it changes while the queue is reviewed. A
+    // rejection of the past reads as the rejection it was.
+    Specification<PaymentJpaEntity> condition =
+        status == null
+            ? null
+            : (root, query, builder) ->
+                status == PaymentStatus.REJECTED
+                    ? root.get("status").in(PaymentStatus.REJECTED, PaymentStatus.SUPERSEDED)
+                    : builder.equal(root.get("status"), status);
+    return findByKey(
+        condition, "submittedAt", jpaRepository::findSubmittedAt, Sort.Direction.ASC, page);
   }
 
   @Override
   public CursorPage<StoredPayment> findHistory(Long guestId, PageQuery page) {
     // ix_payments_history (guest_id, created_date DESC, id DESC) serves this order.
-    return findByCreation(
+    return findByKey(
         (root, query, builder) -> builder.equal(root.get("guestId"), guestId),
+        "createdDate",
         id -> jpaRepository.findCreatedDateOfGuest(id, guestId),
         Sort.Direction.DESC,
         page);
   }
 
   /**
-   * One page of the payments that meet the condition, ordered by (createdDate, id) in that
-   * direction and read by last index: the page starts right after the payment of the cursor.
+   * One page of the payments that meet the condition, ordered by (key, id) in that direction and
+   * read by last index: the page starts right after the payment of the cursor.
    *
    * <p>TAR-227: the cursor carries only the id of that payment, masked in the session that asked,
-   * never the internal one nor its date; {@code createdDateOf} reads the date again, empty when the
-   * payment is no longer there or is not one of the listing. Then, as for a cursor of another
-   * session or altered, the cursor is invalid.
+   * never the internal one nor its date; {@code keyOf} reads the date again, empty when the payment
+   * is no longer there or is not one of the listing. Then, as for a cursor of another session or
+   * altered, the cursor is invalid.
    */
-  private CursorPage<StoredPayment> findByCreation(
+  private CursorPage<StoredPayment> findByKey(
       @Nullable Specification<PaymentJpaEntity> condition,
-      Function<Long, Optional<Instant>> createdDateOf,
+      String keyProperty,
+      Function<Long, Optional<Instant>> keyOf,
       Sort.Direction direction,
       PageQuery page) {
-    CreationKey after = page.after() == null ? null : keyOf(page.after(), createdDateOf);
+    SortKey after = page.after() == null ? null : keyOf(page.after(), keyOf);
     boolean ascending = direction == Sort.Direction.ASC;
     Specification<PaymentJpaEntity> filter =
         (root, query, builder) -> {
@@ -178,31 +260,55 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
             where.add(Objects.requireNonNull(condition.toPredicate(root, query, builder)));
           }
           if (after != null) {
-            // (createdDate, id) after (date, id) in the order of the list.
-            Path<Instant> createdDate = root.get("createdDate");
+            // (key, id) after (date, id) in the order of the list.
+            Path<Instant> key = root.get(keyProperty);
             Path<Long> id = root.get("id");
             where.add(
                 builder.or(
                     ascending
-                        ? builder.greaterThan(createdDate, after.createdDate())
-                        : builder.lessThan(createdDate, after.createdDate()),
+                        ? builder.greaterThan(key, after.at())
+                        : builder.lessThan(key, after.at()),
                     builder.and(
-                        builder.equal(createdDate, after.createdDate()),
+                        builder.equal(key, after.at()),
                         ascending
                             ? builder.greaterThan(id, after.id())
                             : builder.lessThan(id, after.id()))));
           }
           return builder.and(where.toArray(Predicate[]::new));
         };
-    Sort order = Sort.by(new Sort.Order(direction, "createdDate"), new Sort.Order(direction, "id"));
+    Sort order = Sort.by(new Sort.Order(direction, keyProperty), new Sort.Order(direction, "id"));
     // One more than the limit: the extra row only says that there is a next page.
     List<PaymentJpaEntity> rows =
         jpaRepository.findBy(filter, query -> query.sortBy(order).limit(page.limit() + 1).all());
-    return CursorPage.of(
+    CursorPage<PaymentJpaEntity> found =
+        CursorPage.of(
             rows,
             page.limit(),
-            row -> MaskedCursor.of(masker, IdKind.PAYMENT, Objects.requireNonNull(row.getId())))
-        .map(PaymentJpaEntity::toStored);
+            row -> MaskedCursor.of(masker, IdKind.PAYMENT, Objects.requireNonNull(row.getId())));
+    Map<Long, List<PaymentProof>> proofs =
+        proofsOf(found.content().stream().map(row -> Objects.requireNonNull(row.getId())).toList());
+    return found.map(
+        row ->
+            new StoredPayment(
+                row.toDomain(), proofs.getOrDefault(row.getId(), List.of()), row.createdAt()));
+  }
+
+  private StoredPayment stored(PaymentJpaEntity entity) {
+    Long id = Objects.requireNonNull(entity.getId());
+    return new StoredPayment(
+        entity.toDomain(), proofsOf(List.of(id)).getOrDefault(id, List.of()), entity.createdAt());
+  }
+
+  /** The proofs of each payment, in the order they were added, in one read per slice of ids. */
+  private Map<Long, List<PaymentProof>> proofsOf(List<Long> paymentIds) {
+    Map<Long, List<PaymentProof>> proofs = new HashMap<>();
+    for (int from = 0; from < paymentIds.size(); from += STAY_SLICE) {
+      List<Long> slice = paymentIds.subList(from, Math.min(from + STAY_SLICE, paymentIds.size()));
+      for (PaymentProofJpaEntity row : proofRepository.findByPaymentIdInOrderByIdAsc(slice)) {
+        proofs.computeIfAbsent(row.paymentId(), key -> new ArrayList<>()).add(row.toDomain());
+      }
+    }
+    return proofs;
   }
 
   @Override
@@ -288,12 +394,12 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   /** Where the cursor stands: the sort key of its payment, read again from the row. */
-  private CreationKey keyOf(String cursor, Function<Long, Optional<Instant>> createdDateOf) {
+  private SortKey keyOf(String cursor, Function<Long, Optional<Instant>> keyOf) {
     Long id = MaskedCursor.idOf(masker, IdKind.PAYMENT, cursor);
-    Instant createdDate = createdDateOf.apply(id).orElseThrow(InvalidCursorException::new);
-    return new CreationKey(createdDate, id);
+    Instant at = keyOf.apply(id).orElseThrow(InvalidCursorException::new);
+    return new SortKey(at, id);
   }
 
   /** The sort key of a payment. */
-  private record CreationKey(Instant createdDate, Long id) {}
+  private record SortKey(Instant at, Long id) {}
 }

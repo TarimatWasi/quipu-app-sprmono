@@ -47,7 +47,11 @@ final class UploadRateLimitFilter extends OncePerRequestFilter {
       new OrRequestMatcher(
           Stream.concat(
                   UploadRoutes.ALL.stream().map(route -> PATHS.matcher(HttpMethod.POST, route)),
-                  Stream.of(PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT)))
+                  Stream.concat(
+                      Stream.of(
+                          PATHS.matcher(HttpMethod.PUT, UploadRoutes.GUEST_DOCUMENT_REPLACEMENT)),
+                      UploadRoutes.PAYMENT_CORRECTIONS.stream()
+                          .map(route -> PATHS.matcher(HttpMethod.PUT, route))))
               .toArray(RequestMatcher[]::new));
 
   private final RateLimitBuckets buckets;

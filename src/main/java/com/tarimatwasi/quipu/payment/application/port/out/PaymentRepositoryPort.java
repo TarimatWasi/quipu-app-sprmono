@@ -1,66 +1,75 @@
 package com.tarimatwasi.quipu.payment.application.port.out;
 
 import com.tarimatwasi.quipu.payment.domain.Payment;
+import com.tarimatwasi.quipu.payment.domain.PaymentProof;
+import com.tarimatwasi.quipu.payment.domain.PaymentReview;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
-import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
+import com.tarimatwasi.quipu.payment.domain.ProofFile;
+import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 public interface PaymentRepositoryPort {
 
-  /** A payment as stored: the domain object and what only the storage knows. */
-  record StoredPayment(
-      Payment payment, String voucherKey, VoucherType voucherType, Instant createdAt) {}
+  /**
+   * A payment as stored: the domain object with its proofs, in the order they were added, and what
+   * only the storage knows.
+   */
+  record StoredPayment(Payment payment, List<PaymentProof> proofs, Instant createdAt) {}
 
-  /** A payment the administrator registers by hand, which is approved at once (RN-23). */
-  record DirectDraft(
+  /**
+   * A proof to add (RN-22).
+   *
+   * @param verifiedAmount set only for a proof of a payment approved at once (RN-23)
+   * @param file {@code null} for cash
+   */
+  record NewProof(
+      ProofKind kind,
+      BigDecimal declaredAmount,
+      @Nullable BigDecimal verifiedAmount,
+      @Nullable String method,
+      @Nullable ProofFile file,
+      ProofAuthor uploadedBy,
+      @Nullable LocalDate receivedOn) {}
+
+  /**
+   * A payment to store with its proofs: PENDING when the guest sends it (RN-04), APPROVED when the
+   * administrator registers it by hand (RN-23), which also records its decision.
+   *
+   * @param reviewedAt set only for an approved one
+   * @param reviewedById set only for an approved one
+   */
+  record NewPayment(
       Long guestId,
       @Nullable Long contractId,
       @Nullable Long stayId,
       @Nullable YearMonth period,
-      BigDecimal amount,
-      @Nullable String paymentMethod,
-      String voucherKey,
-      String originalName,
-      VoucherType voucherType,
-      long sizeBytes,
-      Instant reviewedAt,
-      Long reviewedById) {}
-
-  /** A voucher the guest uploads, which waits for the review (RN-04). */
-  record VoucherDraft(
-      Long guestId,
-      @Nullable Long contractId,
-      @Nullable Long stayId,
-      @Nullable YearMonth period,
-      BigDecimal amount,
-      @Nullable String paymentMethod,
-      String voucherKey,
-      String originalName,
-      VoucherType voucherType,
-      long sizeBytes) {}
+      PaymentStatus status,
+      ProofAuthor recordedBy,
+      List<NewProof> proofs,
+      Instant submittedAt,
+      @Nullable Instant reviewedAt,
+      @Nullable Long reviewedById) {}
 
   /**
-   * Stores the pending payment; the write is flushed, so a failure surfaces here.
+   * Stores the payment with its proofs (and its decision when approved); the write is flushed, so a
+   * failure surfaces here.
    *
-   * @throws LivePaymentExistsException if the period or the stay already has a live payment
+   * @throws LivePaymentExistsException if the period or the stay already has a payment that holds
+   *     it
    */
-  StoredPayment insertPending(VoucherDraft draft);
-
-  /**
-   * Stores the approved payment; the write is flushed, so a failure surfaces here.
-   *
-   * @throws LivePaymentExistsException if the period or the stay already has a live payment
-   */
-  StoredPayment insertApproved(DirectDraft draft);
+  StoredPayment insert(NewPayment payment);
 
   Optional<StoredPayment> findById(Long id);
 
@@ -73,15 +82,34 @@ public interface PaymentRepositoryPort {
 
   /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so two requests
-   * that resolve the same payment are decided one after the other. Needs a transaction.
+   * that resolve or correct the same payment are decided one after the other. Needs a transaction.
    */
   Optional<StoredPayment> findByIdForUpdate(Long id);
 
-  /** Stores the resolution of a payment that exists. */
-  StoredPayment save(Payment resolved);
+  /** Stores the new state of a payment that exists (its proofs are written apart). */
+  StoredPayment save(Payment changed);
+
+  /** Records one decision on a payment (RN-05, TAR-230). */
+  void addReview(Long paymentId, PaymentReview review);
+
+  /** Every decision on the payment, oldest first. */
+  List<PaymentReview> findReviews(Long paymentId);
+
+  /** Every decision on each of those payments, oldest first, in one read per slice of ids. */
+  Map<Long, List<PaymentReview>> findReviewsOf(Collection<Long> paymentIds);
+
+  /** Adds a proof to a payment that exists. */
+  void addProof(Long paymentId, NewProof proof);
+
+  /** Stores the new amounts, method or file of a proof that exists. */
+  void updateProof(PaymentProof proof);
+
+  /** Removes those proofs of the payment. */
+  void removeProofs(Long paymentId, Collection<Long> proofIds);
 
   /**
-   * One page, oldest first; {@code status == null} reads every payment.
+   * One page, the payment sent longest ago first (by {@code submittedAt}, TAR-239); {@code status
+   * == null} reads every payment.
    *
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
@@ -95,10 +123,10 @@ public interface PaymentRepositoryPort {
    */
   CursorPage<StoredPayment> findHistory(Long guestId, PageQuery page);
 
-  /** The pending or approved payment of the period, if there is one. */
+  /** The pending, approved or rejected payment that holds the period, if there is one. */
   Optional<Payment> findLiveByPeriod(Long contractId, YearMonth period);
 
-  /** The pending or approved payment of the stay, if there is one. */
+  /** The pending, approved or rejected payment that holds the stay, if there is one. */
   Optional<Payment> findLiveByStay(Long stayId);
 
   /** Every payment of the contract, whatever its state. */
@@ -129,14 +157,14 @@ public interface PaymentRepositoryPort {
   List<Payment> findApprovedOfContracts(Long guestId);
 
   /**
-   * The sum of the approved payments of that period, of every contract (RF-18); 0 if there are
-   * none. Pending and rejected payments do not count.
+   * The sum of what was verified of the approved payments of that period, of every contract
+   * (RF-18); 0 if there are none. Pending and rejected payments do not count.
    */
   BigDecimal sumApprovedOfPeriod(YearMonth period);
 
   /**
-   * The sum of the approved payments of those stays (RF-18); 0 if there are none. Pending and
-   * rejected payments do not count.
+   * The sum of what was verified of the approved payments of those stays (RF-18); 0 if there are
+   * none. Pending and rejected payments do not count.
    */
   BigDecimal sumApprovedOfStays(Collection<Long> stayIds);
 }

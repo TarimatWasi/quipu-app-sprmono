@@ -310,6 +310,8 @@ class PaymentsMigrationTest {
                   "SELECT count(*) FROM payments WHERE status IN ('PENDING', 'APPROVED')",
                   Integer.class))
           .isEqualTo(1);
+      jdbc.update("DELETE FROM payment_reviews");
+      jdbc.update("DELETE FROM payment_proofs");
       jdbc.update("DELETE FROM payments");
     }
   }

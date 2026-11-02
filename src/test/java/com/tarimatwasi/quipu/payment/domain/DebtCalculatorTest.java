@@ -31,7 +31,8 @@ class DebtCalculatorTest {
         status,
         status == PaymentStatus.REJECTED ? "No coincide" : null,
         null,
-        null);
+        null,
+        java.time.Instant.EPOCH);
   }
 
   private static List<String> debt(ContractTerms terms, List<Payment> payments) {

@@ -19,7 +19,6 @@ import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
-import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -66,19 +65,52 @@ class AdminDashboardServiceTest {
 
   private static Payment ofPeriod(long id, long contractId, PaymentStatus status) {
     return new Payment(
-        id, 1L, contractId, null, OCTOBER, BigDecimal.TEN, null, status, null, null, null);
+        id,
+        1L,
+        contractId,
+        null,
+        OCTOBER,
+        BigDecimal.TEN,
+        null,
+        status,
+        null,
+        null,
+        null,
+        java.time.Instant.EPOCH);
   }
 
   private static Payment ofStay(long id, long stayId, PaymentStatus status) {
-    return new Payment(id, 2L, null, stayId, null, BigDecimal.TEN, null, status, null, null, null);
+    return new Payment(
+        id,
+        2L,
+        null,
+        stayId,
+        null,
+        BigDecimal.TEN,
+        null,
+        status,
+        null,
+        null,
+        null,
+        java.time.Instant.EPOCH);
   }
 
   private static StoredPayment stored(long id) {
     return new StoredPayment(
         new Payment(
-            id, 3L, null, 9L, null, BigDecimal.TEN, null, PaymentStatus.PENDING, null, null, null),
-        "vouchers/" + id,
-        VoucherType.PDF,
+            id,
+            3L,
+            null,
+            9L,
+            null,
+            BigDecimal.TEN,
+            null,
+            PaymentStatus.PENDING,
+            null,
+            null,
+            null,
+            java.time.Instant.EPOCH),
+        List.of(),
         Instant.parse("2026-10-01T00:00:00Z").plusSeconds(id));
   }
 
