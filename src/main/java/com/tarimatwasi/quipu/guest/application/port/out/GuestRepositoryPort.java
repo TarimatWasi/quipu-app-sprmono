@@ -33,6 +33,15 @@ public interface GuestRepositoryPort {
   CursorPage<Guest> findAll(
       @Nullable Collection<GuestStatus> statuses, @Nullable GuestType type, PageQuery page);
 
+  /** TAR-237: every guest of the filters, ordered as the listing, without pages (they are few). */
+  List<Guest> findAllMatching(@Nullable Collection<GuestStatus> statuses, @Nullable GuestType type);
+
+  /** A3 (TAR-218): how many guests have that status, across all pages. */
+  long countByStatus(GuestStatus status);
+
+  /** TAR-276: the optimistic-locking version of the guest; 0 for an unknown id. */
+  long versionOf(Long id);
+
   /** The guest with that document, whatever its state (RN-18). */
   Optional<Guest> findByDocument(DocumentType documentType, String documentNumber);
 

@@ -66,6 +66,11 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   @Version private long version;
 
+  /** TAR-276: the optimistic-locking version, which the edit of a pending guest sends back. */
+  long version() {
+    return version;
+  }
+
   protected GuestJpaEntity() {}
 
   /** A guest just registered by the administrator: pending activation, without a name (RN-31). */

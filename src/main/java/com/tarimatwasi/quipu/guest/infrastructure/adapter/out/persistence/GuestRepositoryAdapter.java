@@ -54,6 +54,35 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
   }
 
   @Override
+  public List<Guest> findAllMatching(
+      @Nullable Collection<GuestStatus> statuses, @Nullable GuestType type) {
+    Specification<GuestJpaEntity> filter =
+        (root, query, builder) -> {
+          List<Predicate> where = new ArrayList<>();
+          if (statuses != null) {
+            where.add(root.get("status").in(statuses));
+          }
+          if (type != null) {
+            where.add(builder.equal(root.get("type"), type));
+          }
+          return builder.and(where.toArray(Predicate[]::new));
+        };
+    return jpaRepository.findAll(filter, Sort.by("documentType", "documentNumber")).stream()
+        .map(GuestJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
+  public long countByStatus(GuestStatus status) {
+    return jpaRepository.count((root, query, builder) -> builder.equal(root.get("status"), status));
+  }
+
+  @Override
+  public long versionOf(Long id) {
+    return jpaRepository.findById(id).map(GuestJpaEntity::version).orElse(0L);
+  }
+
+  @Override
   public CursorPage<Guest> findAll(
       @Nullable Collection<GuestStatus> statuses, @Nullable GuestType type, PageQuery page) {
     DocumentKey after = page.after() == null ? null : DocumentKey.decode(page.after());
