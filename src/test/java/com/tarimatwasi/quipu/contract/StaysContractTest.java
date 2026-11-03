@@ -206,7 +206,12 @@ class StaysContractTest {
             guest, "{\"startDate\":\"2026-10-20\",\"endDate\":\"2026-10-25\",\"agreedAmount\":100}")
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("STAY_OVERLAP"));
+        .andExpect(jsonPath("$.code").value("STAY_OVERLAP"))
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    "Estas fechas se cruzan con otra estadía del huésped: del 10/10/2026 al"
+                        + " 20/10/2026"));
   }
 
   /** RN-20 (TAR-237): another guest's stay already occupies the environment on those dates. */
@@ -258,6 +263,9 @@ class StaysContractTest {
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Este huésped aún no está activo: no admite contratos ni pagos"))
         .andExpect(jsonPath("$.guestId").value(adminIds().mask(IdKind.GUEST, guest).toString()));
   }
 
@@ -356,7 +364,12 @@ class StaysContractTest {
     patchStay(guest, stay, "{\"endDate\":\"2026-11-01\"}")
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("STAY_OVERLAP"));
+        .andExpect(jsonPath("$.code").value("STAY_OVERLAP"))
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    "Estas fechas se cruzan con otra estadía del huésped: del 01/11/2026 al"
+                        + " 10/11/2026"));
     // Keeping its own dates is not a crossing with itself.
     patchStay(guest, stay, "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\"}")
         .andExpect(status().isOk())

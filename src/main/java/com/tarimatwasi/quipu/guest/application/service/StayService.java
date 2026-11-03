@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -233,14 +234,19 @@ public class StayService implements ManageStaysUseCase {
     return guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new);
   }
 
-  /** The dates may not cross any stay of the guest other than the one being corrected. */
+  /**
+   * The dates may not cross any stay of the guest other than the one being corrected; the error
+   * names the crossed stay that starts first.
+   */
   private void rejectOverlap(Long guestId, Long ownStayId, LocalDate start, LocalDate end) {
-    boolean overlaps =
+    Optional<Stay> crossed =
         stays.findAllByGuest(guestId).stream()
             .filter(other -> !other.id().equals(ownStayId))
-            .anyMatch(other -> other.overlaps(start, end));
-    if (overlaps) {
-      throw new StayOverlapException();
+            .filter(other -> other.overlaps(start, end))
+            .min(Comparator.comparing(Stay::startDate).thenComparing(Stay::id));
+    if (crossed.isPresent()) {
+      Stay first = crossed.get();
+      throw new StayOverlapException(first.startDate(), first.endDate());
     }
   }
 

@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.NoStayYetException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotCorrectableException;
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -57,14 +58,23 @@ public class BffVoucherExceptionHandler {
                 "Ya existe un pago aprobado para este período"));
   }
 
-  /** RN-15: a voucher is still waiting for its review. */
+  /**
+   * RN-15: a voucher is still waiting for its review. TAR-247: the guest with a contract (H3) reads
+   * of its period, the temporary one (T2) of its stay, and the administration registering a payment
+   * (A5.1) is sent to complete the one there is.
+   */
   @ExceptionHandler(VoucherAlreadyExistsException.class)
-  public ResponseEntity<BffErrorResponse> handleVoucherAlreadyExists() {
+  public ResponseEntity<BffErrorResponse> handleVoucherAlreadyExists(HttpServletRequest request) {
+    String message =
+        switch (BffCaller.of(request)) {
+          case CONTRACT_GUEST ->
+              "Ya enviaste un pago para este período y la administración lo está revisando.";
+          case TEMPORARY_GUEST ->
+              "Ya enviaste un pago para esta estadía y la administración lo está revisando.";
+          case ADMINISTRATION -> "Este período ya tiene un pago: complétalo en Revisar pago.";
+        };
     return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_ALREADY_EXISTS",
-                "Ya hay un comprobante pendiente de revisión; resuélvelo primero"));
+        .body(new BffErrorResponse("VOUCHER_ALREADY_EXISTS", message));
   }
 
   /** RN-27: a guest uploads a voucher only while its contract is in force. */

@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.InvalidVoucherFileExcep
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 /** TAR-247: the messages are the literal texts of the error catalog of SRS 17. */
 class BffVoucherExceptionHandlerTest {
@@ -24,6 +25,38 @@ class BffVoucherExceptionHandlerTest {
                 "VOUCHER_INVALID_FILE",
                 "Archivo inválido — sube JPG, PNG o PDF de máx. 5MB",
                 "file"));
+  }
+
+  /** TAR-247, H3: the guest with a contract already sent the payment of the period. */
+  @Test
+  void voucherAlreadyExists_toTheGuestWithAContract_speaksOfThePeriod() {
+    assertVoucherAlreadyExists(
+        "/bff/guest/payments",
+        "Ya enviaste un pago para este período y la administración lo está revisando.");
+  }
+
+  /** TAR-247, T2: the temporary guest already sent the payment of the stay. */
+  @Test
+  void voucherAlreadyExists_toTheTemporaryGuest_speaksOfTheStay() {
+    assertVoucherAlreadyExists(
+        "/bff/temporary-guest/payments",
+        "Ya enviaste un pago para esta estadía y la administración lo está revisando.");
+  }
+
+  /** TAR-247, A5.1: the administrator registering a payment is sent to «Revisar pago». */
+  @Test
+  void voucherAlreadyExists_toTheAdministration_sendsItToReviewThePayment() {
+    assertVoucherAlreadyExists(
+        "/bff/admin/payments", "Este período ya tiene un pago: complétalo en Revisar pago.");
+  }
+
+  private void assertVoucherAlreadyExists(String path, String message) {
+    ResponseEntity<BffErrorResponse> response =
+        handler.handleVoucherAlreadyExists(new MockHttpServletRequest("POST", path));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(new BffErrorResponse("VOUCHER_ALREADY_EXISTS", message));
   }
 
   @Test

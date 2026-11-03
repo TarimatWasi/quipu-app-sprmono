@@ -39,6 +39,10 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   private static final String ACCOUNT_STATUS = "/bff/guest/account-status";
   private static final String STAY_STATUS = "/bff/temporary-guest/payment-status";
 
+  /** TAR-247, H3: the text of a period whose payment is already under review. */
+  private static final String PERIOD_VOUCHER_PENDING =
+      "Ya enviaste un pago para este período y la administración lo está revisando.";
+
   private final Long temporaryAccountId = TestIds.next();
 
   @BeforeEach
@@ -193,10 +197,20 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    "No puedes enviar pagos mientras tu cuenta no esté activa. Consulta con la"
+                        + " administración."))
         .andExpect(jsonPath("$.guestId").value(id(IdKind.GUEST, contractGuest)));
     stayVoucher("150")
         .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"));
+        .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    "No puedes enviar pagos mientras tu cuenta no esté activa. Consulta con la"
+                        + " administración."));
     verify(files, never()).store(any(), any());
   }
 
@@ -209,7 +223,8 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     period("2026-10", "800")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"))
+        .andExpect(jsonPath("$.message").value(PERIOD_VOUCHER_PENDING));
     period("2026-09", "800")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
@@ -219,7 +234,8 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     period("2026-08", "800")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"))
+        .andExpect(jsonPath("$.message").value(PERIOD_VOUCHER_PENDING));
     verify(files, never()).store(any(), any());
   }
 
@@ -297,7 +313,12 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     stayVoucher("150")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"))
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    "Ya enviaste un pago para esta estadía y la administración lo está"
+                        + " revisando."));
     jdbc.update(
         "UPDATE payments SET status = 'APPROVED', verified_amount = amount, reviewed_at = now(),"
             + " reviewed_by_id = ?",

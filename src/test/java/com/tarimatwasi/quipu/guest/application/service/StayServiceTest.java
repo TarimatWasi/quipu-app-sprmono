@@ -202,8 +202,34 @@ class StayServiceTest {
     // Sharing only the last day already crosses: the dates are inclusive.
     assertThatThrownBy(
             () -> service().create(GUEST_ID, newStay("2026-10-20", "2026-10-25", BigDecimal.TEN)))
-        .isInstanceOf(StayOverlapException.class);
+        .isInstanceOfSatisfying(
+            StayOverlapException.class,
+            e -> {
+              assertThat(e.otherStart()).isEqualTo(day("2026-10-10"));
+              assertThat(e.otherEnd()).isEqualTo(day("2026-10-20"));
+            });
     verify(stays, never()).insert(any(), any(), any(), any(), any());
+  }
+
+  /** TAR-247: the text names one stay; when the dates cross several, the one that starts first. */
+  @Test
+  void create_namesTheCrossedStayThatStartsFirst() {
+    activeTemporaryGuest();
+    when(stays.findAllByGuest(GUEST_ID))
+        .thenReturn(
+            List.of(
+                stay(TestIds.next(), "2026-10-15", "2026-10-25", "100"),
+                stay(TestIds.next(), "2026-10-01", "2026-10-12", "100"),
+                stay(TestIds.next(), "2026-09-01", "2026-09-05", "100")));
+
+    assertThatThrownBy(
+            () -> service().create(GUEST_ID, newStay("2026-10-10", "2026-10-20", BigDecimal.TEN)))
+        .isInstanceOfSatisfying(
+            StayOverlapException.class,
+            e -> {
+              assertThat(e.otherStart()).isEqualTo(day("2026-10-01"));
+              assertThat(e.otherEnd()).isEqualTo(day("2026-10-12"));
+            });
   }
 
   @Test
@@ -369,7 +395,12 @@ class StayServiceTest {
                 service()
                     .update(
                         GUEST_ID, STAY_ID, new StayChange(0L, null, null, day("2026-11-01"), null)))
-        .isInstanceOf(StayOverlapException.class);
+        .isInstanceOfSatisfying(
+            StayOverlapException.class,
+            e -> {
+              assertThat(e.otherStart()).isEqualTo(day("2026-11-01"));
+              assertThat(e.otherEnd()).isEqualTo(day("2026-11-10"));
+            });
     verify(stays, never()).update(any());
   }
 
