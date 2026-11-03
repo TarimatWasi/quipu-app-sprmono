@@ -181,13 +181,14 @@ class AdministratorServiceTest {
     assertThat(users.find(creatorId).failedLoginAttempts()).isZero();
   }
 
+  /** RF-22 (decision of 2026-11-03): only the administrators not inactive take a place. */
   @Test
-  void theMaximumCountsEveryAdministratorAndIsCheckedUnderTheLock() {
+  void theMaximumCountsTheAdministratorsNotInactiveAndIsCheckedUnderTheLock() {
     store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
     store.add(admin(TestIds.next(), "c@example.test", "11111113", true, "ACTIVE"));
     store.add(admin(TestIds.next(), "d@example.test", "11111114", false, "ACTIVE"));
-    // An inactive administrator still takes a place.
-    store.add(admin(TestIds.next(), "e@example.test", "11111115", false, "INACTIVE"));
+    store.add(admin(TestIds.next(), "e@example.test", "11111115", false, "ACTIVE"));
+    store.add(admin(TestIds.next(), "f@example.test", "11111116", false, "INACTIVE"));
 
     assertThatThrownBy(() -> service.create(command(PASSWORD)))
         .isInstanceOfSatisfying(
@@ -196,6 +197,42 @@ class AdministratorServiceTest {
     assertThat(store.inserted).isEmpty();
     assertThat(store.events).containsExactly("lock", "count");
     verifyNoInteractions(mail, notices);
+  }
+
+  @Test
+  void theInactiveAdministratorsDoNotCountTowardTheMaximum() {
+    store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
+    store.add(admin(TestIds.next(), "c@example.test", "11111113", false, "ACTIVE"));
+    store.add(admin(TestIds.next(), "d@example.test", "11111114", false, "ACTIVE"));
+    store.add(admin(TestIds.next(), "e@example.test", "11111115", false, "INACTIVE"));
+    store.add(admin(TestIds.next(), "f@example.test", "11111116", false, "INACTIVE"));
+
+    service.create(command(PASSWORD));
+
+    assertThat(store.inserted).hasSize(1);
+    assertThat(store.countAdministrators()).isEqualTo(5);
+  }
+
+  @Test
+  void deactivatingAnAdministratorAtTheMaximumLetsAnotherBeCreated() {
+    UserAccount last = admin(TestIds.next(), "e@example.test", "11111115", false, "ACTIVE");
+    store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
+    store.add(admin(TestIds.next(), "c@example.test", "11111113", false, "ACTIVE"));
+    store.add(admin(TestIds.next(), "d@example.test", "11111114", false, "ACTIVE"));
+    store.add(last);
+    assertThatThrownBy(() -> service.create(command(PASSWORD)))
+        .isInstanceOf(AdministratorLimitReachedException.class);
+
+    users.save(
+        admin(
+            last.id(),
+            Objects.requireNonNull(last.email()),
+            last.documentNumber(),
+            false,
+            "INACTIVE"));
+    service.create(command(PASSWORD));
+
+    assertThat(store.inserted).hasSize(1);
   }
 
   @Test
@@ -400,7 +437,9 @@ class AdministratorServiceTest {
     @Override
     public int countAdministrators() {
       events.add("count");
-      return admins.size();
+      // The rule of AdministratorStoreAdapter: an INACTIVE administrator takes no place.
+      return (int)
+          admins.stream().map(a -> users.find(a.id())).filter(a -> !a.isDisabled()).count();
     }
 
     @Override

@@ -79,6 +79,8 @@ public interface ManageAdministratorsUseCase {
    * @throws AdministratorReauthenticationException if {@code currentPassword} is not the password
    *     of the actor (or its account is locked by failed attempts)
    * @throws AdministratorNotFoundException if the id is not of an ADMIN account
+   * @throws AdministratorLimitReachedException if the maximum of administrators not inactive is
+   *     already reached (RF-22)
    */
   void reactivate(StatusChangeCommand command);
 }

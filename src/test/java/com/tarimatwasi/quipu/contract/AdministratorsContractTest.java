@@ -353,6 +353,27 @@ class AdministratorsContractTest {
     create(validBody()).andExpect(status().isCreated()).andExpect(satisfiesTheContract());
   }
 
+  /** RF-22 (decision of 2026-11-03): a deactivated administrator frees its place. */
+  @Test
+  void deactivatingAnAdministratorAtTheMaximumLetsAnotherBeCreated() throws Exception {
+    Long last = TestIds.next();
+    insertUser(TestIds.next(), "ADMIN", "00000005", "c@example.com", false);
+    insertUser(last, "ADMIN", "00000006", "d@example.com", false);
+    create(validBody()).andExpect(status().isCreated());
+    create(body("DNI", "33333333", "sexta@example.com", PASSWORD)).andExpect(status().isConflict());
+
+    jdbc.update("UPDATE users SET status = 'INACTIVE' WHERE id = ?", last);
+
+    create(body("DNI", "33333333", "sexta@example.com", PASSWORD))
+        .andExpect(status().isCreated())
+        .andExpect(satisfiesTheContract());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE'",
+                Integer.class))
+        .isEqualTo(5);
+  }
+
   @Test
   void theSixthAdministratorIsRefused() throws Exception {
     insertUser(TestIds.next(), "ADMIN", "00000005", "c@example.com", false);

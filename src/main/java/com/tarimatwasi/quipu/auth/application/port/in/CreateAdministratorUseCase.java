@@ -37,7 +37,7 @@ public interface CreateAdministratorUseCase {
    * @throws InvalidAdministratorDocumentException if the number does not fit its type
    * @throws AdministratorReauthenticationException if {@code currentPassword} is not the password
    *     of the creator (or the creator's account is locked by failed attempts)
-   * @throws AdministratorLimitReachedException if the maximum number of administrators exists
+   * @throws AdministratorLimitReachedException if the maximum of administrators not inactive exists
    * @throws AdministratorDocumentTakenException if another account has the document
    * @throws AdministratorEmailTakenException if another account has the email, ignoring case
    */

@@ -34,6 +34,9 @@ class AdministratorRegistrar {
   /** The new account and the email of who created it, for the notices. */
   record Registered(Long id, String creatorEmail) {}
 
+  /** RF-22: the maximum of administrators not inactive, also checked by a reactivation. */
+  static final String MAX_ADMINISTRATORS = "${app.administrators.max:5}";
+
   private final AdministratorReauthentication reauthentication;
   private final AdministratorStorePort store;
   private final int maxAdministrators;
@@ -41,7 +44,7 @@ class AdministratorRegistrar {
   AdministratorRegistrar(
       AdministratorReauthentication reauthentication,
       AdministratorStorePort store,
-      @Value("${app.administrators.max:5}") int maxAdministrators) {
+      @Value(MAX_ADMINISTRATORS) int maxAdministrators) {
     if (maxAdministrators < 1) {
       throw new IllegalArgumentException("app.administrators.max must be at least 1");
     }

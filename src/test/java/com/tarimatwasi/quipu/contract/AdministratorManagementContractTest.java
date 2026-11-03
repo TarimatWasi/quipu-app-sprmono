@@ -234,6 +234,30 @@ class AdministratorManagementContractTest {
     list(session(targetId)).andExpect(status().isOk());
   }
 
+  /**
+   * RF-22 (decision of 2026-11-03): reactivating takes a place back, so at the maximum (5 by
+   * default) it is refused. The contract v0.18.0 does not list a 409 for this route yet, so only
+   * the body is checked here, not the contract.
+   */
+  @Test
+  void aReactivationAtTheMaximumIsRefusedAndChangesNothing() throws Exception {
+    String hash = passwordEncoder.encode(PASSWORD);
+    insertUser(TestIds.next(), "ADMIN", "DNI", "11111114", "cuarta@example.com", false, hash);
+    insertUser(TestIds.next(), "ADMIN", "DNI", "11111115", "quinta@example.com", false, hash);
+    insertUser(TestIds.next(), "ADMIN", "DNI", "11111116", "sexta@example.com", false, hash);
+    jdbc.update("UPDATE users SET status = 'INACTIVE' WHERE id = ?", targetId);
+
+    reactivate(targetId, BODY)
+        .andExpect(status().isConflict())
+        .andExpect(
+            exactly(
+                "{\"code\":\"ADMIN_LIMIT_REACHED\",\"message\":\"Ya hay 5 administradores, el"
+                    + " máximo. Desactiva uno antes de crear otro.\"}"));
+
+    assertThat(statusOf(targetId)).isEqualTo("INACTIVE");
+    verifyNoInteractions(notices);
+  }
+
   @Test
   void reactivatingAnActiveAdministratorIs204AndChangesNothing() throws Exception {
     reactivate(targetId, BODY).andExpect(status().isNoContent()).andExpect(satisfiesTheContract());

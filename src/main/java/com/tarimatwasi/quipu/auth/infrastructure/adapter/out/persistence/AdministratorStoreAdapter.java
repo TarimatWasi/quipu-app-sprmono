@@ -58,8 +58,11 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
 
   @Override
   public int countAdministrators() {
+    // RF-22 (decision of 2026-11-03): an INACTIVE administrator does not take a place.
     Integer admins =
-        jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE role = 'ADMIN'", Integer.class);
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE'",
+            Integer.class);
     return admins == null ? 0 : admins;
   }
 

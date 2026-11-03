@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedException;
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNotFoundException;
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorReauthenticationException;
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorSelfDeactivationException;
@@ -73,12 +74,15 @@ class AdministratorStatusServiceTest {
   private final Long actorId = TestIds.next();
   private final Long targetId = TestIds.next();
   private final Long thirdId = TestIds.next();
-  private final AdministratorStatusService service =
-      new AdministratorStatusService(
-          new AdministratorReauthentication(users, encoder, clock),
-          new AdministratorStatusChanger(users, store),
-          store,
-          notices);
+  private AdministratorStatusService service = serviceWithLimit(5);
+
+  private AdministratorStatusService serviceWithLimit(int max) {
+    return new AdministratorStatusService(
+        new AdministratorReauthentication(users, encoder, clock),
+        new AdministratorStatusChanger(users, store, max),
+        store,
+        notices);
+  }
 
   @BeforeEach
   void threeAdministrators() {
@@ -134,13 +138,44 @@ class AdministratorStatusServiceTest {
 
     assertThat(statusOf(targetId)).isEqualTo("ACTIVE");
     assertThat(store.modifiedBy).containsExactly(Map.entry(targetId, actorId));
-    // Reactivating cannot leave anyone without an active administrator: nothing is counted.
+    // RF-22: the reactivation takes a place back, so it counts under the lock before the change.
     assertThat(store.events)
-        .containsExactly("lockAdministrator", "holdReference", "lock", "setStatus", "emails");
+        .containsExactly(
+            "lockAdministrator", "holdReference", "lock", "count", "setStatus", "emails");
     verify(notices)
         .administratorStatusChanged(
             THIRD_EMAIL, ACTOR_EMAIL, TARGET_EMAIL, StatusChange.REACTIVATED);
     verifyNoMoreInteractions(notices);
+  }
+
+  /**
+   * RF-22 (decision of 2026-11-03): an inactive administrator takes no place, so reactivating one
+   * when the maximum of administrators not inactive is reached is refused, counted under the lock.
+   */
+  @Test
+  void aReactivationAtTheMaximumIsRefusedUnderTheLockAndChangesNothing() {
+    service = serviceWithLimit(2);
+    store.setStatus(targetId, "INACTIVE");
+
+    assertThatThrownBy(() -> service.reactivate(command(targetId, PASSWORD)))
+        .isInstanceOfSatisfying(
+            AdministratorLimitReachedException.class, e -> assertThat(e.maximum()).isEqualTo(2));
+
+    assertThat(statusOf(targetId)).isEqualTo("INACTIVE");
+    assertThat(store.modifiedBy).isEmpty();
+    assertThat(store.events).containsExactly("lockAdministrator", "holdReference", "lock", "count");
+    verifyNoInteractions(notices);
+  }
+
+  @Test
+  void belowTheMaximumAReactivationTakesTheLastPlace() {
+    service = serviceWithLimit(3);
+    store.setStatus(targetId, "INACTIVE");
+
+    service.reactivate(command(targetId, PASSWORD));
+
+    assertThat(statusOf(targetId)).isEqualTo("ACTIVE");
+    assertThat(store.countAdministrators()).isEqualTo(3);
   }
 
   @Test
@@ -464,7 +499,8 @@ class AdministratorStatusServiceTest {
     @Override
     public int countAdministrators() {
       events.add("count");
-      return admins.size();
+      // The rule of AdministratorStoreAdapter: an INACTIVE administrator takes no place.
+      return (int) admins.stream().map(users::find).filter(a -> !a.isDisabled()).count();
     }
 
     @Override
