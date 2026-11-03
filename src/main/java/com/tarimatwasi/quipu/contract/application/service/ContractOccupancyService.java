@@ -76,13 +76,13 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
   @Override
   @Transactional(readOnly = true)
   public List<Occupancy> occupanciesOf(Collection<Long> environmentIds) {
-    return contracts.findAllByEnvironments(environmentIds).stream().map(this::occupancy).toList();
+    return occupancies(contracts.findAllByEnvironments(environmentIds));
   }
 
   @Override
   @Transactional(readOnly = true)
   public List<Occupancy> occupanciesOfGuests(Collection<Long> guestIds) {
-    return contracts.findAllByGuests(guestIds).stream().map(this::occupancy).toList();
+    return occupancies(contracts.findAllByGuests(guestIds));
   }
 
   @Override
@@ -93,6 +93,21 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
         .filter(contract -> contract.occupies(today))
         .map(Contract::guestId)
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * A contract cancelled before its start (RN-21 on a contract still to come) never held its
+   * environment: it is left out, or it would end before it starts and still be the next occupant.
+   */
+  private List<Occupancy> occupancies(List<Contract> found) {
+    return found.stream()
+        .map(this::occupancy)
+        .filter(
+            o -> {
+              LocalDate end = o.endDate();
+              return end == null || !end.isBefore(o.startDate());
+            })
+        .toList();
   }
 
   /** A contract finished by hand (RN-21) ends on the day it was finished, in the zone of Quipu. */
