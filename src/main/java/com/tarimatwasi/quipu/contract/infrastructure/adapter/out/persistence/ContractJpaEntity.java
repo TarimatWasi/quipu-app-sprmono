@@ -109,7 +109,10 @@ public class ContractJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long>
             .orElseThrow()
             .atZone(ZoneId.systemDefault())
             .toInstant()
-            // as the column keeps it, so a contract reads the same before and after the commit
+            // As the column keeps it, so a contract reads the same before and after the commit: the
+            // driver rounds the nanoseconds to the nearest microsecond (half up), it does not
+            // truncate them.
+            .plusNanos(500)
             .truncatedTo(ChronoUnit.MICROS));
   }
 }
