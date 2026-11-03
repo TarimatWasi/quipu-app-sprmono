@@ -73,7 +73,7 @@ class AdminAreaRateLimitBffTest {
     TestTables.clear(jdbc);
     insertUser(adminId, "00000001");
     insertUser(otherAdminId, "00000003");
-    when(administrators.create(any())).thenThrow(new AdministratorLimitReachedException());
+    when(administrators.create(any())).thenThrow(new AdministratorLimitReachedException(5));
   }
 
   @AfterEach

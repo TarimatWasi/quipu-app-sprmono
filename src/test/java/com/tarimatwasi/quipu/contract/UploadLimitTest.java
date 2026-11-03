@@ -128,9 +128,10 @@ class UploadLimitTest {
       assertThat(response.statusCode()).as(route).isEqualTo(400);
       assertThat(response.body())
           .as(route)
-          .contains("\"code\":\"VOUCHER_INVALID_FILE\"")
-          .contains("\"field\":\"file\"")
-          .contains("5 MB");
+          .isEqualTo(
+              "{\"code\":\"VOUCHER_INVALID_FILE\","
+                  + "\"message\":\"Archivo inválido — sube JPG, PNG o PDF de máx. 5MB\","
+                  + "\"field\":\"file\"}");
     }
   }
 

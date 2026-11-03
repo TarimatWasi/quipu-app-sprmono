@@ -215,8 +215,8 @@ class GuestAccountEmailContractTest {
         .andExpect(
             content()
                 .json(
-                    "{\"code\":\"ACCOUNT_EMAIL_TAKEN\",\"message\":\"Ese correo ya pertenece a una"
-                        + " cuenta\",\"field\":\"contactEmail\"}",
+                    "{\"code\":\"ACCOUNT_EMAIL_TAKEN\",\"message\":\"Ese correo ya está en uso por"
+                        + " otra cuenta\",\"field\":\"contactEmail\"}",
                     JsonCompareMode.STRICT));
 
     assertThat(count("SELECT count(*) FROM guests")).isZero();
@@ -328,8 +328,8 @@ class GuestAccountEmailContractTest {
         .andExpect(
             content()
                 .json(
-                    "{\"code\":\"ACCOUNT_EMAIL_TAKEN\",\"message\":\"Ese correo ya pertenece a una"
-                        + " cuenta\",\"field\":\"email\"}",
+                    "{\"code\":\"ACCOUNT_EMAIL_TAKEN\",\"message\":\"Ese correo ya está en uso por"
+                        + " otra cuenta\",\"field\":\"email\"}",
                     JsonCompareMode.STRICT));
     setEmail(guestId, "CARLA@example.com")
         .andExpect(status().isConflict())

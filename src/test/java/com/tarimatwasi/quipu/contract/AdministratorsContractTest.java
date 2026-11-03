@@ -362,6 +362,9 @@ class AdministratorsContractTest {
     create(body("DNI", "33333333", "sexta@example.com", PASSWORD))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("ADMIN_LIMIT_REACHED"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Ya hay 5 administradores, el máximo. Desactiva uno antes de crear otro."))
         .andExpect(satisfiesTheContract());
 
     assertThat(

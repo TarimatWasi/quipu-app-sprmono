@@ -62,7 +62,7 @@ class AdministratorRegistrar {
         reauthentication.reauthenticate(registration.creatorId(), registration.currentPassword());
     store.lockAdministrators();
     if (store.countAdministrators() >= maxAdministrators) {
-      throw new AdministratorLimitReachedException();
+      throw new AdministratorLimitReachedException(maxAdministrators);
     }
     Long id;
     try {

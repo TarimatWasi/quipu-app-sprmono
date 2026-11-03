@@ -190,7 +190,8 @@ class AdministratorServiceTest {
     store.add(admin(TestIds.next(), "e@example.test", "11111115", false, "INACTIVE"));
 
     assertThatThrownBy(() -> service.create(command(PASSWORD)))
-        .isInstanceOf(AdministratorLimitReachedException.class);
+        .isInstanceOfSatisfying(
+            AdministratorLimitReachedException.class, e -> assertThat(e.maximum()).isEqualTo(5));
 
     assertThat(store.inserted).isEmpty();
     assertThat(store.events).containsExactly("lock", "count");
@@ -219,7 +220,8 @@ class AdministratorServiceTest {
                 service.create(
                     new CreateAdministratorCommand(
                         creatorId, DocumentKind.DNI, "22222222", "otra@example.test", PASSWORD)))
-        .isInstanceOf(AdministratorLimitReachedException.class);
+        .isInstanceOfSatisfying(
+            AdministratorLimitReachedException.class, e -> assertThat(e.maximum()).isEqualTo(2));
   }
 
   @Test

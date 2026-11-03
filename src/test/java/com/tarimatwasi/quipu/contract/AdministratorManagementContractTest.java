@@ -70,7 +70,7 @@ class AdministratorManagementContractTest {
   private static final String THIRD_EMAIL = "tercera@example.com";
 
   private static final String NOT_FOUND =
-      "{\"code\":\"ADMIN_NOT_FOUND\",\"message\":\"El administrador no existe\"}";
+      "{\"code\":\"ADMIN_NOT_FOUND\",\"message\":\"Ese administrador no existe\"}";
   private static final String WRONG_PASSWORD =
       "{\"code\":\"AUTH_INVALID_CREDENTIALS\",\"message\":\"Tu contraseña actual no es correcta\","
           + "\"field\":\"currentPassword\"}";
@@ -198,7 +198,8 @@ class AdministratorManagementContractTest {
     login("CE", "AB4321")
         .andExpect(status().isForbidden())
         .andExpect(
-            exactly("{\"code\":\"AUTH_ACCOUNT_DISABLED\",\"message\":\"Cuenta deshabilitada\"}"));
+            exactly(
+                "{\"code\":\"AUTH_ACCOUNT_DISABLED\",\"message\":\"Tu cuenta está deshabilitada. Contacta al administrador.\"}"));
   }
 
   @Test

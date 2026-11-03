@@ -5,8 +5,16 @@ public class AdministratorLimitReachedException extends RuntimeException {
 
   private static final long serialVersionUID = 1L;
 
-  /** Creates the exception. */
-  public AdministratorLimitReachedException() {
+  private final int maximum;
+
+  /** Creates the exception with the configured maximum ({@code app.administrators.max}). */
+  public AdministratorLimitReachedException(int maximum) {
     super("The maximum number of administrators already exists");
+    this.maximum = maximum;
+  }
+
+  /** The configured maximum of administrators, which the message names. */
+  public int maximum() {
+    return maximum;
   }
 }

@@ -99,7 +99,7 @@ class AdministratorRateLimitBffTest {
     insertUser(adminId, "ADMIN", "00000001");
     insertUser(otherAdminId, "ADMIN", "00000003");
     insertUser(guestUserId, "GUEST", "00000002");
-    when(administrators.create(any())).thenThrow(new AdministratorLimitReachedException());
+    when(administrators.create(any())).thenThrow(new AdministratorLimitReachedException(5));
     target = sessionIds().mask(IdKind.USER, TestIds.next()).toString();
   }
 
