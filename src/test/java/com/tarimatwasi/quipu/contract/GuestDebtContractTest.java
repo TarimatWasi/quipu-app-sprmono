@@ -55,6 +55,11 @@ class GuestDebtContractTest extends PaymentsContractSupport {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_HAS_PENDING_DEBT"))
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    "El huésped tiene deuda pendiente: salda sus períodos impagos antes de crear un"
+                        + " contrato nuevo o reactivarlo"))
         .andExpect(jsonPath("$.periods.length()").value(2))
         .andExpect(jsonPath("$.periods[0]").value("2026-09"))
         .andExpect(jsonPath("$.periods[1]").value("2026-10"))

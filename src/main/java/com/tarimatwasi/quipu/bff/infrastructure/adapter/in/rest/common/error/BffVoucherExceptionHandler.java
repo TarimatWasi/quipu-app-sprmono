@@ -42,7 +42,8 @@ public class BffVoucherExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "PAYMENT_NOT_CORRECTABLE", "Este pago ya no se puede corregir; vuelve a cargarlo"));
+                "PAYMENT_NOT_CORRECTABLE",
+                "Este pago ya no se puede corregir: está en revisión o ya se aprobó"));
   }
 
   /** RN-02: an approved payment covers the period or the stay. */
@@ -52,7 +53,7 @@ public class BffVoucherExceptionHandler {
         .body(
             new BffErrorResponse(
                 "PAYMENT_ALREADY_EXISTS_FOR_PERIOD",
-                "El período o la estadía ya tiene un pago aprobado"));
+                "Ya existe un pago aprobado para este período"));
   }
 
   /** RN-15: a voucher is still waiting for its review. */
