@@ -63,6 +63,7 @@ class ContractOccupancyServiceTest {
         "contracts/a.pdf",
         "a.pdf",
         10,
-        terminated);
+        terminated,
+        java.time.Instant.EPOCH);
   }
 }

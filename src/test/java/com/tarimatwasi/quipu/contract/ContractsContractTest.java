@@ -548,16 +548,22 @@ class ContractsContractTest {
         .perform(get("/bff/guest/contract").cookie(guest()))
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.id").value(ids().mask(IdKind.CONTRACT, id).toString()))
-        .andExpect(jsonPath("$.status").value("EXPIRED"))
+        .andExpect(jsonPath("$.current.id").value(ids().mask(IdKind.CONTRACT, id).toString()))
+        .andExpect(jsonPath("$.current.status").value("EXPIRED"))
+        .andExpect(jsonPath("$.current.guestName").value("Ana Quispe"))
+        .andExpect(jsonPath("$.current.documentNumber").value("12345678"))
+        .andExpect(jsonPath("$.current.environmentType").value("ROOM"))
+        .andExpect(jsonPath("$.current.file.name").exists())
+        .andExpect(jsonPath("$.next").isEmpty())
         .andExpect(header().string("Cache-Control", "no-store"))
-        .andExpect(jsonPath("$.fileUrl").value(SIGNED));
+        .andExpect(jsonPath("$.current.fileUrl").value(SIGNED));
     jdbc.update(
         "UPDATE contracts SET status = 'TERMINATED', terminated_at = now() WHERE id = ?", id);
     mockMvc
         .perform(get("/bff/guest/contract").cookie(guest()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("TERMINATED"));
+        .andExpect(jsonPath("$.current.status").value("TERMINATED"))
+        .andExpect(jsonPath("$.current.terminatedAt").exists());
   }
 
   @Test

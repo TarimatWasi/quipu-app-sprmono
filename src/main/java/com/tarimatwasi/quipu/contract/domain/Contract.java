@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
  * @param terminatedAt when it was finished by hand before its end (RN-21); {@code null} if it was
  *     not
  * @param fileKey the key of the PDF in the bucket, never a URL
+ * @param uploadedAt when the PDF was uploaded, with the contract (A4.2, H2)
  */
 public record Contract(
     Long id,
@@ -26,7 +27,8 @@ public record Contract(
     String fileKey,
     String originalName,
     long sizeBytes,
-    @Nullable Instant terminatedAt) {
+    @Nullable Instant terminatedAt,
+    Instant uploadedAt) {
 
   /** The days left to the end date at which a contract is about to expire (RN-07). */
   public static final int EXPIRING_SOON_DAYS = 30;
@@ -140,7 +142,8 @@ public record Contract(
         fileKey,
         originalName,
         sizeBytes,
-        at);
+        at,
+        uploadedAt);
   }
 
   private static boolean outOfRange(LocalDate date) {

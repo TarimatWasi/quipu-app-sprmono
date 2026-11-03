@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import org.jspecify.annotations.Nullable;
 
@@ -54,17 +55,43 @@ public interface ManageContractsUseCase {
       @Nullable LocalDate endDate,
       ContractFile file) {}
 
-  /** A contract with the signed URL of its file (it expires and is not stored). */
+  /**
+   * Who holds a contract and where (TAR-237, A4, H2).
+   *
+   * @param guestName null while the guest has not given a name
+   * @param environmentType ROOM or CABIN
+   */
+  record Parties(
+      @Nullable String guestName,
+      String documentType,
+      String documentNumber,
+      String environmentCode,
+      String environmentType) {}
+
+  /** The PDF of a contract (A4.2, H2). */
+  record ContractFileView(String name, long sizeBytes, Instant uploadedAt) {}
+
+  /**
+   * A contract with the signed URL of its file (it expires and is not stored).
+   *
+   * @param expiringSoon ACTIVE with 30 days or fewer to its end date (RF-09)
+   * @param terminatedAt the day of Lima it was finished by hand (RN-21); null otherwise
+   * @param fileUrl null when the storage could not sign it (TAR-237)
+   */
   record ContractView(
       Long id,
       Long environmentId,
       Long guestId,
+      Parties parties,
       BigDecimal monthlyAmount,
       int paymentDay,
       int graceDays,
       LocalDate startDate,
       @Nullable LocalDate endDate,
       ContractState status,
+      boolean expiringSoon,
+      @Nullable LocalDate terminatedAt,
+      ContractFileView file,
       @Nullable String fileUrl) {}
 
   /** A contract in a list: no file URL, so listing does not sign one file per row. */
@@ -72,13 +99,15 @@ public interface ManageContractsUseCase {
       Long id,
       Long environmentId,
       Long guestId,
+      Parties parties,
       BigDecimal monthlyAmount,
       int paymentDay,
       int graceDays,
       LocalDate startDate,
       @Nullable LocalDate endDate,
       ContractState status,
-      boolean expiringSoon) {}
+      boolean expiringSoon,
+      @Nullable LocalDate terminatedAt) {}
 
   /**
    * Stores the PDF, then the contract (RF-03). The checks go in this order: the environment and the

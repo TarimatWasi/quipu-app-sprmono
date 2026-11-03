@@ -55,6 +55,7 @@ public class ContractService implements ManageContractsUseCase {
   private final GuestDebtQuery debts;
   private final StayOccupancyQuery stays;
   private final Clock clock;
+  private final ContractViews views;
 
   ContractService(
       ContractRepositoryPort contracts,
@@ -71,6 +72,7 @@ public class ContractService implements ManageContractsUseCase {
     this.debts = debts;
     this.stays = stays;
     this.clock = clock;
+    this.views = new ContractViews(files, guests, environments, clock);
   }
 
   @Override
@@ -99,7 +101,6 @@ public class ContractService implements ManageContractsUseCase {
     if (!environmentActive) {
       throw new EnvironmentInactiveException();
     }
-    LocalDate today = ContractViews.today(clock);
     // TAR-237 (RN-20): the dates may not cross another contract not terminated, nor a stay of the
     // environment. A renewal that starts after the end of the contract in force is accepted.
     Long environmentId = contract.environmentId();
@@ -107,11 +108,11 @@ public class ContractService implements ManageContractsUseCase {
         || stays.environmentTaken(environmentId, contract.startDate(), contract.endDate())) {
       throw new EnvironmentOccupiedException();
     }
-    return store(contract, today);
+    return store(contract);
   }
 
   /** The object goes to the bucket first; if the row then fails, the object is removed. */
-  private ContractView store(NewContract contract, LocalDate today) {
+  private ContractView store(NewContract contract) {
     // ponytail: the upload runs inside the transaction that holds the lock of the environment, so a
     // slow bucket delays other contracts on that same environment (one per upload, at most 10 MB);
     // upload before opening the transaction if that ever hurts. A failure of the commit itself
@@ -134,7 +135,7 @@ public class ContractService implements ManageContractsUseCase {
                   FileNames.sanitized(contract.file().originalName(), DEFAULT_NAME),
                   contract.file().content().length));
       // Signing is inside the try: if it fails the transaction rolls back and the object goes too.
-      view = ContractViews.of(saved, today, files);
+      view = views.view(saved);
       return view;
     } finally {
       if (view == null) {
@@ -178,25 +179,25 @@ public class ContractService implements ManageContractsUseCase {
     if (expiringSoon) {
       // TAR-237 (D-27): the ACTIVE ones with 30 days or fewer to their end, soonest first, all
       // in one page so that the A4 notice is right whatever page the list is on. They are few.
-      return new CursorPage<>(
-          contracts.findAllInForce(today).stream()
-              .filter(c -> c.expiringSoon(today))
-              .sorted(
-                  Comparator.comparing((Contract c) -> Objects.requireNonNull(c.endDate()))
-                      .thenComparing(Contract::id))
-              .map(c -> ContractViews.summary(c, today))
-              .toList(),
-          null);
+      return views.summaries(
+          new CursorPage<>(
+              contracts.findAllInForce(today).stream()
+                  .filter(c -> c.expiringSoon(today))
+                  .sorted(
+                      Comparator.comparing((Contract c) -> Objects.requireNonNull(c.endDate()))
+                          .thenComparing(Contract::id))
+                  .toList(),
+              null));
     }
     ContractStatus filter = status == null ? null : ContractStatus.valueOf(status.name());
-    return contracts.findAll(filter, today, page).map(c -> ContractViews.summary(c, today));
+    return views.summaries(contracts.findAll(filter, today, page));
   }
 
   @Override
   @Transactional(readOnly = true)
   public ContractView get(Long id) {
     Contract contract = contracts.findById(id).orElseThrow(ContractNotFoundException::new);
-    return ContractViews.of(contract, ContractViews.today(clock), files);
+    return views.view(contract);
   }
 
   @Override

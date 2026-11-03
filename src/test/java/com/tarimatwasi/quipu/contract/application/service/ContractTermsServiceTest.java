@@ -48,7 +48,8 @@ class ContractTermsServiceTest {
         "contracts/a.pdf",
         "a.pdf",
         10,
-        terminatedAt);
+        terminatedAt,
+        java.time.Instant.EPOCH);
   }
 
   @Test

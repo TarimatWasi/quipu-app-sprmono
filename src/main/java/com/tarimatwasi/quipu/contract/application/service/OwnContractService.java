@@ -1,8 +1,11 @@
 package com.tarimatwasi.quipu.contract.application.service;
 
 import com.tarimatwasi.quipu.contract.application.port.in.ContractNotFoundException;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractView;
 import com.tarimatwasi.quipu.contract.application.port.in.OwnContractUseCase;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractEnvironmentPort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractGuestPort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import java.time.Clock;
@@ -22,13 +25,18 @@ public class OwnContractService implements OwnContractUseCase {
       Comparator.comparing(Contract::startDate).thenComparing(Contract::id);
 
   private final ContractRepositoryPort contracts;
-  private final ContractFilePort files;
   private final Clock clock;
+  private final ContractViews views;
 
-  OwnContractService(ContractRepositoryPort contracts, ContractFilePort files, Clock clock) {
+  OwnContractService(
+      ContractRepositoryPort contracts,
+      ContractFilePort files,
+      ContractGuestPort guests,
+      ContractEnvironmentPort environments,
+      Clock clock) {
     this.contracts = contracts;
-    this.files = files;
     this.clock = clock;
+    this.views = new ContractViews(files, guests, environments, clock);
   }
 
   @Override
@@ -38,9 +46,9 @@ public class OwnContractService implements OwnContractUseCase {
     List<Contract> all = contracts.findAllByGuest(guestId);
     Contract current = current(all, today).orElseThrow(ContractNotFoundException::new);
     Contract next = next(all, current).orElse(null);
-    return new OwnContracts(
-        ContractViews.of(current, today, files),
-        next == null ? null : ContractViews.of(next, today, files));
+    List<ContractView> shown =
+        views.views(next == null ? List.of(current) : List.of(current, next));
+    return new OwnContracts(shown.get(0), next == null ? null : shown.get(1));
   }
 
   /**

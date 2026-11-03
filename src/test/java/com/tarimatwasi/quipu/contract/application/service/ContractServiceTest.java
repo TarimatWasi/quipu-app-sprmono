@@ -3,8 +3,10 @@ package com.tarimatwasi.quipu.contract.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -47,7 +49,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,13 +85,38 @@ class ContractServiceTest {
   @Mock GuestDebtQuery debts;
   @Mock StayOccupancyQuery stays;
 
+  /** TAR-237: every guest and environment of a contract has its label. */
+  @BeforeEach
+  void everyLabelIsKnown() {
+    lenient()
+        .when(guests.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractGuestPort.GuestLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractGuestPort.GuestLabel("Ana Quispe", "DNI", "12345678"));
+              }
+              return found;
+            });
+    lenient()
+        .when(environments.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractEnvironmentPort.EnvironmentLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractEnvironmentPort.EnvironmentLabel("201", "ROOM"));
+              }
+              return found;
+            });
+  }
+
   private ContractService service;
 
   @BeforeEach
   void setUp() {
     service = new ContractService(contracts, files, environments, guests, debts, stays, clock);
     // The environment exists and is active unless a test says otherwise.
-    org.mockito.Mockito.lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
+    lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }
 
   private static NewContract request(byte[] content, String name, @Nullable String end) {
@@ -121,7 +151,8 @@ class ContractServiceTest {
         KEY,
         "contrato.pdf",
         PDF.length,
-        terminated ? TERMINATED_AT : null);
+        terminated ? TERMINATED_AT : null,
+        java.time.Instant.EPOCH);
   }
 
   private void freeEnvironmentAndActiveContractGuest() {

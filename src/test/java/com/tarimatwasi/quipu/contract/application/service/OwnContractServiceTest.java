@@ -2,11 +2,15 @@ package com.tarimatwasi.quipu.contract.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.contract.application.port.in.ContractNotFoundException;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractState;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractEnvironmentPort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractGuestPort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -14,8 +18,12 @@ import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -29,10 +37,41 @@ class OwnContractServiceTest {
 
   @Mock ContractRepositoryPort contracts;
   @Mock ContractFilePort files;
+  @Mock ContractGuestPort guests;
+  @Mock ContractEnvironmentPort environments;
 
   private OwnContractService service() {
     return new OwnContractService(
-        contracts, files, new MutableClock(Instant.parse("2026-10-14T14:00:00Z")));
+        contracts,
+        files,
+        guests,
+        environments,
+        new MutableClock(Instant.parse("2026-10-14T14:00:00Z")));
+  }
+
+  /** TAR-237: every guest and environment of a contract has its label. */
+  @BeforeEach
+  void everyLabelIsKnown() {
+    lenient()
+        .when(guests.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractGuestPort.GuestLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractGuestPort.GuestLabel("Ana Quispe", "DNI", "12345678"));
+              }
+              return found;
+            });
+    lenient()
+        .when(environments.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractEnvironmentPort.EnvironmentLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractEnvironmentPort.EnvironmentLabel("201", "ROOM"));
+              }
+              return found;
+            });
   }
 
   private static final java.time.Instant TERMINATED_AT =
@@ -51,7 +90,8 @@ class OwnContractServiceTest {
         "contracts/a.pdf",
         "a.pdf",
         10,
-        terminated ? TERMINATED_AT : null);
+        terminated ? TERMINATED_AT : null,
+        java.time.Instant.EPOCH);
   }
 
   @Test
@@ -95,7 +135,8 @@ class OwnContractServiceTest {
         "contracts/" + id + ".pdf",
         "a.pdf",
         10,
-        null);
+        null,
+        java.time.Instant.EPOCH);
   }
 
   /** TAR-237: the contract in force today and a renewal already loaded after it. */
