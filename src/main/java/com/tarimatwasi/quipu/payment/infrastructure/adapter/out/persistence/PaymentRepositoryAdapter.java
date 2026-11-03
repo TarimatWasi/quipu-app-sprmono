@@ -330,6 +330,16 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   }
 
   @Override
+  public List<Payment> findAllOfGuests(Collection<Long> guestIds) {
+    if (guestIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository.findByGuestIdIn(guestIds).stream()
+        .map(PaymentJpaEntity::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Long> guestsWithApprovedPayments() {
     return jpaRepository.findGuestIdsByStatus(PaymentStatus.APPROVED);
   }

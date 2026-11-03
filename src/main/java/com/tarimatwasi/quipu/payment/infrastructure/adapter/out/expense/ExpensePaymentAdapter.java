@@ -18,7 +18,7 @@ public class ExpensePaymentAdapter implements PaymentExpensePort {
 
   @Override
   public MonthTotal totalOf(YearMonth month) {
-    var total = expenses.totalOf(month);
+    ManageExpensesUseCase.MonthTotal total = expenses.totalOf(month);
     return new MonthTotal(total.amount(), total.count());
   }
 }

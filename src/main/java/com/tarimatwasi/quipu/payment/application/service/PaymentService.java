@@ -702,9 +702,9 @@ public class PaymentService implements ManagePaymentsUseCase {
     Long contractId = target.contractId();
     YearMonth period = target.period();
     if (stayId != null) {
-      ProofRecorder.rejectLive(payments.findLiveByStay(stayId));
+      ProofRecorder.rejectLive(payments.findLiveByStay(stayId).orElse(null));
     } else if (contractId != null && period != null) {
-      ProofRecorder.rejectLive(payments.findLiveByPeriod(contractId, period));
+      ProofRecorder.rejectLive(payments.findLiveByPeriod(contractId, period).orElse(null));
     }
   }
 

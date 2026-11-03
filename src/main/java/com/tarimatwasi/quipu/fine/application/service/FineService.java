@@ -72,7 +72,7 @@ public class FineService implements ManageFinesUseCase {
   @Transactional(readOnly = true)
   public MonthTotal totalOf(YearMonth month) {
     requireValid(month);
-    var total = fines.totalOfMonth(month);
+    FineRepositoryPort.Total total = fines.totalOfMonth(month);
     return new MonthTotal(total.amount(), total.count());
   }
 

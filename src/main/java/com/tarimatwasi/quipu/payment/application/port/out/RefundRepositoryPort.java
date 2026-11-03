@@ -8,6 +8,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -25,6 +26,9 @@ public interface RefundRepositoryPort {
 
   /** Every refund of the guest, in no given order. */
   List<Refund> findByGuest(Long guestId);
+
+  /** Like {@link #findByGuest(Long)} for several guests in one read (BE-SPR-DAT-10). */
+  List<Refund> findByGuests(Collection<Long> guestIds);
 
   /**
    * One page of the refunds dated in the month, newest first.

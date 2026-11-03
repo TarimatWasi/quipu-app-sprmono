@@ -282,7 +282,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
             .max(Comparator.comparing(c -> c.terms().startDate()))
             .orElseThrow(() -> new InvalidPaymentException("period"));
     Map<Integer, VoucherType> types = typesOf(payment.proofs());
-    ProofRecorder.rejectLive(payments.findLiveByPeriod(contract.id(), period));
+    ProofRecorder.rejectLive(payments.findLiveByPeriod(contract.id(), period).orElse(null));
     // RN-38: a period the credit covers whole is already paid.
     BigDecimal credit =
         credits.of(guestId, true).creditFor(contract.id(), period, contract.monthlyAmount());
@@ -305,7 +305,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
                 stays.staysOf(guestId), id -> payments.findLiveByStay(id).isPresent(), today)
             .orElseThrow(NoActiveStayException::new);
     Map<Integer, VoucherType> types = typesOf(payment.proofs());
-    ProofRecorder.rejectLive(payments.findLiveByStay(stay.id()));
+    ProofRecorder.rejectLive(payments.findLiveByStay(stay.id()).orElse(null));
     return send(guestId, payment.proofs(), types, null, stay.id(), null);
   }
 
