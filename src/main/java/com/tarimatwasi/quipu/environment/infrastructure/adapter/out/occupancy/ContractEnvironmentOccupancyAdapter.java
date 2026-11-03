@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,6 +35,14 @@ public class ContractEnvironmentOccupancyAdapter implements EnvironmentOccupancy
   public boolean isOccupied(Long environmentId) {
     return contracts.environmentOccupied(environmentId)
         || stays.environmentOccupiedFrom(environmentId, LocalDate.now(clock));
+  }
+
+  @Override
+  public Optional<Occupancy> occupantOf(Long environmentId) {
+    LocalDate today = LocalDate.now(clock);
+    return contracts
+        .contractCrossing(environmentId, today, today)
+        .or(() -> stays.stayCrossing(environmentId, today, null));
   }
 
   @Override

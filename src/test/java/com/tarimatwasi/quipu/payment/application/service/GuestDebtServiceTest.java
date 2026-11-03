@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.payment.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -8,9 +9,12 @@ import static org.mockito.Mockito.when;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.ContractInfo;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.StayTerms;
+import com.tarimatwasi.quipu.shared.debt.Debt;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
@@ -38,12 +42,13 @@ class GuestDebtServiceTest {
 
   @Mock PaymentRepositoryPort payments;
   @Mock PaymentContractPort contracts;
+  @Mock PaymentStayPort stays;
 
   private GuestDebtService service;
 
   @BeforeEach
   void setUp() {
-    service = new GuestDebtService(payments, contracts, clock);
+    service = new GuestDebtService(payments, contracts, stays, clock);
   }
 
   private static ContractInfo contract(Long id, String start, @Nullable String end) {
@@ -127,11 +132,85 @@ class GuestDebtServiceTest {
     // 2026-10-06 03:00 UTC is still the 5th in Lima: October is due today, not yet owed
     service =
         new GuestDebtService(
-            payments, contracts, new MutableClock(Instant.parse("2026-10-06T03:00:00Z")));
+            payments, contracts, stays, new MutableClock(Instant.parse("2026-10-06T03:00:00Z")));
     when(contracts.contractsOf(GUEST_ID))
         .thenReturn(List.of(contract(CURRENT, "2026-10-01", null)));
     when(payments.findApprovedOfContracts(GUEST_ID)).thenReturn(List.of());
 
     assertThat(service.owedPeriods(GUEST_ID)).isEmpty();
+  }
+
+  // ------------------------------------------------------------------ TAR-237: what is owed
+
+  private static Payment approvedStay(Long stayId) {
+    return new Payment(
+        TestIds.next(),
+        GUEST_ID,
+        null,
+        stayId,
+        null,
+        new BigDecimal("150"),
+        null,
+        PaymentStatus.APPROVED,
+        null,
+        Instant.parse("2026-10-01T15:00:00Z"),
+        TestIds.next(),
+        Instant.EPOCH);
+  }
+
+  @Test
+  void theDebtsCarryTheAmountOfEachMonthAndAMonthOfTwoContractsAddsUp() {
+    when(contracts.contractsOf(GUEST_ID))
+        .thenReturn(
+            List.of(
+                contract(OLD, "2026-09-01", "2026-09-30"), contract(CURRENT, "2026-09-01", null)));
+    when(payments.findApprovedOfContracts(GUEST_ID)).thenReturn(List.of());
+    when(stays.staysOfGuest(GUEST_ID)).thenReturn(List.of());
+
+    assertThat(service.debts(GUEST_ID))
+        .containsExactly(
+            Debt.ofPeriod(YearMonth.of(2026, 9), new BigDecimal("20.00")),
+            Debt.ofPeriod(YearMonth.of(2026, 10), new BigDecimal("10.00")));
+  }
+
+  @Test
+  void theUnpaidStaysThatEndedAreOwedInTheOrderTheyFellDue() {
+    Long overdue = TestIds.next();
+    Long paid = TestIds.next();
+    Long inCourse = TestIds.next();
+    when(contracts.contractsOf(GUEST_ID))
+        .thenReturn(List.of(contract(CURRENT, "2026-09-01", null)));
+    when(payments.findApprovedOfContracts(GUEST_ID)).thenReturn(List.of());
+    when(stays.staysOfGuest(GUEST_ID))
+        .thenReturn(
+            List.of(
+                stay(inCourse, "2026-10-10", "2026-10-20"),
+                stay(paid, "2026-09-01", "2026-09-10"),
+                stay(overdue, "2026-09-15", "2026-09-20")));
+    when(payments.findAllByStays(any())).thenReturn(List.of(approvedStay(paid)));
+
+    // September falls due on the 5th, the stay on its last day, the 20th, October on the 5th
+    assertThat(service.debts(GUEST_ID))
+        .containsExactly(
+            Debt.ofPeriod(YearMonth.of(2026, 9), new BigDecimal("10.00")),
+            Debt.ofStay(
+                overdue,
+                LocalDate.parse("2026-09-15"),
+                LocalDate.parse("2026-09-20"),
+                new BigDecimal("150")),
+            Debt.ofPeriod(YearMonth.of(2026, 10), new BigDecimal("10.00")));
+  }
+
+  @Test
+  void aGuestWithoutContractsNorStaysOwesNothing() {
+    when(contracts.contractsOf(GUEST_ID)).thenReturn(List.of());
+    when(stays.staysOfGuest(GUEST_ID)).thenReturn(List.of());
+
+    assertThat(service.debts(GUEST_ID)).isEmpty();
+    verifyNoInteractions(payments);
+  }
+
+  private static StayTerms stay(Long id, String start, String end) {
+    return new StayTerms(id, LocalDate.parse(start), LocalDate.parse(end), new BigDecimal("150"));
   }
 }

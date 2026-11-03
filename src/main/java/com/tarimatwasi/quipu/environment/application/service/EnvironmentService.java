@@ -105,7 +105,7 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
       return;
     }
     if (occupancy.isOccupied(id)) {
-      throw new EnvironmentOccupiedException();
+      throw new EnvironmentOccupiedException(occupancy.occupantOf(id).orElse(null));
     }
     setStatus(id, EnvironmentStatus.INACTIVE);
   }

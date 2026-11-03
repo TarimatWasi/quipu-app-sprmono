@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
@@ -12,6 +13,9 @@ import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -47,6 +51,7 @@ class EnvironmentsContractTest {
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
+  @Autowired IdMasker masker;
 
   /**
    * TAR-227: every account of a test signs in to this one session, so an id one request shows is
@@ -181,6 +186,45 @@ class EnvironmentsContractTest {
     }
   }
 
+  /** RN-12, TAR-237: the 409 of an environment held by a contract names the contract and whose. */
+  @Test
+  void anEnvironmentHeldByAContractSaysWhoHoldsIt() throws Exception {
+    Long room = TestIds.next();
+    jdbc.update(
+        "INSERT INTO environments (id, code, type, status) VALUES (?, '201', 'ROOM', 'ACTIVE')",
+        room);
+    Long guest = TestIds.next();
+    jdbc.update(
+        "INSERT INTO guests (id, full_name, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'Ana Quispe', 'DNI', '80000001', 'CONTRACT', 'ACTIVE')",
+        guest);
+    Long contract = TestIds.next();
+    jdbc.update(
+        "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
+            + " payment_day, grace_days, file_key, original_name, size_bytes, status)"
+            + " VALUES (?, ?, ?, '2025-01-01', NULL, 800, 5, 3, 'contracts/seed.pdf', 'seed.pdf',"
+            + " 10, 'ACTIVE')",
+        contract,
+        guest,
+        room);
+
+    mockMvc
+        .perform(
+            post(URL + "/" + ids().mask(IdKind.ENVIRONMENT, room) + "/deactivate").cookie(admin()))
+        .andExpect(status().isConflict())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("ENVIRONMENT_OCCUPIED"))
+        .andExpect(jsonPath("$.occupant.kind").value("CONTRACT"))
+        .andExpect(jsonPath("$.occupant.guestId").value(ids().mask(IdKind.GUEST, guest).toString()))
+        .andExpect(jsonPath("$.occupant.guestName").value("Ana Quispe"))
+        .andExpect(
+            jsonPath("$.occupant.contractId")
+                .value(ids().mask(IdKind.CONTRACT, contract).toString()))
+        .andExpect(jsonPath("$.occupant.stayId").isEmpty())
+        .andExpect(jsonPath("$.occupant.startDate").value("2025-01-01"))
+        .andExpect(jsonPath("$.occupant.endDate").isEmpty());
+  }
+
   @Test
   void aGuestSessionIs403() throws Exception {
     var guest = new Cookie("sessionToken", jwtTokenProvider.renew(guestId.toString(), sessionId));
@@ -189,6 +233,10 @@ class EnvironmentsContractTest {
         .perform(get(URL).cookie(guest))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
+  }
+
+  private MaskSession ids() {
+    return masker.session(sessionId);
   }
 
   private Cookie admin() {

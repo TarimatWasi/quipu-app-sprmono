@@ -16,4 +16,11 @@ public interface GuestDebtQuery {
    * of the caller.
    */
   List<YearMonth> owedPeriods(Long guestId);
+
+  /**
+   * TAR-237: everything the guest owes with its amount, oldest due first: the periods of {@link
+   * #owedPeriods} and the unpaid stays whose last day has passed. Read only to tell the
+   * administrator, never to decide; joins the transaction of the caller.
+   */
+  List<Debt> debts(Long guestId);
 }

@@ -19,7 +19,6 @@ import com.tarimatwasi.quipu.environment.application.port.in.EmptyEnvironmentUpd
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentInactiveException;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException;
-import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.application.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.expense.application.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.application.port.in.InvalidExpenseDescriptionException;
@@ -54,12 +53,10 @@ import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableE
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentReasonRequiredException;
-import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
-import java.time.YearMonth;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -409,18 +406,6 @@ public class BffExceptionHandler {
                 "GUEST_NOT_CONTRACT", "Solo los huéspedes con contrato pueden tener un contrato"));
   }
 
-  /** RN-25, RN-35: a guest that owes periods takes no new contract; the months, oldest first. */
-  @ExceptionHandler(GuestHasPendingDebtException.class)
-  public ResponseEntity<BffGuestHasPendingDebtResponse> handleGuestHasPendingDebt(
-      GuestHasPendingDebtException e) {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffGuestHasPendingDebtResponse(
-                "GUEST_HAS_PENDING_DEBT",
-                "El huésped tiene períodos pendientes de pago; primero regístralos",
-                e.periods().stream().map(YearMonth::toString).toList()));
-  }
-
   /** RN-12: a guest with a contract in force is not deactivated; the UI links the contract. */
   @ExceptionHandler(GuestHasActiveContractException.class)
   public ResponseEntity<BffGuestHasActiveContractResponse> handleGuestHasActiveContract(
@@ -441,22 +426,6 @@ public class BffExceptionHandler {
             new BffErrorResponse(
                 "ENVIRONMENT_INACTIVE",
                 "El ambiente está inactivo; reactívalo antes de registrar un contrato"));
-  }
-
-  /**
-   * RN-12, RN-20, TAR-237: a contract or a stay holds the environment. The texts are those of the
-   * catalog of SRS 17: one for a contract or a deactivation, one for a stay (A3.5).
-   */
-  @ExceptionHandler(EnvironmentOccupiedException.class)
-  public ResponseEntity<BffErrorResponse> handleEnvironmentOccupied(
-      EnvironmentOccupiedException e) {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "ENVIRONMENT_OCCUPIED",
-                e.isForStay()
-                    ? "El ambiente ya está ocupado en esas fechas"
-                    : "Este ambiente está ocupado: finaliza primero su contrato"));
   }
 
   /** An id of a payment that was never issued answers as a payment that does not exist. */

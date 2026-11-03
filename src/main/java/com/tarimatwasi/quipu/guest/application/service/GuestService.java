@@ -383,7 +383,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     }
     List<YearMonth> owed = debts.owedPeriods(id);
     if (!owed.isEmpty()) {
-      throw new GuestHasPendingDebtException(owed);
+      throw new GuestHasPendingDebtException(owed, debts.debts(id));
     }
     // This service always stores the previous state; an INACTIVE row without it (loaded by hand)
     // comes back pending activation, the state that asks for a new access.

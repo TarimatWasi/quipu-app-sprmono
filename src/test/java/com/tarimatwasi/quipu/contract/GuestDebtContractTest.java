@@ -57,7 +57,14 @@ class GuestDebtContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.code").value("GUEST_HAS_PENDING_DEBT"))
         .andExpect(jsonPath("$.periods.length()").value(2))
         .andExpect(jsonPath("$.periods[0]").value("2026-09"))
-        .andExpect(jsonPath("$.periods[1]").value("2026-10"));
+        .andExpect(jsonPath("$.periods[1]").value("2026-10"))
+        // TAR-237: the same months with what is left to pay of each
+        .andExpect(jsonPath("$.debts.length()").value(2))
+        .andExpect(jsonPath("$.debts[0].period").value("2026-09"))
+        .andExpect(jsonPath("$.debts[0].amountDue").value(800))
+        .andExpect(jsonPath("$.debts[0].stayId").isEmpty())
+        .andExpect(jsonPath("$.debts[0].stayStartDate").isEmpty())
+        .andExpect(jsonPath("$.debts[1].period").value("2026-10"));
     verify(contractFiles, never()).store(any());
     assertThat(count()).isEqualTo(1);
   }

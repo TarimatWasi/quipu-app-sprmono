@@ -95,7 +95,7 @@ public class ContractService implements ManageContractsUseCase {
     // environment occupancy (bff.yaml v0.8.0).
     List<YearMonth> owed = debts.owedPeriods(contract.guestId());
     if (!owed.isEmpty()) {
-      throw new GuestHasPendingDebtException(owed);
+      throw new GuestHasPendingDebtException(owed, debts.debts(contract.guestId()));
     }
     // TAR-200: read under the lock taken above, so a deactivation cannot slip in before the insert.
     if (!environmentActive) {
@@ -104,9 +104,15 @@ public class ContractService implements ManageContractsUseCase {
     // TAR-237 (RN-20): the dates may not cross another contract not terminated, nor a stay of the
     // environment. A renewal that starts after the end of the contract in force is accepted.
     Long environmentId = contract.environmentId();
-    if (contracts.existsCrossing(environmentId, contract.startDate(), contract.endDate())
-        || stays.environmentTaken(environmentId, contract.startDate(), contract.endDate())) {
-      throw new EnvironmentOccupiedException();
+    LocalDate start = contract.startDate();
+    LocalDate end = contract.endDate();
+    if (contracts.existsCrossing(environmentId, start, end)) {
+      throw new EnvironmentOccupiedException(
+          ContractOccupancyService.crossing(contracts, environmentId, start, end).orElse(null));
+    }
+    if (stays.environmentTaken(environmentId, start, end)) {
+      throw new EnvironmentOccupiedException(
+          stays.stayCrossing(environmentId, start, end).orElse(null));
     }
     return store(contract);
   }

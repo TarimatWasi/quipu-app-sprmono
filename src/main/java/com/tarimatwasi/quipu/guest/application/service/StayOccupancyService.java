@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +32,13 @@ public class StayOccupancyService implements StayOccupancyQuery {
     return end == null
         ? stays.environmentTakenFrom(environmentId, start)
         : stays.environmentTaken(environmentId, start, end, NO_STAY);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<Occupancy> stayCrossing(
+      Long environmentId, LocalDate start, @Nullable LocalDate end) {
+    return Occupancy.firstCrossing(occupanciesOf(List.of(environmentId)), start, end);
   }
 
   @Override

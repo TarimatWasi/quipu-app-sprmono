@@ -222,7 +222,15 @@ class StaysContractTest {
             guest, "{\"startDate\":\"2026-10-15\",\"endDate\":\"2026-10-25\",\"agreedAmount\":100}")
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("ENVIRONMENT_OCCUPIED"));
+        .andExpect(jsonPath("$.code").value("ENVIRONMENT_OCCUPIED"))
+        .andExpect(jsonPath("$.message").value("El ambiente ya está ocupado en esas fechas"))
+        .andExpect(jsonPath("$.occupant.kind").value("STAY"))
+        .andExpect(
+            jsonPath("$.occupant.guestId").value(adminIds().mask(IdKind.GUEST, other).toString()))
+        .andExpect(jsonPath("$.occupant.stayId").isNotEmpty())
+        .andExpect(jsonPath("$.occupant.contractId").isEmpty())
+        .andExpect(jsonPath("$.occupant.startDate").value("2026-10-10"))
+        .andExpect(jsonPath("$.occupant.endDate").value("2026-10-20"));
   }
 
   @Test

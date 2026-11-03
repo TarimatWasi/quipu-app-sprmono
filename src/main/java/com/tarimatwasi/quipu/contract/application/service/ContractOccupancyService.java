@@ -42,6 +42,39 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
 
   @Override
   @Transactional(readOnly = true)
+  public Optional<Occupancy> contractCrossing(
+      Long environmentId, LocalDate start, @Nullable LocalDate end) {
+    return crossing(contracts, environmentId, start, end);
+  }
+
+  /**
+   * TAR-237: the contract not terminated that holds the environment on a day of the range, as
+   * {@link ContractRepositoryPort#existsCrossing} decides, the one starting first.
+   */
+  static Optional<Occupancy> crossing(
+      ContractRepositoryPort contracts,
+      Long environmentId,
+      LocalDate start,
+      @Nullable LocalDate end) {
+    List<Occupancy> live =
+        contracts.findAllByEnvironments(List.of(environmentId)).stream()
+            .filter(contract -> contract.terminatedAt() == null)
+            .map(
+                contract ->
+                    new Occupancy(
+                        contract.environmentId(),
+                        Occupancy.Kind.CONTRACT,
+                        contract.guestId(),
+                        contract.id(),
+                        null,
+                        contract.startDate(),
+                        contract.endDate()))
+            .toList();
+    return Occupancy.firstCrossing(live, start, end);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<Occupancy> occupanciesOf(Collection<Long> environmentIds) {
     return contracts.findAllByEnvironments(environmentIds).stream().map(this::occupancy).toList();
   }

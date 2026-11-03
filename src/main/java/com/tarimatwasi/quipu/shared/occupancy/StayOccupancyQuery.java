@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.shared.occupancy;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -19,6 +20,12 @@ public interface StayOccupancyQuery {
    * @param end the last day of the range; null for an open-ended range (a contract without end)
    */
   boolean environmentTaken(Long environmentId, LocalDate start, @Nullable LocalDate end);
+
+  /**
+   * TAR-237: the stay that makes {@link #environmentTaken} true, the one starting first; read only
+   * to name it in the 409.
+   */
+  Optional<Occupancy> stayCrossing(Long environmentId, LocalDate start, @Nullable LocalDate end);
 
   /** Whether a stay holds the environment today or later, so it cannot be deactivated (RN-12). */
   boolean environmentOccupiedFrom(Long environmentId, LocalDate today);

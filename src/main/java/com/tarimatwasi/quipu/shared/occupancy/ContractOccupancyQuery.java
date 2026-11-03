@@ -25,6 +25,13 @@ public interface ContractOccupancyQuery {
    */
   boolean environmentTaken(Long environmentId, LocalDate start, @Nullable LocalDate end);
 
+  /**
+   * TAR-237: the contract that makes {@link #environmentTaken} true, the one starting first; read
+   * only to name it in the 409.
+   */
+  Optional<Occupancy> contractCrossing(
+      Long environmentId, LocalDate start, @Nullable LocalDate end);
+
   /** TAR-237 (A2): every contract of those environments, as the range it occupies. */
   List<Occupancy> occupanciesOf(Collection<Long> environmentIds);
 

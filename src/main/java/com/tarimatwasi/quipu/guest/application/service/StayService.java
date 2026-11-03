@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -26,6 +27,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -190,11 +192,37 @@ public class StayService implements ManageStaysUseCase {
       LocalDate start,
       LocalDate end,
       Long ownStayId) {
-    if (!environmentActive
-        || contracts.environmentTaken(environmentId, start, end)
-        || stays.environmentTaken(environmentId, start, end, ownStayId)) {
-      throw EnvironmentOccupiedException.forStay();
+    if (!environmentActive) {
+      throw EnvironmentOccupiedException.forStay(null);
     }
+    if (contracts.environmentTaken(environmentId, start, end)) {
+      throw EnvironmentOccupiedException.forStay(
+          contracts.contractCrossing(environmentId, start, end).orElse(null));
+    }
+    if (stays.environmentTaken(environmentId, start, end, ownStayId)) {
+      throw EnvironmentOccupiedException.forStay(
+          otherStayCrossing(environmentId, start, end, ownStayId).orElse(null));
+    }
+  }
+
+  /** TAR-237: the other stay that holds the environment in those dates, the one starting first. */
+  private Optional<Occupancy> otherStayCrossing(
+      Long environmentId, LocalDate start, LocalDate end, Long ownStayId) {
+    List<Occupancy> others =
+        stays.findAllByEnvironments(List.of(environmentId)).stream()
+            .filter(stay -> !stay.id().equals(ownStayId))
+            .map(
+                stay ->
+                    new Occupancy(
+                        environmentId,
+                        Occupancy.Kind.STAY,
+                        stay.guestId(),
+                        null,
+                        stay.id(),
+                        stay.startDate(),
+                        stay.endDate()))
+            .toList();
+    return Occupancy.firstCrossing(others, start, end);
   }
 
   /**
