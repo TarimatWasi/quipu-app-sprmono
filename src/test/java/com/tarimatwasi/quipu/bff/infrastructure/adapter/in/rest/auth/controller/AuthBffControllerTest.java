@@ -21,6 +21,7 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Objects;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -543,6 +544,14 @@ class AuthBffControllerTest {
     var lockedUntil =
         Instant.parse(JsonPath.<String>read(locked.getContentAsString(), "$.lockedUntil"));
     assertThat(lockedUntil).isBetween(Instant.now(), Instant.now().plusSeconds(901));
+    // TAR-247: the text says the same time left and the hour of Lima of the same instant.
+    var lima = lockedUntil.atZone(ZoneId.of("America/Lima"));
+    assertThat(JsonPath.<String>read(locked.getContentAsString(), "$.message"))
+        .isEqualTo(
+            String.format(
+                "Cuenta bloqueada por intentos fallidos. Podrás intentarlo de nuevo en %02d:%02d,"
+                    + " a las %02d:%02d (hora de Lima)",
+                retryAfter / 60, retryAfter % 60, lima.getHour(), lima.getMinute()));
   }
 
   @Test

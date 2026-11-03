@@ -236,8 +236,7 @@ class AdministratorManagementContractTest {
 
   /**
    * RF-22 (decision of 2026-11-03): reactivating takes a place back, so at the maximum (5 by
-   * default) it is refused. The contract v0.18.0 does not list a 409 for this route yet, so only
-   * the body is checked here, not the contract.
+   * default) it is refused; the contract lists this 409 since v0.18.1.
    */
   @Test
   void aReactivationAtTheMaximumIsRefusedAndChangesNothing() throws Exception {
@@ -252,7 +251,8 @@ class AdministratorManagementContractTest {
         .andExpect(
             exactly(
                 "{\"code\":\"ADMIN_LIMIT_REACHED\",\"message\":\"Ya hay 5 administradores, el"
-                    + " máximo. Desactiva uno antes de crear otro.\"}"));
+                    + " máximo. Desactiva uno antes de crear otro.\"}"))
+        .andExpect(satisfiesTheContract());
 
     assertThat(statusOf(targetId)).isEqualTo("INACTIVE");
     verifyNoInteractions(notices);

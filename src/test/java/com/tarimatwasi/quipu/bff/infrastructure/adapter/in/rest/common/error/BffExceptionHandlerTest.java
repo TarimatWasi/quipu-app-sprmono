@@ -5,11 +5,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.auth.error.BffAccountLockedResponse;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException;
+import com.tarimatwasi.quipu.guest.application.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
@@ -19,13 +22,17 @@ import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import jakarta.persistence.LockTimeoutException;
 import jakarta.persistence.PessimisticLockException;
 import java.net.SocketTimeoutException;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -231,25 +238,120 @@ class BffExceptionHandlerTest {
     assertThat(handler.handleStayNotFound().getBody())
         .extracting(BffErrorResponse::code)
         .isEqualTo("STAY_NOT_FOUND");
-    assertThat(handler.handleStayOverlap().getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-    assertThat(handler.handleStayOverlap().getBody())
-        .extracting(BffErrorResponse::code)
-        .isEqualTo("STAY_OVERLAP");
     assertThat(handler.handleGuestNotTemporary().getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(handler.handleGuestNotTemporary().getBody())
         .extracting(BffErrorResponse::code)
         .isEqualTo("GUEST_NOT_TEMPORARY");
   }
 
+  /** TAR-247: the dates of the stay of the same guest that is crossed, as dd/MM/yyyy. */
   @Test
-  void guestNotActive_namesTheGuestWithItsMaskedId() {
-    var response = handler.handleGuestNotActive(new GuestNotActiveException(42L));
+  void stayOverlap_namesTheDatesOfTheCrossedStay() {
+    var response =
+        handler.handleStayOverlap(
+            new StayOverlapException(LocalDate.of(2026, 3, 5), LocalDate.of(2026, 11, 20)));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "STAY_OVERLAP",
+                "Estas fechas se cruzan con otra estadía del huésped: del 05/03/2026 al"
+                    + " 20/11/2026"));
+  }
+
+  /** TAR-247: the administration reads the text for whoever manages the guest. */
+  @Test
+  void guestNotActive_toTheAdministration_namesTheGuestWithItsMaskedId() {
+    var response =
+        handler.handleGuestNotActive(
+            new GuestNotActiveException(42L), request("/bff/admin/payments"));
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(response.getBody())
         .isEqualTo(
             new BffGuestNotActiveResponse(
-                "GUEST_NOT_ACTIVE", "El huésped no está activo", MASKER.mask(IdKind.GUEST, 42L)));
+                "GUEST_NOT_ACTIVE",
+                "Este huésped aún no está activo: no admite contratos ni pagos",
+                MASKER.mask(IdKind.GUEST, 42L)));
+  }
+
+  /** TAR-247: the guest with a contract (H3) and the temporary one (T2) read their own text. */
+  @Test
+  void guestNotActive_toTheGuest_tellsItToAskTheAdministration() {
+    for (String path : List.of("/bff/guest/payments", "/bff/temporary-guest/payments")) {
+      var response = handler.handleGuestNotActive(new GuestNotActiveException(42L), request(path));
+
+      assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody())
+          .as(path)
+          .isEqualTo(
+              new BffGuestNotActiveResponse(
+                  "GUEST_NOT_ACTIVE",
+                  "No puedes enviar pagos mientras tu cuenta no esté activa. Consulta con la"
+                      + " administración.",
+                  MASKER.mask(IdKind.GUEST, 42L)));
+    }
+  }
+
+  /**
+   * TAR-247: the time left (rounded up, as {@code Retry-After}) and the hour of Lima the lock ends
+   * at. 10:32 in Lima is 15:32 UTC.
+   */
+  @Test
+  void accountLocked_saysTheTimeLeftAndTheHourOfLima() {
+    Instant until = Instant.parse("2026-11-03T15:32:00Z");
+
+    var response =
+        handler.handleAccountLocked(
+            new AccountLockedException(Instant.parse("2026-11-03T15:17:55Z"), until));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.LOCKED);
+    assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("845");
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffAccountLockedResponse(
+                "AUTH_ACCOUNT_LOCKED",
+                "Cuenta bloqueada por intentos fallidos. Podrás intentarlo de nuevo en 14:05, a"
+                    + " las 10:32 (hora de Lima)",
+                until));
+  }
+
+  /** TAR-247: a part of a second left counts as a whole one, like {@code Retry-After}. */
+  @Test
+  void accountLocked_roundsTheTimeLeftUpToTheSecond() {
+    Instant until = Instant.parse("2026-11-03T15:32:00Z");
+
+    var response =
+        handler.handleAccountLocked(
+            new AccountLockedException(Instant.parse("2026-11-03T15:17:54.001Z"), until));
+
+    assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("846");
+    assertThat(response.getBody())
+        .extracting(BffAccountLockedResponse::message)
+        .isEqualTo(
+            "Cuenta bloqueada por intentos fallidos. Podrás intentarlo de nuevo en 14:06, a"
+                + " las 10:32 (hora de Lima)");
+  }
+
+  /** TAR-247: the hour is the one of Lima even when UTC is already the next day. */
+  @Test
+  void accountLocked_saysTheHourOfLimaWhenUtcIsAnotherDay() {
+    Instant until = Instant.parse("2026-11-04T02:10:00Z");
+
+    var response =
+        handler.handleAccountLocked(
+            new AccountLockedException(Instant.parse("2026-11-04T01:55:00Z"), until));
+
+    assertThat(response.getBody())
+        .extracting(BffAccountLockedResponse::message)
+        .isEqualTo(
+            "Cuenta bloqueada por intentos fallidos. Podrás intentarlo de nuevo en 15:00, a"
+                + " las 21:10 (hora de Lima)");
+  }
+
+  private static MockHttpServletRequest request(String path) {
+    return new MockHttpServletRequest("POST", path);
   }
 
   @Test

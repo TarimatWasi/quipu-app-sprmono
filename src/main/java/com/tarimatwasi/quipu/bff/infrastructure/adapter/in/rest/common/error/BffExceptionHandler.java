@@ -57,6 +57,11 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -83,6 +88,14 @@ public class BffExceptionHandler {
   public static final String INTERNAL_ERROR_MESSAGE =
       "No se pudo completar la acción; vuelve a intentarlo";
 
+  /** The texts give the hours of Lima, never of the zone of the server (TAR-247). */
+  private static final ZoneId LIMA = ZoneId.of("America/Lima");
+
+  private static final DateTimeFormatter HOUR = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);
+
+  private static final DateTimeFormatter DAY =
+      DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ROOT);
+
   private final IdMasker ids;
 
   public BffExceptionHandler(IdMasker ids) {
@@ -99,7 +112,7 @@ public class BffExceptionHandler {
   /**
    * SEG-06: too many failed logins; the lock lifts by itself or with a password reset. TAR-131:
    * {@code Retry-After} (seconds left) is what the login counts down from, and {@code lockedUntil}
-   * the time of day it shows.
+   * the time of day it shows. TAR-247: the text says both, from the same seconds and instant.
    */
   @ExceptionHandler(AccountLockedException.class)
   public ResponseEntity<BffAccountLockedResponse> handleAccountLocked(AccountLockedException e) {
@@ -108,9 +121,19 @@ public class BffExceptionHandler {
         .body(
             new BffAccountLockedResponse(
                 "AUTH_ACCOUNT_LOCKED",
-                "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo de nuevo más"
-                    + " tarde o restablece tu contraseña",
+                lockedMessage(e.retryAfterSeconds(), e.lockedUntil()),
                 e.lockedUntil()));
+  }
+
+  /** The time left as mm:ss (two digits at least for the minutes) and the hour of Lima. */
+  private static String lockedMessage(long secondsLeft, Instant lockedUntil) {
+    return String.format(
+        Locale.ROOT,
+        "Cuenta bloqueada por intentos fallidos. Podrás intentarlo de nuevo en %02d:%02d, a las"
+            + " %s (hora de Lima)",
+        secondsLeft / 60,
+        secondsLeft % 60,
+        HOUR.format(lockedUntil.atZone(LIMA)));
   }
 
   /** SEC-01 (TAR-124): the same answer as the address limit of {@code RateLimitFilter}. */
@@ -360,15 +383,22 @@ public class BffExceptionHandler {
         .body(new BffErrorResponse("STAY_NOT_FOUND", "La estadía no existe"));
   }
 
-  /** RN-35: only an active guest takes a new stay. */
+  /**
+   * RN-35: only an active guest takes a new stay, contract or payment. TAR-247: the guest that
+   * sends a payment from its own area reads its own text; the administration, the other one.
+   */
   @ExceptionHandler(GuestNotActiveException.class)
-  public ResponseEntity<BffGuestNotActiveResponse> handleGuestNotActive(GuestNotActiveException e) {
+  public ResponseEntity<BffGuestNotActiveResponse> handleGuestNotActive(
+      GuestNotActiveException e, HttpServletRequest request) {
+    String message =
+        BffCaller.of(request).guest()
+            ? "No puedes enviar pagos mientras tu cuenta no esté activa. Consulta con la"
+                + " administración."
+            : "Este huésped aún no está activo: no admite contratos ni pagos";
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffGuestNotActiveResponse(
-                "GUEST_NOT_ACTIVE",
-                "El huésped no está activo",
-                ids.mask(IdKind.GUEST, e.guestId())));
+                "GUEST_NOT_ACTIVE", message, ids.mask(IdKind.GUEST, e.guestId())));
   }
 
   /** RN-12, RN-18: the guest is inactive; {@code guestId} lets the UI reactivate it (CU-28). */
@@ -391,13 +421,20 @@ public class BffExceptionHandler {
                 "GUEST_NOT_TEMPORARY", "Solo los huéspedes temporales tienen estadías"));
   }
 
-  /** The dates of a stay cross another stay of the same guest. */
+  /**
+   * The dates of a stay cross another stay of the same guest. TAR-247: the text names the dates of
+   * that stay, which is of the same guest, so nothing of another person is shown.
+   */
   @ExceptionHandler(StayOverlapException.class)
-  public ResponseEntity<BffErrorResponse> handleStayOverlap() {
+  public ResponseEntity<BffErrorResponse> handleStayOverlap(StayOverlapException e) {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "STAY_OVERLAP", "Las fechas se cruzan con otra estadía del huésped"));
+                "STAY_OVERLAP",
+                "Estas fechas se cruzan con otra estadía del huésped: del "
+                    + DAY.format(e.otherStart())
+                    + " al "
+                    + DAY.format(e.otherEnd())));
   }
 
   /** RN-13: only guests with a contract take a contract. */

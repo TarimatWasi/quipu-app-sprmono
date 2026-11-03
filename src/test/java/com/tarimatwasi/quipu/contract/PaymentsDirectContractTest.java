@@ -269,6 +269,9 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_ACTIVE"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Este huésped aún no está activo: no admite contratos ni pagos"))
         .andExpect(jsonPath("$.guestId").value(ids().mask(IdKind.GUEST, contractGuest).toString()));
     verify(files, never()).store(any(), any());
   }
@@ -298,7 +301,10 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Este período ya tiene un pago: complétalo en Revisar pago."));
     verify(files, never()).store(any(), any());
   }
 
@@ -319,7 +325,10 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Este período ya tiene un pago: complétalo en Revisar pago."));
   }
 
   @Test
