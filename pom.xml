@@ -94,7 +94,10 @@
     </dependency>
     <!-- Logs by OTLP (TAR-139): the exporter that Boot builds the log pipeline with, and the
          appender. The appender is not in the Boot BOM and published only as alpha; 2.28.0-alpha is
-         the instrumentation release that builds on the SDK 1.62.0 that Boot 4.1.1 brings. -->
+         the instrumentation release that builds on the SDK 1.62.0 that Boot 4.1 brings. TAR-278: a
+         newer appender pulls an api-incubator without ExtendedAttributes, which that SDK needs, and
+         the export of logs dies; OpenTelemetryLoggingConfigTest fails then. Raise it only with the
+         SDK of the Boot BOM. -->
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-exporter-otlp</artifactId>
@@ -102,7 +105,7 @@
     <dependency>
       <groupId>io.opentelemetry.instrumentation</groupId>
       <artifactId>opentelemetry-logback-appender-1.0</artifactId>
-      <version>2.33.0-alpha</version>
+      <version>2.28.0-alpha</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
