@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 
@@ -55,9 +56,9 @@ class UsersMigrationTest {
             Boolean.class);
     assertThat(mustChange).isTrue();
     var code = ArgumentCaptor.forClass(String.class);
-    verify(mail).sendResetLink(eq("admin@example.com"), code.capture(), any());
+    verify(mail).sendResetLink(eq("admin@example.com"), code.capture(), any(), anyBoolean());
 
-    recovery.resetPassword(code.getValue(), "Elegida12345");
+    recovery.resetPassword(code.getValue(), "Elegida12345", "Ana Quispe Mamani");
 
     var hash =
         jdbc.queryForObject(

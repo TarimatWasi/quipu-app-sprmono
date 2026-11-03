@@ -9,9 +9,11 @@ public interface PasswordResetMailPort {
    * Sends the recovery link built from the code.
    *
    * @param validFor how long the code works, so the email can say it
+   * @param activation the account is an administrator without name: the link opens the activation
+   *     screen (A0.5, TAR-127) instead of the recovery one
    * @throws MailDeliveryException if the provider did not accept the email
    */
-  void sendResetLink(String toEmail, String code, Duration validFor);
+  void sendResetLink(String toEmail, String code, Duration validFor, boolean activation);
 
   /**
    * Sends the link a new administrator uses to choose its first password (RF-22) and waits for the

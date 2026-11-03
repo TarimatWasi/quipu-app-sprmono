@@ -19,6 +19,7 @@ public interface ContractTermsUseCase {
    */
   record ContractTermsView(
       Long contractId,
+      Long guestId,
       Long environmentId,
       LocalDate startDate,
       @Nullable LocalDate endDate,
@@ -52,4 +53,10 @@ public interface ContractTermsUseCase {
    * started or not, read at once (HU-A04); the oldest start first.
    */
   List<ContractTermsView> termsInForce();
+
+  /**
+   * TAR-236 (A1): every contract, whatever its state, the oldest start first: the overdue charges
+   * of the home come from any of them (RN-25). A business of this size has few.
+   */
+  List<ContractTermsView> allTerms();
 }

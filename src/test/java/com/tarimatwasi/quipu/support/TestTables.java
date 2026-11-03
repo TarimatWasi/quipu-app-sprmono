@@ -12,12 +12,12 @@ public final class TestTables {
   private TestTables() {}
 
   /**
-   * Removes every row of users, guests, stays, contracts, payments, environments, expenses and
-   * fines.
+   * Removes every row of users, guests, stays, contracts, payments (with their proofs and reviews),
+   * environments, expenses and fines.
    */
   public static void clear(JdbcTemplate jdbc) {
     jdbc.execute(
         "TRUNCATE TABLE guest_document_actions, guest_document_deletions, guest_document_purges, guest_documents, guest_consents, access_grants, users, guests, environments,"
-            + " expenses, fines, stays, contracts, payments");
+            + " expenses, fines, stays, contracts, refunds, payment_reviews, payment_proofs, payments");
   }
 }

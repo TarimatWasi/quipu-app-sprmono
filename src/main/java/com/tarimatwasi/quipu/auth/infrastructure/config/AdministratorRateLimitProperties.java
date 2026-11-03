@@ -20,13 +20,17 @@ import org.springframework.validation.annotation.Validated;
  * @param guestAccountEmailChangesPerMinute {@code
  *     app.rate-limit.guest-account-email-changes-per-minute}: the same for setting the account
  *     email of a guest (TAR-229), which may email the previous address (5; from 1 to 60).
+ * @param passwordChangesPerMinute {@code app.rate-limit.password-changes-per-minute}: the same for
+ *     changing the own password (A0.6, TAR-127), which checks the current one, so a session cannot
+ *     use it to guess the password (5; from 1 to 60).
  */
 @ConfigurationProperties("app.rate-limit")
 @Validated
 public record AdministratorRateLimitProperties(
     @DefaultValue("3") int administratorCreationsPerMinute,
     @DefaultValue("3") int administratorStatusChangesPerMinute,
-    @DefaultValue("5") int guestAccountEmailChangesPerMinute) {
+    @DefaultValue("5") int guestAccountEmailChangesPerMinute,
+    @DefaultValue("5") int passwordChangesPerMinute) {
 
   /** The most that the configuration may allow. */
   static final int MAX_PER_MINUTE = 60;
@@ -39,6 +43,7 @@ public record AdministratorRateLimitProperties(
         "app.rate-limit.administrator-status-changes-per-minute");
     requireWithinBounds(
         guestAccountEmailChangesPerMinute, "app.rate-limit.guest-account-email-changes-per-minute");
+    requireWithinBounds(passwordChangesPerMinute, "app.rate-limit.password-changes-per-minute");
   }
 
   private static void requireWithinBounds(int perMinute, String property) {

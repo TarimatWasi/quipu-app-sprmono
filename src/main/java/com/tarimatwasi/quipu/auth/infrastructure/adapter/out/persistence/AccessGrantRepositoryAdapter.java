@@ -4,6 +4,8 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -77,5 +79,14 @@ public class AccessGrantRepositoryAdapter implements AccessGrantRepositoryPort {
     return jpaRepository
         .findByGuestIdAndUsedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(guestId, now)
         .map(AccessGrantJpaEntity::expiresAt);
+  }
+
+  @Override
+  public Map<Long, Instant> unusedExpiries(Collection<Long> guestIds) {
+    Map<Long, Instant> expiries = new HashMap<>();
+    jpaRepository
+        .findByGuestIdInAndUsedAtIsNullAndRevokedAtIsNull(guestIds)
+        .forEach(grant -> expiries.put(grant.guestId(), grant.expiresAt()));
+    return expiries;
   }
 }

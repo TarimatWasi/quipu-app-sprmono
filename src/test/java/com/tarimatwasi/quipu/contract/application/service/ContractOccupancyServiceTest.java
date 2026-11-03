@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.domain.Contract;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.support.MutableClock;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -50,6 +51,44 @@ class ContractOccupancyServiceTest {
     assertThat(service.guestContractInForce(8L)).isEmpty();
   }
 
+  /** TAR-237: a contract cancelled before its start holds nothing; one finished later does. */
+  @Test
+  void aContractCancelledBeforeItsStartOccupiesNothing() {
+    var service =
+        new ContractOccupancyService(
+            contracts, new MutableClock(Instant.parse("2026-10-15T15:00:00Z")));
+    Contract cancelled = starting(1L, "2026-12-01", Instant.parse("2026-10-15T15:00:00Z"));
+    Contract finished = starting(2L, "2026-01-01", Instant.parse("2026-10-15T15:00:00Z"));
+    Contract coming = starting(3L, "2027-01-01", null);
+    when(contracts.findAllByEnvironments(List.of(5L)))
+        .thenReturn(List.of(cancelled, finished, coming));
+    when(contracts.findAllByGuests(List.of(7L))).thenReturn(List.of(cancelled, finished, coming));
+
+    assertThat(service.occupanciesOf(List.of(5L)))
+        .extracting(Occupancy::contractId)
+        .containsExactly(2L, 3L);
+    assertThat(service.occupanciesOfGuests(List.of(7L)))
+        .extracting(Occupancy::contractId)
+        .containsExactly(2L, 3L);
+  }
+
+  private static Contract starting(Long id, String start, @Nullable Instant terminated) {
+    return new Contract(
+        id,
+        5L,
+        7L,
+        LocalDate.parse(start),
+        null,
+        BigDecimal.TEN,
+        5,
+        3,
+        "contracts/a.pdf",
+        "a.pdf",
+        10,
+        terminated,
+        java.time.Instant.EPOCH);
+  }
+
   private static Contract contract(Long id, @Nullable String end, @Nullable Instant terminated) {
     return new Contract(
         id,
@@ -63,6 +102,7 @@ class ContractOccupancyServiceTest {
         "contracts/a.pdf",
         "a.pdf",
         10,
-        terminated);
+        terminated,
+        java.time.Instant.EPOCH);
   }
 }

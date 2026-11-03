@@ -24,8 +24,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * TAR-43: the payment the administrator registers by hand (CU-14) and who may reach the routes,
- * against the shared contract.
+ * TAR-43, TAR-239: the payment the administrator registers by hand (CU-14, A5.1), with one or more
+ * proofs, and who may reach the routes, against the shared contract.
  */
 class PaymentsDirectContractTest extends PaymentsContractSupport {
 
@@ -41,7 +41,11 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
             .andExpect(jsonPath("$.status").value("APPROVED"))
             .andExpect(jsonPath("$.period").value("2026-10"))
             .andExpect(jsonPath("$.amount").value(850.50))
+            .andExpect(jsonPath("$.verifiedAmount").value(850.50))
             .andExpect(jsonPath("$.paymentMethod").value("Efectivo"))
+            .andExpect(jsonPath("$.proofCount").value(1))
+            .andExpect(jsonPath("$.voucherCount").value(1))
+            .andExpect(jsonPath("$.hasCash").value(false))
             .andExpect(
                 jsonPath("$.contractId").value(ids().mask(IdKind.CONTRACT, contract).toString()))
             .andReturn();
@@ -52,10 +56,15 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .isEqualTo(adminId);
     assertThat(jdbc.queryForObject("SELECT recorded_by FROM payments", String.class))
         .isEqualTo("ADMIN");
-    assertThat(jdbc.queryForObject("SELECT original_name FROM payments", String.class))
-        .isEqualTo("v.pdf");
-    assertThat(jdbc.queryForObject("SELECT voucher_key FROM payments", String.class))
-        .isEqualTo(KEY);
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT original_name, file_key, uploaded_by, received_on FROM payment_proofs"))
+        .containsEntry("original_name", "v.pdf")
+        .containsEntry("file_key", KEY)
+        .containsEntry("uploaded_by", "ADMIN")
+        .containsEntry("received_on", java.sql.Date.valueOf("2026-10-14"));
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_reviews", Integer.class))
+        .isEqualTo(1);
   }
 
   @Test
@@ -65,6 +74,95 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.status").value("APPROVED"))
         .andExpect(jsonPath("$.stayId").value(ids().mask(IdKind.STAY, stay).toString()));
+  }
+
+  /** RN-22: cash needs no voucher; the proofs add up to what is due. */
+  @Test
+  void aPaymentInCashAndWithAVoucherIsRegisteredWithTheDayItWasReceived() throws Exception {
+    postForm(
+            builder(PDF)
+                .file(
+                    proofsPart(
+                        "[{\"kind\":\"CASH\",\"amount\":300},"
+                            + "{\"kind\":\"VOUCHER\",\"amount\":500,\"method\":\"Yape\","
+                            + "\"fileIndex\":0}]"))
+                .param("guestId", id(IdKind.GUEST, contractGuest))
+                .param("period", "2026-10")
+                .param("receivedOn", "2026-10-12"))
+        .andExpect(status().isCreated())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.amount").value(800.00))
+        .andExpect(jsonPath("$.proofCount").value(2))
+        .andExpect(jsonPath("$.voucherCount").value(1))
+        .andExpect(jsonPath("$.hasCash").value(true));
+    assertThat(
+            jdbc.queryForList(
+                "SELECT received_on FROM payment_proofs ORDER BY id", java.sql.Date.class))
+        .containsOnly(java.sql.Date.valueOf("2026-10-12"));
+  }
+
+  /** RN-16, TAR-239: a short payment is not registered; one received in the future neither. */
+  @Test
+  void aShortPaymentOrOneReceivedInTheFutureIsAValidationError() throws Exception {
+    post(contractGuest, "period", "2026-10", "799.99", PDF, "v.pdf")
+        .andExpect(status().isBadRequest())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.field").value("proofs"));
+    postForm(
+            builder(PDF)
+                .file(proofs("800", null))
+                .param("guestId", id(IdKind.GUEST, contractGuest))
+                .param("period", "2026-10")
+                .param("receivedOn", "2026-10-15"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("receivedOn"));
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isZero();
+    verify(files, never()).store(any(), any());
+  }
+
+  @Test
+  void theProofsAreBetweenOneAndFiveAndEachPointsToItsFile() throws Exception {
+    String six =
+        "["
+            + String.join(
+                ",", java.util.Collections.nCopies(6, "{\"kind\":\"CASH\",\"amount\":200}"))
+            + "]";
+    for (String json : new String[] {"[]", six, "{}", "nonsense"}) {
+      postForm(
+              multipart()
+                  .file(proofsPart(json))
+                  .param("guestId", id(IdKind.GUEST, contractGuest))
+                  .param("period", "2026-10"))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.field").value("proofs"));
+    }
+    postForm(
+            multipart()
+                .file(proofsPart("[{\"kind\":\"VOUCHER\",\"amount\":800}]"))
+                .param("guestId", id(IdKind.GUEST, contractGuest))
+                .param("period", "2026-10"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("proofs[0].fileIndex"));
+    postForm(
+            builder(PDF)
+                .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800,\"fileIndex\":0}]"))
+                .param("guestId", id(IdKind.GUEST, contractGuest))
+                .param("period", "2026-10"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("proofs[0].fileIndex"));
+    postForm(
+            builder(PDF)
+                .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800}]"))
+                .param("guestId", id(IdKind.GUEST, contractGuest))
+                .param("period", "2026-10"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("files"));
+    verify(files, never()).store(any(), any());
+  }
+
+  private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder
+      multipart() {
+    return org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(URL);
   }
 
   @Test
@@ -79,31 +177,37 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
           .andExpect(status().isBadRequest())
           .andExpect(answersTheContract())
           .andExpect(jsonPath("$.code").value("VOUCHER_INVALID_FILE"))
-          .andExpect(jsonPath("$.field").value("file"));
+          .andExpect(jsonPath("$.field").value("proofs[0].file"));
     }
     verify(files, never()).store(any(), any());
   }
 
   @Test
   void bothOrNeitherOfPeriodAndStayAndABadAmountAreValidationErrors() throws Exception {
-    postForm(builder(PDF).param("guestId", id(IdKind.GUEST, contractGuest)).param("amount", "800"))
+    postForm(
+            builder(PDF)
+                .file(proofs("800", null))
+                .param("guestId", id(IdKind.GUEST, contractGuest)))
         .andExpect(status().isBadRequest())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     postForm(
             builder(PDF)
+                .file(proofs("800", null))
                 .param("guestId", id(IdKind.GUEST, contractGuest))
-                .param("amount", "800")
                 .param("period", "2026-10")
                 .param("stayId", id(IdKind.STAY, stay)))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-    for (String amount : new String[] {"0", "-1", "0.001", "100000000", "abc"}) {
+    for (String amount : new String[] {"0", "-1", "0.001", "100000000"}) {
       post(contractGuest, "period", "2026-10", amount, PDF, "v.pdf")
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-          .andExpect(jsonPath("$.field").value("amount"));
+          .andExpect(jsonPath("$.field").value("proofs[0].amount"));
     }
+    post(contractGuest, "period", "2026-10", "abc", PDF, "v.pdf")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("proofs"));
     for (String period : new String[] {"2026-13", "2026-1", "202610", "oct-2026", "2026-00"}) {
       post(contractGuest, "period", period, "800", PDF, "v.pdf")
           .andExpect(status().isBadRequest())
@@ -116,8 +220,8 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
   void aMisspelledFieldIsRefusedInsteadOfBeingIgnored() throws Exception {
     postForm(
             builder(PDF)
+                .file(proofs("800", null))
                 .param("guestId", id(IdKind.GUEST, contractGuest))
-                .param("amount", "800")
                 .param("periodo", "2026-10"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -125,11 +229,18 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     postForm(
             builder(PDF)
                 .file(new MockMultipartFile("copy", PDF))
+                .file(proofs("800", null))
                 .param("guestId", id(IdKind.GUEST, contractGuest))
-                .param("amount", "800")
                 .param("period", "2026-10"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("copy"));
+    postForm(
+            builder(PDF)
+                .file(proofsPart("[{\"kind\":\"VOUCHER\",\"amount\":800,\"fileIndex\":0,\"x\":1}]"))
+                .param("guestId", id(IdKind.GUEST, contractGuest))
+                .param("period", "2026-10"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("proofs[0].x"));
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isZero();
   }
 
@@ -200,11 +311,15 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_EXISTS_FOR_PERIOD"));
   }
 
+  /** TAR-239: a rejected payment is completed in correctPaymentByAdmin, not with a new one. */
   @Test
-  void aRejectedVoucherDoesNotBlockARegisteredPayment() throws Exception {
+  void aRejectedPaymentIsCompletedInsteadOfRegisteringAnother() throws Exception {
     insertPayment(contractGuest, contract, null, "2026-10", "REJECTED", "2026-10-01T10:00:00Z");
 
-    post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf").andExpect(status().isCreated());
+    post(contractGuest, "period", "2026-10", "800", PDF, "v.pdf")
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
   }
 
   @Test
@@ -269,61 +384,55 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
 
     postForm(
             builder(PDF)
+                .file(proofs("0", null))
                 .param("guestId", forged.toString())
-                .param("amount", "0")
                 .param("period", "2026-10"))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("amount"));
+        .andExpect(jsonPath("$.field").value("proofs[0].amount"));
     postForm(
             builder(PDF)
+                .file(proofs("150", null))
                 .param("guestId", id(IdKind.GUEST, temporaryGuest))
-                .param("amount", "150")
                 .param("stayId", forged.toString())
                 .param("period", "2026-10"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("period"));
     postForm(
             builder(PDF)
+                .file(proofs("150", null))
                 .param("guestId", forged.toString())
-                .param("amount", "150")
                 .param("period", "2026-10"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("GUEST_NOT_FOUND"));
     postForm(
             builder(PDF)
+                .file(proofs("150", null))
                 .param("guestId", id(IdKind.GUEST, temporaryGuest))
-                .param("amount", "150")
                 .param("stayId", forged.toString()))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("STAY_NOT_FOUND"));
     postForm(
             builder(PDF)
+                .file(proofs("150", null))
                 .param("guestId", id(IdKind.GUEST, temporaryGuest))
-                .param("amount", "150")
                 .param("stayId", id(IdKind.CONTRACT, contract)))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("STAY_NOT_FOUND"));
   }
 
   @Test
-  void aPaymentMethodWithHiddenCharactersAndAScientificAmountAreValidationErrors()
+  void aPaymentMethodWithHiddenCharactersAndAnAmountWithAnExponentAreValidationErrors()
       throws Exception {
     postForm(
             builder(PDF)
+                .file(proofs("800", "Yape\u202E"))
                 .param("guestId", id(IdKind.GUEST, contractGuest))
-                .param("amount", "800")
-                .param("period", "2026-10")
-                .param("paymentMethod", "Yape\u202E"))
+                .param("period", "2026-10"))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("paymentMethod"));
-    for (String written : new String[] {"8E+2", "8.00E+2", "8.000e+2", "800E0"}) {
-      post(contractGuest, "period", "2026-10", written, PDF, "v.pdf")
-          .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.field").value("amount"));
-    }
+        .andExpect(jsonPath("$.field").value("proofs[0].method"));
     post(contractGuest, "period", "2026-10", "8E+2", PDF, "v.pdf")
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("amount"));
+        .andExpect(jsonPath("$.field").value("proofs[0].amount"));
   }
 
   @Test

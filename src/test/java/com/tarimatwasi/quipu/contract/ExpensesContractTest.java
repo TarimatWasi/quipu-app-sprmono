@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
@@ -70,6 +71,15 @@ class ExpensesContractTest {
     return openApi().isValid(SPEC);
   }
 
+  /**
+   * ExpenseUpdateInput is an allOf of ExpenseInput and {version}: the validator checks each part as
+   * if it allowed no other property, so it refuses {@code version} against ExpenseInput. Only that
+   * complaint of the request is ignored; the answer is checked whole.
+   */
+  private static ResultMatcher answersTheContractToAnEdit() {
+    return answersTheContractToARequestWith("validation.request.body.schema.additionalProperties");
+  }
+
   /** For a request that is invalid on purpose: only that complaint of the request is ignored. */
   private static ResultMatcher answersTheContractToARequestWith(String requestErrorKey) {
     var validator =
@@ -85,24 +95,48 @@ class ExpensesContractTest {
     return openApi().isValid(validator);
   }
 
+  private ResultActions edit(String id, String body) throws Exception {
+    return mockMvc.perform(
+        patch(URL + "/" + id)
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
+  }
+
   @Test
   void createListEditAndDeleteAnExpense() throws Exception {
     var created =
         create(UTILITIES).andExpect(status().isCreated()).andExpect(satisfiesTheContract());
     var id = JsonPath.<String>read(created.andReturn().getResponse().getContentAsString(), "$.id");
+    create(UTILITIES).andExpect(status().isCreated());
 
+    // TAR-240: a page of one says the month has two (A6 «Mostrando X de Y»)
     mockMvc
-        .perform(get(URL).param("month", "2026-09").cookie(admin()))
+        .perform(get(URL).param("month", "2026-09").param("limit", "1").cookie(admin()))
         .andExpect(status().isOk())
-        .andExpect(satisfiesTheContract());
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].version").value(0))
+        .andExpect(jsonPath("$.totalCount").value(2));
+    String body =
+        "{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\",\"version\":0}";
+    edit(id, body)
+        .andExpect(status().isOk())
+        .andExpect(answersTheContractToAnEdit())
+        .andExpect(jsonPath("$.version").value(1));
+    // BE-SPR-DAT-13: an edit made with the version loaded before the last one changes nothing
+    edit(id, body.replace("99.9", "12"))
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContractToAnEdit())
+        .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
     mockMvc
-        .perform(
-            patch(URL + "/" + id)
-                .cookie(admin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\"}"))
-        .andExpect(status().isOk())
-        .andExpect(satisfiesTheContract());
+        .perform(get(URL).param("month", "2026-10").cookie(admin()))
+        .andExpect(jsonPath("$.content[0].amount").value(99.9))
+        .andExpect(jsonPath("$.totalCount").value(1));
+    // Without the version the edit is not valid
+    edit(id, body.replace(",\"version\":0", ""))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("version"));
     mockMvc
         .perform(delete(URL + "/" + id).cookie(admin()))
         .andExpect(status().isNoContent())

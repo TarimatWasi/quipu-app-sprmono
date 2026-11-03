@@ -1,5 +1,8 @@
 package com.tarimatwasi.quipu.contract.application.port.out;
 
+import java.util.Collection;
+import java.util.Map;
+
 public interface ContractEnvironmentPort {
 
   /**
@@ -11,4 +14,10 @@ public interface ContractEnvironmentPort {
    *     none exists
    */
   boolean lock(Long environmentId);
+
+  /** How an environment is named on a contract («Habitación 201», TAR-237). */
+  record EnvironmentLabel(String code, String type) {}
+
+  /** The label of each environment; an id with no environment adds nothing. */
+  Map<Long, EnvironmentLabel> labelsOf(Collection<Long> environmentIds);
 }

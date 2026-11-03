@@ -12,6 +12,7 @@ import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -85,16 +86,59 @@ public class StayRepositoryAdapter implements StayRepositoryPort {
   }
 
   @Override
+  public List<Stay> findEvery() {
+    return jpaRepository.findAll().stream().map(StayJpaEntity::toDomain).toList();
+  }
+
+  @Override
+  public List<Stay> findAllByIds(Collection<Long> ids) {
+    return jpaRepository.findAllById(ids).stream().map(StayJpaEntity::toDomain).toList();
+  }
+
+  @Override
+  public List<Stay> findAllByGuests(Collection<Long> guestIds) {
+    if (guestIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository.findByGuestIdIn(guestIds).stream().map(StayJpaEntity::toDomain).toList();
+  }
+
+  @Override
   public Optional<Stay> findByIdAndGuest(Long id, Long guestId) {
     return jpaRepository.findByIdAndGuestId(id, guestId).map(StayJpaEntity::toDomain);
   }
 
   @Override
   public Stay insert(
-      Long guestId, LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount) {
+      Long guestId,
+      Long environmentId,
+      LocalDate startDate,
+      LocalDate endDate,
+      BigDecimal agreedAmount) {
     return jpaRepository
-        .saveAndFlush(new StayJpaEntity(guestId, startDate, endDate, agreedAmount))
+        .saveAndFlush(new StayJpaEntity(guestId, environmentId, startDate, endDate, agreedAmount))
         .toDomain();
+  }
+
+  @Override
+  public boolean environmentTaken(
+      Long environmentId, LocalDate start, LocalDate end, Long excludedStayId) {
+    return jpaRepository.existsCrossing(environmentId, start, end, excludedStayId);
+  }
+
+  @Override
+  public boolean environmentTakenFrom(Long environmentId, LocalDate start) {
+    return jpaRepository.existsFrom(environmentId, start);
+  }
+
+  @Override
+  public List<Stay> findAllByEnvironments(Collection<Long> environmentIds) {
+    if (environmentIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository.findByEnvironmentIdIn(environmentIds).stream()
+        .map(StayJpaEntity::toDomain)
+        .toList();
   }
 
   @Override

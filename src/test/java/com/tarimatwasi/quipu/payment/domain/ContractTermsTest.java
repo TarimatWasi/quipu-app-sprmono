@@ -37,7 +37,18 @@ class ContractTermsTest {
   private static Payment payment(
       long id, String period, PaymentStatus status, @Nullable String reason) {
     return new Payment(
-        id, 1L, 10L, null, ym(period), BigDecimal.TEN, null, status, reason, null, null);
+        id,
+        1L,
+        10L,
+        null,
+        ym(period),
+        BigDecimal.TEN,
+        null,
+        status,
+        reason,
+        null,
+        null,
+        java.time.Instant.EPOCH);
   }
 
   // --- the periods ---
@@ -328,7 +339,8 @@ class ContractTermsTest {
         PaymentStatus.REJECTED,
         reason,
         Instant.parse(reviewedAt),
-        9L);
+        9L,
+        java.time.Instant.EPOCH);
   }
 
   @Test

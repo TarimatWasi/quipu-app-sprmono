@@ -12,6 +12,9 @@ public interface ManageFinesUseCase {
   record FineView(
       Long id, Long guestId, BigDecimal amount, YearMonth month, @Nullable String description) {}
 
+  /** What the fines of a month add up to, and how many they are (RF-18, A6). */
+  record MonthTotal(BigDecimal amount, long count) {}
+
   /**
    * The data of a new fine. The amount is greater than 0 with at most two decimals. A blank
    * description means none.
@@ -47,9 +50,10 @@ public interface ManageFinesUseCase {
   List<FineView> list(YearMonth month);
 
   /**
-   * The sum of the amounts of the fines of the month, of any guest (RF-18); 0 if it has none.
+   * The sum of the amounts of the fines of the month, of any guest, and how many they are (RF-18);
+   * 0 if it has none.
    *
    * @throws InvalidFineMonthException if the year of the month is not from 1 to 9999
    */
-  BigDecimal totalOf(YearMonth month);
+  MonthTotal totalOf(YearMonth month);
 }

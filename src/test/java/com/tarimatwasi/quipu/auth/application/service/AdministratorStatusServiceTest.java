@@ -393,7 +393,8 @@ class AdministratorStatusServiceTest {
         email,
         active ? AdministratorStatus.ACTIVE : AdministratorStatus.INACTIVE,
         store.createdAt(minute),
-        id.equals(actorId));
+        id.equals(actorId),
+        null);
   }
 
   @Test
@@ -450,7 +451,8 @@ class AdministratorStatusServiceTest {
           a.documentNumber(),
           Objects.requireNonNull(a.email()),
           a.status(),
-          Objects.requireNonNull(created.get(a.id())));
+          Objects.requireNonNull(created.get(a.id())),
+          null);
     }
 
     @Override

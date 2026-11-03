@@ -76,8 +76,11 @@ class PaymentHistoryContractTest extends PaymentsContractSupport {
     return created;
   }
 
+  /** The ids of a page: the payments of the administrator's list, or of the guest's history. */
   private static List<String> ids(MvcResult result) throws Exception {
-    return JsonPath.read(result.getResponse().getContentAsString(), "$.content[*].id");
+    String body = result.getResponse().getContentAsString();
+    List<String> own = JsonPath.read(body, "$.content[*].payment.id");
+    return own.isEmpty() ? JsonPath.read(body, "$.content[*].id") : own;
   }
 
   private static @Nullable String cursor(MvcResult result) throws Exception {
@@ -115,10 +118,15 @@ class PaymentHistoryContractTest extends PaymentsContractSupport {
             .andExpect(satisfiesTheContract())
             .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$.content.length()").value(3))
-            .andExpect(jsonPath("$.content[0].status").value("PENDING"))
-            .andExpect(jsonPath("$.content[1].status").value("REJECTED"))
-            .andExpect(jsonPath("$.content[1].rejectionReason").value("No coincide"))
-            .andExpect(jsonPath("$.content[2].period").value("2026-08"))
+            .andExpect(jsonPath("$.content[0].kind").value("PAYMENT"))
+            .andExpect(jsonPath("$.content[0].payment.status").value("PENDING"))
+            .andExpect(jsonPath("$.content[1].payment.status").value("REJECTED"))
+            .andExpect(jsonPath("$.content[1].payment.rejectionReason").value("No coincide"))
+            .andExpect(jsonPath("$.content[1].payment.reviews[0].decision").value("REJECTED"))
+            .andExpect(jsonPath("$.content[2].payment.period").value("2026-08"))
+            .andExpect(jsonPath("$.content[2].payment.verifiedAmount").value(800))
+            .andExpect(jsonPath("$.content[2].payment.proofs[0].kind").value("VOUCHER"))
+            .andExpect(jsonPath("$.creditBalance").value(0))
             .andReturn();
 
     assertThat(ids(result))
@@ -128,15 +136,17 @@ class PaymentHistoryContractTest extends PaymentsContractSupport {
             id(IdKind.PAYMENT, created.get(0)));
     Map<String, Object> body = JsonPath.read(result.getResponse().getContentAsString(), "$");
     assertThat(body).containsEntry("nextCursor", null);
-    Map<String, Object> pending =
+    Map<String, Object> item =
         JsonPath.read(result.getResponse().getContentAsString(), "$.content[0]");
+    assertThat(item).containsEntry("refund", null);
+    Map<String, Object> pending =
+        JsonPath.read(result.getResponse().getContentAsString(), "$.content[0].payment");
+    // TAR-230: the guest never learns who reviewed a payment, nor the URL of a voucher
     assertThat(pending)
         .containsEntry("stayId", null)
         .containsEntry("rejectionReason", null)
-        .containsEntry("reviewedAt", null)
-        .containsEntry("paymentMethod", null)
-        .containsEntry("guestId", id(IdKind.GUEST, contractGuest))
         .containsEntry("contractId", id(IdKind.CONTRACT, contract))
+        .doesNotContainKey("reviewedBy")
         .doesNotContainKey("voucherUrl");
     verify(files, never()).signedUrl(any(), any());
   }
@@ -162,9 +172,9 @@ class PaymentHistoryContractTest extends PaymentsContractSupport {
             .andExpect(jsonPath("$.content.length()").value(3))
             .andReturn();
 
-    List<String> owners =
-        JsonPath.read(result.getResponse().getContentAsString(), "$.content[*].guestId");
-    assertThat(owners).containsOnly(id(IdKind.GUEST, contractGuest));
+    List<String> contracts =
+        JsonPath.read(result.getResponse().getContentAsString(), "$.content[*].payment.contractId");
+    assertThat(contracts).containsOnly(id(IdKind.CONTRACT, contract));
   }
 
   @Test

@@ -11,6 +11,8 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.AbstractAuditable;
@@ -101,6 +103,16 @@ public class ContractJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long>
         originalName,
         sizeBytes,
         // The status and the instant agree by a CHECK of the table; the status decides.
-        TERMINATED.equals(status) ? terminatedAt : null);
+        TERMINATED.equals(status) ? terminatedAt : null,
+        // As the payments read it: the getter of AbstractAuditable is a LocalDateTime
+        getCreatedDate()
+            .orElseThrow()
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            // As the column keeps it, so a contract reads the same before and after the commit: the
+            // driver rounds the nanoseconds to the nearest microsecond (half up), it does not
+            // truncate them.
+            .plusNanos(500)
+            .truncatedTo(ChronoUnit.MICROS));
   }
 }

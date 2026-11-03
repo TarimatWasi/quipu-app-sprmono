@@ -30,16 +30,26 @@ public class FinanceBffController {
       String month,
       BigDecimal totalIncome,
       BigDecimal incomeFromPayments,
+      long paymentsCount,
       BigDecimal incomeFromFines,
+      long finesCount,
+      BigDecimal refundsTotal,
+      long refundsCount,
       BigDecimal totalExpenses,
+      long expensesCount,
       BigDecimal net) {
     static FinanceSummaryResponse of(FinanceSummaryView summary) {
       return new FinanceSummaryResponse(
           summary.month().toString(),
           summary.totalIncome(),
           summary.incomeFromPayments(),
+          summary.paymentsCount(),
           summary.incomeFromFines(),
+          summary.finesCount(),
+          summary.refundsTotal(),
+          summary.refundsCount(),
           summary.totalExpenses(),
+          summary.expensesCount(),
           summary.net());
     }
   }

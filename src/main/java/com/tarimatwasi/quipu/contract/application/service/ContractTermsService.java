@@ -65,9 +65,16 @@ public class ContractTermsService implements ContractTermsUseCase {
         .toList();
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public List<ContractTermsView> allTerms() {
+    return contracts.findEvery().stream().map(ContractTermsService::view).toList();
+  }
+
   private static ContractTermsView view(Contract contract) {
     return new ContractTermsView(
         contract.id(),
+        contract.guestId(),
         contract.environmentId(),
         contract.startDate(),
         contract.endDate(),

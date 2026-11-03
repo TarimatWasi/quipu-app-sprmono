@@ -2,11 +2,15 @@ package com.tarimatwasi.quipu.contract.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.contract.application.port.in.ContractNotFoundException;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractState;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractEnvironmentPort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
+import com.tarimatwasi.quipu.contract.application.port.out.ContractGuestPort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPort;
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -14,7 +18,12 @@ import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Optional;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -28,10 +37,41 @@ class OwnContractServiceTest {
 
   @Mock ContractRepositoryPort contracts;
   @Mock ContractFilePort files;
+  @Mock ContractGuestPort guests;
+  @Mock ContractEnvironmentPort environments;
 
   private OwnContractService service() {
     return new OwnContractService(
-        contracts, files, new MutableClock(Instant.parse("2026-10-14T14:00:00Z")));
+        contracts,
+        files,
+        guests,
+        environments,
+        new MutableClock(Instant.parse("2026-10-14T14:00:00Z")));
+  }
+
+  /** TAR-237: every guest and environment of a contract has its label. */
+  @BeforeEach
+  void everyLabelIsKnown() {
+    lenient()
+        .when(guests.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractGuestPort.GuestLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractGuestPort.GuestLabel("Ana Quispe", "DNI", "12345678"));
+              }
+              return found;
+            });
+    lenient()
+        .when(environments.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractEnvironmentPort.EnvironmentLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractEnvironmentPort.EnvironmentLabel("201", "ROOM"));
+              }
+              return found;
+            });
   }
 
   private static final java.time.Instant TERMINATED_AT =
@@ -50,16 +90,16 @@ class OwnContractServiceTest {
         "contracts/a.pdf",
         "a.pdf",
         10,
-        terminated ? TERMINATED_AT : null);
+        terminated ? TERMINATED_AT : null,
+        java.time.Instant.EPOCH);
   }
 
   @Test
   void aTerminatedContractIsStillShown() {
-    when(contracts.findLatestByGuest(GUEST_ID))
-        .thenReturn(Optional.of(contract(true, "2027-01-01")));
+    when(contracts.findAllByGuest(GUEST_ID)).thenReturn(List.of(contract(true, "2027-01-01")));
     when(files.signedUrl("contracts/a.pdf")).thenReturn("https://signed");
 
-    var view = service().ownContract(GUEST_ID);
+    var view = service().ownContracts(GUEST_ID).current();
 
     assertThat(view.status()).isEqualTo(ContractState.TERMINATED);
     assertThat(view.fileUrl()).isEqualTo("https://signed");
@@ -67,18 +107,62 @@ class OwnContractServiceTest {
 
   @Test
   void anExpiredContractIsStillShown() {
-    when(contracts.findLatestByGuest(GUEST_ID))
-        .thenReturn(Optional.of(contract(false, "2026-10-01")));
+    when(contracts.findAllByGuest(GUEST_ID)).thenReturn(List.of(contract(false, "2026-10-01")));
     when(files.signedUrl("contracts/a.pdf")).thenReturn("https://signed");
 
-    assertThat(service().ownContract(GUEST_ID).status()).isEqualTo(ContractState.EXPIRED);
+    assertThat(service().ownContracts(GUEST_ID).current().status())
+        .isEqualTo(ContractState.EXPIRED);
   }
 
   @Test
   void aGuestThatNeverHadAContractIsNotFound() {
-    when(contracts.findLatestByGuest(GUEST_ID)).thenReturn(Optional.empty());
+    when(contracts.findAllByGuest(GUEST_ID)).thenReturn(List.of());
 
-    assertThatThrownBy(() -> service().ownContract(GUEST_ID))
+    assertThatThrownBy(() -> service().ownContracts(GUEST_ID))
         .isInstanceOf(ContractNotFoundException.class);
+  }
+
+  private static Contract between(long id, String start, String end) {
+    return new Contract(
+        id,
+        8L,
+        GUEST_ID,
+        LocalDate.parse(start),
+        LocalDate.parse(end),
+        new BigDecimal("800.00"),
+        5,
+        3,
+        "contracts/" + id + ".pdf",
+        "a.pdf",
+        10,
+        null,
+        java.time.Instant.EPOCH);
+  }
+
+  /** TAR-237: the contract in force today and a renewal already loaded after it. */
+  @Test
+  void theRunningContractIsCurrentAndALoadedRenewalIsNext() {
+    when(contracts.findAllByGuest(GUEST_ID))
+        .thenReturn(
+            List.of(
+                between(1L, "2026-01-01", "2026-12-31"), between(2L, "2027-01-01", "2027-12-31")));
+
+    var own = service().ownContracts(GUEST_ID);
+
+    assertThat(own.current().id()).isEqualTo(1L);
+    assertThat(own.next()).isNotNull();
+    assertThat(Objects.requireNonNull(own.next()).id()).isEqualTo(2L);
+  }
+
+  /** TAR-237 (RN-07): a contract that starts later is in force since it was loaded. */
+  @Test
+  void aContractThatStartsLaterIsCurrentWhenNoneIsRunning() {
+    when(contracts.findAllByGuest(GUEST_ID))
+        .thenReturn(List.of(between(3L, "2026-11-01", "2027-10-31")));
+
+    var own = service().ownContracts(GUEST_ID);
+
+    assertThat(own.current().id()).isEqualTo(3L);
+    assertThat(own.next()).isNull();
   }
 }

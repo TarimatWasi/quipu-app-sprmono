@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,7 +66,11 @@ class EnvironmentRepositoryAdapterTest {
     CursorPage<Environment> first = adapter.findAll(null, new PageQuery(null, 1));
     // As in production, where the application service opens the transaction (BE-SPR-APP-02).
     transaction.executeWithoutResult(
-        status -> adapter.updateStatus(first.content().get(0).id(), EnvironmentStatus.INACTIVE));
+        status ->
+            adapter.updateStatus(
+                first.content().get(0).id(),
+                EnvironmentStatus.INACTIVE,
+                Instant.parse("2026-11-01T15:00:00Z")));
 
     CursorPage<Environment> active =
         adapter.findAll(EnvironmentStatus.ACTIVE, new PageQuery(null, 10));

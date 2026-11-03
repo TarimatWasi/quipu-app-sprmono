@@ -7,15 +7,18 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.P
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase.ExpenseCommand;
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase.ExpenseKind;
+import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase.ExpensePage;
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase.ExpenseView;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
@@ -57,13 +60,27 @@ public class ExpensesBffController {
       @NotNull @Pattern(regexp = MONTH) String month,
       @Nullable @Pattern(regexp = NO_NUL) String description) {}
 
+  /** ExpenseUpdateInput: the whole expense again, with the {@code version} loaded (TAR-240). */
+  public record ExpenseUpdateRequest(
+      @NotNull ExpenseKind category,
+      @NotNull BigDecimal amount,
+      @NotNull @Pattern(regexp = MONTH) String month,
+      @Nullable @Pattern(regexp = NO_NUL) String description,
+      @NotNull @Min(0) Long version) {}
+
   /** The description is left out when there is none. */
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record ExpenseResponse(
-      UUID id, String category, BigDecimal amount, String month, @Nullable String description) {
+      UUID id,
+      long version,
+      String category,
+      BigDecimal amount,
+      String month,
+      @Nullable String description) {
     static ExpenseResponse of(ExpenseView expense, IdMasker ids) {
       return new ExpenseResponse(
           ids.mask(IdKind.EXPENSE, expense.id()),
+          expense.version(),
           expense.category().name(),
           expense.amount(),
           expense.month().toString(),
@@ -71,17 +88,22 @@ public class ExpensesBffController {
     }
   }
 
+  /** PagedExpenses: one page and how many the month has (A6 «Mostrando X de Y»). */
+  public record PagedExpensesResponse(
+      List<ExpenseResponse> content, @Nullable String nextCursor, long totalCount) {}
+
   @GetMapping("/bff/admin/expenses")
-  public PagedResponse<ExpenseResponse> list(
+  public PagedExpensesResponse list(
       @RequestParam("month") String month,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
       @RequestParam(name = "after", required = false) @Nullable String after) {
     if (!MONTH_PATTERN.matcher(month).matches()) {
       throw new InvalidQueryParameterException("month");
     }
-    return PagedResponse.of(
-        expenses.list(YearMonth.parse(month), PageParams.query(after, limit)),
-        expense -> ExpenseResponse.of(expense, ids));
+    ExpensePage found = expenses.list(YearMonth.parse(month), PageParams.query(after, limit));
+    PagedResponse<ExpenseResponse> page =
+        PagedResponse.of(found.page(), expense -> ExpenseResponse.of(expense, ids));
+    return new PagedExpensesResponse(page.content(), page.nextCursor(), found.totalCount());
   }
 
   @PostMapping("/bff/admin/expenses")
@@ -91,9 +113,18 @@ public class ExpensesBffController {
   }
 
   @PatchMapping("/bff/admin/expenses/{id}")
-  public ExpenseResponse update(@PathVariable UUID id, @Valid @RequestBody ExpenseRequest request) {
+  public ExpenseResponse update(
+      @PathVariable UUID id, @Valid @RequestBody ExpenseUpdateRequest request) {
     return ExpenseResponse.of(
-        expenses.update(ids.unmask(IdKind.EXPENSE, id), command(request)), ids);
+        expenses.update(
+            ids.unmask(IdKind.EXPENSE, id),
+            request.version(),
+            new ExpenseCommand(
+                request.category(),
+                request.amount(),
+                YearMonth.parse(request.month()),
+                request.description())),
+        ids);
   }
 
   @DeleteMapping("/bff/admin/expenses/{id}")

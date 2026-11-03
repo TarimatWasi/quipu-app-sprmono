@@ -10,6 +10,7 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.AbstractAuditable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
@@ -31,12 +32,22 @@ public class StayJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   @Column(name = "agreed_amount")
   private BigDecimal agreedAmount;
 
+  /** TAR-237 (RN-20): the environment the stay occupies; null for a stay registered before. */
+  @Column(name = "environment_id")
+  private @Nullable Long environmentId;
+
   @Version private long version;
 
   protected StayJpaEntity() {}
 
-  StayJpaEntity(Long guestId, LocalDate startDate, LocalDate endDate, BigDecimal agreedAmount) {
+  StayJpaEntity(
+      Long guestId,
+      Long environmentId,
+      LocalDate startDate,
+      LocalDate endDate,
+      BigDecimal agreedAmount) {
     this.guestId = guestId;
+    this.environmentId = environmentId;
     this.startDate = startDate;
     this.endDate = endDate;
     this.agreedAmount = agreedAmount;
@@ -49,9 +60,17 @@ public class StayJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
     this.startDate = stay.startDate();
     this.endDate = stay.endDate();
     this.agreedAmount = stay.agreedAmount();
+    this.environmentId = stay.environmentId();
   }
 
   Stay toDomain() {
-    return new Stay(Objects.requireNonNull(getId()), guestId, startDate, endDate, agreedAmount);
+    return new Stay(
+        Objects.requireNonNull(getId()),
+        guestId,
+        startDate,
+        endDate,
+        agreedAmount,
+        environmentId,
+        version);
   }
 }

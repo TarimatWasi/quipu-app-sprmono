@@ -212,6 +212,20 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
+  public void resetPasswordAndName(
+      Long id, String newPasswordHash, Instant changedAt, String name) {
+    UserJpaEntity user = load(id);
+    user.changePassword(newPasswordHash, changedAt);
+    user.name(name);
+    jpaRepository.save(user);
+  }
+
+  @Override
+  public Optional<String> findName(Long id) {
+    return jpaRepository.findById(id).flatMap(user -> Optional.ofNullable(user.name()));
+  }
+
+  @Override
   public boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration) {
     UserJpaEntity user = loadLocked(id);
     boolean alreadyLocked = user.registerFailedLogin(now, maxAttempts, lockDuration);

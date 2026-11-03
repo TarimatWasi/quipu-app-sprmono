@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -139,7 +140,7 @@ class AdministratorServiceTest {
     verify(mail).sendAccessLinkNow(eq(NEW_EMAIL), code.capture(), eq(Duration.ofMinutes(30)));
     assertThat(users.storedResetHash(created.id())).contains(ResetCodeIssuer.hash(code.getValue()));
     assertThat(created.emailSent()).isTrue();
-    verify(mail, never()).sendResetLink(anyString(), anyString(), any());
+    verify(mail, never()).sendResetLink(anyString(), anyString(), any(), anyBoolean());
   }
 
   @Test

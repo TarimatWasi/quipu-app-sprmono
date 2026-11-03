@@ -34,7 +34,8 @@ class ContractTest {
         "contracts/a.pdf",
         "a.pdf",
         100,
-        terminated ? TERMINATED_AT : null);
+        terminated ? TERMINATED_AT : null,
+        java.time.Instant.EPOCH);
   }
 
   @Test

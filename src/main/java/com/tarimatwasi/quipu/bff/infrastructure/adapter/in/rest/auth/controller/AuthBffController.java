@@ -24,6 +24,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
@@ -99,9 +100,14 @@ public class AuthBffController {
 
   public record ForgotPasswordRequest(@NotBlank @Email @Size(max = 200) String email) {}
 
+  /**
+   * {@code name}: the full name an administrator created by another one writes when activating the
+   * account (A0.5, TAR-127); required while the account has none, ignored otherwise.
+   */
   public record ResetPasswordRequest(
       @NotBlank @Size(max = MAX_CODE) String code,
-      @NotNull @Size(max = MAX_PASSWORD) String newPassword) {}
+      @NotNull @Size(max = MAX_PASSWORD) String newPassword,
+      @Nullable @Size(min = 1, max = 100) @Pattern(regexp = "(?s).*\\S.*") String name) {}
 
   @PostMapping("/bff/auth/login")
   public ResponseEntity<SessionResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -240,7 +246,7 @@ public class AuthBffController {
   /** RF-16: the person signs in afterwards, so no session is issued here. */
   @PostMapping("/bff/auth/reset-password")
   public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-    passwordRecoveryUseCase.resetPassword(request.code(), request.newPassword());
+    passwordRecoveryUseCase.resetPassword(request.code(), request.newPassword(), request.name());
     return ResponseEntity.noContent().build();
   }
 }

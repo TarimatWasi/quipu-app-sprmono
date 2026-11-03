@@ -71,7 +71,7 @@ class MethodSecurityContractTest {
   @WithMockUser(roles = "GUEST")
   void guestUseCases_withoutAdminRole_areForbidden() {
     assertThatThrownBy(
-            () -> guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, PageQuery.first()))
+            () -> guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, false, PageQuery.first()))
         .isInstanceOf(AccessDeniedException.class);
   }
 
@@ -122,7 +122,9 @@ class MethodSecurityContractTest {
   @WithMockUser(roles = "GUEST")
   void environmentUseCases_withoutAdminRole_areForbidden() {
     assertThatThrownBy(
-            () -> environments.list(ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first()))
+            () ->
+                environments.list(
+                    ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first(), null, null))
         .isInstanceOf(AccessDeniedException.class);
   }
 
@@ -199,14 +201,19 @@ class MethodSecurityContractTest {
   @Test
   @WithMockUser(roles = "ADMIN")
   void adminUseCases_withAdminRole_areAllowed() {
-    assertThat(guests.list(ManageGuestsUseCase.StatusFilter.ALL, null, PageQuery.first()).content())
+    assertThat(
+            guests
+                .list(ManageGuestsUseCase.StatusFilter.ALL, null, false, PageQuery.first())
+                .page()
+                .content())
         .isEmpty();
     assertThat(
             environments
-                .list(ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first())
+                .list(ManageEnvironmentsUseCase.StatusFilter.ALL, PageQuery.first(), null, null)
+                .page()
                 .content())
         .isEmpty();
-    assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).content()).isEmpty();
+    assertThat(expenses.list(YearMonth.of(2026, 10), PageQuery.first()).page().content()).isEmpty();
     assertThat(fines.list(YearMonth.of(2026, 10))).isEmpty();
     assertThat(finance.summary(YearMonth.of(2026, 10)).net()).hasToString("0.00");
     assertThat(dashboard.dashboard().pendingVouchers()).isEmpty();

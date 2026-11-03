@@ -22,6 +22,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.GuestProfile;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
@@ -63,16 +64,25 @@ class AccountStatusTest {
   @Mock PaymentContractPort contracts;
   @Mock PaymentEnvironmentPort environments;
   @Mock PaymentStayPort stays;
+  @Mock RefundRepositoryPort refunds;
+  @Mock com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort reviewers;
 
   private PaymentService service;
 
   @BeforeEach
   void setUp() {
-    service = new PaymentService(payments, files, guests, contracts, environments, stays, clock);
+    service =
+        new PaymentService(
+            payments,
+            files,
+            contracts,
+            new PaymentDirectory(guests, environments, stays, reviewers),
+            refunds,
+            clock);
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
-    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, !active);
+    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, !active, "DNI");
   }
 
   private static ContractInfo contractFromSeptember() {
@@ -91,11 +101,12 @@ class AccountStatusTest {
         null,
         period,
         new BigDecimal("800.00"),
-        "Yape",
+        new BigDecimal("800.00"),
         PaymentStatus.APPROVED,
         null,
         Instant.parse("2026-09-03T15:00:00Z"),
-        ADMIN);
+        ADMIN,
+        java.time.Instant.EPOCH);
   }
 
   @Test

@@ -48,12 +48,13 @@ public class ExpenseService implements ManageExpensesUseCase {
 
   @Override
   @Transactional
-  public ExpenseView update(Long id, ExpenseCommand command) {
+  public ExpenseView update(Long id, long version, ExpenseCommand command) {
     validate(command.amount());
     requireValid(command.month());
     return expenses
         .update(
             id,
+            version,
             category(command.category()),
             command.amount(),
             command.month(),
@@ -72,16 +73,18 @@ public class ExpenseService implements ManageExpensesUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public CursorPage<ExpenseView> list(YearMonth month, PageQuery page) {
+  public ExpensePage list(YearMonth month, PageQuery page) {
     requireValid(month);
-    return expenses.findByMonth(month, page).map(ExpenseService::view);
+    CursorPage<ExpenseView> found = expenses.findByMonth(month, page).map(ExpenseService::view);
+    return new ExpensePage(found, expenses.totalOfMonth(month).count());
   }
 
   @Override
   @Transactional(readOnly = true)
-  public BigDecimal totalOf(YearMonth month) {
+  public MonthTotal totalOf(YearMonth month) {
     requireValid(month);
-    return expenses.sumByMonth(month);
+    var total = expenses.totalOfMonth(month);
+    return new MonthTotal(total.amount(), total.count());
   }
 
   private static void validate(BigDecimal amount) {
@@ -120,6 +123,7 @@ public class ExpenseService implements ManageExpensesUseCase {
         ExpenseKind.valueOf(expense.category().name()),
         expense.amount(),
         expense.month(),
-        expense.description());
+        expense.description(),
+        expense.version());
   }
 }

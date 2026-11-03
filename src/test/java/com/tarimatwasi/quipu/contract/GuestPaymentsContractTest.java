@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -51,7 +52,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   }
 
   private static MockMultipartHttpServletRequestBuilder form(String url, byte[] content) {
-    return multipart(url).file(new MockMultipartFile("file", "v.pdf", "application/pdf", content));
+    return multipart(url).file(new MockMultipartFile("files", "v.pdf", "application/pdf", content));
   }
 
   private ResultActions send(MockMultipartHttpServletRequestBuilder request, Cookie who)
@@ -60,16 +61,11 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   }
 
   private ResultActions period(String period, String amount) throws Exception {
-    return send(
-        form(GUEST_URL, PDF)
-            .param("period", period)
-            .param("amount", amount)
-            .param("paymentMethod", "Yape"),
-        guest());
+    return send(form(GUEST_URL, PDF).param("period", period).file(proofs(amount, "Yape")), guest());
   }
 
   private ResultActions stayVoucher(String amount) throws Exception {
-    return send(form(TEMPORARY_URL, PDF).param("amount", amount), temporary());
+    return send(form(TEMPORARY_URL, PDF).file(proofs(amount, null)), temporary());
   }
 
   private int payments() {
@@ -101,13 +97,15 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     verify(files).store(PDF, VoucherType.PDF);
     verify(files, never()).signedUrl(any(), any());
     assertThat(
-            jdbc.queryForMap(
-                "SELECT status, recorded_by, reviewed_by_id, guest_id, voucher_key FROM payments"))
+            jdbc.queryForMap("SELECT status, recorded_by, reviewed_by_id, guest_id FROM payments"))
         .containsEntry("status", "PENDING")
         .containsEntry("recorded_by", "GUEST")
         .containsEntry("reviewed_by_id", null)
-        .containsEntry("guest_id", contractGuest)
-        .containsEntry("voucher_key", KEY);
+        .containsEntry("guest_id", contractGuest);
+    assertThat(jdbc.queryForMap("SELECT file_key, method, uploaded_by FROM payment_proofs"))
+        .containsEntry("file_key", KEY)
+        .containsEntry("method", "Yape")
+        .containsEntry("uploaded_by", "GUEST");
   }
 
   @Test
@@ -130,11 +128,11 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
 
   @Test
   void eachTypeOfGuestIsRefusedTheRoutesOfTheOtherOne() throws Exception {
-    send(form(GUEST_URL, PDF).param("period", "2026-10").param("amount", "150"), temporary())
+    send(form(GUEST_URL, PDF).param("period", "2026-10").file(proofs("150", null)), temporary())
         .andExpect(status().isForbidden())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
-    send(form(TEMPORARY_URL, PDF).param("amount", "800"), guest())
+    send(form(TEMPORARY_URL, PDF).file(proofs("800", null)), guest())
         .andExpect(status().isForbidden())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
@@ -154,11 +152,11 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
 
   @Test
   void anAdministratorAndAnAnonymousRequestDoNotReachTheGuestRoutes() throws Exception {
-    send(form(GUEST_URL, PDF).param("period", "2026-10").param("amount", "800"), admin())
+    send(form(GUEST_URL, PDF).param("period", "2026-10").file(proofs("800", null)), admin())
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
-        .perform(form(TEMPORARY_URL, PDF).param("amount", "150").header("Origin", ORIGIN))
+        .perform(form(TEMPORARY_URL, PDF).file(proofs("150", null)).header("Origin", ORIGIN))
         .andExpect(status().isUnauthorized());
     mockMvc.perform(get(ACCOUNT_STATUS).cookie(admin())).andExpect(status().isForbidden());
     mockMvc.perform(get(ACCOUNT_STATUS)).andExpect(status().isUnauthorized());
@@ -203,8 +201,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   }
 
   @Test
-  void aPeriodWithAVoucherPendingOrAlreadyApprovedTakesNoOtherOneButARejectedOneDoes()
-      throws Exception {
+  void aPeriodWithAPaymentPendingApprovedOrRejectedTakesNoOtherOne() throws Exception {
     insertPayment(contractGuest, contract, null, "2026-10", "PENDING", "2026-10-02T10:00:00Z");
     insertPayment(contractGuest, contract, null, "2026-09", "APPROVED", "2026-09-02T10:00:00Z");
     insertPayment(contractGuest, contract, null, "2026-08", "REJECTED", "2026-08-02T10:00:00Z");
@@ -217,8 +214,76 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_EXISTS_FOR_PERIOD"));
+    // TAR-239: a rejected payment is corrected with correctOwnPayment, not replaced
+    period("2026-08", "800")
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
     verify(files, never()).store(any(), any());
-    period("2026-08", "800").andExpect(status().isCreated());
+  }
+
+  /** H3 «Enviar de nuevo» (RN-05): the guest corrects its rejected payment and sends it again. */
+  @Test
+  void theGuestCorrectsItsRejectedPaymentAndSendsItAgain() throws Exception {
+    Long id =
+        insertPayment(contractGuest, contract, null, "2026-08", "REJECTED", "2026-08-02T10:00:00Z");
+    String url = GUEST_URL + "/" + id(IdKind.PAYMENT, id);
+    Long voucher =
+        jdbc.queryForObject("SELECT id FROM payment_proofs WHERE payment_id = ?", Long.class, id);
+
+    mockMvc
+        .perform(get(url).cookie(guest()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.status").value("REJECTED"))
+        .andExpect(jsonPath("$.rejectionReason").value("No coincide"))
+        .andExpect(jsonPath("$.proofs[0].fileUrl").doesNotExist())
+        .andExpect(jsonPath("$.reviewedBy").doesNotExist())
+        .andExpect(jsonPath("$.amountDue").value(800));
+    mockMvc
+        .perform(
+            multipart(HttpMethod.PUT, url)
+                .file(new MockMultipartFile("files", "nuevo.pdf", "application/pdf", PDF))
+                .file(
+                    proofsPart(
+                        "[{\"id\":\""
+                            + id(IdKind.PAYMENT_PROOF, voucher)
+                            + "\",\"kind\":\"VOUCHER\",\"amount\":800,\"fileIndex\":0}]"))
+                .header("Origin", ORIGIN)
+                .cookie(guest()))
+        .andExpect(status().isOk())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.status").value("PENDING"))
+        .andExpect(jsonPath("$.submittedAt").value("2026-10-14T14:00:00Z"))
+        .andExpect(jsonPath("$.rejectionReason").value((Object) null));
+    // the replaced voucher leaves the bucket once the correction commits
+    verify(files).delete(KEY + "-" + id);
+    // a pending payment is read-only for the guest (RN-15)
+    mockMvc
+        .perform(
+            multipart(HttpMethod.PUT, url)
+                .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800}]"))
+                .header("Origin", ORIGIN)
+                .cookie(guest()))
+        .andExpect(status().isConflict())
+        .andExpect(answersTheContract())
+        .andExpect(jsonPath("$.code").value("PAYMENT_NOT_CORRECTABLE"));
+  }
+
+  /** RN-09: a payment of another guest does not exist for this one. */
+  @Test
+  void aPaymentOfAnotherGuestIsNotFound() throws Exception {
+    Long ofStay =
+        insertPayment(temporaryGuest, null, stay, null, "REJECTED", "2026-10-02T10:00:00Z");
+
+    mockMvc
+        .perform(get(GUEST_URL + "/" + id(IdKind.PAYMENT, ofStay)).cookie(guest()))
+        .andExpect(status().isNotFound());
+    mockMvc
+        .perform(get(TEMPORARY_URL + "/" + id(IdKind.PAYMENT, ofStay)).cookie(temporary()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.stayStartDate").value("2026-10-01"));
   }
 
   @Test
@@ -230,7 +295,8 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
         .andExpect(answersTheContract())
         .andExpect(jsonPath("$.code").value("VOUCHER_ALREADY_EXISTS"));
     jdbc.update(
-        "UPDATE payments SET status = 'APPROVED', reviewed_at = now(), reviewed_by_id = ?",
+        "UPDATE payments SET status = 'APPROVED', verified_amount = amount, reviewed_at = now(),"
+            + " reviewed_by_id = ?",
         adminId);
     stayVoucher("150")
         .andExpect(status().isConflict())
@@ -264,7 +330,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
           .andExpect(jsonPath("$.field").value("period"));
     }
-    send(form(GUEST_URL, PDF).param("amount", "800"), guest())
+    send(form(GUEST_URL, PDF).file(proofs("800", null)), guest())
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("period"));
     verify(files, never()).store(any(), any());
@@ -272,14 +338,14 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
 
   @Test
   void anAmountOutOfRangeOrWithAnExponentIsAValidationError() throws Exception {
-    for (String amount : new String[] {"0", "-1", "0.001", "100000000", "abc", "8E+2"}) {
+    for (String amount : new String[] {"0", "-1", "0.001", "100000000", "8E+2"}) {
       period("2026-10", amount)
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-          .andExpect(jsonPath("$.field").value("amount"));
+          .andExpect(jsonPath("$.field").value("proofs[0].amount"));
       stayVoucher(amount)
           .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.field").value("amount"));
+          .andExpect(jsonPath("$.field").value("proofs[0].amount"));
     }
     verify(files, never()).store(any(), any());
   }
@@ -290,7 +356,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     send(
             form(GUEST_URL, PDF)
                 .param("period", "2026-10")
-                .param("amount", "800")
+                .file(proofs("800", null))
                 .param("guestId", id(IdKind.GUEST, temporaryGuest)),
             guest())
         .andExpect(status().isBadRequest())
@@ -300,23 +366,25 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     send(
             form(GUEST_URL, PDF)
                 .param("period", "2026-10")
-                .param("amount", "800")
+                .file(proofs("800", null))
                 .param("contractId", id(IdKind.CONTRACT, contract)),
             guest())
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("contractId"));
-    send(form(TEMPORARY_URL, PDF).param("amount", "150").param("period", "2026-10"), temporary())
+    send(form(TEMPORARY_URL, PDF).file(proofs("150", null)).param("period", "2026-10"), temporary())
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("period"));
     send(
-            form(TEMPORARY_URL, PDF).param("amount", "150").param("stayId", id(IdKind.STAY, stay)),
+            form(TEMPORARY_URL, PDF)
+                .file(proofs("150", null))
+                .param("stayId", id(IdKind.STAY, stay)),
             temporary())
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("stayId"));
     send(
             form(TEMPORARY_URL, PDF)
                 .file(new MockMultipartFile("copy", PDF))
-                .param("amount", "150"),
+                .file(proofs("150", null)),
             temporary())
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("copy"));
@@ -329,12 +397,12 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     byte[] active = TestPdfs.withJavaScript();
 
     for (byte[] content : new byte[][] {exe, active, new byte[0]}) {
-      send(form(GUEST_URL, content).param("period", "2026-10").param("amount", "800"), guest())
+      send(form(GUEST_URL, content).param("period", "2026-10").file(proofs("800", null)), guest())
           .andExpect(status().isBadRequest())
           .andExpect(answersTheContract())
           .andExpect(jsonPath("$.code").value("VOUCHER_INVALID_FILE"))
-          .andExpect(jsonPath("$.field").value("file"));
-      send(form(TEMPORARY_URL, content).param("amount", "150"), temporary())
+          .andExpect(jsonPath("$.field").value("proofs[0].file"));
+      send(form(TEMPORARY_URL, content).file(proofs("150", null)), temporary())
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.code").value("VOUCHER_INVALID_FILE"));
     }
@@ -345,11 +413,14 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   void anUploadThatDoesNotSayWhereItComesFromIsRefused() throws Exception {
     mockMvc
         .perform(
-            form(GUEST_URL, PDF).param("period", "2026-10").param("amount", "800").cookie(guest()))
+            form(GUEST_URL, PDF)
+                .param("period", "2026-10")
+                .file(proofs("800", null))
+                .cookie(guest()))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
-        .perform(form(TEMPORARY_URL, PDF).param("amount", "150").cookie(temporary()))
+        .perform(form(TEMPORARY_URL, PDF).file(proofs("150", null)).cookie(temporary()))
         .andExpect(status().isForbidden());
     verify(files, never()).store(any(), any());
   }
@@ -392,7 +463,8 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
 
   @Test
   void aVoucherUnderReviewHidesTheReasonOfAnEarlierRejection() throws Exception {
-    insertPayment(contractGuest, contract, null, "2026-10", "REJECTED", "2026-10-02T10:00:00Z");
+    // a rejection of before TAR-239 that another payment replaced is history
+    insertPayment(contractGuest, contract, null, "2026-10", "SUPERSEDED", "2026-10-02T10:00:00Z");
     insertPayment(contractGuest, contract, null, "2026-10", "PENDING", "2026-10-03T10:00:00Z");
 
     mockMvc

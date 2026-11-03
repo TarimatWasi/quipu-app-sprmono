@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.expense.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,9 +37,9 @@ class ExpenseServiceTest {
   private static final YearMonth SEPTEMBER = YearMonth.of(2026, 9);
   private static final BigDecimal AMOUNT = new BigDecimal("120.50");
   private static final Expense UTILITIES =
-      new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, "Recibo");
+      new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, "Recibo", 0L);
   private static final ExpenseView UTILITIES_VIEW =
-      new ExpenseView(ID, ExpenseKind.UTILITIES, AMOUNT, SEPTEMBER, "Recibo");
+      new ExpenseView(ID, ExpenseKind.UTILITIES, AMOUNT, SEPTEMBER, "Recibo", 0L);
 
   @Mock ExpenseRepositoryPort repository;
 
@@ -61,7 +62,7 @@ class ExpenseServiceTest {
   @Test
   void aBlankDescriptionMeansNone() {
     when(repository.insert(ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
-        .thenReturn(new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null));
+        .thenReturn(new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null, 0L));
 
     assertThat(service().create(command(AMOUNT, "   ")).description()).isNull();
   }
@@ -72,13 +73,13 @@ class ExpenseServiceTest {
       assertThatThrownBy(() -> service().create(command(new BigDecimal(amount), null)))
           .as(amount)
           .isInstanceOf(InvalidExpenseException.class);
-      assertThatThrownBy(() -> service().update(ID, command(new BigDecimal(amount), null)))
+      assertThatThrownBy(() -> service().update(ID, 0L, command(new BigDecimal(amount), null)))
           .as(amount)
           .isInstanceOf(InvalidExpenseException.class);
     }
 
     verify(repository, never()).insert(any(), any(), any(), any());
-    verify(repository, never()).update(any(), any(), any(), any(), any());
+    verify(repository, never()).update(any(), anyLong(), any(), any(), any(), any());
   }
 
   @Test
@@ -96,13 +97,13 @@ class ExpenseServiceTest {
   @Test
   void updatesAnExistingExpenseAndFailsOnAnUnknownOne() {
     var other = TestIds.next();
-    when(repository.update(ID, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
+    when(repository.update(ID, 0L, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
         .thenReturn(Optional.of(UTILITIES));
-    when(repository.update(other, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
+    when(repository.update(other, 0L, ExpenseCategory.UTILITIES, AMOUNT, SEPTEMBER, null))
         .thenReturn(Optional.empty());
 
-    assertThat(service().update(ID, command(AMOUNT, null))).isEqualTo(UTILITIES_VIEW);
-    assertThatThrownBy(() -> service().update(other, command(AMOUNT, null)))
+    assertThat(service().update(ID, 0L, command(AMOUNT, null))).isEqualTo(UTILITIES_VIEW);
+    assertThatThrownBy(() -> service().update(other, 0L, command(AMOUNT, null)))
         .isInstanceOf(ExpenseNotFoundException.class);
   }
 
@@ -123,10 +124,13 @@ class ExpenseServiceTest {
     when(repository.findByMonth(SEPTEMBER, page))
         .thenReturn(new CursorPage<>(List.of(UTILITIES), "next"));
 
+    when(repository.totalOfMonth(SEPTEMBER)).thenReturn(new ExpenseRepositoryPort.Total(AMOUNT, 3));
+
     var result = service().list(SEPTEMBER, page);
 
-    assertThat(result.content()).containsExactly(UTILITIES_VIEW);
-    assertThat(result.nextCursor()).isEqualTo("next");
+    assertThat(result.page().content()).containsExactly(UTILITIES_VIEW);
+    assertThat(result.page().nextCursor()).isEqualTo("next");
+    assertThat(result.totalCount()).isEqualTo(3);
   }
 
   /** Year 0 matches the pattern, but PostgreSQL keeps it as 1 BC and reads it back as year 1. */
@@ -137,7 +141,7 @@ class ExpenseServiceTest {
       assertThatThrownBy(() -> service().create(command))
           .as(month.toString())
           .isInstanceOf(InvalidExpenseMonthException.class);
-      assertThatThrownBy(() -> service().update(ID, command))
+      assertThatThrownBy(() -> service().update(ID, 0L, command))
           .as(month.toString())
           .isInstanceOf(InvalidExpenseMonthException.class);
       assertThatThrownBy(() -> service().list(month, PageQuery.first()))
@@ -146,24 +150,25 @@ class ExpenseServiceTest {
     }
 
     verify(repository, never()).insert(any(), any(), any(), any());
-    verify(repository, never()).update(any(), any(), any(), any(), any());
+    verify(repository, never()).update(any(), anyLong(), any(), any(), any(), any());
     verify(repository, never()).findByMonth(any(), any());
   }
 
   @Test
   void theEdgeYearsOneAnd9999AreAccepted() {
     for (var month : new YearMonth[] {YearMonth.of(1, 1), YearMonth.of(9999, 12)}) {
-      var expense = new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, month, null);
+      var expense = new Expense(ID, ExpenseCategory.UTILITIES, AMOUNT, month, null, 0L);
       when(repository.insert(ExpenseCategory.UTILITIES, AMOUNT, month, null)).thenReturn(expense);
-      when(repository.update(ID, ExpenseCategory.UTILITIES, AMOUNT, month, null))
+      when(repository.update(ID, 0L, ExpenseCategory.UTILITIES, AMOUNT, month, null))
           .thenReturn(Optional.of(expense));
       when(repository.findByMonth(month, PageQuery.first()))
           .thenReturn(new CursorPage<>(List.of(expense), null));
       var command = new ExpenseCommand(ExpenseKind.UTILITIES, AMOUNT, month, null);
 
       assertThat(service().create(command).month()).isEqualTo(month);
-      assertThat(service().update(ID, command).month()).isEqualTo(month);
-      assertThat(service().list(month, PageQuery.first()).content()).hasSize(1);
+      assertThat(service().update(ID, 0L, command).month()).isEqualTo(month);
+      when(repository.totalOfMonth(month)).thenReturn(new ExpenseRepositoryPort.Total(AMOUNT, 1));
+      assertThat(service().list(month, PageQuery.first()).page().content()).hasSize(1);
     }
   }
 
@@ -171,9 +176,11 @@ class ExpenseServiceTest {
   @Test
   void theTotalOfTheMonthIsTheSumTheBaseAnswers() {
     YearMonth october = YearMonth.of(2026, 10);
-    when(repository.sumByMonth(october)).thenReturn(new BigDecimal("2000.00"));
+    when(repository.totalOfMonth(october))
+        .thenReturn(new ExpenseRepositoryPort.Total(new BigDecimal("2000.00"), 2));
 
-    assertThat(service().totalOf(october)).isEqualByComparingTo("2000.00");
+    assertThat(service().totalOf(october).amount()).isEqualByComparingTo("2000.00");
+    assertThat(service().totalOf(october).count()).isEqualTo(2);
     assertThatThrownBy(() -> service().totalOf(YearMonth.of(0, 1)))
         .isInstanceOf(InvalidExpenseMonthException.class);
   }

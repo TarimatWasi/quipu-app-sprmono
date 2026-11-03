@@ -53,6 +53,14 @@ public interface ContractRepositoryPort {
   boolean existsInForce(Long environmentId, LocalDate today);
 
   /**
+   * TAR-237 (RN-20): whether a contract not terminated holds the environment on at least one day of
+   * the range. A contract without end date holds it from its start on.
+   *
+   * @param end the last day of the range; null for an open-ended range
+   */
+  boolean existsCrossing(Long environmentId, LocalDate start, @Nullable LocalDate end);
+
+  /**
    * The ACTIVE contracts (not terminated, not past their end) of the environment on {@code today},
    * the oldest start first. RN-20 keeps it to one at most; none if the environment is free.
    */
@@ -70,6 +78,12 @@ public interface ContractRepositoryPort {
   /** Every contract of the guest, whatever its state, the oldest start first. */
   List<Contract> findAllByGuest(Long guestId);
 
+  /** TAR-237 (A2): every contract of those environments, finished ones included. */
+  List<Contract> findAllByEnvironments(Collection<Long> environmentIds);
+
+  /** TAR-237: every contract of those guests, oldest first. */
+  List<Contract> findAllByGuests(Collection<Long> guestIds);
+
   /**
    * Like {@link #findAllByGuest} but every row stays locked until the transaction ends, taken in
    * the order of the ids; the oldest id first. Needs a transaction.
@@ -78,4 +92,7 @@ public interface ContractRepositoryPort {
 
   /** The contracts with those ids; an id with no contract adds nothing. */
   List<Contract> findAllByIds(Collection<Long> ids);
+
+  /** Every contract, whatever its state, the oldest start first (TAR-236). */
+  List<Contract> findEvery();
 }

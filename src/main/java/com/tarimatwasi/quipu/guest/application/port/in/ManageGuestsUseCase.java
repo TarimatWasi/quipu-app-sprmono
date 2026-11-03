@@ -1,11 +1,14 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** RF-02: list, read and edit the guests the administrator registered. */
@@ -68,9 +71,38 @@ public interface ManageGuestsUseCase {
       GuestState status,
       boolean hasLoginAccess) {}
 
-  /** The 360 view of one guest (CU-06). */
+  /**
+   * A row of the administrator's listing (A3, TAR-237).
+   *
+   * @param environment what the guest occupies: a contract or a stay in course, else the next one,
+   *     else, for an inactive guest, the last one; null without any
+   * @param accessExpiresAt only for a guest pending activation: when its unused access ends, even
+   *     if it already expired (A3.4); null otherwise
+   */
+  record GuestRowView(
+      GuestSummaryView summary,
+      @Nullable Occupancy environment,
+      @Nullable Instant accessExpiresAt) {}
+
+  /**
+   * One page of the listing and the A3 notices, which count every guest whatever the filters.
+   *
+   * @param pendingActivationCount guests pending activation (RN-33)
+   * @param onboardingCount guests in onboarding (RN-36)
+   */
+  record GuestListView(
+      CursorPage<GuestRowView> page, long pendingActivationCount, long onboardingCount) {}
+
+  /**
+   * The 360 view of one guest (CU-06).
+   *
+   * @param version the optimistic-locking version the edit sends back (TAR-276)
+   * @param accountEmail where the password recovery goes (A3.9); null without one
+   */
   record GuestDetailView(
       GuestSummaryView summary,
+      long version,
+      @Nullable String accountEmail,
       @Nullable String phone,
       @Nullable String contactEmail,
       @Nullable EmergencyContactView emergencyContact,
@@ -85,15 +117,52 @@ public interface ManageGuestsUseCase {
    * What the administrator may change: the document, only while the guest is pending activation.
    * The stays are managed through {@link ManageStaysUseCase}. Only the present fields change.
    */
-  record UpdateCommand(@Nullable IdDocumentKind documentType, @Nullable String documentNumber) {}
+  record UpdateCommand(
+      long version, @Nullable IdDocumentKind documentType, @Nullable String documentNumber) {}
+
+  /** A guest pending activation as the home names it (A1, RN-32). */
+  record PendingGuestView(
+      Long id,
+      IdDocumentKind documentType,
+      String documentNumber,
+      @Nullable Instant accessExpiresAt) {}
+
+  /**
+   * The guests pending activation (A1 «También pendiente», RN-32, RN-36).
+   *
+   * @param expired how many of them have their access expired
+   * @param first an expired one first, else the one whose access ends first; null without any
+   */
+  record NotActivatedView(long count, long expired, @Nullable PendingGuestView first) {}
+
+  /** TAR-236: the guests pending activation, whatever the filters of the listing. */
+  NotActivatedView notActivated();
+
+  /**
+   * Who a guest is for a row of the finance screens (TAR-240): a fine, a refund, a pending credit.
+   *
+   * @param environment the contract or stay that crosses the range asked, the latest one to start;
+   *     else its last one; null if it never had one (a stay registered before TAR-237 has none)
+   */
+  record GuestRef(
+      Long id, @Nullable String name, GuestKind type, @Nullable Occupancy environment) {}
+
+  /**
+   * The guests of those ids that exist, whatever their state, each with its environment in the
+   * range of days.
+   */
+  Map<Long, GuestRef> refsOf(Collection<Long> ids, LocalDate from, LocalDate to);
 
   /**
    * Lists one page of the guests of the filter, ordered by document type and number and read by
    * last index (BE-SPR-WEB-08); {@code type == null} returns both kinds.
    *
+   * @param withoutContract only the guests without a contract in force, to choose one when loading
+   *     a contract (A4.1, TAR-237)
    * @throws InvalidCursorException if the cursor of the page is not one this service issued
    */
-  CursorPage<GuestSummaryView> list(StatusFilter filter, @Nullable GuestKind type, PageQuery page);
+  GuestListView list(
+      StatusFilter filter, @Nullable GuestKind type, boolean withoutContract, PageQuery page);
 
   /**
    * Reads one guest, whatever its state.
@@ -106,6 +175,8 @@ public interface ManageGuestsUseCase {
    * Edits the present fields.
    *
    * @throws GuestNotFoundException if there is no guest with that id
+   * @throws org.springframework.dao.OptimisticLockingFailureException if the guest changed since
+   *     the version of the command (TAR-276)
    * @throws EmptyGuestUpdateException if no field is present
    * @throws GuestDocumentLockedException if the document changes and the guest already activated
    * @throws InvalidGuestDocumentException if the number does not fit the type

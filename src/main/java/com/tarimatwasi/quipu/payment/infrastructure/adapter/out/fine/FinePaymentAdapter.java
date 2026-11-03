@@ -2,7 +2,7 @@ package com.tarimatwasi.quipu.payment.infrastructure.adapter.out.fine;
 
 import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFinePort;
-import java.math.BigDecimal;
+import com.tarimatwasi.quipu.payment.domain.MonthTotal;
 import java.time.YearMonth;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +17,8 @@ public class FinePaymentAdapter implements PaymentFinePort {
   }
 
   @Override
-  public BigDecimal totalOf(YearMonth month) {
-    return fines.totalOf(month);
+  public MonthTotal totalOf(YearMonth month) {
+    var total = fines.totalOf(month);
+    return new MonthTotal(total.amount(), total.count());
   }
 }

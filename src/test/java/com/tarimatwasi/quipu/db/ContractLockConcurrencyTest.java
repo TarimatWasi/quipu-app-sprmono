@@ -226,9 +226,15 @@ class ContractLockConcurrencyTest {
                   guest,
                   NOVEMBER,
                   null,
-                  new BigDecimal("800"),
                   null,
-                  new VoucherUpload("v.pdf", PDF)));
+                  java.util.List.of(
+                      new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                          .ProofUpload(
+                          com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                              .ProofType.VOUCHER,
+                          new BigDecimal("800"),
+                          null,
+                          new VoucherUpload("v.pdf", PDF)))));
         });
   }
 

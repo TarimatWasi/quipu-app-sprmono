@@ -13,13 +13,13 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.D
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.Resolution;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
-import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodVoucher;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.support.PaymentRows;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -109,20 +109,38 @@ class PaymentConcurrencyTest {
 
   private Long insertPending() {
     Long id = TestIds.next();
-    jdbc.update(
-        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-            + " content_type, size_bytes, status, recorded_by) VALUES (?, ?, ?, '2026-01-01', 800,"
-            + " ?, 'v.pdf', 'application/pdf', 10, 'PENDING', 'GUEST')",
-        id,
-        guest,
-        contract,
-        "vouchers/" + id);
+    PaymentRows.insert(
+        jdbc,
+        new PaymentRows.Row(
+            id,
+            guest,
+            contract,
+            null,
+            "2026-01-01",
+            "800",
+            "PENDING",
+            null,
+            "GUEST",
+            null,
+            "vouchers/" + id,
+            "application/pdf"));
     return id;
   }
 
   private DirectPayment direct() {
     return new DirectPayment(
-        admin, guest, JANUARY, null, new BigDecimal("800"), null, new VoucherUpload("v.pdf", PDF));
+        admin,
+        guest,
+        JANUARY,
+        null,
+        null,
+        java.util.List.of(
+            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
+                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
+                    .VOUCHER,
+                new BigDecimal("800"),
+                null,
+                new VoucherUpload("v.pdf", PDF))));
   }
 
   private int livePayments() {
@@ -161,7 +179,15 @@ class PaymentConcurrencyTest {
   }
 
   private void approveNow(Long id) {
-    payments.resolve(id, new Resolution(admin, Decision.APPROVED, null));
+    // TAR-239: every proof of the payment verified at its declared amount.
+    java.util.Map<Long, BigDecimal> verified = new java.util.HashMap<>();
+    jdbc.query(
+        "SELECT id, declared_amount FROM payment_proofs WHERE payment_id = ?",
+        row -> {
+          verified.put(row.getLong(1), row.getBigDecimal(2));
+        },
+        id);
+    payments.resolve(id, new Resolution(admin, Decision.APPROVED, null, verified));
   }
 
   private void registerNow() {
@@ -246,6 +272,8 @@ class PaymentConcurrencyTest {
           .isEqualTo(1);
       assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
           .isEqualTo("APPROVED");
+      jdbc.update("DELETE FROM payment_reviews");
+      jdbc.update("DELETE FROM payment_proofs");
       jdbc.update("DELETE FROM payments");
     }
   }
@@ -278,6 +306,8 @@ class PaymentConcurrencyTest {
               .filter(i -> i.getMethod().getName().equals("delete"))
               .count();
       assertThat(removed).as("objects removed").isEqualTo(uploaded);
+      jdbc.update("DELETE FROM payment_reviews");
+      jdbc.update("DELETE FROM payment_proofs");
       jdbc.update("DELETE FROM payments");
     }
   }
@@ -305,6 +335,8 @@ class PaymentConcurrencyTest {
               .filter(i -> i.getMethod().getName().equals("delete"))
               .count();
       assertThat(uploaded - removed).as("only the stored voucher is left").isEqualTo(1);
+      jdbc.update("DELETE FROM payment_reviews");
+      jdbc.update("DELETE FROM payment_proofs");
       jdbc.update("DELETE FROM payments");
     }
   }
@@ -369,12 +401,18 @@ class PaymentConcurrencyTest {
       Runnable upload =
           () ->
               ownPayments.uploadForPeriod(
-                  new PeriodVoucher(
+                  new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase
+                      .PeriodPayment(
                       guest,
                       JANUARY,
-                      new BigDecimal("800"),
-                      null,
-                      new VoucherUpload("v.pdf", PDF)));
+                      java.util.List.of(
+                          new com.tarimatwasi.quipu.payment.application.port.in
+                              .ManagePaymentsUseCase.ProofUpload(
+                              com.tarimatwasi.quipu.payment.application.port.in
+                                  .ManagePaymentsUseCase.ProofType.VOUCHER,
+                              new BigDecimal("800"),
+                              null,
+                              new VoucherUpload("v.pdf", PDF)))));
 
       List<Optional<Throwable>> outcomes = race(upload, upload);
 
@@ -393,6 +431,8 @@ class PaymentConcurrencyTest {
               .filter(i -> i.getMethod().getName().equals("delete"))
               .count();
       assertThat(uploaded - removed).as("only the stored voucher is left").isEqualTo(1);
+      jdbc.update("DELETE FROM payment_reviews");
+      jdbc.update("DELETE FROM payment_proofs");
       jdbc.update("DELETE FROM payments");
     }
   }

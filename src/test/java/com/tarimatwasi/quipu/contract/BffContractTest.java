@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.contract;
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -96,17 +97,19 @@ class BffContractTest {
     return openApi().isValid(validator);
   }
 
+  /** An administrator already wrote its name (A0.5, TAR-127); a guest's lives in guests. */
   private void insertUser(String document, String role, String status, boolean mustChange) {
     jdbc.update(
         "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
-            + " must_change_password, status) VALUES (?, ?, 'DNI', ?, ?, ?, ?, ?)",
+            + " must_change_password, status, name) VALUES (?, ?, 'DNI', ?, ?, ?, ?, ?, ?)",
         TestIds.next(),
         document + "@example.com",
         document,
         passwordEncoder.encode(TEMPORARY),
         role,
         mustChange,
-        status);
+        status,
+        "ADMIN".equals(role) ? "Ana Quispe Mamani" : null);
   }
 
   private ResultActions login(String document, String password) throws Exception {
@@ -252,7 +255,7 @@ class BffContractTest {
         .andExpect(status().isAccepted())
         .andExpect(satisfiesTheContract());
     var code = ArgumentCaptor.forClass(String.class);
-    verify(mail).sendResetLink(eq(ADMIN_EMAIL), code.capture(), any());
+    verify(mail).sendResetLink(eq(ADMIN_EMAIL), code.capture(), any(), anyBoolean());
     return code.getValue();
   }
 

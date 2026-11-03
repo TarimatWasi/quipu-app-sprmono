@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.application.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.tarimatwasi.quipu.auth.application.port.in.ChangePasswordUseCase.ChangePasswordResult;
+import com.tarimatwasi.quipu.auth.application.port.in.CurrentPasswordMismatchException;
 import com.tarimatwasi.quipu.auth.application.port.in.CurrentSessionUseCase.CurrentSession;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.DocumentKind;
@@ -273,8 +274,19 @@ class AuthApplicationServiceTest {
     UserAccount user = savedUser("Temporal123!", true, "ACTIVE");
 
     assertThatThrownBy(() -> service.changePassword(change(user, null, "Temporal123!")))
-        .isInstanceOf(PasswordUnchangedException.class);
+        .isInstanceOfSatisfying(
+            PasswordUnchangedException.class, e -> assertThat(e.firstAccess()).isTrue());
     assertThat(repository.find(user.id()).mustChangePassword()).isTrue();
+  }
+
+  /** TAR-127 (A0.6): out of the first access the message does not name a temporary password. */
+  @Test
+  void rejectsKeepingTheCurrentPasswordOutsideTheForcedFlow() {
+    UserAccount user = savedUser("Actual12345", false, "ACTIVE");
+
+    assertThatThrownBy(() -> service.changePassword(change(user, "Actual12345", "Actual12345")))
+        .isInstanceOfSatisfying(
+            PasswordUnchangedException.class, e -> assertThat(e.firstAccess()).isFalse());
   }
 
   @Test
@@ -282,7 +294,7 @@ class AuthApplicationServiceTest {
     UserAccount user = savedUser("Actual12345", false, "ACTIVE");
 
     assertThatThrownBy(() -> service.changePassword(change(user, null, "Nueva12345")))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(CurrentPasswordMismatchException.class);
   }
 
   @Test
@@ -290,7 +302,7 @@ class AuthApplicationServiceTest {
     UserAccount user = savedUser("Temporal123!", true, "ACTIVE");
 
     assertThatThrownBy(() -> service.changePassword(change(user, "equivocada", "Nueva12345")))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(CurrentPasswordMismatchException.class);
     assertThat(repository.find(user.id()).mustChangePassword()).isTrue();
   }
 
@@ -654,7 +666,7 @@ class AuthApplicationServiceTest {
     temporaryPassword("Tmp-abc-123", clock.instant().plus(Duration.ofMinutes(30)));
 
     assertThatThrownBy(() -> service.changePassword(change(user, null, "Nueva12345")))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(CurrentPasswordMismatchException.class);
   }
 
   /** The session is bound to its own access: another live one of the guest does not count. */
@@ -668,7 +680,7 @@ class AuthApplicationServiceTest {
                 service.changePassword(
                     new ChangePasswordCommand(
                         user.id().toString(), SESSION, null, "Nueva12345", 999L)))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(CurrentPasswordMismatchException.class);
   }
 
   @Test
@@ -682,7 +694,7 @@ class AuthApplicationServiceTest {
                 service.changePassword(
                     new ChangePasswordCommand(
                         user.id().toString(), SESSION, null, "Nueva12345", GRANT)))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(CurrentPasswordMismatchException.class);
   }
 
   /** A temporary session whose access was revoked or used can no longer skip it either. */
@@ -695,6 +707,6 @@ class AuthApplicationServiceTest {
                 service.changePassword(
                     new ChangePasswordCommand(
                         user.id().toString(), SESSION, null, "Nueva12345", GRANT)))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(CurrentPasswordMismatchException.class);
   }
 }

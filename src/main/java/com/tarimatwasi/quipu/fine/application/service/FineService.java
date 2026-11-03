@@ -10,7 +10,6 @@ import com.tarimatwasi.quipu.fine.application.port.out.FineGuestMissingException
 import com.tarimatwasi.quipu.fine.application.port.out.FineGuestPort;
 import com.tarimatwasi.quipu.fine.application.port.out.FineRepositoryPort;
 import com.tarimatwasi.quipu.fine.domain.Fine;
-import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -71,9 +70,10 @@ public class FineService implements ManageFinesUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public BigDecimal totalOf(YearMonth month) {
+  public MonthTotal totalOf(YearMonth month) {
     requireValid(month);
-    return fines.sumByMonth(month);
+    var total = fines.totalOfMonth(month);
+    return new MonthTotal(total.amount(), total.count());
   }
 
   private static void requireValid(YearMonth month) {

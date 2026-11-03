@@ -21,6 +21,8 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.D
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.GuestKind;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.Resolution;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
@@ -31,145 +33,39 @@ import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundExceptio
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentReasonRequiredException;
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.ContractInfo;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentEnvironmentPort;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFileStorageException;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.GuestProfile;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.DirectDraft;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewPayment;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayInfo;
-import com.tarimatwasi.quipu.payment.domain.ContractTerms;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
-import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
-class PaymentServiceTest {
-
-  private static final Long ADMIN = TestIds.next();
-  private static final Long GUEST = TestIds.next();
-  private static final Long CONTRACT = TestIds.next();
-  private static final Long ENVIRONMENT = TestIds.next();
-  private static final Long STAY = TestIds.next();
-  private static final Long PAYMENT = TestIds.next();
-  private static final byte[] PDF = TestPdfs.plain();
-  private static final String KEY = "vouchers/abc";
-  private static final String URL = "https://r2.test/vouchers/abc?X-Amz-Signature=s";
-  private static final YearMonth OCTOBER = YearMonth.of(2026, 10);
-  private static final Instant CREATED = Instant.parse("2026-10-10T15:00:00Z");
-
-  // 2026-10-14 09:00 in Lima
-  private final MutableClock clock = new MutableClock(Instant.parse("2026-10-14T14:00:00Z"));
-
-  @Mock PaymentRepositoryPort payments;
-  @Mock PaymentFilePort files;
-  @Mock PaymentGuestPort guests;
-  @Mock PaymentContractPort contracts;
-  @Mock PaymentEnvironmentPort environments;
-  @Mock PaymentStayPort stays;
-
-  private PaymentService service;
-
-  @BeforeEach
-  void setUp() {
-    service = new PaymentService(payments, files, guests, contracts, environments, stays, clock);
-  }
-
-  private static Payment payment(
-      PaymentStatus status, @Nullable YearMonth period, @Nullable Long stay) {
-    return new Payment(
-        PAYMENT,
-        GUEST,
-        stay == null ? CONTRACT : null,
-        stay,
-        period,
-        new BigDecimal("800.00"),
-        "Yape",
-        status,
-        status == PaymentStatus.REJECTED ? "No coincide" : null,
-        status == PaymentStatus.PENDING ? null : Instant.parse("2026-10-11T15:00:00Z"),
-        status == PaymentStatus.PENDING ? null : ADMIN);
-  }
-
-  private static StoredPayment stored(Payment payment) {
-    return new StoredPayment(payment, KEY, VoucherType.PDF, CREATED);
-  }
-
-  private static GuestProfile guest(boolean contractType, boolean active) {
-    return new GuestProfile(GUEST, "Ana Quispe", "12345678", contractType, active, false);
-  }
-
-  private static ContractInfo contract(
-      String start, @Nullable String end, @Nullable Instant terminatedAt) {
-    return new ContractInfo(
-        CONTRACT,
-        ENVIRONMENT,
-        ContractTerms.of(
-            LocalDate.parse(start),
-            end == null ? null : LocalDate.parse(end),
-            terminatedAt,
-            ZoneId.of("America/Lima"),
-            5,
-            3),
-        new BigDecimal("800.00"));
-  }
-
-  private static DirectPayment forPeriod(String period, String amount, byte[] content) {
-    return new DirectPayment(
-        ADMIN,
-        GUEST,
-        YearMonth.parse(period),
-        null,
-        new BigDecimal(amount),
-        "Efectivo",
-        new VoucherUpload("../../vaucher.pdf", content));
-  }
-
-  private static DirectPayment forStay(byte[] content) {
-    return new DirectPayment(
-        ADMIN,
-        GUEST,
-        null,
-        STAY,
-        new BigDecimal("150.50"),
-        null,
-        new VoucherUpload("v.pdf", content));
-  }
-
-  private void contractGuestWithOpenContract() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.lockedContractsOf(GUEST))
-        .thenReturn(List.of(contract("2026-01-01", null, null)));
-    lenient().when(payments.findAllByContract(CONTRACT)).thenReturn(List.of());
-  }
+class PaymentServiceTest extends PaymentServiceFixture {
 
   // ------------------------------------------------------------------ the queue and the detail
 
@@ -189,7 +85,8 @@ class PaymentServiceTest {
             PaymentStatus.PENDING,
             null,
             null,
-            null);
+            null,
+            CREATED);
     PageQuery page = PageQuery.first();
     when(payments.findQueue(PaymentStatus.PENDING, page))
         .thenReturn(new CursorPage<>(List.of(stored(ofContract), stored(ofStay)), "next"));
@@ -199,7 +96,7 @@ class PaymentServiceTest {
                 GUEST,
                 guest(true, true),
                 temporaryGuest,
-                new GuestProfile(temporaryGuest, null, "87654321", false, true, false)));
+                new GuestProfile(temporaryGuest, null, "87654321", false, true, false, "DNI")));
     when(contracts.environmentsOf(any())).thenReturn(Map.of(CONTRACT, ENVIRONMENT));
     when(environments.codesOf(any())).thenReturn(Map.of(ENVIRONMENT, "201"));
 
@@ -233,10 +130,18 @@ class PaymentServiceTest {
     when(payments.findById(PAYMENT))
         .thenReturn(Optional.of(stored(payment(PaymentStatus.PENDING, OCTOBER, null))));
     when(files.signedUrl(KEY, VoucherType.PDF)).thenReturn(URL);
+    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
+    when(contracts.contractsOf(GUEST)).thenReturn(List.of(contract("2026-01-01", null, null)));
 
     var detail = service.get(PAYMENT);
 
-    assertThat(detail.voucherUrl()).isEqualTo(URL);
+    assertThat(detail.proofs())
+        .singleElement()
+        .satisfies(proof -> assertThat(proof.fileUrl()).isEqualTo(URL));
+    assertThat(detail.expectedAmount()).isEqualByComparingTo("800.00");
+    assertThat(detail.amountDue()).isEqualByComparingTo("800.00");
+    assertThat(detail.creditApplied()).isEqualByComparingTo("0");
+    assertThat(detail.lastPeriod()).isFalse();
     assertThat(detail.payment().status()).isEqualTo(PaymentState.PENDING);
     assertThat(detail.payment().createdAt()).isEqualTo(CREATED);
   }
@@ -248,6 +153,8 @@ class PaymentServiceTest {
 
     when(payments.findById(PAYMENT))
         .thenReturn(Optional.of(stored(payment(PaymentStatus.APPROVED, OCTOBER, null))));
+    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
+    when(contracts.contractsOf(GUEST)).thenReturn(List.of(contract("2026-01-01", null, null)));
     when(files.signedUrl(KEY, VoucherType.PDF)).thenThrow(new PaymentFileStorageException("down"));
     assertThatThrownBy(() -> service.get(PAYMENT))
         .isInstanceOf(PaymentFileUnavailableException.class);
@@ -258,14 +165,18 @@ class PaymentServiceTest {
   private void pendingPayment() {
     when(payments.findByIdForUpdate(PAYMENT))
         .thenReturn(Optional.of(stored(payment(PaymentStatus.PENDING, OCTOBER, null))));
-    lenient().when(payments.save(any())).thenAnswer(call -> stored(call.getArgument(0)));
+    lenient().doAnswer(call -> stored(call.getArgument(0))).when(payments).save(any());
+    // What is due: the monthly amount of the contract of the payment (RN-16).
+    lenient()
+        .when(contracts.contractsOf(GUEST))
+        .thenReturn(List.of(contract("2026-01-01", null, null)));
   }
 
   @Test
   void resolve_approvesWithTheReviewerOfTheSessionAndTheClock() {
     pendingPayment();
 
-    var view = service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, null));
+    var view = service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, null, VERIFIED));
 
     assertThat(view.status()).isEqualTo(PaymentState.APPROVED);
     ArgumentCaptor<Payment> saved = ArgumentCaptor.forClass(Payment.class);
@@ -278,7 +189,8 @@ class PaymentServiceTest {
   void resolve_readsTheRowLockedAndIgnoresAReasonGivenWithAnApproval() {
     pendingPayment();
 
-    var view = service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, "ignored"));
+    var view =
+        service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, "ignored", VERIFIED));
 
     assertThat(view.rejectionReason()).isNull();
     verify(payments).findByIdForUpdate(PAYMENT);
@@ -290,7 +202,8 @@ class PaymentServiceTest {
     pendingPayment();
 
     var view =
-        service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "  Monto menor  "));
+        service.resolve(
+            PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "  Monto menor  ", VERIFIED));
 
     assertThat(view.status()).isEqualTo(PaymentState.REJECTED);
     assertThat(view.rejectionReason()).isEqualTo("Monto menor");
@@ -301,7 +214,9 @@ class PaymentServiceTest {
     for (String blank : new String[] {null, "", "   ", " ", " "}) {
       pendingPayment();
       assertThatThrownBy(
-              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, blank)))
+              () ->
+                  service.resolve(
+                      PAYMENT, new Resolution(ADMIN, Decision.REJECTED, blank, VERIFIED)))
           .as("[" + blank + "]")
           .isInstanceOf(PaymentReasonRequiredException.class);
     }
@@ -314,7 +229,9 @@ class PaymentServiceTest {
     String separators = " ".repeat(501);
 
     assertThatThrownBy(
-            () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, separators)))
+            () ->
+                service.resolve(
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, separators, VERIFIED)))
         .isInstanceOf(PaymentReasonRequiredException.class);
   }
 
@@ -323,7 +240,9 @@ class PaymentServiceTest {
     for (String reason : new String[] {"\t", "\n", "  \n ", "\u2028"}) {
       pendingPayment();
       assertThatThrownBy(
-              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, reason)))
+              () ->
+                  service.resolve(
+                      PAYMENT, new Resolution(ADMIN, Decision.REJECTED, reason, VERIFIED)))
           .isInstanceOfSatisfying(
               InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
     }
@@ -335,39 +254,47 @@ class PaymentServiceTest {
 
     assertThat(
             service
-                .resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "x".repeat(500)))
+                .resolve(
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "x".repeat(500), VERIFIED))
                 .rejectionReason())
         .hasSize(500);
     pendingPayment();
     assertThatThrownBy(
             () ->
-                service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "x".repeat(501))))
+                service.resolve(
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "x".repeat(501), VERIFIED)))
         .isInstanceOfSatisfying(
             InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
     assertThatThrownBy(
             () ->
                 service.resolve(
-                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "mal\u0000motivo")))
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "mal\u0000motivo", VERIFIED)))
         .isInstanceOfSatisfying(
             InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
     assertThatThrownBy(
             () ->
-                service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "esc\u001Bape")))
+                service.resolve(
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "esc\u001Bape", VERIFIED)))
         .isInstanceOf(InvalidPaymentException.class);
   }
 
   @Test
   void resolve_aPaymentThatIsNoLongerPendingIsAlreadyResolved() {
+    // TAR-239: a rejected payment can still be decided on; an approved one or a past rejection not.
     for (PaymentStatus resolved :
-        new PaymentStatus[] {PaymentStatus.APPROVED, PaymentStatus.REJECTED}) {
+        new PaymentStatus[] {PaymentStatus.APPROVED, PaymentStatus.SUPERSEDED}) {
       when(payments.findByIdForUpdate(PAYMENT))
           .thenReturn(Optional.of(stored(payment(resolved, OCTOBER, null))));
 
       assertThatThrownBy(
-              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, null)))
+              () ->
+                  service.resolve(
+                      PAYMENT, new Resolution(ADMIN, Decision.APPROVED, null, VERIFIED)))
           .isInstanceOf(PaymentAlreadyResolvedException.class);
       assertThatThrownBy(
-              () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "Tarde")))
+              () ->
+                  service.resolve(
+                      PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "Tarde", VERIFIED)))
           .isInstanceOf(PaymentAlreadyResolvedException.class);
     }
     verify(payments, never()).save(any());
@@ -378,357 +305,9 @@ class PaymentServiceTest {
     when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.empty());
 
     assertThatThrownBy(
-            () -> service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, null)))
+            () ->
+                service.resolve(PAYMENT, new Resolution(ADMIN, Decision.APPROVED, null, VERIFIED)))
         .isInstanceOf(PaymentNotFoundException.class);
-  }
-
-  // ------------------------------------------------------------------ the payment by hand
-
-  @Test
-  void registerDirect_ofAPeriodStoresTheVoucherAndInsertsItApprovedByTheAdmin() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
-
-    var view = service.registerDirect(forPeriod("2026-10", "800.00", PDF));
-
-    assertThat(view.status()).isEqualTo(PaymentState.APPROVED);
-    ArgumentCaptor<DirectDraft> draft = ArgumentCaptor.forClass(DirectDraft.class);
-    var order = inOrder(files, payments);
-    order.verify(files).store(PDF, VoucherType.PDF);
-    order.verify(payments).insertApproved(draft.capture());
-    assertThat(draft.getValue().contractId()).isEqualTo(CONTRACT);
-    assertThat(draft.getValue().stayId()).isNull();
-    assertThat(draft.getValue().period()).isEqualTo(OCTOBER);
-    assertThat(draft.getValue().reviewedById()).isEqualTo(ADMIN);
-    assertThat(draft.getValue().reviewedAt()).isEqualTo(clock.instant());
-    assertThat(draft.getValue().voucherKey()).isEqualTo(KEY);
-    assertThat(draft.getValue().originalName()).isEqualTo("vaucher.pdf");
-    assertThat(draft.getValue().sizeBytes()).isEqualTo(PDF.length);
-    assertThat(draft.getValue().paymentMethod()).isEqualTo("Efectivo");
-  }
-
-  @Test
-  void registerDirect_ofAStayInsertsItForThatStay() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(false, true));
-    when(stays.stayOf(GUEST, STAY)).thenReturn(new StayInfo(STAY));
-    when(payments.findLiveByStay(STAY)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, null, STAY)));
-
-    service.registerDirect(forStay(PDF));
-
-    ArgumentCaptor<DirectDraft> draft = ArgumentCaptor.forClass(DirectDraft.class);
-    verify(payments).insertApproved(draft.capture());
-    assertThat(draft.getValue().stayId()).isEqualTo(STAY);
-    assertThat(draft.getValue().contractId()).isNull();
-    assertThat(draft.getValue().period()).isNull();
-    assertThat(draft.getValue().paymentMethod()).isNull();
-  }
-
-  @Test
-  void registerDirect_exactlyOneOfPeriodOrStayAndAValidAmountComeBeforeAnyLookup() {
-    var both =
-        new DirectPayment(
-            ADMIN, GUEST, OCTOBER, STAY, BigDecimal.TEN, null, new VoucherUpload("v.pdf", PDF));
-    var neither =
-        new DirectPayment(
-            ADMIN, GUEST, null, null, BigDecimal.TEN, null, new VoucherUpload("v.pdf", PDF));
-
-    assertThatThrownBy(() -> service.registerDirect(both))
-        .isInstanceOfSatisfying(
-            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
-    assertThatThrownBy(() -> service.registerDirect(neither))
-        .isInstanceOf(InvalidPaymentException.class);
-    for (String amount : new String[] {"0", "-5", "0.001", "100000000", "99999999.991"}) {
-      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", amount, PDF)))
-          .as(amount)
-          .isInstanceOfSatisfying(
-              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("amount"));
-    }
-    var longMethod =
-        new DirectPayment(
-            ADMIN,
-            GUEST,
-            OCTOBER,
-            null,
-            BigDecimal.TEN,
-            "m".repeat(51),
-            new VoucherUpload("v.pdf", PDF));
-    assertThatThrownBy(() -> service.registerDirect(longMethod))
-        .isInstanceOfSatisfying(
-            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("paymentMethod"));
-    verifyNoInteractions(guests, files, payments);
-  }
-
-  @Test
-  void registerDirect_theLargestAmountAndAMethodOfFiftyCharactersAreAccepted() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
-    var edge =
-        new DirectPayment(
-            ADMIN,
-            GUEST,
-            OCTOBER,
-            null,
-            new BigDecimal("99999999.99"),
-            "m".repeat(50),
-            new VoucherUpload("v.pdf", PDF));
-
-    assertThat(service.registerDirect(edge).status()).isEqualTo(PaymentState.APPROVED);
-  }
-
-  @Test
-  void registerDirect_anUnknownGuestOrStayIsNotFoundBeforeTheGuestIsChecked() {
-    when(guests.profileOf(GUEST)).thenThrow(new GuestNotFoundException());
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(GuestNotFoundException.class);
-
-    doReturn(guest(false, false)).when(guests).profileOf(GUEST);
-    when(stays.stayOf(GUEST, STAY)).thenThrow(new StayNotFoundException());
-    assertThatThrownBy(() -> service.registerDirect(forStay(PDF)))
-        .isInstanceOf(StayNotFoundException.class);
-    verifyNoInteractions(files);
-  }
-
-  @Test
-  void registerDirect_aGuestThatIsNotActiveIsRefusedEvenForTheAdministrator() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, false));
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOfSatisfying(
-            GuestNotActiveException.class, e -> assertThat(e.guestId()).isEqualTo(GUEST));
-    verifyNoInteractions(files, contracts);
-  }
-
-  /** D-27: an inactive guest pays only a month it owes (October is paid, September is not). */
-  @Test
-  void registerDirect_anInactiveGuestPaysOnlyAMonthItOwes() {
-    contractGuestWithOpenContract();
-    when(guests.profileOf(GUEST)).thenReturn(new GuestProfile(GUEST, null, "1", true, false, true));
-    var paid = payment(PaymentStatus.APPROVED, OCTOBER, null);
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(paid));
-    when(payments.insertApproved(any())).thenReturn(stored(paid));
-    for (var period : List.of("2026-10", "2026-11")) {
-      assertThatThrownBy(() -> service.registerDirect(forPeriod(period, "800", PDF)))
-          .isInstanceOf(GuestNotActiveException.class);
-    }
-    assertThat(service.registerDirect(forPeriod("2026-09", "800", PDF)).status())
-        .isEqualTo(PaymentState.APPROVED);
-  }
-
-  @Test
-  void registerDirect_aTemporaryGuestHasStaysAndAGuestWithAContractHasPeriods() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(false, true));
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOfSatisfying(
-            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
-
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(stays.stayOf(GUEST, STAY)).thenReturn(new StayInfo(STAY));
-    assertThatThrownBy(() -> service.registerDirect(forStay(PDF)))
-        .isInstanceOfSatisfying(
-            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("stayId"));
-    verifyNoInteractions(files);
-  }
-
-  @Test
-  void registerDirect_aPeriodOutsideTheContractIsRefused() {
-    contractGuestWithOpenContract();
-
-    for (String period : new String[] {"2025-12", "2026-11", "2027-01"}) {
-      assertThatThrownBy(() -> service.registerDirect(forPeriod(period, "800", PDF)))
-          .as(period)
-          .isInstanceOfSatisfying(
-              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
-    }
-    verifyNoInteractions(files);
-  }
-
-  /**
-   * TAR-192: the terms are read with the rows of the contracts locked, so a termination that
-   * committed first is seen: a month after it is not chargeable, the same answer as any other.
-   */
-  @Test
-  void registerDirect_readsTheTermsUnderTheLockAndRefusesAMonthAfterTheTermination() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.lockedContractsOf(GUEST))
-        .thenReturn(List.of(contract("2026-01-01", null, Instant.parse("2026-09-30T15:00:00Z"))));
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOfSatisfying(
-            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
-    verify(contracts, never()).contractsOf(any());
-    verifyNoInteractions(files);
-    verify(payments, never()).insertApproved(any());
-  }
-
-  @Test
-  void registerDirect_aGuestWithoutAContractHasNoPeriodToPay() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
-    when(contracts.lockedContractsOf(GUEST)).thenReturn(List.of());
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(InvalidPaymentException.class);
-  }
-
-  @Test
-  void registerDirect_theFileIsCheckedByItsContentAfterThePeriodAndBeforeTheLivePayment() {
-    contractGuestWithOpenContract();
-    byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3};
-    byte[] active = TestPdfs.withJavaScript();
-    byte[] tooBig = new byte[5 * 1024 * 1024 + 1];
-    System.arraycopy(PDF, 0, tooBig, 0, PDF.length);
-
-    for (byte[] content : new byte[][] {exe, active, tooBig, new byte[0]}) {
-      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", content)))
-          .isInstanceOf(InvalidVoucherFileException.class);
-    }
-    verify(payments, never()).findLiveByPeriod(any(), any());
-    verifyNoInteractions(files);
-  }
-
-  @Test
-  void registerDirect_anApprovedPaymentAndAPendingVoucherAreDifferentConflicts() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER))
-        .thenReturn(Optional.of(payment(PaymentStatus.APPROVED, OCTOBER, null)))
-        .thenReturn(Optional.of(payment(PaymentStatus.PENDING, OCTOBER, null)));
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(VoucherAlreadyExistsException.class);
-    verifyNoInteractions(files);
-  }
-
-  @Test
-  void registerDirect_aStayWithALivePaymentIsAConflictToo() {
-    when(guests.profileOf(GUEST)).thenReturn(guest(false, true));
-    when(stays.stayOf(GUEST, STAY)).thenReturn(new StayInfo(STAY));
-    when(payments.findLiveByStay(STAY))
-        .thenReturn(Optional.of(payment(PaymentStatus.APPROVED, null, STAY)));
-
-    assertThatThrownBy(() -> service.registerDirect(forStay(PDF)))
-        .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
-  }
-
-  @Test
-  void registerDirect_ifTheInsertFailsTheStoredObjectIsRemoved() {
-    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    var failure = new IllegalStateException("insert failed");
-    when(payments.insertApproved(any())).thenThrow(failure);
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isSameAs(failure);
-    verify(files).delete(KEY);
-  }
-
-  @Test
-  void
-      registerDirect_ifAnotherRequestGotThePeriodFirstTheRightConflictIsAnsweredAndTheObjectRemoved() {
-    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenThrow(new LivePaymentExistsException(PaymentStatus.PENDING))
-        .thenThrow(new LivePaymentExistsException(PaymentStatus.APPROVED));
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(VoucherAlreadyExistsException.class);
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
-    verify(files, org.mockito.Mockito.times(2)).delete(KEY);
-  }
-
-  @Test
-  void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt(CapturedOutput output) {
-    contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    var failure = new IllegalStateException("insert failed");
-    when(payments.insertApproved(any())).thenThrow(failure);
-    var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
-    doThrow(cleanup).when(files).delete(KEY);
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isSameAs(failure);
-    assertThat(output)
-        .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
-        .doesNotContain(KEY, R2Failures.HOST);
-  }
-
-  @Test
-  void registerDirect_ifTheBucketFailsNothingIsInserted() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenThrow(new PaymentFileStorageException("down"));
-
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(PaymentFileUnavailableException.class);
-    verify(payments, never()).insertApproved(any());
-    verify(files, never()).delete(any());
-  }
-
-  @Test
-  void registerDirect_aBlankPaymentMethodIsStoredAsNothing() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
-    var blank =
-        new DirectPayment(
-            ADMIN, GUEST, OCTOBER, null, BigDecimal.TEN, "   ", new VoucherUpload("v.pdf", PDF));
-
-    service.registerDirect(blank);
-
-    ArgumentCaptor<DirectDraft> draft = ArgumentCaptor.forClass(DirectDraft.class);
-    verify(payments).insertApproved(draft.capture());
-    assertThat(draft.getValue().paymentMethod()).isNull();
-  }
-
-  @Test
-  void registerDirect_anAmountInScientificNotationIsRefused() {
-    for (String amount : new String[] {"8E+2", "1e2", "0.8E+3"}) {
-      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", amount, PDF)))
-          .as(amount)
-          .isInstanceOfSatisfying(
-              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("amount"));
-    }
-    verifyNoInteractions(guests, files, payments);
-  }
-
-  @Test
-  void registerDirect_theAmountIsStoredWithTwoDecimals() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any()))
-        .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
-
-    service.registerDirect(forPeriod("2026-10", "800", PDF));
-    service.registerDirect(forPeriod("2026-10", "800.500", PDF));
-
-    ArgumentCaptor<DirectDraft> draft = ArgumentCaptor.forClass(DirectDraft.class);
-    verify(payments, org.mockito.Mockito.times(2)).insertApproved(draft.capture());
-    assertThat(draft.getAllValues()).allSatisfy(d -> assertThat(d.amount().scale()).isEqualTo(2));
-    assertThat(draft.getAllValues().get(1).amount()).isEqualByComparingTo("800.50");
-  }
-
-  @Test
-  void registerDirect_ifThePaymentThatBlockedTheInsertIsGoneTheConflictIsNeutral() {
-    contractGuestWithOpenContract();
-    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
-    when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
-    when(payments.insertApproved(any())).thenThrow(new LivePaymentExistsException(null));
-    assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
-        .isInstanceOf(PaymentConcurrentChangeException.class);
-    verify(files).delete(KEY);
   }
 
   @Test
@@ -745,7 +324,8 @@ class PaymentServiceTest {
             PaymentStatus.PENDING,
             null,
             null,
-            null);
+            null,
+            CREATED);
     PageQuery page = PageQuery.first();
     when(payments.findQueue(null, page))
         .thenReturn(
@@ -769,7 +349,7 @@ class PaymentServiceTest {
     assertThatThrownBy(
             () ->
                 service.resolve(
-                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "mal\u202Emotivo")))
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, "mal\u202Emotivo", VERIFIED)))
         .isInstanceOfSatisfying(
             InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("reason"));
     var method =
@@ -778,12 +358,19 @@ class PaymentServiceTest {
             GUEST,
             OCTOBER,
             null,
-            BigDecimal.TEN,
-            "Yape\u200B",
-            new VoucherUpload("v.pdf", PDF));
+            null,
+            java.util.List.of(
+                new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                    .ProofUpload(
+                    com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                        .ProofType.VOUCHER,
+                    BigDecimal.TEN,
+                    "Yape\u200B",
+                    new VoucherUpload("v.pdf", PDF))));
     assertThatThrownBy(() -> service.registerDirect(method))
         .isInstanceOfSatisfying(
-            InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("paymentMethod"));
+            InvalidPaymentException.class,
+            e -> assertThat(e.field()).isEqualTo("proofs[0].method"));
   }
 
   @Test
@@ -793,8 +380,420 @@ class PaymentServiceTest {
 
     assertThat(
             service
-                .resolve(PAYMENT, new Resolution(ADMIN, Decision.REJECTED, emoji.repeat(500)))
+                .resolve(
+                    PAYMENT, new Resolution(ADMIN, Decision.REJECTED, emoji.repeat(500), VERIFIED))
                 .rejectionReason())
         .isEqualTo(emoji.repeat(500));
+  }
+
+  /** A5.1, CU-14, CU-28: the payment the administrator registers by hand (TAR-239). */
+  @Nested
+  class PaymentByHand {
+
+    // ------------------------------------------------------------------ the payment by hand
+
+    @Test
+    void registerDirect_ofAPeriodStoresTheVoucherAndInsertsItApprovedByTheAdmin() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any()))
+          .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
+
+      var view = service.registerDirect(forPeriod("2026-10", "800.00", PDF));
+
+      assertThat(view.status()).isEqualTo(PaymentState.APPROVED);
+      ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
+      var order = inOrder(files, payments);
+      order.verify(files).store(PDF, VoucherType.PDF);
+      order.verify(payments).insert(draft.capture());
+      assertThat(draft.getValue().contractId()).isEqualTo(CONTRACT);
+      assertThat(draft.getValue().stayId()).isNull();
+      assertThat(draft.getValue().period()).isEqualTo(OCTOBER);
+      assertThat(draft.getValue().reviewedById()).isEqualTo(ADMIN);
+      assertThat(draft.getValue().reviewedAt()).isEqualTo(clock.instant());
+      assertThat(draft.getValue().proofs().get(0).file())
+          .isEqualTo(new ProofFile(KEY, "vaucher.pdf", VoucherType.PDF, PDF.length));
+      assertThat(draft.getValue().proofs().get(0).method()).isEqualTo("Efectivo");
+    }
+
+    @Test
+    void registerDirect_ofAStayInsertsItForThatStay() {
+      when(guests.profileOf(GUEST)).thenReturn(guest(false, true));
+      when(stays.stayOf(GUEST, STAY)).thenReturn(new StayInfo(STAY));
+      lenient()
+          .when(stays.staysByIds(Set.of(STAY)))
+          .thenReturn(
+              Map.of(
+                  STAY,
+                  new StayRef(
+                      STAY,
+                      LocalDate.parse("2026-10-10"),
+                      LocalDate.parse("2026-10-20"),
+                      new BigDecimal("150"),
+                      null)));
+      when(payments.findLiveByStay(STAY)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any())).thenReturn(stored(payment(PaymentStatus.APPROVED, null, STAY)));
+
+      service.registerDirect(forStay(PDF));
+
+      ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
+      verify(payments).insert(draft.capture());
+      assertThat(draft.getValue().stayId()).isEqualTo(STAY);
+      assertThat(draft.getValue().contractId()).isNull();
+      assertThat(draft.getValue().period()).isNull();
+      assertThat(draft.getValue().proofs().get(0).method()).isNull();
+    }
+
+    /** A direct payment with one voucher of 10 soles. */
+    private static DirectPayment tenWith(
+        @Nullable YearMonth period, @Nullable Long stay, @Nullable String method) {
+      return new DirectPayment(
+          ADMIN,
+          GUEST,
+          period,
+          stay,
+          null,
+          List.of(
+              new ProofUpload(
+                  ProofType.VOUCHER, BigDecimal.TEN, method, new VoucherUpload("v.pdf", PDF))));
+    }
+
+    @Test
+    void registerDirect_exactlyOneOfPeriodOrStayAndAValidAmountComeBeforeAnyLookup() {
+      var both = tenWith(OCTOBER, STAY, null);
+      var neither = tenWith(null, null, null);
+
+      assertThatThrownBy(() -> service.registerDirect(both))
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
+      assertThatThrownBy(() -> service.registerDirect(neither))
+          .isInstanceOf(InvalidPaymentException.class);
+      for (String amount : new String[] {"0", "-5", "0.001", "100000000", "99999999.991"}) {
+        assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", amount, PDF)))
+            .as(amount)
+            .isInstanceOfSatisfying(
+                InvalidPaymentException.class,
+                e -> assertThat(e.field()).isEqualTo("proofs[0].amount"));
+      }
+      var longMethod = tenWith(OCTOBER, null, "m".repeat(51));
+      assertThatThrownBy(() -> service.registerDirect(longMethod))
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class,
+              e -> assertThat(e.field()).isEqualTo("proofs[0].method"));
+      verifyNoInteractions(guests, files, payments);
+    }
+
+    @Test
+    void registerDirect_theLargestAmountAndAMethodOfFiftyCharactersAreAccepted() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any()))
+          .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
+      var edge =
+          new DirectPayment(
+              ADMIN,
+              GUEST,
+              OCTOBER,
+              null,
+              null,
+              java.util.List.of(
+                  new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                      .ProofUpload(
+                      com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                          .ProofType.VOUCHER,
+                      new BigDecimal("99999999.99"),
+                      "m".repeat(50),
+                      new VoucherUpload("v.pdf", PDF))));
+
+      assertThat(service.registerDirect(edge).status()).isEqualTo(PaymentState.APPROVED);
+    }
+
+    @Test
+    void registerDirect_anUnknownGuestOrStayIsNotFoundBeforeTheGuestIsChecked() {
+      when(guests.profileOf(GUEST)).thenThrow(new GuestNotFoundException());
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(GuestNotFoundException.class);
+
+      doReturn(guest(false, false)).when(guests).profileOf(GUEST);
+      when(stays.stayOf(GUEST, STAY)).thenThrow(new StayNotFoundException());
+      assertThatThrownBy(() -> service.registerDirect(forStay(PDF)))
+          .isInstanceOf(StayNotFoundException.class);
+      verifyNoInteractions(files);
+    }
+
+    @Test
+    void registerDirect_aGuestThatIsNotActiveIsRefusedEvenForTheAdministrator() {
+      when(guests.profileOf(GUEST)).thenReturn(guest(true, false));
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOfSatisfying(
+              GuestNotActiveException.class, e -> assertThat(e.guestId()).isEqualTo(GUEST));
+      verifyNoInteractions(files, contracts);
+    }
+
+    /** D-27: an inactive guest pays only a month it owes (October is paid, September is not). */
+    @Test
+    void registerDirect_anInactiveGuestPaysOnlyAMonthItOwes() {
+      contractGuestWithOpenContract();
+      when(guests.profileOf(GUEST))
+          .thenReturn(new GuestProfile(GUEST, null, "1", true, false, true, "DNI"));
+      var paid = payment(PaymentStatus.APPROVED, OCTOBER, null);
+      when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(paid));
+      when(payments.insert(any())).thenReturn(stored(paid));
+      for (var period : List.of("2026-10", "2026-11")) {
+        assertThatThrownBy(() -> service.registerDirect(forPeriod(period, "800", PDF)))
+            .isInstanceOf(GuestNotActiveException.class);
+      }
+      assertThat(service.registerDirect(forPeriod("2026-09", "800", PDF)).status())
+          .isEqualTo(PaymentState.APPROVED);
+    }
+
+    @Test
+    void registerDirect_aTemporaryGuestHasStaysAndAGuestWithAContractHasPeriods() {
+      when(guests.profileOf(GUEST)).thenReturn(guest(false, true));
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
+
+      when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
+      when(stays.stayOf(GUEST, STAY)).thenReturn(new StayInfo(STAY));
+      lenient()
+          .when(stays.staysByIds(Set.of(STAY)))
+          .thenReturn(
+              Map.of(
+                  STAY,
+                  new StayRef(
+                      STAY,
+                      LocalDate.parse("2026-10-10"),
+                      LocalDate.parse("2026-10-20"),
+                      new BigDecimal("150"),
+                      null)));
+      assertThatThrownBy(() -> service.registerDirect(forStay(PDF)))
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("stayId"));
+      verifyNoInteractions(files);
+    }
+
+    @Test
+    void registerDirect_aPeriodOutsideTheContractIsRefused() {
+      contractGuestWithOpenContract();
+
+      for (String period : new String[] {"2025-12", "2026-11", "2027-01"}) {
+        assertThatThrownBy(() -> service.registerDirect(forPeriod(period, "800", PDF)))
+            .as(period)
+            .isInstanceOfSatisfying(
+                InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
+      }
+      verifyNoInteractions(files);
+    }
+
+    /**
+     * TAR-192: the terms are read with the rows of the contracts locked, so a termination that
+     * committed first is seen: a month after it is not chargeable, the same answer as any other.
+     */
+    @Test
+    void registerDirect_readsTheTermsUnderTheLockAndRefusesAMonthAfterTheTermination() {
+      when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
+      when(contracts.lockedContractsOf(GUEST))
+          .thenReturn(List.of(contract("2026-01-01", null, Instant.parse("2026-09-30T15:00:00Z"))));
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOfSatisfying(
+              InvalidPaymentException.class, e -> assertThat(e.field()).isEqualTo("period"));
+      verify(contracts, never()).contractsOf(any());
+      verifyNoInteractions(files);
+      verify(payments, never()).insert(any());
+    }
+
+    @Test
+    void registerDirect_aGuestWithoutAContractHasNoPeriodToPay() {
+      when(guests.profileOf(GUEST)).thenReturn(guest(true, true));
+      when(contracts.lockedContractsOf(GUEST)).thenReturn(List.of());
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(InvalidPaymentException.class);
+    }
+
+    @Test
+    void registerDirect_theFileIsCheckedByItsContentAfterThePeriodAndBeforeTheLivePayment() {
+      contractGuestWithOpenContract();
+      byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3};
+      byte[] active = TestPdfs.withJavaScript();
+      byte[] tooBig = new byte[5 * 1024 * 1024 + 1];
+      System.arraycopy(PDF, 0, tooBig, 0, PDF.length);
+
+      for (byte[] content : new byte[][] {exe, active, tooBig, new byte[0]}) {
+        assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", content)))
+            .isInstanceOf(InvalidVoucherFileException.class);
+      }
+      verify(payments, never()).findLiveByPeriod(any(), any());
+      verifyNoInteractions(files);
+    }
+
+    @Test
+    void registerDirect_anApprovedPaymentAndAPendingVoucherAreDifferentConflicts() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER))
+          .thenReturn(Optional.of(payment(PaymentStatus.APPROVED, OCTOBER, null)))
+          .thenReturn(Optional.of(payment(PaymentStatus.PENDING, OCTOBER, null)));
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(VoucherAlreadyExistsException.class);
+      verifyNoInteractions(files);
+    }
+
+    @Test
+    void registerDirect_aStayWithALivePaymentIsAConflictToo() {
+      when(guests.profileOf(GUEST)).thenReturn(guest(false, true));
+      when(stays.stayOf(GUEST, STAY)).thenReturn(new StayInfo(STAY));
+      lenient()
+          .when(stays.staysByIds(Set.of(STAY)))
+          .thenReturn(
+              Map.of(
+                  STAY,
+                  new StayRef(
+                      STAY,
+                      LocalDate.parse("2026-10-10"),
+                      LocalDate.parse("2026-10-20"),
+                      new BigDecimal("150"),
+                      null)));
+      when(payments.findLiveByStay(STAY))
+          .thenReturn(Optional.of(payment(PaymentStatus.APPROVED, null, STAY)));
+
+      assertThatThrownBy(() -> service.registerDirect(forStay(PDF)))
+          .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
+    }
+
+    @Test
+    void registerDirect_ifTheInsertFailsTheStoredObjectIsRemoved() {
+      contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      var failure = new IllegalStateException("insert failed");
+      when(payments.insert(any())).thenThrow(failure);
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isSameAs(failure);
+      verify(files).delete(KEY);
+    }
+
+    @Test
+    void
+        registerDirect_ifAnotherRequestGotThePeriodFirstTheRightConflictIsAnsweredAndTheObjectRemoved() {
+      contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any()))
+          .thenThrow(new LivePaymentExistsException(PaymentStatus.PENDING))
+          .thenThrow(new LivePaymentExistsException(PaymentStatus.APPROVED));
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(VoucherAlreadyExistsException.class);
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
+      verify(files, org.mockito.Mockito.times(2)).delete(KEY);
+    }
+
+    @Test
+    void registerDirect_aCleanupThatFailsDoesNotHideTheFailureThatCausedIt(CapturedOutput output) {
+      contractGuestWithOpenContract(); // no live payment: Mockito answers an empty Optional
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      var failure = new IllegalStateException("insert failed");
+      when(payments.insert(any())).thenThrow(failure);
+      var cleanup = new PaymentFileStorageException("down", R2Failures.clientFailure(KEY));
+      doThrow(cleanup).when(files).delete(KEY);
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isSameAs(failure);
+      assertThat(output)
+          .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
+          .doesNotContain(KEY, R2Failures.HOST);
+    }
+
+    @Test
+    void registerDirect_ifTheBucketFailsNothingIsInserted() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenThrow(new PaymentFileStorageException("down"));
+
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(PaymentFileUnavailableException.class);
+      verify(payments, never()).insert(any());
+      verify(files, never()).delete(any());
+    }
+
+    @Test
+    void registerDirect_aBlankPaymentMethodIsStoredAsNothing() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any()))
+          .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
+      var blank =
+          new DirectPayment(
+              ADMIN,
+              GUEST,
+              OCTOBER,
+              null,
+              null,
+              java.util.List.of(
+                  new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                      .ProofUpload(
+                      com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
+                          .ProofType.VOUCHER,
+                      new BigDecimal("800"),
+                      "   ",
+                      new VoucherUpload("v.pdf", PDF))));
+
+      service.registerDirect(blank);
+
+      ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
+      verify(payments).insert(draft.capture());
+      assertThat(draft.getValue().proofs().get(0).method()).isNull();
+    }
+
+    @Test
+    void registerDirect_anAmountInScientificNotationIsRefused() {
+      for (String amount : new String[] {"8E+2", "1e2", "0.8E+3"}) {
+        assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", amount, PDF)))
+            .as(amount)
+            .isInstanceOfSatisfying(
+                InvalidPaymentException.class,
+                e -> assertThat(e.field()).isEqualTo("proofs[0].amount"));
+      }
+      verifyNoInteractions(guests, files, payments);
+    }
+
+    @Test
+    void registerDirect_theAmountIsStoredWithTwoDecimals() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any()))
+          .thenReturn(stored(payment(PaymentStatus.APPROVED, OCTOBER, null)));
+
+      service.registerDirect(forPeriod("2026-10", "800", PDF));
+      service.registerDirect(forPeriod("2026-10", "800.500", PDF));
+
+      ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
+      verify(payments, org.mockito.Mockito.times(2)).insert(draft.capture());
+      assertThat(draft.getAllValues())
+          .allSatisfy(d -> assertThat(d.proofs().get(0).declaredAmount().scale()).isEqualTo(2));
+      assertThat(draft.getAllValues().get(1).proofs().get(0).declaredAmount())
+          .isEqualByComparingTo("800.50");
+    }
+
+    @Test
+    void registerDirect_ifThePaymentThatBlockedTheInsertIsGoneTheConflictIsNeutral() {
+      contractGuestWithOpenContract();
+      when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+      when(files.store(PDF, VoucherType.PDF)).thenReturn(KEY);
+      when(payments.insert(any())).thenThrow(new LivePaymentExistsException(null));
+      assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
+          .isInstanceOf(PaymentConcurrentChangeException.class);
+      verify(files).delete(KEY);
+    }
   }
 }

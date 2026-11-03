@@ -88,10 +88,10 @@ class AdminDashboardContractTest extends PaymentsContractSupport {
     // Due on the 12th with 5 days of grace: still pending on the 14th.
     Long inGrace = guestWithContract("20000001", "301", "2026-01-01", null);
     jdbc.update("UPDATE contracts SET payment_day = 12, grace_days = 5 WHERE id = ?", inGrace);
-    // A voucher under review, after a rejected one.
+    // A voucher under review, after a rejected one that a correction replaced (TAR-239).
     Long underReview = guestWithContract("20000002", "302", "2026-03-01", "2027-02-28");
     insertPayment(
-        guestOf(underReview), underReview, null, "2026-10", "REJECTED", "2026-10-02T15:00:00Z");
+        guestOf(underReview), underReview, null, "2026-10", "SUPERSEDED", "2026-10-02T15:00:00Z");
     insertPayment(
         guestOf(underReview), underReview, null, "2026-10", "PENDING", "2026-10-03T15:00:00Z");
     // Paid; it ends today, so it is still active.
@@ -166,7 +166,7 @@ class AdminDashboardContractTest extends PaymentsContractSupport {
     // Neither a resolved voucher nor an approved one waits for the review.
     Long stayGuest = insertGuest("30000001", "TEMPORARY", "ACTIVE", null);
     Long resolved = stayOf(stayGuest, "2026-09-01", "2026-09-05");
-    insertPayment(stayGuest, null, resolved, null, "REJECTED", "2026-01-01T00:00:00Z");
+    insertPayment(stayGuest, null, resolved, null, "SUPERSEDED", "2026-01-01T00:00:00Z");
     insertPayment(stayGuest, null, resolved, null, "APPROVED", "2026-01-02T00:00:00Z");
 
     String body =
@@ -200,8 +200,69 @@ class AdminDashboardContractTest extends PaymentsContractSupport {
             content()
                 .json(
                     "{\"paymentsUpToDate\":0,\"paymentsUnderReview\":0,\"paymentsPending\":0,"
-                        + "\"paymentsOverdue\":0,\"pendingVouchers\":[],\"pendingVouchersTotal\":0}",
+                        + "\"paymentsOverdue\":0,\"pendingVouchers\":[],\"pendingVouchersTotal\":0,"
+                        + "\"charges\":[],\"overdue\":{\"count\":0,\"total\":0.00,\"first\":[]},"
+                        + "\"rejected\":{\"count\":0,\"oldest\":null},"
+                        + "\"refunds\":{\"count\":0,\"total\":0.00},"
+                        + "\"expiringContracts\":{\"count\":0,\"first\":null},"
+                        + "\"guestsNotActivated\":{\"count\":0,\"expired\":0,\"first\":null}}",
                     JsonCompareMode.STRICT));
+  }
+
+  /**
+   * TAR-236 (A1): «Cobros del mes» and the blocks of «Lo que toca ahora» and «También pendiente».
+   * The fixture contract owes every month from January and October was rejected; the stay was paid
+   * 200 for 150; Luis's contract ends on 2026-11-01; a guest has not activated its account.
+   */
+  @Test
+  void theChargesOfTheMonthAndWhatIsDueNow() throws Exception {
+    Long rejected =
+        insertPayment(contractGuest, contract, null, "2026-10", "REJECTED", "2026-10-06T15:00:00Z");
+    Long ofStay =
+        insertPayment(temporaryGuest, null, stay, null, "APPROVED", "2026-10-02T15:00:00Z");
+    jdbc.update("UPDATE payments SET verified_amount = 200 WHERE id = ?", ofStay);
+    Long expiring = guestWithContract("20000009", "309", "2026-10-01", "2026-11-01");
+    jdbc.update("UPDATE guests SET full_name = 'Luis Mamani' WHERE id = ?", guestOf(expiring));
+    insertPayment(guestOf(expiring), expiring, null, "2026-10", "APPROVED", "2026-10-03T15:00:00Z");
+    Long pending = insertGuest("40000001", "CONTRACT", "PENDING_ACTIVATION", null);
+
+    dashboard()
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.charges.length()").value(3))
+        .andExpect(jsonPath("$.charges[0].guestName").value("Ana Quispe"))
+        .andExpect(jsonPath("$.charges[0].documentType").value("DNI"))
+        .andExpect(jsonPath("$.charges[0].environmentCode").value("201"))
+        .andExpect(jsonPath("$.charges[0].period").value("2026-10"))
+        .andExpect(jsonPath("$.charges[0].status").value("OVERDUE"))
+        .andExpect(jsonPath("$.charges[0].amount").value(800))
+        .andExpect(jsonPath("$.charges[0].paymentId").value(id(IdKind.PAYMENT, rejected)))
+        .andExpect(jsonPath("$.charges[0].paymentRejected").value(true))
+        .andExpect(jsonPath("$.charges[1].guestName").value("Luis Mamani"))
+        .andExpect(jsonPath("$.charges[1].status").value("PAID"))
+        .andExpect(jsonPath("$.charges[1].paymentRejected").value(false))
+        .andExpect(jsonPath("$.charges[2].guestType").value("TEMPORARY"))
+        .andExpect(jsonPath("$.charges[2].stayId").value(id(IdKind.STAY, stay)))
+        .andExpect(jsonPath("$.charges[2].environmentCode").isEmpty())
+        .andExpect(jsonPath("$.charges[2].status").value("PAID"))
+        .andExpect(jsonPath("$.overdue.count").value(10))
+        .andExpect(jsonPath("$.overdue.total").value(8000))
+        .andExpect(jsonPath("$.overdue.first.length()").value(3))
+        .andExpect(jsonPath("$.overdue.first[0].period").value("2026-01"))
+        .andExpect(jsonPath("$.rejected.count").value(1))
+        .andExpect(jsonPath("$.rejected.oldest.paymentId").value(id(IdKind.PAYMENT, rejected)))
+        .andExpect(jsonPath("$.rejected.oldest.period").value("2026-10"))
+        .andExpect(jsonPath("$.refunds.count").value(1))
+        .andExpect(jsonPath("$.refunds.total").value(50))
+        .andExpect(jsonPath("$.expiringContracts.count").value(1))
+        .andExpect(
+            jsonPath("$.expiringContracts.first.contractId").value(id(IdKind.CONTRACT, expiring)))
+        .andExpect(jsonPath("$.expiringContracts.first.guestName").value("Luis Mamani"))
+        .andExpect(jsonPath("$.expiringContracts.first.endDate").value("2026-11-01"))
+        .andExpect(jsonPath("$.guestsNotActivated.count").value(1))
+        .andExpect(jsonPath("$.guestsNotActivated.expired").value(0))
+        .andExpect(jsonPath("$.guestsNotActivated.first.guestId").value(id(IdKind.GUEST, pending)))
+        .andExpect(jsonPath("$.guestsNotActivated.first.documentNumber").value("40000001"));
   }
 
   @Test

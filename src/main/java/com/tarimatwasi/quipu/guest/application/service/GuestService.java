@@ -25,18 +25,29 @@ import com.tarimatwasi.quipu.guest.domain.Stay;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
+import com.tarimatwasi.quipu.shared.paging.CursorToken;
+import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -47,7 +58,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
 
   private static final Pattern DNI = Pattern.compile("[0-9]{8}");
-  private static final Pattern OTHER_DOCUMENT = Pattern.compile("[A-Za-z0-9]{1,20}");
+  private static final Pattern OTHER_DOCUMENT = Pattern.compile("[A-Za-z0-9-]{1,20}");
   private static final AccountState NO_ACCOUNT = new AccountState(false, false);
 
   private final GuestRepositoryPort guests;
@@ -77,14 +88,209 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
 
   @Override
   @Transactional(readOnly = true)
-  public CursorPage<GuestSummaryView> list(
-      StatusFilter filter, @Nullable GuestKind type, PageQuery page) {
+  public GuestListView list(
+      StatusFilter filter, @Nullable GuestKind type, boolean withoutContract, PageQuery page) {
+    List<GuestStatus> statuses = statuses(filter);
+    GuestType guestType = type == null ? null : toType(type);
     CursorPage<Guest> found =
-        guests.findAll(statuses(filter), type == null ? null : toType(type), page);
+        withoutContract
+            ? withoutContract(guests.findAllMatching(statuses, guestType), page)
+            : guests.findAll(statuses, guestType, page);
     Set<Long> ids = new LinkedHashSet<>();
-    found.content().forEach(guest -> ids.add(guest.id()));
+    Set<Long> pending = new LinkedHashSet<>();
+    for (Guest guest : found.content()) {
+      ids.add(guest.id());
+      if (guest.status() == GuestStatus.PENDING_ACTIVATION) {
+        pending.add(guest.id());
+      }
+    }
     Map<Long, AccountState> states = ids.isEmpty() ? Map.of() : accounts.stateOf(ids);
-    return found.map(guest -> summary(guest, states.getOrDefault(guest.id(), NO_ACCOUNT)));
+    Map<Long, Instant> expiries =
+        pending.isEmpty() ? Map.of() : accounts.unusedAccessExpiries(pending);
+    Map<Long, Occupancy> environments = environmentsOf(found.content());
+    CursorPage<GuestRowView> rows =
+        found.map(
+            guest ->
+                new GuestRowView(
+                    summary(guest, states.getOrDefault(guest.id(), NO_ACCOUNT)),
+                    environments.get(guest.id()),
+                    expiries.get(guest.id())));
+    return new GuestListView(
+        rows,
+        guests.countByStatus(GuestStatus.PENDING_ACTIVATION),
+        guests.countByStatus(GuestStatus.ONBOARDING));
+  }
+
+  /**
+   * A4.1 (TAR-237): the guests without a contract in force, paged here in the order of the listing
+   * because the filter needs the contracts; the guests are few.
+   */
+  private CursorPage<Guest> withoutContract(List<Guest> matching, PageQuery page) {
+    Set<Long> ids = new LinkedHashSet<>();
+    matching.forEach(guest -> ids.add(guest.id()));
+    Set<Long> withContract = ids.isEmpty() ? Set.of() : contracts.guestsWithContractInForce(ids);
+    List<Guest> free =
+        matching.stream().filter(guest -> !withContract.contains(guest.id())).toList();
+    String after = page.after();
+    int from = after == null ? 0 : firstAfter(free, after);
+    List<Guest> rows = free.subList(from, Math.min(free.size(), from + page.limit() + 1));
+    return CursorPage.of(rows, page.limit(), GuestService::cursorOf);
+  }
+
+  /** Where the page after the cursor starts in the ordered list. */
+  static int firstAfter(List<Guest> ordered, String cursor) {
+    List<String> key = CursorToken.decode(cursor, 2);
+    try {
+      DocumentType.valueOf(key.get(0));
+    } catch (IllegalArgumentException unknownType) {
+      throw new InvalidCursorException();
+    }
+    for (int i = 0; i < ordered.size(); i++) {
+      Guest guest = ordered.get(i);
+      if (guest.documentType().name().equals(key.get(0))
+          && guest.documentNumber().equals(key.get(1))) {
+        return i + 1;
+      }
+    }
+    // The guest of the cursor left the list (it got a contract): the next one by the same order.
+    for (int i = 0; i < ordered.size(); i++) {
+      Guest guest = ordered.get(i);
+      int byType = guest.documentType().name().compareTo(key.get(0));
+      if (byType > 0 || (byType == 0 && guest.documentNumber().compareTo(key.get(1)) > 0)) {
+        return i;
+      }
+    }
+    return ordered.size();
+  }
+
+  private static String cursorOf(Guest guest) {
+    return CursorToken.encode(guest.documentType().name(), guest.documentNumber());
+  }
+
+  /**
+   * A3 (TAR-237): for each guest, the contract or stay in course today, else the next one, else,
+   * for an inactive guest, the last one. A stay registered before TAR-237 has no environment and
+   * does not count.
+   */
+  private Map<Long, Occupancy> environmentsOf(List<Guest> page) {
+    if (page.isEmpty()) {
+      return Map.of();
+    }
+    Set<Long> ids = new LinkedHashSet<>();
+    page.forEach(guest -> ids.add(guest.id()));
+    Map<Long, List<Occupancy>> byGuest = occupanciesOf(ids);
+    LocalDate today = LocalDate.now(clock);
+    Map<Long, Occupancy> chosen = new HashMap<>();
+    for (Guest guest : page) {
+      relevant(
+              byGuest.getOrDefault(guest.id(), List.of()),
+              today,
+              guest.status() == GuestStatus.INACTIVE)
+          .ifPresent(occupancy -> chosen.put(guest.id(), occupancy));
+    }
+    return chosen;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, GuestRef> refsOf(Collection<Long> ids, LocalDate from, LocalDate to) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+    Map<Long, List<Occupancy>> byGuest = occupanciesOf(ids);
+    Map<Long, GuestRef> refs = new HashMap<>();
+    for (Guest guest : guests.findAllByIds(ids)) {
+      refs.put(
+          guest.id(),
+          new GuestRef(
+              guest.id(),
+              guest.fullName(),
+              GuestKind.valueOf(guest.type().name()),
+              inRange(byGuest.getOrDefault(guest.id(), List.of()), from, to).orElse(null)));
+    }
+    return refs;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public NotActivatedView notActivated() {
+    List<Guest> pending = guests.findAllMatching(List.of(GuestStatus.PENDING_ACTIVATION), null);
+    if (pending.isEmpty()) {
+      return new NotActivatedView(0, 0, null);
+    }
+    Set<Long> ids = new LinkedHashSet<>();
+    pending.forEach(guest -> ids.add(guest.id()));
+    Map<Long, Instant> expiries = accounts.unusedAccessExpiries(ids);
+    Instant now = clock.instant();
+    long expired = expiries.values().stream().filter(expiry -> !expiry.isAfter(now)).count();
+    // An expired one first, else the one whose access ends first; the earliest expiry is both.
+    Guest first =
+        pending.stream()
+            .filter(guest -> expiries.containsKey(guest.id()))
+            .min(Comparator.comparing((Guest guest) -> expiries.get(guest.id())))
+            .orElse(pending.get(0));
+    return new NotActivatedView(
+        pending.size(),
+        expired,
+        new PendingGuestView(
+            first.id(),
+            IdDocumentKind.valueOf(first.documentType().name()),
+            first.documentNumber(),
+            expiries.get(first.id())));
+  }
+
+  /** The one that crosses the range and starts last, else the one that starts last of all. */
+  static Optional<Occupancy> inRange(List<Occupancy> occupancies, LocalDate from, LocalDate to) {
+    Comparator<Occupancy> byStart = Comparator.comparing(Occupancy::startDate);
+    Optional<Occupancy> crossing =
+        occupancies.stream().filter(o -> o.crosses(from, to)).max(byStart);
+    return crossing.isPresent() ? crossing : occupancies.stream().max(byStart);
+  }
+
+  /** The contracts and the stays with an environment of those guests, by guest. */
+  private Map<Long, List<Occupancy>> occupanciesOf(Collection<Long> ids) {
+    Map<Long, List<Occupancy>> byGuest = new HashMap<>();
+    for (Occupancy contract : contracts.occupanciesOfGuests(ids)) {
+      byGuest.computeIfAbsent(contract.guestId(), key -> new ArrayList<>()).add(contract);
+    }
+    for (Stay stay : stays.findAllByGuests(ids)) {
+      Long environment = stay.environmentId();
+      if (environment != null) {
+        byGuest
+            .computeIfAbsent(stay.guestId(), key -> new ArrayList<>())
+            .add(
+                new Occupancy(
+                    environment,
+                    Occupancy.Kind.STAY,
+                    stay.guestId(),
+                    null,
+                    stay.id(),
+                    stay.startDate(),
+                    stay.endDate()));
+      }
+    }
+    return byGuest;
+  }
+
+  /** The one in course today, else the next one, else (with {@code includePast}) the last one. */
+  static Optional<Occupancy> relevant(
+      List<Occupancy> occupancies, LocalDate today, boolean includePast) {
+    Comparator<Occupancy> byStart = Comparator.comparing(Occupancy::startDate);
+    Optional<Occupancy> current = occupancies.stream().filter(o -> o.holdsOn(today)).min(byStart);
+    if (current.isPresent()) {
+      return current;
+    }
+    Optional<Occupancy> next =
+        occupancies.stream().filter(o -> o.startDate().isAfter(today)).min(byStart);
+    if (next.isPresent() || !includePast) {
+      return next;
+    }
+    // Neither in course nor coming: every one ended before today, so each has an end date.
+    return occupancies.stream()
+        .filter(o -> o.endDate() != null)
+        .max(
+            Comparator.comparing((Occupancy o) -> Objects.requireNonNull(o.endDate()))
+                .thenComparing(byStart));
   }
 
   @Override
@@ -95,6 +301,8 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     Stay stay = Stay.relevantOn(stays.findAllByGuest(id), LocalDate.now(clock)).orElse(null);
     return new GuestDetailView(
         summary(guest, account),
+        guests.versionOf(id),
+        accounts.accountEmail(id).orElse(null),
         guest.phone(),
         guest.email(),
         emergencyContact(guest.emergencyContact()),
@@ -122,6 +330,10 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
       throw new EmptyGuestUpdateException();
     }
     Guest current = guests.findByIdForUpdate(id).orElseThrow(GuestNotFoundException::new);
+    // TAR-276 (BE-SPR-DAT-13): the guest changed since the client loaded it.
+    if (guests.versionOf(id) != command.version()) {
+      throw new OptimisticLockingFailureException("The guest changed since it was loaded");
+    }
     Guest changed = withDocument(current, command);
     try {
       Guest saved = guests.save(changed);
@@ -171,7 +383,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     }
     List<YearMonth> owed = debts.owedPeriods(id);
     if (!owed.isEmpty()) {
-      throw new GuestHasPendingDebtException(owed);
+      throw new GuestHasPendingDebtException(owed, debts.debts(id));
     }
     // This service always stores the previous state; an INACTIVE row without it (loaded by hand)
     // comes back pending activation, the state that asks for a new access.

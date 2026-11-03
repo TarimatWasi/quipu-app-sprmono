@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
@@ -9,19 +10,26 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageStaysUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
+import com.tarimatwasi.quipu.guest.application.port.out.StayEnvironmentPort;
 import com.tarimatwasi.quipu.guest.application.port.out.StayRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,10 +51,18 @@ public class StayService implements ManageStaysUseCase {
 
   private final GuestRepositoryPort guests;
   private final StayRepositoryPort stays;
+  private final StayEnvironmentPort environments;
+  private final ContractOccupancyQuery contracts;
 
-  StayService(GuestRepositoryPort guests, StayRepositoryPort stays) {
+  StayService(
+      GuestRepositoryPort guests,
+      StayRepositoryPort stays,
+      StayEnvironmentPort environments,
+      ContractOccupancyQuery contracts) {
     this.guests = guests;
     this.stays = stays;
+    this.environments = environments;
+    this.contracts = contracts;
   }
 
   @Override
@@ -85,9 +101,31 @@ public class StayService implements ManageStaysUseCase {
   }
 
   @Override
+  @Transactional(readOnly = true)
+  public List<StayView> all() {
+    return stays.findEvery().stream().map(StayService::view).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<StayView> allOf(Long guestId) {
+    return stays.findAllByGuest(guestId).stream().map(StayService::view).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<StayView> byIds(Collection<Long> ids) {
+    return ids.isEmpty()
+        ? List.of()
+        : stays.findAllByIds(ids).stream().map(StayService::view).toList();
+  }
+
+  @Override
   @Transactional
   public StayView create(Long guestId, NewStay stay) {
     validate(stay.startDate(), stay.endDate(), stay.agreedAmount());
+    // TAR-237: the global lock order is environment, guest, contract, payment.
+    boolean environmentActive = environments.lock(stay.environmentId());
     Guest guest = lockedGuest(guestId);
     if (guest.type() != GuestType.TEMPORARY) {
       throw new GuestNotTemporaryException();
@@ -96,24 +134,95 @@ public class StayService implements ManageStaysUseCase {
       throw new GuestNotActiveException(guestId);
     }
     rejectOverlap(guestId, NO_STAY, stay.startDate(), stay.endDate());
-    return view(stays.insert(guestId, stay.startDate(), stay.endDate(), stay.agreedAmount()));
+    rejectTaken(environmentActive, stay.environmentId(), stay.startDate(), stay.endDate(), NO_STAY);
+    return view(
+        stays.insert(
+            guestId, stay.environmentId(), stay.startDate(), stay.endDate(), stay.agreedAmount()));
   }
 
   @Override
   @Transactional
   public StayView update(Long guestId, Long stayId, StayChange change) {
-    if (change.startDate() == null && change.endDate() == null && change.agreedAmount() == null) {
+    if (change.environmentId() == null
+        && change.startDate() == null
+        && change.endDate() == null
+        && change.agreedAmount() == null) {
       throw new EmptyGuestUpdateException();
     }
+    // TAR-237: the environment is locked before the guest (global lock order). Which one: the new
+    // one, or the one the stay already has, read without lock and read again under it below.
+    Long environmentId =
+        change.environmentId() != null
+            ? change.environmentId()
+            : stays.findByIdAndGuest(stayId, guestId).map(Stay::environmentId).orElse(null);
+    boolean environmentActive = environmentId == null || environments.lock(environmentId);
     lockedGuest(guestId);
     Stay current = stays.findByIdAndGuest(stayId, guestId).orElseThrow(StayNotFoundException::new);
+    // TAR-276 (BE-SPR-DAT-13): the stay changed since the client loaded it; nothing is saved.
+    if (current.version() != change.version()) {
+      throw new OptimisticLockingFailureException("The stay changed since it was loaded");
+    }
     LocalDate start = change.startDate() == null ? current.startDate() : change.startDate();
     LocalDate end = change.endDate() == null ? current.endDate() : change.endDate();
     BigDecimal amount =
         change.agreedAmount() == null ? current.agreedAmount() : change.agreedAmount();
+    Long target = change.environmentId() != null ? change.environmentId() : current.environmentId();
     validate(start, end, amount);
     rejectOverlap(guestId, stayId, start, end);
-    return view(stays.update(new Stay(stayId, guestId, start, end, amount)));
+    // A stay registered before TAR-237 keeps «Sin ambiente» until one is chosen for it. Only a
+    // change of environment or dates can take an environment held by someone else.
+    boolean moves =
+        !Objects.equals(target, current.environmentId())
+            || !start.equals(current.startDate())
+            || !end.equals(current.endDate());
+    if (target != null && moves) {
+      rejectTaken(target.equals(environmentId) && environmentActive, target, start, end, stayId);
+    }
+    return view(
+        stays.update(new Stay(stayId, guestId, start, end, amount, target, current.version())));
+  }
+
+  /**
+   * TAR-237 (RN-20): the environment must be active and free in those dates: no contract not
+   * terminated and no other stay holds it on any of them.
+   */
+  private void rejectTaken(
+      boolean environmentActive,
+      Long environmentId,
+      LocalDate start,
+      LocalDate end,
+      Long ownStayId) {
+    if (!environmentActive) {
+      throw EnvironmentOccupiedException.forStay(null);
+    }
+    if (contracts.environmentTaken(environmentId, start, end)) {
+      throw EnvironmentOccupiedException.forStay(
+          contracts.contractCrossing(environmentId, start, end).orElse(null));
+    }
+    if (stays.environmentTaken(environmentId, start, end, ownStayId)) {
+      throw EnvironmentOccupiedException.forStay(
+          otherStayCrossing(environmentId, start, end, ownStayId).orElse(null));
+    }
+  }
+
+  /** TAR-237: the other stay that holds the environment in those dates, the one starting first. */
+  private Optional<Occupancy> otherStayCrossing(
+      Long environmentId, LocalDate start, LocalDate end, Long ownStayId) {
+    List<Occupancy> others =
+        stays.findAllByEnvironments(List.of(environmentId)).stream()
+            .filter(stay -> !stay.id().equals(ownStayId))
+            .map(
+                stay ->
+                    new Occupancy(
+                        environmentId,
+                        Occupancy.Kind.STAY,
+                        stay.guestId(),
+                        null,
+                        stay.id(),
+                        stay.startDate(),
+                        stay.endDate()))
+            .toList();
+    return Occupancy.firstCrossing(others, start, end);
   }
 
   /**
@@ -159,6 +268,13 @@ public class StayService implements ManageStaysUseCase {
   }
 
   private static StayView view(Stay stay) {
-    return new StayView(stay.id(), stay.startDate(), stay.endDate(), stay.agreedAmount());
+    return new StayView(
+        stay.id(),
+        stay.guestId(),
+        stay.startDate(),
+        stay.endDate(),
+        stay.agreedAmount(),
+        stay.environmentId(),
+        stay.version());
   }
 }

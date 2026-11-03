@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.Instant;
@@ -38,6 +39,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class GuestAccessBffController {
 
+  /** GuestInput.documentNumber; the use case checks the shape of each type (TAR-237). */
+  private static final String DOCUMENT_NUMBER = "^[A-Za-z0-9-]{1,20}$";
+
+  /** GuestInput.phone: digits, spaces and hyphens, with an optional + prefix (TAR-237). */
+  private static final String PHONE = "^\\+?[0-9][0-9 -]{5,28}$";
+
   private final ManageGuestAccessUseCase access;
   private final IdMasker ids;
 
@@ -49,9 +56,9 @@ public class GuestAccessBffController {
   /** GuestInput of the contract (RN-31). */
   public record CreateGuestRequest(
       @NotNull IdDocumentKind documentType,
-      @NotBlank @Size(max = 20) String documentNumber,
+      @NotBlank @Pattern(regexp = DOCUMENT_NUMBER) String documentNumber,
       @NotNull GuestKind type,
-      @Nullable @Size(max = 30) String phone,
+      @Nullable @Pattern(regexp = PHONE) String phone,
       @Nullable @Email @Size(max = 200) String contactEmail,
       @NotNull AccessMode accessMode) {}
 

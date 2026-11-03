@@ -23,6 +23,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   private final Map<String, UserAccount> byDocument = new HashMap<>();
   private final Map<Long, UserAccount> byId = new HashMap<>();
   private final Map<Long, ResetToken> resetTokens = new HashMap<>();
+  private final Map<Long, String> names = new HashMap<>();
 
   void save(UserAccount user) {
     byDocument.put(user.documentType() + ":" + user.documentNumber(), user);
@@ -105,6 +106,23 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   public void resetPassword(Long id, String newPasswordHash, Instant changedAt) {
     changePassword(id, newPasswordHash, changedAt);
     resetTokens.remove(id);
+  }
+
+  @Override
+  public void resetPasswordAndName(
+      Long id, String newPasswordHash, Instant changedAt, String name) {
+    resetPassword(id, newPasswordHash, changedAt);
+    names.put(id, name);
+  }
+
+  @Override
+  public Optional<String> findName(Long id) {
+    return Optional.ofNullable(names.get(id));
+  }
+
+  /** TAR-127: an administrator that already activated its account. */
+  void name(Long id, String name) {
+    names.put(id, name);
   }
 
   @Override

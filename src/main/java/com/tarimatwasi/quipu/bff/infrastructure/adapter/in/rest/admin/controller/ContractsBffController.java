@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractSummaryView;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.ContractView;
 import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.NewContract;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase.Parties;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -19,6 +20,7 @@ import jakarta.validation.constraints.NotNull;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
@@ -66,51 +68,85 @@ public class ContractsBffController {
       UUID id,
       UUID environmentId,
       UUID guestId,
+      @Nullable String guestName,
+      String documentType,
+      String documentNumber,
+      String environmentCode,
+      String environmentType,
       BigDecimal monthlyAmount,
       int paymentDay,
       int graceDays,
       LocalDate startDate,
       @Nullable LocalDate endDate,
       ContractState status,
-      String fileUrl) {
+      boolean expiringSoon,
+      @Nullable LocalDate terminatedAt,
+      ContractFileResponse file,
+      @Nullable String fileUrl) {
     public static ContractResponse of(ContractView contract, IdMasker ids) {
+      Parties parties = contract.parties();
       return new ContractResponse(
           ids.mask(IdKind.CONTRACT, contract.id()),
           ids.mask(IdKind.ENVIRONMENT, contract.environmentId()),
           ids.mask(IdKind.GUEST, contract.guestId()),
+          parties.guestName(),
+          parties.documentType(),
+          parties.documentNumber(),
+          parties.environmentCode(),
+          parties.environmentType(),
           contract.monthlyAmount(),
           contract.paymentDay(),
           contract.graceDays(),
           contract.startDate(),
           contract.endDate(),
           contract.status(),
+          contract.expiringSoon(),
+          contract.terminatedAt(),
+          new ContractFileResponse(
+              contract.file().name(), contract.file().sizeBytes(), contract.file().uploadedAt()),
           contract.fileUrl());
     }
   }
+
+  /** The PDF of the contract (A4.2, H2). */
+  public record ContractFileResponse(String name, long sizeBytes, Instant uploadedAt) {}
 
   public record ContractSummaryResponse(
       UUID id,
       UUID environmentId,
       UUID guestId,
+      @Nullable String guestName,
+      String documentType,
+      String documentNumber,
+      String environmentCode,
+      String environmentType,
       BigDecimal monthlyAmount,
       int paymentDay,
       int graceDays,
       LocalDate startDate,
       @Nullable LocalDate endDate,
       ContractState status,
-      boolean expiringSoon) {
+      boolean expiringSoon,
+      @Nullable LocalDate terminatedAt) {
     static ContractSummaryResponse of(ContractSummaryView contract, IdMasker ids) {
+      Parties parties = contract.parties();
       return new ContractSummaryResponse(
           ids.mask(IdKind.CONTRACT, contract.id()),
           ids.mask(IdKind.ENVIRONMENT, contract.environmentId()),
           ids.mask(IdKind.GUEST, contract.guestId()),
+          parties.guestName(),
+          parties.documentType(),
+          parties.documentNumber(),
+          parties.environmentCode(),
+          parties.environmentType(),
           contract.monthlyAmount(),
           contract.paymentDay(),
           contract.graceDays(),
           contract.startDate(),
           contract.endDate(),
           contract.status(),
-          contract.expiringSoon());
+          contract.expiringSoon(),
+          contract.terminatedAt());
     }
   }
 
@@ -118,9 +154,15 @@ public class ContractsBffController {
   public PagedResponse<ContractSummaryResponse> list(
       @RequestParam(name = "status", required = false) @Nullable String status,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
-      @RequestParam(name = "after", required = false) @Nullable String after) {
+      @RequestParam(name = "after", required = false) @Nullable String after,
+      @RequestParam(name = "expiringSoon", defaultValue = "false") boolean expiringSoon) {
+    ContractState state = state(status);
+    // TAR-237: expiringSoon implies ACTIVE; with another status the query is not valid.
+    if (expiringSoon && state != null && state != ContractState.ACTIVE) {
+      throw new InvalidQueryParameterException("status");
+    }
     return PagedResponse.of(
-        contracts.list(state(status), PageParams.query(after, limit)),
+        contracts.list(state, expiringSoon, PageParams.query(after, limit)),
         contract -> ContractSummaryResponse.of(contract, ids));
   }
 

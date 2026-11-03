@@ -23,6 +23,7 @@ public interface ManageAdministratorsUseCase {
    * @param maskedDocumentNumber only the last 3 characters are visible, every other one is {@code
    *     *}
    * @param self whether it is the account of the session
+   * @param name the full name written when activating the account (A0.5); null until then
    */
   record AdministratorView(
       Long id,
@@ -31,7 +32,8 @@ public interface ManageAdministratorsUseCase {
       String email,
       AdministratorStatus status,
       Instant createdAt,
-      boolean self) {}
+      boolean self,
+      @Nullable String name) {}
 
   /**
    * A deactivation or reactivation and the re-authentication of who makes it.

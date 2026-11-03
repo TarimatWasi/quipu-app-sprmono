@@ -2,6 +2,8 @@ package com.tarimatwasi.quipu.auth.application.port.in;
 
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -75,6 +77,12 @@ public interface GuestAccessUseCase {
 
   /** When the live, unused access of the guest expires; empty if it has none. */
   Optional<Instant> accessExpiry(Long guestId);
+
+  /**
+   * TAR-237 (A3.4): when the unused, not revoked access of each guest ends, even if it already
+   * expired. A guest without one is not in the map.
+   */
+  Map<Long, Instant> unusedAccessExpiries(Collection<Long> guestIds);
 
   /** What {@link #changeAccountEmail} did. */
   enum EmailChangeOutcome {

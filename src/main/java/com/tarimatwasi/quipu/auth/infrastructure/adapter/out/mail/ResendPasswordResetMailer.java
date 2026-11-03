@@ -27,9 +27,9 @@ public class ResendPasswordResetMailer implements PasswordResetMailPort {
   }
 
   @Override
-  public void sendResetLink(String toEmail, String code, Duration validFor) {
+  public void sendResetLink(String toEmail, String code, Duration validFor, boolean activation) {
     try {
-      sender.send(toEmail, code, validFor);
+      sender.send(toEmail, code, validFor, activation);
     } catch (TaskRejectedException e) {
       // Neither the address nor the code: this reaches the logs.
       LOG.warn("Recovery email was not queued: the task executor is at its concurrency limit");

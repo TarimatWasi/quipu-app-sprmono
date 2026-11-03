@@ -57,6 +57,10 @@ public class AccessGrantJpaEntity extends AbstractAuditable<AuditorJpaEntity, Lo
     return expiresAt;
   }
 
+  Long guestId() {
+    return guestId;
+  }
+
   @Override
   public String toString() {
     // Not the hash: an entity that reaches a log should not carry it.

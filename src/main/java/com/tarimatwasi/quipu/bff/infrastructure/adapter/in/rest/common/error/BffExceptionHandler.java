@@ -5,7 +5,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.AccountLockedException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidCredentialsException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException;
-import com.tarimatwasi.quipu.auth.application.port.in.PasswordUnchangedException;
 import com.tarimatwasi.quipu.auth.application.port.in.TemporaryPasswordExpiredException;
 import com.tarimatwasi.quipu.auth.application.port.in.TooManyLoginAttemptsException;
 import com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException;
@@ -20,7 +19,6 @@ import com.tarimatwasi.quipu.environment.application.port.in.EmptyEnvironmentUpd
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentCodeTakenException;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentInactiveException;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentNotFoundException;
-import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.environment.application.port.in.InvalidEnvironmentCodeException;
 import com.tarimatwasi.quipu.expense.application.port.in.ExpenseNotFoundException;
 import com.tarimatwasi.quipu.expense.application.port.in.InvalidExpenseDescriptionException;
@@ -47,26 +45,18 @@ import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictExcepti
 import com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
-import com.tarimatwasi.quipu.payment.application.port.in.InvalidVoucherFileException;
-import com.tarimatwasi.quipu.payment.application.port.in.NoActiveContractException;
-import com.tarimatwasi.quipu.payment.application.port.in.NoActiveStayException;
-import com.tarimatwasi.quipu.payment.application.port.in.NoStayYetException;
 import com.tarimatwasi.quipu.payment.application.port.in.OnboardingRequiredException;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
-import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentReasonRequiredException;
-import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
-import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
-import java.time.YearMonth;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -170,16 +160,6 @@ public class BffExceptionHandler {
         };
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(new BffErrorResponse("AUTH_WEAK_PASSWORD", message, "newPassword"));
-  }
-
-  @ExceptionHandler(PasswordUnchangedException.class)
-  public ResponseEntity<BffErrorResponse> handlePasswordUnchanged() {
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(
-            new BffErrorResponse(
-                "AUTH_PASSWORD_UNCHANGED",
-                "Elige una contraseña distinta de la temporal",
-                "newPassword"));
   }
 
   /** QP-SPRMONO-BFF-01: stable English code, Spanish message, and the first invalid field. */
@@ -426,18 +406,6 @@ public class BffExceptionHandler {
                 "GUEST_NOT_CONTRACT", "Solo los huéspedes con contrato pueden tener un contrato"));
   }
 
-  /** RN-25, RN-35: a guest that owes periods takes no new contract; the months, oldest first. */
-  @ExceptionHandler(GuestHasPendingDebtException.class)
-  public ResponseEntity<BffGuestHasPendingDebtResponse> handleGuestHasPendingDebt(
-      GuestHasPendingDebtException e) {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffGuestHasPendingDebtResponse(
-                "GUEST_HAS_PENDING_DEBT",
-                "El huésped tiene períodos pendientes de pago; primero regístralos",
-                e.periods().stream().map(YearMonth::toString).toList()));
-  }
-
   /** RN-12: a guest with a contract in force is not deactivated; the UI links the contract. */
   @ExceptionHandler(GuestHasActiveContractException.class)
   public ResponseEntity<BffGuestHasActiveContractResponse> handleGuestHasActiveContract(
@@ -458,16 +426,6 @@ public class BffExceptionHandler {
             new BffErrorResponse(
                 "ENVIRONMENT_INACTIVE",
                 "El ambiente está inactivo; reactívalo antes de registrar un contrato"));
-  }
-
-  /** RN-12, RN-20: a contract in force holds the environment. */
-  @ExceptionHandler(EnvironmentOccupiedException.class)
-  public ResponseEntity<BffErrorResponse> handleEnvironmentOccupied() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "ENVIRONMENT_OCCUPIED",
-                "El ambiente tiene un contrato vigente; primero finaliza el contrato"));
   }
 
   /** An id of a payment that was never issued answers as a payment that does not exist. */
@@ -493,17 +451,6 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "VALIDATION_ERROR", "Los datos del pago no son válidos", e.field()));
-  }
-
-  /** RF-15: a JPG, a PNG or a PDF by content, up to 5 MB. */
-  @ExceptionHandler(InvalidVoucherFileException.class)
-  public ResponseEntity<BffErrorResponse> handleInvalidVoucherFile() {
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_INVALID_FILE",
-                "El comprobante debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
-                "file"));
   }
 
   /** The payment is no longer pending: another process resolved it first. */
@@ -534,53 +481,6 @@ public class BffExceptionHandler {
   @ExceptionHandler(PaymentConcurrentChangeException.class)
   public ResponseEntity<BffErrorResponse> handlePaymentConcurrentChange() {
     return handleConcurrentModification();
-  }
-
-  /** RN-02: an approved payment covers the period or the stay. */
-  @ExceptionHandler(PaymentAlreadyExistsForPeriodException.class)
-  public ResponseEntity<BffErrorResponse> handlePaymentAlreadyExistsForPeriod() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "PAYMENT_ALREADY_EXISTS_FOR_PERIOD",
-                "El período o la estadía ya tiene un pago aprobado"));
-  }
-
-  /** RN-15: a voucher is still waiting for its review. */
-  @ExceptionHandler(VoucherAlreadyExistsException.class)
-  public ResponseEntity<BffErrorResponse> handleVoucherAlreadyExists() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_ALREADY_EXISTS",
-                "Ya hay un comprobante pendiente de revisión; resuélvelo primero"));
-  }
-
-  /** RN-27: a guest uploads a voucher only while its contract is in force. */
-  @ExceptionHandler(NoActiveContractException.class)
-  public ResponseEntity<BffErrorResponse> handleNoActiveContract() {
-    return ResponseEntity.status(HttpStatus.FORBIDDEN)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_NO_ACTIVE_CONTRACT",
-                "No tienes un contrato vigente; consulta con la administración"));
-  }
-
-  /** CU-22: a temporary guest pays only a stay in course or to come. */
-  @ExceptionHandler(NoActiveStayException.class)
-  public ResponseEntity<BffErrorResponse> handleNoActiveStay() {
-    return ResponseEntity.status(HttpStatus.FORBIDDEN)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_NO_ACTIVE_STAY",
-                "No tienes una estadía vigente ni próxima; consulta con la administración"));
-  }
-
-  /** CU-21: a temporary guest with no stay has no payment status. */
-  @ExceptionHandler(NoStayYetException.class)
-  public ResponseEntity<BffErrorResponse> handleNoStayYet() {
-    return ResponseEntity.status(HttpStatus.NOT_FOUND)
-        .body(new BffErrorResponse("RESOURCE_NOT_FOUND", "Aún no tienes una estadía registrada"));
   }
 
   /** RN-09: a route of the other type of guest, answered like any route the role cannot use. */
@@ -777,6 +677,11 @@ public class BffExceptionHandler {
       // An action is only listed, never addressed by its id.
       case GUEST_DOCUMENT_ACTION ->
           throw new IllegalStateException("A document action id is never part of a BFF path");
+      // A proof travels in the body of a correction or a review, which names it as a field.
+      case PAYMENT_PROOF ->
+          throw new IllegalStateException("A payment proof id is never part of a BFF path");
+      // A refund is only listed (TAR-240); it is not edited nor deleted, so no path carries it.
+      case REFUND -> throw new IllegalStateException("A refund id is never part of a BFF path");
     };
   }
 

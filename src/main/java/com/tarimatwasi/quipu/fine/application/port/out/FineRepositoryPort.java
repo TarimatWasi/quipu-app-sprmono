@@ -8,6 +8,9 @@ import org.jspecify.annotations.Nullable;
 
 public interface FineRepositoryPort {
 
+  /** What the fines of a month add up to, and how many they are. */
+  record Total(BigDecimal amount, long count) {}
+
   /**
    * Stores a new fine. Needs a transaction.
    *
@@ -21,6 +24,6 @@ public interface FineRepositoryPort {
   /** The fines of the month, oldest first. */
   List<Fine> findByMonth(YearMonth month);
 
-  /** The sum of the amounts of the fines of the month, added up by the base; 0 if it has none. */
-  BigDecimal sumByMonth(YearMonth month);
+  /** The sum of the amounts of the fines of the month and their count; 0 if it has none. */
+  Total totalOfMonth(YearMonth month);
 }

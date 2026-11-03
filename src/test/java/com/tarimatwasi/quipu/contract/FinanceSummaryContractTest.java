@@ -25,16 +25,20 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
     // Contract payments: the approved one of the period counts; the rest do not.
     paid(contractGuest, contract, null, "2026-10", "APPROVED", "950.10");
     paid(contractGuest, contract, null, "2026-09", "APPROVED", "900.00");
-    paid(contractGuest, contract, null, "2026-10", "REJECTED", "222.00");
+    // TAR-239: an older rejection of a period that was paid later is history (SUPERSEDED).
+    paid(contractGuest, contract, null, "2026-10", "SUPERSEDED", "222.00");
     Long otherGuest = insertGuest("11223344", "CONTRACT", "ACTIVE", null);
     Long otherContract = insertContract(otherGuest, insertEnvironment("202"), "2026-01-01", null);
     paid(otherGuest, otherContract, null, "2026-10", "PENDING", "111.00");
     // Stay payments: the stay of the fixture starts in October and counts; one that started in
     // September does not, although it was approved in October.
-    paid(temporaryGuest, null, stay, null, "APPROVED", "150.20");
+    Long ofStay = paid(temporaryGuest, null, stay, null, "APPROVED", "150.20");
     Long otherTemporary = insertGuest("55667788", "TEMPORARY", "ACTIVE", null);
     Long september = insertStay(otherTemporary, "2026-09-25", "2026-10-05");
     Long late = paid(otherTemporary, null, september, null, "APPROVED", "300.00");
+    // TAR-240 (RN-39): a refund counts in the month of its date, whatever it came from.
+    insertRefund(temporaryGuest, ofStay, "50.00", "2026-10-15");
+    insertRefund(temporaryGuest, ofStay, "7.00", "2026-11-01");
     jdbc.update(
         "UPDATE payments SET reviewed_at = '2026-10-03T15:00:00Z',"
             + " created_date = '2026-10-02T15:00:00Z' WHERE id = ?",
@@ -47,8 +51,8 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
     assertThat(balance("2026-10"))
         .isEqualTo(
-            "{\"month\":\"2026-10\",\"totalIncome\":1125.60,\"incomeFromPayments\":1100.30,"
-                + "\"incomeFromFines\":25.30,\"totalExpenses\":2000.00,\"net\":-874.40}");
+            summary(
+                "2026-10", "1100.30/2", "25.30/2", "50.00/1", "1075.60", "2000.00/1", "-924.40"));
   }
 
   @Test
@@ -63,8 +67,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
     assertThat(balance("2026-09"))
         .isEqualTo(
-            "{\"month\":\"2026-09\",\"totalIncome\":1299.00,\"incomeFromPayments\":1200.00,"
-                + "\"incomeFromFines\":99.00,\"totalExpenses\":50.00,\"net\":1249.00}");
+            summary("2026-09", "1200.00/2", "99.00/1", "0.00/0", "1299.00", "50.00/1", "1249.00"));
   }
 
   @Test
@@ -80,20 +83,17 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
     assertThat(balance("2026-10"))
         .isEqualTo(
-            "{\"month\":\"2026-10\",\"totalIncome\":890.00,\"incomeFromPayments\":850.00,"
-                + "\"incomeFromFines\":40.00,\"totalExpenses\":0.00,\"net\":890.00}");
+            summary("2026-10", "850.00/2", "40.00/1", "0.00/0", "890.00", "0.00/0", "890.00"));
   }
 
   @Test
   void aMonthWithoutMovementsAnswersZerosWithTwoDecimals() throws Exception {
     insertExpense("10.00", "2026-10");
 
-    String zeros =
-        "\"totalIncome\":0.00,\"incomeFromPayments\":0.00,"
-            + "\"incomeFromFines\":0.00,\"totalExpenses\":0.00,\"net\":0.00}";
-    assertThat(balance("2026-08")).isEqualTo("{\"month\":\"2026-08\"," + zeros);
-    assertThat(balance("0001-01")).isEqualTo("{\"month\":\"0001-01\"," + zeros);
-    assertThat(balance("9999-12")).isEqualTo("{\"month\":\"9999-12\"," + zeros);
+    for (String month : new String[] {"2026-08", "0001-01", "9999-12"}) {
+      assertThat(balance(month))
+          .isEqualTo(summary(month, "0.00/0", "0.00/0", "0.00/0", "0.00", "0.00/0", "0.00"));
+    }
   }
 
   @Test
@@ -107,9 +107,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
     insertExpense("0.40", "2026-10");
 
     assertThat(balance("2026-10"))
-        .isEqualTo(
-            "{\"month\":\"2026-10\",\"totalIncome\":0.60,\"incomeFromPayments\":0.30,"
-                + "\"incomeFromFines\":0.30,\"totalExpenses\":0.70,\"net\":-0.10}");
+        .isEqualTo(summary("2026-10", "0.30/2", "0.30/2", "0.00/0", "0.60", "0.70/3", "-0.10"));
   }
 
   @Test
@@ -146,6 +144,54 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
   // ------------------------------------------------------------------ helpers
 
+  /**
+   * The answer as the BFF writes it, in the order of its fields. Each counted part is written
+   * {@code "amount/count"} (TAR-240 adds the counts).
+   */
+  private static String summary(
+      String month,
+      String payments,
+      String fines,
+      String refunds,
+      String income,
+      String expenses,
+      String net) {
+    return "{\"month\":\""
+        + month
+        + "\",\"totalIncome\":"
+        + income
+        + part("incomeFromPayments", "paymentsCount", payments)
+        + part("incomeFromFines", "finesCount", fines)
+        + part("refundsTotal", "refundsCount", refunds)
+        + part("totalExpenses", "expensesCount", expenses)
+        + ",\"net\":"
+        + net
+        + "}";
+  }
+
+  private static String part(String amountField, String countField, String amountAndCount) {
+    int slash = amountAndCount.indexOf('/');
+    return ",\""
+        + amountField
+        + "\":"
+        + amountAndCount.substring(0, slash)
+        + ",\""
+        + countField
+        + "\":"
+        + amountAndCount.substring(slash + 1);
+  }
+
+  private void insertRefund(Long guest, Long fromPayment, String amount, String date) {
+    jdbc.update(
+        "INSERT INTO refunds (id, guest_id, from_payment_id, amount, refunded_on, method)"
+            + " VALUES (?, ?, ?, ?::numeric, ?::date, 'Yape')",
+        TestIds.next(),
+        guest,
+        fromPayment,
+        amount,
+        date);
+  }
+
   private String balance(String month) throws Exception {
     return mockMvc
         .perform(get(FINANCE).param("month", month).cookie(admin()))
@@ -166,7 +212,13 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
       String status,
       String amount) {
     Long id = insertPayment(guest, contractId, stayId, period, status, "2026-10-02T15:00:00Z");
-    jdbc.update("UPDATE payments SET amount = ?::numeric WHERE id = ?", amount, id);
+    // What counts is what was verified (RN-16, TAR-239): an approved payment verified its amount.
+    jdbc.update(
+        "UPDATE payments SET amount = ?::numeric, verified_amount = CASE WHEN status ="
+            + " 'APPROVED' THEN ?::numeric END WHERE id = ?",
+        amount,
+        amount,
+        id);
     return id;
   }
 

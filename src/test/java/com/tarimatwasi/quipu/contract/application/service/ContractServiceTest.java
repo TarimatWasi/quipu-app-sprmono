@@ -3,7 +3,10 @@ package com.tarimatwasi.quipu.contract.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -35,6 +38,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
@@ -45,7 +49,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,14 +83,40 @@ class ContractServiceTest {
   @Mock ContractEnvironmentPort environments;
   @Mock ContractGuestPort guests;
   @Mock GuestDebtQuery debts;
+  @Mock StayOccupancyQuery stays;
+
+  /** TAR-237: every guest and environment of a contract has its label. */
+  @BeforeEach
+  void everyLabelIsKnown() {
+    lenient()
+        .when(guests.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractGuestPort.GuestLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractGuestPort.GuestLabel("Ana Quispe", "DNI", "12345678"));
+              }
+              return found;
+            });
+    lenient()
+        .when(environments.labelsOf(anyCollection()))
+        .thenAnswer(
+            call -> {
+              Map<Long, ContractEnvironmentPort.EnvironmentLabel> found = new HashMap<>();
+              for (Long id : call.<Collection<Long>>getArgument(0)) {
+                found.put(id, new ContractEnvironmentPort.EnvironmentLabel("201", "ROOM"));
+              }
+              return found;
+            });
+  }
 
   private ContractService service;
 
   @BeforeEach
   void setUp() {
-    service = new ContractService(contracts, files, environments, guests, debts, clock);
+    service = new ContractService(contracts, files, environments, guests, debts, stays, clock);
     // The environment exists and is active unless a test says otherwise.
-    org.mockito.Mockito.lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
+    lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }
 
   private static NewContract request(byte[] content, String name, @Nullable String end) {
@@ -118,12 +151,13 @@ class ContractServiceTest {
         KEY,
         "contrato.pdf",
         PDF.length,
-        terminated ? TERMINATED_AT : null);
+        terminated ? TERMINATED_AT : null,
+        java.time.Instant.EPOCH);
   }
 
   private void freeEnvironmentAndActiveContractGuest() {
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
-    when(contracts.existsInForce(ENVIRONMENT_ID, TODAY)).thenReturn(false);
+    when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(false);
   }
 
   // --- create ---
@@ -190,7 +224,7 @@ class ContractServiceTest {
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(GuestNotContractException.class);
-    verify(contracts, never()).existsInForce(any(), any());
+    verify(contracts, never()).existsCrossing(any(), any(), any());
     verifyNoInteractions(files);
   }
 
@@ -216,7 +250,7 @@ class ContractServiceTest {
     order.verify(environments).lock(ENVIRONMENT_ID); // environment, then guest, then the debt
     order.verify(guests).lock(GUEST_ID);
     order.verify(debts).owedPeriods(GUEST_ID);
-    verify(contracts, never()).existsInForce(any(), any());
+    verify(contracts, never()).existsCrossing(any(), any(), any());
     verifyNoInteractions(files);
     verify(contracts, never()).insert(any());
   }
@@ -230,7 +264,7 @@ class ContractServiceTest {
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentInactiveException.class);
     verify(debts).owedPeriods(GUEST_ID);
-    verify(contracts, never()).existsInForce(any(), any());
+    verify(contracts, never()).existsCrossing(any(), any(), any());
     verifyNoInteractions(files);
     verify(contracts, never()).insert(any());
   }
@@ -249,7 +283,7 @@ class ContractServiceTest {
   @Test
   void anOccupiedEnvironmentRejectsTheContractWithoutTouchingTheBucket() {
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
-    when(contracts.existsInForce(ENVIRONMENT_ID, TODAY)).thenReturn(true);
+    when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(true);
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentOccupiedException.class);
@@ -262,7 +296,7 @@ class ContractServiceTest {
     // 2026-10-15 02:00 UTC is still the 14th in Lima
     clock.advance(java.time.Duration.ofHours(12));
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
-    when(contracts.existsInForce(ENVIRONMENT_ID, TODAY)).thenReturn(true);
+    when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(true);
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentOccupiedException.class);
@@ -375,7 +409,7 @@ class ContractServiceTest {
     when(contracts.findAll(ContractStatus.ACTIVE, TODAY, page))
         .thenReturn(new CursorPage<>(List.of(stored(false, "2026-11-01")), "next"));
 
-    var result = service.list(ContractState.ACTIVE, page);
+    var result = service.list(ContractState.ACTIVE, false, page);
 
     assertThat(result.nextCursor()).isEqualTo("next");
     assertThat(result.content())
@@ -394,7 +428,7 @@ class ContractServiceTest {
     when(contracts.findAll(null, TODAY, page))
         .thenReturn(new CursorPage<>(List.of(stored(false, "2026-10-01")), null));
 
-    assertThat(service.list(null, page).content())
+    assertThat(service.list(null, false, page).content())
         .singleElement()
         .satisfies(c -> assertThat(c.status()).isEqualTo(ContractState.EXPIRED));
   }
@@ -453,24 +487,23 @@ class ContractServiceTest {
   }
 
   @Test
-  void aBucketThatCannotSignMakesTheFileUnavailable() {
+  // TAR-237: the contract is still read; only its file link comes null.
+  void aBucketThatCannotSignGivesTheContractWithoutFileUrl() {
     when(contracts.findById(CONTRACT_ID)).thenReturn(Optional.of(stored(false, null)));
     when(files.signedUrl(KEY)).thenThrow(new ContractFileStorageException("down"));
 
-    assertThatThrownBy(() -> service.get(CONTRACT_ID))
-        .isInstanceOf(ContractFileUnavailableException.class)
-        .hasCauseInstanceOf(ContractFileStorageException.class);
+    assertThat(service.get(CONTRACT_ID).fileUrl()).isNull();
   }
 
   @Test
-  void ifTheUrlCannotBeSignedAfterTheInsertTheStoredObjectIsRemoved() {
+  // TAR-237: the contract is stored; only the link of the answer comes null.
+  void ifTheUrlCannotBeSignedAfterTheInsertTheContractStaysWithoutFileUrl() {
     freeEnvironmentAndActiveContractGuest();
     when(files.store(PDF)).thenReturn(KEY);
     when(contracts.insert(any())).thenReturn(stored(false, null));
     when(files.signedUrl(KEY)).thenThrow(new ContractFileStorageException("down"));
 
-    assertThatThrownBy(() -> service.create(request()))
-        .isInstanceOf(ContractFileUnavailableException.class);
-    verify(files).delete(KEY);
+    assertThat(service.create(request()).fileUrl()).isNull();
+    verify(files, never()).delete(KEY);
   }
 }

@@ -16,6 +16,10 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   private @Nullable String email;
 
+  /** TAR-127 (A0.5): the full name of an administrator, written when activating the account. */
+  @Column(name = "name")
+  private @Nullable String name;
+
   @Column(name = "document_type")
   @Enumerated(EnumType.STRING)
   private com.tarimatwasi.quipu.auth.domain.DocumentType documentType;
@@ -55,6 +59,15 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   protected UserJpaEntity() {}
 
   /** A new password also kills a recovery code that was emailed before it. */
+  public @Nullable String name() {
+    return name;
+  }
+
+  /** TAR-127 (A0.5): set once, when the administrator activates the account. */
+  public void name(String name) {
+    this.name = name;
+  }
+
   public void changePassword(String newPasswordHash, Instant changedAt) {
     this.passwordHash = newPasswordHash;
     this.passwordChangedAt = changedAt;

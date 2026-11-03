@@ -8,12 +8,16 @@ import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 public interface GuestRepositoryPort {
 
   Optional<Guest> findById(Long id);
+
+  /** TAR-237: the guests with those ids; an id with no guest adds nothing. */
+  List<Guest> findAllByIds(Collection<Long> ids);
 
   /**
    * Like {@link #findById} but the row stays locked until the transaction ends, so two simultaneous
@@ -28,6 +32,15 @@ public interface GuestRepositoryPort {
    */
   CursorPage<Guest> findAll(
       @Nullable Collection<GuestStatus> statuses, @Nullable GuestType type, PageQuery page);
+
+  /** TAR-237: every guest of the filters, ordered as the listing, without pages (they are few). */
+  List<Guest> findAllMatching(@Nullable Collection<GuestStatus> statuses, @Nullable GuestType type);
+
+  /** A3 (TAR-218): how many guests have that status, across all pages. */
+  long countByStatus(GuestStatus status);
+
+  /** TAR-276: the optimistic-locking version of the guest; 0 for an unknown id. */
+  long versionOf(Long id);
 
   /** The guest with that document, whatever its state (RN-18). */
   Optional<Guest> findByDocument(DocumentType documentType, String documentNumber);

@@ -68,6 +68,15 @@ public interface UserRepositoryPort {
   void resetPassword(Long id, String newPasswordHash, Instant changedAt);
 
   /**
+   * TAR-127 (A0.5): as {@link #resetPassword}, and stores the full name an administrator writes
+   * when activating its account, in the same write.
+   */
+  void resetPasswordAndName(Long id, String newPasswordHash, Instant changedAt, String name);
+
+  /** TAR-127: the full name of the account (an administrator that activated it); else empty. */
+  Optional<String> findName(Long id);
+
+  /**
    * SEG-06. Counts a failed login of the account and, when it reaches {@code maxAttempts}, locks it
    * until {@code now + lockDuration}. A lock that already expired restarts the count. Safe against
    * simultaneous failures: the account's row is locked while it is updated.

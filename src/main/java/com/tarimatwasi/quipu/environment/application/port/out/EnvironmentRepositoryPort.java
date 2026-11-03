@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +36,9 @@ public interface EnvironmentRepositoryPort {
    */
   CursorPage<Environment> findAll(@Nullable EnvironmentStatus status, PageQuery page);
 
+  /** TAR-237: every environment of the status, ordered by code; {@code null} reads them all. */
+  List<Environment> findAllByStatus(@Nullable EnvironmentStatus status);
+
   /**
    * Changes the present fields of the environment; empty if there is none with that id.
    *
@@ -43,7 +47,7 @@ public interface EnvironmentRepositoryPort {
   Optional<Environment> update(Long id, @Nullable String code, @Nullable EnvironmentType type);
 
   /** Sets the status of the environment; false if there is none with that id. */
-  boolean updateStatus(Long id, EnvironmentStatus status);
+  boolean updateStatus(Long id, EnvironmentStatus status, Instant at);
 
   /** The environments with those ids; an id with no environment adds nothing. */
   List<Environment> findAllByIds(Collection<Long> ids);

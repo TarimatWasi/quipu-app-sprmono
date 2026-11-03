@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNameRequiredException;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
@@ -79,6 +80,83 @@ class PasswordRecoveryServiceTest {
     return user;
   }
 
+  /** An administrator created by another one (RF-22): no name until it activates the account. */
+  private UserAccount savedAdministrator() {
+    var admin =
+        new UserAccount(
+            TestIds.next(),
+            EMAIL,
+            DocumentType.DNI,
+            "22222222",
+            encoder.encode("Antigua12345"),
+            Role.ADMIN,
+            null,
+            true,
+            "ACTIVE",
+            0,
+            null,
+            null);
+    repository.save(admin);
+    return admin;
+  }
+
+  /** TAR-127 (A0.5): the link opens the activation screen and the name is asked before the code. */
+  @Test
+  void anAdministratorWithoutNameGetsTheActivationLinkAndMustWriteItsName() {
+    UserAccount admin = savedAdministrator();
+    service.requestReset(EMAIL);
+    var sent = mail.sent.getFirst();
+    assertThat(sent.activation()).isTrue();
+
+    assertThatThrownBy(() -> service.resetPassword(sent.code(), NEW_PASSWORD, null))
+        .isInstanceOf(AdministratorNameRequiredException.class);
+    assertThatThrownBy(() -> service.resetPassword(sent.code(), NEW_PASSWORD, "   "))
+        .isInstanceOf(AdministratorNameRequiredException.class);
+    // The code was not consumed: the same one activates the account with the name.
+    service.resetPassword(sent.code(), NEW_PASSWORD, "  Rosa Quispe ");
+
+    assertThat(repository.findName(admin.id())).contains("Rosa Quispe");
+    assertThat(encoder.matches(NEW_PASSWORD, repository.find(admin.id()).passwordHash())).isTrue();
+  }
+
+  /** TAR-127: once it has a name, the recovery is the usual one and a name sent is ignored. */
+  @Test
+  void anAdministratorWithNameGetsTheRecoveryLinkAndANameSentIsIgnored() {
+    UserAccount admin = savedAdministrator();
+    repository.name(admin.id(), "Ana Quispe");
+    service.requestReset(EMAIL);
+    var sent = mail.sent.getFirst();
+    assertThat(sent.activation()).isFalse();
+
+    service.resetPassword(sent.code(), NEW_PASSWORD, "Otro Nombre");
+
+    assertThat(repository.findName(admin.id())).contains("Ana Quispe");
+  }
+
+  /** TAR-127: a guest has no name in its account; the recovery link is never the activation one. */
+  @Test
+  void aGuestGetsTheRecoveryLinkAndItsAccountHasNoName() {
+    UserAccount guest = savedUser("ACTIVE");
+    repository.save(
+        new UserAccount(
+            guest.id(),
+            guest.email(),
+            guest.documentType(),
+            guest.documentNumber(),
+            guest.passwordHash(),
+            guest.role(),
+            7L,
+            false,
+            "ACTIVE",
+            0,
+            null,
+            null));
+    service.requestReset(EMAIL);
+
+    assertThat(mail.sent).allSatisfy(sent -> assertThat(sent.activation()).isFalse());
+    assertThat(repository.findName(guest.id())).isEmpty();
+  }
+
   /** TAR-205: stored as TIMESTAMPTZ keeps it, so no rounding of the database can move it. */
   @Test
   void theResetIsMarkedToTheMicrosecond() {
@@ -86,7 +164,7 @@ class PasswordRecoveryServiceTest {
     service.requestReset(EMAIL);
     clock.advance(Duration.ofNanos(1_999));
 
-    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD);
+    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD, null);
 
     assertThat(repository.find(user.id()).passwordChangedAt())
         .isEqualTo(clock.instant().truncatedTo(ChronoUnit.MICROS));
@@ -155,7 +233,8 @@ class PasswordRecoveryServiceTest {
     verifyNoInteractions(users, spiedEncoder, spiedMail, grants);
 
     queued.forEach(Runnable::run);
-    verify(spiedMail).sendResetLink(eq(EMAIL), anyString(), eq(ResetCodeIssuer.CODE_VALIDITY));
+    verify(spiedMail)
+        .sendResetLink(eq(EMAIL), anyString(), eq(ResetCodeIssuer.CODE_VALIDITY), eq(false));
   }
 
   @Test
@@ -183,7 +262,7 @@ class PasswordRecoveryServiceTest {
     assertThat(mail.sent).hasSize(1);
     assertThat(repository.storedResetHash(user.id())).contains(hash);
     assertThat(repository.findResetTokenExpiry(user.id())).contains(expiry);
-    assertThatCode(() -> service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD))
+    assertThatCode(() -> service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD, null))
         .doesNotThrowAnyException();
   }
 
@@ -203,9 +282,10 @@ class PasswordRecoveryServiceTest {
     assertThat(repository.storedResetHash(user.id()))
         .isPresent()
         .isNotEqualTo(Optional.of(oldHash));
-    assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD))
+    assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD, null))
         .isInstanceOf(InvalidResetCodeException.class);
-    assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD)).doesNotThrowAnyException();
+    assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD, null))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -224,16 +304,17 @@ class PasswordRecoveryServiceTest {
     assertThat(repository.storedResetHash(user.id()))
         .isPresent()
         .isNotEqualTo(Optional.of(oldHash));
-    assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD))
+    assertThatThrownBy(() -> service.resetPassword(oldCode, NEW_PASSWORD, null))
         .isInstanceOf(InvalidResetCodeException.class);
-    assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD)).doesNotThrowAnyException();
+    assertThatCode(() -> service.resetPassword(newCode, NEW_PASSWORD, null))
+        .doesNotThrowAnyException();
   }
 
   @Test
   void aUsedCodeLetsANewRequestIssueAnotherOne() {
     savedUser("ACTIVE");
     service.requestReset(EMAIL);
-    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD);
+    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD, null);
 
     service.requestReset(EMAIL);
 
@@ -264,7 +345,7 @@ class PasswordRecoveryServiceTest {
     UserAccount user = savedUser("ACTIVE");
     service.requestReset(EMAIL);
 
-    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD);
+    service.resetPassword(mail.sent.getFirst().code(), NEW_PASSWORD, null);
 
     UserAccount stored = repository.find(user.id());
     assertThat(encoder.matches(NEW_PASSWORD, stored.passwordHash())).isTrue();
@@ -277,15 +358,15 @@ class PasswordRecoveryServiceTest {
     savedUser("ACTIVE");
     service.requestReset(EMAIL);
     String code = mail.sent.getFirst().code();
-    service.resetPassword(code, NEW_PASSWORD);
+    service.resetPassword(code, NEW_PASSWORD, null);
 
-    assertThatThrownBy(() -> service.resetPassword(code, "Otra123456"))
+    assertThatThrownBy(() -> service.resetPassword(code, "Otra123456", null))
         .isInstanceOf(InvalidResetCodeException.class);
   }
 
   @Test
   void anUnknownCodeIsInvalid() {
-    assertThatThrownBy(() -> service.resetPassword("x".repeat(43), NEW_PASSWORD))
+    assertThatThrownBy(() -> service.resetPassword("x".repeat(43), NEW_PASSWORD, null))
         .isInstanceOf(InvalidResetCodeException.class);
   }
 
@@ -297,7 +378,7 @@ class PasswordRecoveryServiceTest {
 
     clock.advance(Duration.ofMinutes(30));
 
-    assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD))
+    assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD, null))
         .isInstanceOf(InvalidResetCodeException.class);
   }
 
@@ -321,7 +402,7 @@ class PasswordRecoveryServiceTest {
             null,
             null));
 
-    assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD))
+    assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD, null))
         .isInstanceOf(InvalidResetCodeException.class);
   }
 
@@ -331,11 +412,12 @@ class PasswordRecoveryServiceTest {
     service.requestReset(EMAIL);
     String code = mail.sent.getFirst().code();
 
-    assertThatThrownBy(() -> service.resetPassword(code, "corta"))
+    assertThatThrownBy(() -> service.resetPassword(code, "corta", null))
         .isInstanceOfSatisfying(
             WeakPasswordException.class,
             e -> assertThat(e.reason()).isEqualTo(WeakPasswordException.Reason.TOO_SHORT));
-    assertThatCode(() -> service.resetPassword(code, NEW_PASSWORD)).doesNotThrowAnyException();
+    assertThatCode(() -> service.resetPassword(code, NEW_PASSWORD, null))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -343,13 +425,14 @@ class PasswordRecoveryServiceTest {
     savedUser("ACTIVE");
     service.requestReset(EMAIL);
 
-    assertThatThrownBy(() -> service.resetPassword(mail.sent.getFirst().code(), "a".repeat(73)))
+    assertThatThrownBy(
+            () -> service.resetPassword(mail.sent.getFirst().code(), "a".repeat(73), null))
         .isInstanceOfSatisfying(
             WeakPasswordException.class,
             e -> assertThat(e.reason()).isEqualTo(WeakPasswordException.Reason.TOO_LONG));
   }
 
-  private record Sent(String email, String code, Duration validFor) {}
+  private record Sent(String email, String code, Duration validFor, boolean activation) {}
 
   private static final class RecordingMail implements PasswordResetMailPort {
     final List<Sent> sent = new ArrayList<>();
@@ -360,11 +443,11 @@ class PasswordRecoveryServiceTest {
     }
 
     @Override
-    public void sendResetLink(String toEmail, String code, Duration validFor) {
+    public void sendResetLink(String toEmail, String code, Duration validFor, boolean activation) {
       if (failure != null) {
         throw failure;
       }
-      sent.add(new Sent(toEmail, code, validFor));
+      sent.add(new Sent(toEmail, code, validFor, activation));
     }
 
     /** RF-22 only: the recovery never waits for the provider. */
@@ -410,7 +493,7 @@ class PasswordRecoveryServiceTest {
     UserAccount user = guestAccount(false);
     service.requestReset(EMAIL);
 
-    service.resetPassword(mail.sent.get(0).code(), "Nueva12345");
+    service.resetPassword(mail.sent.get(0).code(), "Nueva12345", null);
 
     org.mockito.Mockito.verify(grants).revokeLive(77L, clock.instant());
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
@@ -425,7 +508,8 @@ class PasswordRecoveryServiceTest {
             grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
         .thenReturn(true);
 
-    assertThatThrownBy(() -> service.resetPassword(mail.sent.get(0).code(), "Enlace-vivo-123"))
+    assertThatThrownBy(
+            () -> service.resetPassword(mail.sent.get(0).code(), "Enlace-vivo-123", null))
         .isInstanceOfSatisfying(
             WeakPasswordException.class,
             e ->
@@ -440,9 +524,10 @@ class PasswordRecoveryServiceTest {
     service.requestReset(EMAIL);
     String code = mail.sent.get(0).code();
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.resetPassword(code, code))
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> service.resetPassword(code, code, null))
         .isInstanceOf(com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException.class);
-    service.resetPassword(code, "Nueva12345");
+    service.resetPassword(code, "Nueva12345", null);
 
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
   }

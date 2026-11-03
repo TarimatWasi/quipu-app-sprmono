@@ -61,10 +61,9 @@ class PaymentsMigrationTest {
   @Test
   void payments_takeTheirIdFromTheSequenceAndStartPending() {
     jdbc.update(
-        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-            + " content_type, size_bytes, recorded_by) VALUES (nextval('payments_seq'), ?, ?,"
-            + " '2026-10-01', 800, 'vouchers/' || gen_random_uuid(), 'a.pdf', 'application/pdf', 10,"
-            + " 'GUEST')",
+        "INSERT INTO payments (id, guest_id, contract_id, period, amount, recorded_by,"
+            + " submitted_at) VALUES (nextval('payments_seq'), ?, ?, '2026-10-01', 800, 'GUEST',"
+            + " now())",
         guest,
         contract);
 
@@ -119,15 +118,18 @@ class PaymentsMigrationTest {
                 d.contains("UNIQUE")
                     && d.contains("(contract_id, period)")
                     && d.contains("'PENDING'")
-                    && d.contains("'APPROVED'"))
+                    && d.contains("'APPROVED'")
+                    && d.contains("'REJECTED'"))
         .anyMatch(
             d ->
                 d.contains("UNIQUE")
                     && d.contains("(stay_id)")
                     && d.contains("'PENDING'")
-                    && d.contains("'APPROVED'"))
+                    && d.contains("'APPROVED'")
+                    && d.contains("'REJECTED'"))
         .anyMatch(d -> d.contains("(guest_id, status, period)"))
-        .anyMatch(d -> d.contains("(status, created_date, id)"))
+        .anyMatch(d -> d.contains("(status, submitted_at, id)"))
+        .anyMatch(d -> d.contains("(submitted_at, id)"))
         .anyMatch(d -> d.contains("(guest_id, created_date DESC, id DESC)"));
   }
 
@@ -167,8 +169,6 @@ class PaymentsMigrationTest {
   void theColumnsRefuseWhatTheDomainRefuses() {
     assertThatThrownBy(() -> insertRaw("amount", "0"))
         .isInstanceOf(DataIntegrityViolationException.class);
-    assertThatThrownBy(() -> insertRaw("size_bytes", "0"))
-        .isInstanceOf(DataIntegrityViolationException.class);
     assertThatThrownBy(() -> insertRaw("status", "'EXPIRED'"))
         .isInstanceOf(DataIntegrityViolationException.class);
     assertThatThrownBy(() -> insertRaw("recorded_by", "'ROBOT'"))
@@ -177,11 +177,35 @@ class PaymentsMigrationTest {
 
   // --- the partial unique indexes ---
 
+  /**
+   * TAR-239: a rejected payment is corrected and sent again, so it still holds its period; a
+   * rejection of the past (SUPERSEDED) is history and holds nothing.
+   */
   @Test
-  void aRejectedVoucherDoesNotBlockANewOne() {
-    insert(guest, contract, "2026-10-01", null, "REJECTED", "Ilegible", true);
-    insert(guest, contract, "2026-10-01", null, "REJECTED", "Otra vez ilegible", true);
-    insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
+  void aRejectedPaymentHoldsItsPeriodAndAPastRejectionDoesNot() {
+    insert(guest, contract, "2026-10-01", null, "SUPERSEDED", "Ilegible", true);
+    insert(guest, contract, "2026-10-01", null, "SUPERSEDED", "Otra vez ilegible", true);
+    insert(guest, contract, "2026-10-01", null, "REJECTED", "Monto incompleto", true);
+
+    assertRefused("pending over a rejected", contract, "2026-10-01", null, "PENDING", null, false);
+    assertRefused("rejected twice", contract, "2026-10-01", null, "REJECTED", "Otra", true);
+  }
+
+  /** TAR-239: an approved payment says what was verified; another one does not. */
+  @Test
+  void onlyAnApprovedPaymentHasAVerifiedAmount() {
+    long pending = insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
+    assertThatThrownBy(
+            () -> jdbc.update("UPDATE payments SET verified_amount = 800 WHERE id = ?", pending))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () ->
+                jdbc.update(
+                    "UPDATE payments SET status = 'APPROVED', reviewed_at = now(),"
+                        + " reviewed_by_id = ? WHERE id = ?",
+                    admin,
+                    pending))
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   @Test
@@ -200,7 +224,8 @@ class PaymentsMigrationTest {
     long pending = insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
 
     jdbc.update(
-        "UPDATE payments SET status = 'APPROVED', reviewed_at = now(), reviewed_by_id = ? WHERE id = ?",
+        "UPDATE payments SET status = 'APPROVED', verified_amount = amount, reviewed_at = now(),"
+            + " reviewed_by_id = ? WHERE id = ?",
         admin,
         pending);
 
@@ -213,30 +238,61 @@ class PaymentsMigrationTest {
         .isEqualTo(1);
   }
 
+  /**
+   * RN-22, TAR-239: a voucher has its file (a key of its own, one of the three types, a size) and
+   * cash has none; every proof declares more than 0.
+   */
   @Test
-  void aVoucherKeyBelongsToOnePaymentAndTheTypeIsOneOfTheThree() {
-    jdbc.update(
-        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-            + " content_type, size_bytes, recorded_by) VALUES (?, ?, ?, '2026-10-01', 800,"
-            + " 'vouchers/same', 'a.pdf', 'application/pdf', 10, 'GUEST')",
-        NEXT_ID.incrementAndGet(),
-        guest,
-        contract);
+  void aVoucherHasItsOwnFileOfOneOfTheThreeTypesAndCashHasNone() {
+    long payment = insert(guest, contract, "2026-10-01", null, "PENDING", null, false);
+    proof(payment, "'VOUCHER'", "800", "'vouchers/same'", "'application/pdf'", "10");
     assertThatThrownBy(
-            () ->
-                jdbc.update(
-                    "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key,"
-                        + " original_name, content_type, size_bytes, recorded_by) VALUES (?, ?, ?,"
-                        + " '2026-11-01', 800, 'vouchers/same', 'a.pdf', 'application/pdf', 10,"
-                        + " 'GUEST')",
-                    NEXT_ID.incrementAndGet(),
-                    guest,
-                    contract))
+            () -> proof(payment, "'VOUCHER'", "800", "'vouchers/same'", "'image/png'", "10"))
+        .as("a key of another proof")
         .isInstanceOf(DataIntegrityViolationException.class);
-    assertThatThrownBy(() -> insertRaw("content_type", "'image/gif'"))
+    assertThatThrownBy(
+            () -> proof(payment, "'VOUCHER'", "800", "'vouchers/gif'", "'image/gif'", "10"))
+        .as("a gif")
         .isInstanceOf(DataIntegrityViolationException.class);
-    insertRaw("content_type", "'image/jpeg'", NEXT_ID.incrementAndGet(), "2026-09-01");
-    insertRaw("content_type", "'image/png'", NEXT_ID.incrementAndGet(), "2026-08-01");
+    assertThatThrownBy(
+            () -> proof(payment, "'VOUCHER'", "800", "'vouchers/zero'", "'image/png'", "0"))
+        .as("an empty file")
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(() -> proof(payment, "'VOUCHER'", "800", "NULL", "NULL", "NULL"))
+        .as("a voucher without file")
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(
+            () -> proof(payment, "'CASH'", "800", "'vouchers/cash'", "'image/png'", "10"))
+        .as("cash with a file")
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThatThrownBy(() -> proof(payment, "'CASH'", "0", "NULL", "NULL", "NULL"))
+        .as("cash of nothing")
+        .isInstanceOf(DataIntegrityViolationException.class);
+    proof(payment, "'CASH'", "100", "NULL", "NULL", "NULL");
+    proof(payment, "'VOUCHER'", "1", "'vouchers/jpg'", "'image/jpeg'", "10");
+  }
+
+  private void proof(
+      long payment, String kind, String amount, String key, String type, String size) {
+    jdbc.execute(
+        "INSERT INTO payment_proofs (id, payment_id, kind, declared_amount, file_key,"
+            + " original_name, content_type, size_bytes, uploaded_by) VALUES ("
+            + NEXT_ID.incrementAndGet()
+            + ", "
+            + payment
+            + ", "
+            + kind
+            + ", "
+            + amount
+            + ", "
+            + key
+            + ", "
+            + ("NULL".equals(key) ? "NULL" : "'a.pdf'")
+            + ", "
+            + type
+            + ", "
+            + size
+            + ", 'GUEST')");
   }
 
   @Test
@@ -246,8 +302,9 @@ class PaymentsMigrationTest {
         .isInstanceOf(DataIntegrityViolationException.class);
     assertThatThrownBy(() -> insert(guest, null, null, stay, "APPROVED", null, true))
         .isInstanceOf(DataIntegrityViolationException.class);
+    // TAR-239: only a rejection replaced by another payment (SUPERSEDED) frees the stay.
     jdbc.update(
-        "UPDATE payments SET status = 'REJECTED', rejection_reason = 'No coincide',"
+        "UPDATE payments SET status = 'SUPERSEDED', rejection_reason = 'No coincide',"
             + " reviewed_at = now(), reviewed_by_id = ? WHERE id = ?",
         admin,
         first);
@@ -292,7 +349,8 @@ class PaymentsMigrationTest {
                       barrier,
                       () ->
                           jdbc.update(
-                              "UPDATE payments SET status = 'APPROVED', reviewed_at = now(),"
+                              "UPDATE payments SET status = 'APPROVED',"
+                                  + " verified_amount = amount, reviewed_at = now(),"
                                   + " reviewed_by_id = ? WHERE id = ?",
                               admin,
                               pending)));
@@ -310,6 +368,8 @@ class PaymentsMigrationTest {
                   "SELECT count(*) FROM payments WHERE status IN ('PENDING', 'APPROVED')",
                   Integer.class))
           .isEqualTo(1);
+      jdbc.update("DELETE FROM payment_reviews");
+      jdbc.update("DELETE FROM payment_proofs");
       jdbc.update("DELETE FROM payments");
     }
   }
@@ -361,16 +421,17 @@ class PaymentsMigrationTest {
       boolean reviewed) {
     long id = NEXT_ID.incrementAndGet();
     jdbc.update(
-        "INSERT INTO payments (id, guest_id, contract_id, stay_id, period, amount, voucher_key,"
-            + " original_name, content_type, size_bytes, status, rejection_reason, reviewed_at,"
-            + " reviewed_by_id, recorded_by) VALUES (?, ?, ?, ?, ?::date, 800, 'vouchers/' || gen_random_uuid(), 'a.pdf',"
-            + " 'application/pdf', 10, ?, ?, CASE WHEN ? THEN now() END, CASE WHEN ? THEN ?::bigint END,"
-            + " 'GUEST')",
+        "INSERT INTO payments (id, guest_id, contract_id, stay_id, period, amount,"
+            + " verified_amount, status, rejection_reason, reviewed_at, reviewed_by_id, recorded_by,"
+            + " submitted_at) VALUES (?, ?, ?, ?, ?::date, 800, CASE WHEN ? = 'APPROVED' THEN 800"
+            + " END, ?, ?, CASE WHEN ? THEN now() END, CASE WHEN ? THEN ?::bigint END, 'GUEST',"
+            + " now())",
         id,
         guestId,
         contractId,
         stayId,
         period,
+        status,
         status,
         reason,
         reviewed,
@@ -386,8 +447,8 @@ class PaymentsMigrationTest {
 
   private void insertRaw(String column, String value, long id, String period) {
     jdbc.execute(
-        "INSERT INTO payments (id, guest_id, contract_id, period, amount, voucher_key, original_name,"
-            + " content_type, size_bytes, status, recorded_by) SELECT "
+        "INSERT INTO payments (id, guest_id, contract_id, period, amount, status, recorded_by,"
+            + " submitted_at) SELECT "
             + id
             + ", "
             + guest
@@ -397,14 +458,11 @@ class PaymentsMigrationTest {
             + period
             + "'::date, "
             + ("amount".equals(column) ? value : "800")
-            + ", 'vouchers/' || gen_random_uuid(), 'a.pdf', "
-            + ("content_type".equals(column) ? value : "'application/pdf'")
-            + ", "
-            + ("size_bytes".equals(column) ? value : "10")
             + ", "
             + ("status".equals(column) ? value : "'PENDING'")
             + ", "
-            + ("recorded_by".equals(column) ? value : "'GUEST'"));
+            + ("recorded_by".equals(column) ? value : "'GUEST'")
+            + ", now()");
   }
 
   private long insertGuest(String type, String number) {

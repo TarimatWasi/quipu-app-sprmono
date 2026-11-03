@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.UnknownFieldException;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.PagedResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentLabel;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentsUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentsUseCase.DocumentActionRequest;
@@ -15,6 +17,9 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestDetailView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestListView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestRowView;
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.IdDocumentKind;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.StatusFilter;
@@ -25,15 +30,19 @@ import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
+import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -67,13 +76,19 @@ public class GuestsBffController {
 
   private final ManageGuestsUseCase guests;
   private final GuestDocumentsUseCase documents;
+  private final ManageEnvironmentsUseCase environments;
   private final IdMasker ids;
   private final Clock clock;
 
   public GuestsBffController(
-      ManageGuestsUseCase guests, GuestDocumentsUseCase documents, IdMasker ids, Clock clock) {
+      ManageGuestsUseCase guests,
+      GuestDocumentsUseCase documents,
+      ManageEnvironmentsUseCase environments,
+      IdMasker ids,
+      Clock clock) {
     this.guests = guests;
     this.documents = documents;
+    this.environments = environments;
     this.ids = ids;
     this.clock = clock;
   }
@@ -99,6 +114,32 @@ public class GuestsBffController {
     }
   }
 
+  /** EnvironmentRef of the contract: the environment a guest occupies and for how long (A3). */
+  public record EnvironmentRefResponse(
+      String code, String type, String kind, LocalDate startDate, @Nullable LocalDate endDate) {}
+
+  /**
+   * A row of the administrator's listing: the GuestSummary of the contract with the environment and
+   * the expiry of the access, both always present and null when there is none (A3, TAR-237).
+   */
+  public record GuestRowResponse(
+      UUID id,
+      String documentType,
+      String documentNumber,
+      @Nullable String name,
+      String type,
+      String status,
+      boolean hasLoginAccess,
+      @Nullable EnvironmentRefResponse environment,
+      @Nullable Instant accessExpiresAt) {}
+
+  /** PagedGuests of the contract: the page and the A3 notices, across all pages. */
+  public record PagedGuestsResponse(
+      List<GuestRowResponse> content,
+      @Nullable String nextCursor,
+      long pendingActivationCount,
+      long onboardingCount) {}
+
   public record EmergencyContactResponse(
       @Nullable String name, @Nullable String relationship, @Nullable String phone) {
     static @Nullable EmergencyContactResponse of(@Nullable EmergencyContactView contact) {
@@ -115,6 +156,7 @@ public class GuestsBffController {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record GuestDetailResponse(
       UUID id,
+      @Nullable Long version,
       String documentType,
       String documentNumber,
       @JsonInclude(JsonInclude.Include.ALWAYS) @Nullable String name,
@@ -123,6 +165,7 @@ public class GuestsBffController {
       boolean hasLoginAccess,
       @JsonInclude(JsonInclude.Include.ALWAYS) @Nullable String phone,
       @JsonInclude(JsonInclude.Include.ALWAYS) @Nullable String contactEmail,
+      @JsonInclude(JsonInclude.Include.ALWAYS) @Nullable String accountEmail,
       @Nullable EmergencyContactResponse emergencyContact,
       @Nullable LocalDate stayStartDate,
       @Nullable LocalDate stayEndDate,
@@ -135,6 +178,8 @@ public class GuestsBffController {
       GuestSummaryView guest = detail.summary();
       return new GuestDetailResponse(
           ids.mask(IdKind.GUEST, guest.id()),
+          // Only PendingGuestDetail has it: the document is the only edit, while pending (RN-36).
+          guest.status() == GuestState.PENDING_ACTIVATION ? detail.version() : null,
           guest.documentType().name(),
           guest.documentNumber(),
           guest.name(),
@@ -143,6 +188,7 @@ public class GuestsBffController {
           guest.hasLoginAccess(),
           detail.phone(),
           detail.contactEmail(),
+          detail.accountEmail(),
           EmergencyContactResponse.of(detail.emergencyContact()),
           detail.stayStartDate(),
           detail.stayEndDate(),
@@ -157,22 +203,61 @@ public class GuestsBffController {
 
   /**
    * The use case checks what the document type allows. The contract refuses any other field (the
-   * stays have their own endpoints), so an unknown one is a 400 and not silently ignored.
+   * stays have their own endpoints), so an unknown one is a 400 and not silently ignored. {@code
+   * version} is the one the client loaded (TAR-276).
    */
   public record UpdateGuestRequest(
+      @NotNull @Min(0) Long version,
       @Nullable IdDocumentKind documentType,
       @Nullable @Size(min = 1, max = 20) String documentNumber,
       @JsonAnySetter @Nullable Map<String, Object> unknown) {}
 
   @GetMapping("/bff/admin/guests")
-  public PagedResponse<GuestSummaryResponse> list(
+  public PagedGuestsResponse list(
       @RequestParam(name = "status", defaultValue = "CURRENT") StatusFilter status,
       @RequestParam(name = "type", required = false) @Nullable GuestKind type,
+      @RequestParam(name = "withoutContract", defaultValue = "false") boolean withoutContract,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
       @RequestParam(name = "after", required = false) @Nullable String after) {
-    return PagedResponse.of(
-        guests.list(status, type, PageParams.query(after, limit)),
-        guest -> GuestSummaryResponse.of(guest, ids));
+    GuestListView found =
+        guests.list(status, type, withoutContract, PageParams.query(after, limit));
+    Set<Long> environmentIds = new HashSet<>();
+    for (GuestRowView row : found.page().content()) {
+      Occupancy environment = row.environment();
+      if (environment != null) {
+        environmentIds.add(environment.environmentId());
+      }
+    }
+    Map<Long, EnvironmentLabel> labels = environments.labelsOf(environmentIds);
+    PagedResponse<GuestRowResponse> page =
+        PagedResponse.of(found.page(), row -> rowResponse(row, labels));
+    return new PagedGuestsResponse(
+        page.content(), page.nextCursor(), found.pendingActivationCount(), found.onboardingCount());
+  }
+
+  private GuestRowResponse rowResponse(GuestRowView row, Map<Long, EnvironmentLabel> labels) {
+    GuestSummaryResponse guest = GuestSummaryResponse.of(row.summary(), ids);
+    Occupancy occupancy = row.environment();
+    EnvironmentLabel label = occupancy == null ? null : labels.get(occupancy.environmentId());
+    EnvironmentRefResponse environment =
+        occupancy == null || label == null
+            ? null
+            : new EnvironmentRefResponse(
+                label.code(),
+                label.type().name(),
+                occupancy.kind().name(),
+                occupancy.startDate(),
+                occupancy.endDate());
+    return new GuestRowResponse(
+        guest.id(),
+        guest.documentType(),
+        guest.documentNumber(),
+        guest.name(),
+        guest.type(),
+        guest.status(),
+        guest.hasLoginAccess(),
+        environment,
+        row.accessExpiresAt());
   }
 
   @GetMapping("/bff/admin/guests/{id}")
@@ -188,7 +273,7 @@ public class GuestsBffController {
     return GuestSummaryResponse.of(
         guests.update(
             ids.unmask(IdKind.GUEST, id),
-            new UpdateCommand(request.documentType(), request.documentNumber())),
+            new UpdateCommand(request.version(), request.documentType(), request.documentNumber())),
         ids);
   }
 

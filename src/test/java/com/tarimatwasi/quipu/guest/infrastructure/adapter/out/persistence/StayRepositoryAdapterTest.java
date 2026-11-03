@@ -45,6 +45,7 @@ class StayRepositoryAdapterTest {
   private Long admin;
   private Long guestId;
   private Long otherGuestId;
+  private Long environmentId;
 
   @BeforeEach
   void setUp() {
@@ -53,6 +54,11 @@ class StayRepositoryAdapterTest {
     AdminSessions.signIn(context, admin);
     guestId = insertGuest("30000001");
     otherGuestId = insertGuest("30000002");
+    environmentId = TestIds.next();
+    jdbc.update(
+        "INSERT INTO environments (id, code, type, status) VALUES (?, ?, 'ROOM', 'ACTIVE')",
+        environmentId,
+        "E-" + environmentId);
   }
 
   @AfterEach
@@ -73,7 +79,7 @@ class StayRepositoryAdapterTest {
 
   private Stay insert(Long guest, String start, String end, String amount) {
     return adapter.insert(
-        guest, LocalDate.parse(start), LocalDate.parse(end), new BigDecimal(amount));
+        guest, environmentId, LocalDate.parse(start), LocalDate.parse(end), new BigDecimal(amount));
   }
 
   @Test

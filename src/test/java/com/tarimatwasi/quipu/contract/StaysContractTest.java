@@ -56,11 +56,15 @@ class StaysContractTest {
   private final Long adminId = TestIds.next();
   private final Long guestAccountId = TestIds.next();
 
+  /** The environment every stay of the test occupies, unless it names another (TAR-237). */
+  private final Long environmentId = TestIds.next();
+
   @BeforeEach
   void setUp() {
     TestTables.clear(jdbc);
     insertAccount(adminId, "ADMIN", "00000001");
     insertAccount(guestAccountId, "GUEST", "00000002");
+    insertEnvironment(environmentId, "201");
   }
 
   @AfterEach
@@ -205,6 +209,46 @@ class StaysContractTest {
         .andExpect(jsonPath("$.code").value("STAY_OVERLAP"));
   }
 
+  /** RN-20 (TAR-237): another guest's stay already occupies the environment on those dates. */
+  @Test
+  void aStayInAnOccupiedEnvironmentIsAConflict() throws Exception {
+    var guest = insertGuest("12345678", "TEMPORARY", "ACTIVE");
+    var other = insertGuest("87654321", "TEMPORARY", "ACTIVE");
+    postStay(
+            other, "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\",\"agreedAmount\":100}")
+        .andExpect(status().isCreated());
+
+    postStay(
+            guest, "{\"startDate\":\"2026-10-15\",\"endDate\":\"2026-10-25\",\"agreedAmount\":100}")
+        .andExpect(status().isConflict())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.code").value("ENVIRONMENT_OCCUPIED"))
+        .andExpect(jsonPath("$.message").value("El ambiente ya está ocupado en esas fechas"))
+        .andExpect(jsonPath("$.occupant.kind").value("STAY"))
+        .andExpect(
+            jsonPath("$.occupant.guestId").value(adminIds().mask(IdKind.GUEST, other).toString()))
+        .andExpect(jsonPath("$.occupant.stayId").isNotEmpty())
+        .andExpect(jsonPath("$.occupant.contractId").isEmpty())
+        .andExpect(jsonPath("$.occupant.startDate").value("2026-10-10"))
+        .andExpect(jsonPath("$.occupant.endDate").value("2026-10-20"));
+  }
+
+  @Test
+  void aStayWithoutEnvironmentIsAValidationError() throws Exception {
+    var guest = insertGuest("12345678", "TEMPORARY", "ACTIVE");
+
+    mockMvc
+        .perform(
+            post(stays(guest))
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\",\"agreedAmount\":100}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(answersTheContractToAnInvalidRequest())
+        .andExpect(jsonPath("$.field").value("environmentId"));
+  }
+
   @Test
   void aStayForAGuestThatIsNotActiveIsAConflictThatNamesTheGuest() throws Exception {
     var guest = insertGuest("12345678", "TEMPORARY", "ONBOARDING");
@@ -236,7 +280,8 @@ class StaysContractTest {
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\",\"agreedAmount\":100}"))
+                    withEnvironment(
+                        "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\",\"agreedAmount\":100}")))
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
   }
@@ -360,7 +405,7 @@ class StaysContractTest {
             patch(stays(guest) + "/" + UUID.randomUUID())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"agreedAmount\":120}"))
+                .content("{\"version\":0,\"agreedAmount\":120}"))
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
     patchStay(999_999L, ofOther, "{\"agreedAmount\":120}")
@@ -389,7 +434,8 @@ class StaysContractTest {
                 .cookie(guestCookie)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\",\"agreedAmount\":100}"))
+                    withEnvironment(
+                        "{\"startDate\":\"2026-10-10\",\"endDate\":\"2026-10-20\",\"agreedAmount\":100}")))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
   }
@@ -415,17 +461,50 @@ class StaysContractTest {
     return session;
   }
 
+  /** Registers in the environment of the test any body that is a JSON object. */
   private ResultActions postStay(Long guest, String body) throws Exception {
     return mockMvc.perform(
-        post(stays(guest)).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+        post(stays(guest))
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(withEnvironment(body)));
   }
 
+  /** Corrects from the version the stay has now, as a client that just loaded it (TAR-276). */
   private ResultActions patchStay(Long guest, Long stay, String body) throws Exception {
     return mockMvc.perform(
         patch(stays(guest) + "/" + adminIds().mask(IdKind.STAY, stay))
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body));
+            .content(withField("version", Long.toString(versionOf(stay)), body)));
+  }
+
+  private String withEnvironment(String body) {
+    String id = adminIds().mask(IdKind.ENVIRONMENT, environmentId).toString();
+    return withField("environmentId", "\"" + id + "\"", body);
+  }
+
+  /** The body with the field first; a body that is not a JSON object is left as it is. */
+  private static String withField(String name, String value, String body) {
+    if (!body.startsWith("{")) {
+      return body;
+    }
+    String rest = body.substring(1).strip();
+    return "{\"" + name + "\":" + value + (rest.equals("}") ? "" : ",") + rest;
+  }
+
+  /** The version the stay has now; 0 for one that does not exist. */
+  private long versionOf(Long stay) {
+    return jdbc.queryForList("SELECT version FROM stays WHERE id = ?", Long.class, stay).stream()
+        .findFirst()
+        .orElse(0L);
+  }
+
+  private void insertEnvironment(Long id, String code) {
+    jdbc.update(
+        "INSERT INTO environments (id, code, type, status) VALUES (?, ?, 'ROOM', 'ACTIVE')",
+        id,
+        code);
   }
 
   private Long insertGuest(String number, String type, String status) {

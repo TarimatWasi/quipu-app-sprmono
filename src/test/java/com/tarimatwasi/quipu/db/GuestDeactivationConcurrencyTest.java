@@ -163,9 +163,14 @@ class GuestDeactivationConcurrencyTest {
         guest,
         OCTOBER,
         null,
-        new BigDecimal("800"),
-        "Efectivo",
-        new VoucherUpload("v.pdf", PDF));
+        null,
+        java.util.List.of(
+            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
+                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
+                    .VOUCHER,
+                new BigDecimal("800"),
+                "Efectivo",
+                new VoucherUpload("v.pdf", PDF))));
   }
 
   private <T> T asAdmin(Supplier<T> request) {

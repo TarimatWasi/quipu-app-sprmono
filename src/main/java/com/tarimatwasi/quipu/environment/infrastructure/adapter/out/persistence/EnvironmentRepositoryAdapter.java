@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import jakarta.persistence.criteria.Predicate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -46,6 +47,16 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
   @Override
   public List<Environment> findAllByIds(Collection<Long> ids) {
     return jpaRepository.findAllById(ids).stream().map(EnvironmentJpaEntity::toDomain).toList();
+  }
+
+  @Override
+  public List<Environment> findAllByStatus(@Nullable EnvironmentStatus status) {
+    Specification<EnvironmentJpaEntity> filter =
+        (root, query, builder) ->
+            status == null ? builder.conjunction() : builder.equal(root.get("status"), status);
+    return jpaRepository.findAll(filter, Sort.by(Sort.Order.asc("code"))).stream()
+        .map(EnvironmentJpaEntity::toDomain)
+        .toList();
   }
 
   @Override
@@ -90,9 +101,9 @@ public class EnvironmentRepositoryAdapter implements EnvironmentRepositoryPort {
   }
 
   @Override
-  public boolean updateStatus(Long id, EnvironmentStatus status) {
+  public boolean updateStatus(Long id, EnvironmentStatus status, Instant at) {
     var entity = jpaRepository.findWithLockById(id);
-    entity.ifPresent(found -> found.changeStatus(status));
+    entity.ifPresent(found -> found.changeStatus(status, at));
     return entity.isPresent();
   }
 
