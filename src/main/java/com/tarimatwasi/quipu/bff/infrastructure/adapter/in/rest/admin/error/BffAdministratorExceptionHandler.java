@@ -66,22 +66,26 @@ public class BffAdministratorExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "ACCOUNT_EMAIL_TAKEN", "Ese correo ya pertenece a una cuenta", "email"));
+                "ACCOUNT_EMAIL_TAKEN", "Ese correo ya está en uso por otra cuenta", "email"));
   }
 
+  /** The number is the configured maximum ({@code app.administrators.max}), not personal data. */
   @ExceptionHandler(AdministratorLimitReachedException.class)
-  public ResponseEntity<BffErrorResponse> handleLimitReached() {
+  public ResponseEntity<BffErrorResponse> handleLimitReached(AdministratorLimitReachedException e) {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "ADMIN_LIMIT_REACHED", "Ya existe el número máximo de administradores"));
+                "ADMIN_LIMIT_REACHED",
+                "Ya hay "
+                    + e.maximum()
+                    + " administradores, el máximo. Desactiva uno antes de crear otro."));
   }
 
   /** An unknown id and the id of an account that is not ADMIN answer alike. */
   @ExceptionHandler(AdministratorNotFoundException.class)
   public ResponseEntity<BffErrorResponse> handleAdministratorNotFound() {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
-        .body(new BffErrorResponse("ADMIN_NOT_FOUND", "El administrador no existe"));
+        .body(new BffErrorResponse("ADMIN_NOT_FOUND", "Ese administrador no existe"));
   }
 
   @ExceptionHandler(AdministratorSelfDeactivationException.class)

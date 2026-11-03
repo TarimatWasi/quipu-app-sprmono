@@ -38,6 +38,17 @@ class BffUploadExceptionHandlerTest {
     assertThat(response.getBody()).extracting(BffErrorResponse::code).isEqualTo(code);
   }
 
+  /** TAR-247: the message is the literal text of the error catalog of SRS 17. */
+  @Test
+  void aVoucherOverTheLimitAnswersTheCatalogText() {
+    assertThat(handler.handleUploadTooLarge(post(UploadRoutes.GUEST_PAYMENTS)).getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "VOUCHER_INVALID_FILE",
+                "Archivo inválido — sube JPG, PNG o PDF de máx. 5MB",
+                "file"));
+  }
+
   private static MockHttpServletRequest post(String uri) {
     return new MockHttpServletRequest("POST", uri);
   }

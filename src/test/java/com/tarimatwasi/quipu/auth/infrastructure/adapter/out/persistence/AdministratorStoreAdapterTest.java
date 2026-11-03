@@ -155,7 +155,7 @@ class AdministratorStoreAdapterTest {
   }
 
   @Test
-  void everyAdministratorCountsAndOnlyTheActiveOnesAreNotified() {
+  void onlyTheAdministratorsNotInactiveCountAndAreNotified() {
     Long active = TestIds.next();
     Long excluded = TestIds.next();
     insertUser(active, "activa@example.test", "22222222", "ADMIN", "ACTIVE");
@@ -163,7 +163,8 @@ class AdministratorStoreAdapterTest {
     insertUser(TestIds.next(), "inactiva@example.test", "22222224", "ADMIN", "INACTIVE");
     insertUser(TestIds.next(), "huesped@example.test", "22222225", "GUEST", "ACTIVE");
 
-    assertThat(adapter.countAdministrators()).isEqualTo(4);
+    // RF-22 (decision of 2026-11-03): neither the INACTIVE administrator nor the guest count.
+    assertThat(adapter.countAdministrators()).isEqualTo(3);
     assertThat(adapter.activeAdministratorEmailsExcept(List.of(creatorId, excluded)))
         .containsExactly("activa@example.test");
     assertThat(adapter.activeAdministratorEmailsExcept(List.of()))
@@ -226,7 +227,7 @@ class AdministratorStoreAdapterTest {
     insertUser(TestIds.next(), "huesped@example.test", "22222225", "GUEST", "ACTIVE");
 
     assertThat(adapter.countActiveAdministrators()).isEqualTo(2);
-    assertThat(adapter.countAdministrators()).isEqualTo(3);
+    assertThat(adapter.countAdministrators()).isEqualTo(2);
   }
 
   /** Only an ADMIN is found, and only inside a transaction (its row stays locked). */

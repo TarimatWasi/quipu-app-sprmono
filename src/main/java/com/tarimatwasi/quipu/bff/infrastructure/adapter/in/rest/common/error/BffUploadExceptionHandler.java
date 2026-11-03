@@ -71,7 +71,7 @@ public class BffUploadExceptionHandler {
       body =
           new BffErrorResponse(
               "VOUCHER_INVALID_FILE",
-              "El comprobante debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
+              BffVoucherExceptionHandler.INVALID_VOUCHER_FILE_MESSAGE,
               "file");
     } else if (DOCUMENTS.matches(request)) {
       body = BffExceptionHandler.invalidDocumentFile();

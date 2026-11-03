@@ -56,7 +56,10 @@ public interface AdministratorStorePort {
    */
   void lockAdministrators();
 
-  /** Every ADMIN account, whatever its status. */
+  /**
+   * The ADMIN accounts that take a place of the maximum (RF-22): every one but the INACTIVE ones,
+   * so deactivating an administrator frees its place. Counted under {@link #lockAdministrators()}.
+   */
   int countAdministrators();
 
   /**

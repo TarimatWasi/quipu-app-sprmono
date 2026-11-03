@@ -22,15 +22,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(basePackages = "com.tarimatwasi.quipu.bff")
 public class BffVoucherExceptionHandler {
 
+  /** RF-15: the text of the catalog for a voucher that is not valid or is over the limit. */
+  static final String INVALID_VOUCHER_FILE_MESSAGE =
+      "Archivo inválido — sube JPG, PNG o PDF de máx. 5MB";
+
   /** RF-15: a JPG, a PNG or a PDF by content, up to 5 MB. */
   @ExceptionHandler(InvalidVoucherFileException.class)
   public ResponseEntity<BffErrorResponse> handleInvalidVoucherFile(InvalidVoucherFileException e) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
-            new BffErrorResponse(
-                "VOUCHER_INVALID_FILE",
-                "El comprobante debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
-                e.field()));
+            new BffErrorResponse("VOUCHER_INVALID_FILE", INVALID_VOUCHER_FILE_MESSAGE, e.field()));
   }
 
   /**
@@ -72,8 +73,7 @@ public class BffVoucherExceptionHandler {
     return ResponseEntity.status(HttpStatus.FORBIDDEN)
         .body(
             new BffErrorResponse(
-                "VOUCHER_NO_ACTIVE_CONTRACT",
-                "No tienes un contrato vigente; consulta con la administración"));
+                "VOUCHER_NO_ACTIVE_CONTRACT", "No tienes un contrato vigente activo"));
   }
 
   /** CU-22: a temporary guest pays only a stay in course or to come. */

@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.application.service;
 
+import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedException;
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNotFoundException;
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorSelfDeactivationException;
 import com.tarimatwasi.quipu.auth.application.port.in.LastActiveAdministratorException;
@@ -11,6 +12,7 @@ import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,10 +37,18 @@ class AdministratorStatusChanger {
 
   private final UserRepositoryPort users;
   private final AdministratorStorePort store;
+  private final int maxAdministrators;
 
-  AdministratorStatusChanger(UserRepositoryPort users, AdministratorStorePort store) {
+  AdministratorStatusChanger(
+      UserRepositoryPort users,
+      AdministratorStorePort store,
+      @Value(AdministratorRegistrar.MAX_ADMINISTRATORS) int maxAdministrators) {
+    if (maxAdministrators < 1) {
+      throw new IllegalArgumentException("app.administrators.max must be at least 1");
+    }
     this.users = users;
     this.store = store;
+    this.maxAdministrators = maxAdministrators;
   }
 
   /**
@@ -71,6 +81,10 @@ class AdministratorStatusChanger {
     // Counted in this transaction, under the lock: no other change of an administrator is halfway.
     if (to == AdministratorStatus.INACTIVE && store.countActiveAdministrators() <= 1) {
       throw new LastActiveAdministratorException();
+    }
+    // RF-22: an inactive administrator takes no place, so a reactivation takes one back.
+    if (to == AdministratorStatus.ACTIVE && store.countAdministrators() >= maxAdministrators) {
+      throw new AdministratorLimitReachedException(maxAdministrators);
     }
     store.setAdministratorStatus(administratorId, to.name(), actorId);
     return Optional.of(

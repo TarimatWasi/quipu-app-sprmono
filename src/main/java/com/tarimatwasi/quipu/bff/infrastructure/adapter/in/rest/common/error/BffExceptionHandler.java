@@ -139,13 +139,16 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "AUTH_TEMPORARY_PASSWORD_EXPIRED",
-                "Tu contraseña temporal venció; pide a la administración un nuevo acceso"));
+                "La clave temporal venció, pide una nueva al administrador"));
   }
 
   @ExceptionHandler(AccountDisabledException.class)
   public ResponseEntity<BffErrorResponse> handleAccountDisabled() {
     return ResponseEntity.status(HttpStatus.FORBIDDEN)
-        .body(new BffErrorResponse("AUTH_ACCOUNT_DISABLED", "Cuenta deshabilitada"));
+        .body(
+            new BffErrorResponse(
+                "AUTH_ACCOUNT_DISABLED",
+                "Tu cuenta está deshabilitada. Contacta al administrador."));
   }
 
   /** RNF-08: the message for a short password is the one SRS 17 gives for the field. */
@@ -375,7 +378,7 @@ public class BffExceptionHandler {
         .body(
             new BffGuestNotActiveResponse(
                 "GUEST_INACTIVE",
-                "El huésped está inactivo; reactívalo primero",
+                "Este huésped está inactivo",
                 ids.mask(IdKind.GUEST, e.guestId())));
   }
 
@@ -414,7 +417,7 @@ public class BffExceptionHandler {
         .body(
             new BffGuestHasActiveContractResponse(
                 "GUEST_HAS_ACTIVE_CONTRACT",
-                "El huésped tiene un contrato vigente; primero finaliza el contrato",
+                "Este huésped tiene un contrato vigente: finalízalo primero",
                 ids.mask(IdKind.CONTRACT, e.contractId())));
   }
 
@@ -441,7 +444,7 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
             new BffErrorResponse(
-                "PAYMENT_REASON_REQUIRED", "Indica el motivo del rechazo", "reason"));
+                "PAYMENT_REASON_REQUIRED", "El motivo de rechazo es obligatorio", "reason"));
   }
 
   /** A field of the payment outside its range, or the choice of period or stay. */
@@ -459,7 +462,7 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "PAYMENT_ALREADY_RESOLVED", "El pago ya fue resuelto; vuelve a cargarlo"));
+                "PAYMENT_ALREADY_RESOLVED", "Este pago ya fue resuelto por otro proceso"));
   }
 
   /**
@@ -473,8 +476,8 @@ public class BffExceptionHandler {
         .body(
             new BffErrorResponse(
                 "PAYMENT_PERIOD_NOT_PAYABLE",
-                "El contrato ya no cobra el período de este pago; solo puedes rechazarlo indicando"
-                    + " el motivo"));
+                "Este mes ya no se cobra: el contrato terminó antes de aprobar este pago."
+                    + " Recházalo con un motivo para que el huésped lo sepa."));
   }
 
   /** The payment that blocked a period was gone when it was looked for: try again. */
@@ -496,7 +499,7 @@ public class BffExceptionHandler {
     return ResponseEntity.status(HttpStatus.FORBIDDEN)
         .body(
             new BffErrorResponse(
-                "AUTH_ONBOARDING_REQUIRED", "Completa tu registro para continuar"));
+                "AUTH_ONBOARDING_REQUIRED", "Debes completar tu registro para continuar"));
   }
 
   @ExceptionHandler(ContractNotFoundException.class)
@@ -541,11 +544,9 @@ public class BffExceptionHandler {
         switch (e.reason()) {
           case STEP_OUT_OF_ORDER ->
               new BffErrorResponse(
-                  "ONBOARDING_STEP_OUT_OF_ORDER", "Completa primero el paso anterior del registro");
+                  "ONBOARDING_STEP_OUT_OF_ORDER", "Completa primero el paso anterior");
           case ALREADY_COMPLETED ->
-              new BffErrorResponse(
-                  "ONBOARDING_ALREADY_COMPLETED",
-                  "Tu registro ya está completo; edita tus datos desde tu perfil");
+              new BffErrorResponse("ONBOARDING_ALREADY_COMPLETED", "Tu registro ya está completo");
           case DOCUMENT_LIMIT_REACHED ->
               new BffErrorResponse(
                   "DOCUMENT_LIMIT_REACHED", "Ya subiste el máximo de 5 documentos");

@@ -45,6 +45,29 @@ class GuestAreaFilterTest {
     assertThat(chain.getRequest()).isNull();
   }
 
+  /** TAR-247: a guest that has not completed the onboarding gets the text of the catalog. */
+  @Test
+  void aGuestWithoutTheOnboardingGetsTheCatalogText() throws Exception {
+    GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
+    OwnGuestUseCase guests = mock(OwnGuestUseCase.class);
+    when(accounts.guestOf(1L)).thenReturn(Optional.of(7L));
+    when(guests.own(7L))
+        .thenReturn(new OwnGuestView(7L, GuestKind.CONTRACT, GuestState.ONBOARDING));
+    SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("1", null));
+    var request = new MockHttpServletRequest("GET", "/bff/guest/contract");
+    var response = new MockHttpServletResponse();
+    var chain = new MockFilterChain();
+
+    new GuestAreaFilter(accounts, guests).doFilter(request, response, chain);
+
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString())
+        .isEqualTo(
+            "{\"code\":\"AUTH_ONBOARDING_REQUIRED\","
+                + "\"message\":\"Debes completar tu registro para continuar\"}");
+    assertThat(chain.getRequest()).isNull();
+  }
+
   /** TAR-205: a failure of the check answers 500 in the BFF shape and never lets the request in. */
   @Test
   void aFailureOfTheCheckAnswers500WithTheBffBodyAndFailsClosed() throws Exception {

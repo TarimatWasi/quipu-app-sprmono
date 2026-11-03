@@ -66,7 +66,7 @@ class GuestAreaFilter extends OncePerRequestFilter {
       "{\"code\":\"AUTH_FORBIDDEN\",\"message\":\"No tienes permiso para esta acción\"}";
 
   private static final String ONBOARDING_REQUIRED_BODY =
-      "{\"code\":\"AUTH_ONBOARDING_REQUIRED\",\"message\":\"Completa tu registro para continuar\"}";
+      "{\"code\":\"AUTH_ONBOARDING_REQUIRED\",\"message\":\"Debes completar tu registro para continuar\"}";
 
   /** The 500 of BffExceptionHandler: no controller advice runs in a filter. */
   private static final String INTERNAL_ERROR_BODY =

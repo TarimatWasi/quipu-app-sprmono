@@ -31,6 +31,6 @@ public class BffGuestAccountExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(
             new BffErrorResponse(
-                "ACCOUNT_EMAIL_TAKEN", "Ese correo ya pertenece a una cuenta", field));
+                "ACCOUNT_EMAIL_TAKEN", "Ese correo ya está en uso por otra cuenta", field));
   }
 }

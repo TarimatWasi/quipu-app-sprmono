@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.tarimatwasi.quipu.guest.application.port.in.GuestHasActiveContractException;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException;
@@ -116,6 +118,112 @@ class BffExceptionHandlerTest {
                 "accepted"));
   }
 
+  @Test
+  void temporaryPasswordExpired_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response = handler.handleTemporaryPasswordExpired();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "AUTH_TEMPORARY_PASSWORD_EXPIRED",
+                "La clave temporal venció, pide una nueva al administrador"));
+  }
+
+  @Test
+  void accountDisabled_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response = handler.handleAccountDisabled();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "AUTH_ACCOUNT_DISABLED",
+                "Tu cuenta está deshabilitada. Contacta al administrador."));
+  }
+
+  @Test
+  void onboardingRequired_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response = handler.handleOnboardingRequired();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "AUTH_ONBOARDING_REQUIRED", "Debes completar tu registro para continuar"));
+  }
+
+  @Test
+  void guestInactive_answersTheCatalogText() {
+    var response = handler.handleGuestInactive(new GuestInactiveException(42L));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffGuestNotActiveResponse(
+                "GUEST_INACTIVE", "Este huésped está inactivo", MASKER.mask(IdKind.GUEST, 42L)));
+  }
+
+  @Test
+  void guestHasActiveContract_answersTheCatalogText() {
+    var response = handler.handleGuestHasActiveContract(new GuestHasActiveContractException(9L));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffGuestHasActiveContractResponse(
+                "GUEST_HAS_ACTIVE_CONTRACT",
+                "Este huésped tiene un contrato vigente: finalízalo primero",
+                MASKER.mask(IdKind.CONTRACT, 9L)));
+  }
+
+  @Test
+  void onboardingAlreadyCompleted_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response =
+        handler.handleOnboardingConflict(
+            new OnboardingConflictException(OnboardingConflictException.Reason.ALREADY_COMPLETED));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse("ONBOARDING_ALREADY_COMPLETED", "Tu registro ya está completo"));
+  }
+
+  @Test
+  void onboardingStepOutOfOrder_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response =
+        handler.handleOnboardingConflict(
+            new OnboardingConflictException(OnboardingConflictException.Reason.STEP_OUT_OF_ORDER));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "ONBOARDING_STEP_OUT_OF_ORDER", "Completa primero el paso anterior"));
+  }
+
+  @Test
+  void paymentReasonRequired_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response = handler.handlePaymentReasonRequired();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "PAYMENT_REASON_REQUIRED", "El motivo de rechazo es obligatorio", "reason"));
+  }
+
+  @Test
+  void paymentAlreadyResolved_answersTheCatalogText() {
+    ResponseEntity<BffErrorResponse> response = handler.handlePaymentAlreadyResolved();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(response.getBody())
+        .isEqualTo(
+            new BffErrorResponse(
+                "PAYMENT_ALREADY_RESOLVED", "Este pago ya fue resuelto por otro proceso"));
+  }
+
   /** TAR-182: the errors of the stays, with the codes of the contract. */
   @Test
   void stayErrors_answerTheCodesOfTheContract() {
@@ -197,8 +305,8 @@ class BffExceptionHandlerTest {
         .isEqualTo(
             new BffErrorResponse(
                 "PAYMENT_PERIOD_NOT_PAYABLE",
-                "El contrato ya no cobra el período de este pago; solo puedes rechazarlo indicando"
-                    + " el motivo"));
+                "Este mes ya no se cobra: el contrato terminó antes de aprobar este pago."
+                    + " Recházalo con un motivo para que el huésped lo sepa."));
     assertThat(handler.handlePaymentAlreadyResolved().getBody())
         .extracting(BffErrorResponse::code)
         .isEqualTo("PAYMENT_ALREADY_RESOLVED");
