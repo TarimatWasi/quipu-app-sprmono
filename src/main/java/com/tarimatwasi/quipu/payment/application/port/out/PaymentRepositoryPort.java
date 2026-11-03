@@ -148,6 +148,9 @@ public interface PaymentRepositoryPort {
   /** Every payment of the guest, whatever its state and of any contract or stay (RN-38). */
   List<Payment> findAllOfGuest(Long guestId);
 
+  /** Like {@link #findAllOfGuest(Long)} for several guests in one read (BE-SPR-DAT-10). */
+  List<Payment> findAllOfGuests(Collection<Long> guestIds);
+
   /**
    * The guests with an approved payment: the only ones that can have credit to refund (RN-38),
    * since a credit always starts with a payment verified over what it owed.

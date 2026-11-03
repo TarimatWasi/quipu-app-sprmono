@@ -18,7 +18,7 @@ public class FinePaymentAdapter implements PaymentFinePort {
 
   @Override
   public MonthTotal totalOf(YearMonth month) {
-    var total = fines.totalOf(month);
+    ManageFinesUseCase.MonthTotal total = fines.totalOf(month);
     return new MonthTotal(total.amount(), total.count());
   }
 }

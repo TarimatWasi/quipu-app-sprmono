@@ -45,7 +45,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -173,9 +172,9 @@ final class ProofRecorder {
   /**
    * An approved payment is a conflict of its own (RN-02); a pending or rejected one asks for it.
    */
-  static void rejectLive(Optional<Payment> live) {
-    if (live.isPresent()) {
-      throw conflictOf(live.get().status());
+  static void rejectLive(@Nullable Payment live) {
+    if (live != null) {
+      throw conflictOf(live.status());
     }
   }
 

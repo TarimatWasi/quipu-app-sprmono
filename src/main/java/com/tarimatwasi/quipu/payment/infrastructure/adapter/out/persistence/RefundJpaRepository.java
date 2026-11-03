@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +14,9 @@ interface RefundJpaRepository
 
   /** Read by ix_refunds_guest. */
   List<RefundJpaEntity> findByGuestId(Long guestId);
+
+  /** The same for several guests; read by ix_refunds_guest. */
+  List<RefundJpaEntity> findByGuestIdIn(Collection<Long> guestIds);
 
   /** RF-18, RN-39: read by ix_refunds_refunded_on; the sum is null when the month has none. */
   @Query(

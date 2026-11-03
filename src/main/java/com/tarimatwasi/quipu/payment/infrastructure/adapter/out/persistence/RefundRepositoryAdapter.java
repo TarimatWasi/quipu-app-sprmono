@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -49,6 +50,14 @@ public class RefundRepositoryAdapter implements RefundRepositoryPort {
   @Override
   public List<Refund> findByGuest(Long guestId) {
     return jpaRepository.findByGuestId(guestId).stream().map(RefundJpaEntity::toDomain).toList();
+  }
+
+  @Override
+  public List<Refund> findByGuests(Collection<Long> guestIds) {
+    if (guestIds.isEmpty()) {
+      return List.of();
+    }
+    return jpaRepository.findByGuestIdIn(guestIds).stream().map(RefundJpaEntity::toDomain).toList();
   }
 
   /**

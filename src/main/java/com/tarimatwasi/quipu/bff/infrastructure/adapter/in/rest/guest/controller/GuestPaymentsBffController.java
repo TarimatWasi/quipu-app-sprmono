@@ -9,6 +9,8 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofEdit;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.SurplusOutcome;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.SurplusView;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
@@ -321,7 +323,7 @@ public class GuestPaymentsBffController {
     if (period == null) {
       throw new InvalidPaymentException("period");
     }
-    var proofs = ProofParts.uploads(request, json);
+    List<ProofUpload> proofs = ProofParts.uploads(request, json);
     return PaymentResponse.of(
         payments.uploadForPeriod(
             new PeriodPayment(guestOf(authentication), Objects.requireNonNull(period), proofs)),
@@ -335,7 +337,7 @@ public class GuestPaymentsBffController {
   public PaymentResponse uploadForStay(
       MultipartHttpServletRequest request, Authentication authentication) {
     ProofParts.checkParts(STAY_FORM, request);
-    var proofs = ProofParts.uploads(request, json);
+    List<ProofUpload> proofs = ProofParts.uploads(request, json);
     return PaymentResponse.of(
         payments.uploadForStay(new StayPayment(guestOf(authentication), proofs)), ids);
   }
@@ -362,7 +364,7 @@ public class GuestPaymentsBffController {
       Authentication authentication,
       boolean contractType) {
     ProofParts.checkParts(PaymentsBffController.CORRECTION_FORM, request);
-    var proofs = ProofParts.edits(request, json, ids);
+    List<ProofEdit> proofs = ProofParts.edits(request, json, ids);
     Long guestId = guestOf(authentication);
     return PaymentResponse.of(payments.correct(guestId, paymentOf(id), contractType, proofs), ids);
   }

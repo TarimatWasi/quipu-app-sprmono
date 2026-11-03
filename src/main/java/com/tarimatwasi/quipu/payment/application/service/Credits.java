@@ -4,8 +4,11 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.S
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.SurplusView;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.ContractInfo;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.GuestContract;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.ChargedStay;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
 import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
 import com.tarimatwasi.quipu.payment.domain.CreditLedger;
@@ -14,6 +17,7 @@ import com.tarimatwasi.quipu.payment.domain.GuestCredit.Origin;
 import com.tarimatwasi.quipu.payment.domain.GuestCredit.Source;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.payment.domain.Refund;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -21,9 +25,11 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -65,8 +71,74 @@ final class Credits {
 
   /** Like {@link #of(Long, boolean)} with the contracts already read (or locked) by the caller. */
   Ledger of(Long guestId, List<ContractInfo> owned, boolean own) {
-    LocalDate today = BusinessDay.today(clock);
     List<Payment> all = payments.findAllOfGuest(guestId);
+    Map<Long, StayTerms> stayTerms = new HashMap<>();
+    if (all.stream().anyMatch(p -> p.stayId() != null)) {
+      (own ? stays.staysOf(guestId) : stays.staysOfGuest(guestId))
+          .forEach(stay -> stayTerms.put(stay.id(), stay));
+    }
+    return ledger(owned, all, stayTerms, refunds.findByGuest(guestId), BusinessDay.today(clock));
+  }
+
+  /**
+   * The credit of each of those guests, as the administrator reads it, in four reads whatever their
+   * number (BE-SPR-DAT-10): every contract and every stay, and the payments and refunds of those
+   * guests. A guest with nothing of its own gets an empty ledger.
+   */
+  Map<Long, Ledger> ofGuests(Collection<Long> guests) {
+    if (guests.isEmpty()) {
+      return Map.of();
+    }
+    Set<Long> guestIds = Set.copyOf(guests);
+    Map<Long, List<ContractInfo>> contractsByGuest = new HashMap<>();
+    for (GuestContract owned : contracts.allContracts()) {
+      if (guestIds.contains(owned.guestId())) {
+        contractsByGuest
+            .computeIfAbsent(owned.guestId(), id -> new ArrayList<>())
+            .add(owned.contract());
+      }
+    }
+    Map<Long, Map<Long, StayTerms>> staysByGuest = new HashMap<>();
+    for (ChargedStay charged : stays.allStays()) {
+      if (guestIds.contains(charged.guestId())) {
+        StayRef stay = charged.stay();
+        staysByGuest
+            .computeIfAbsent(charged.guestId(), id -> new HashMap<>())
+            .put(
+                stay.id(),
+                new StayTerms(stay.id(), stay.startDate(), stay.endDate(), stay.agreedAmount()));
+      }
+    }
+    Map<Long, List<Payment>> paymentsByGuest = new HashMap<>();
+    for (Payment payment : payments.findAllOfGuests(guestIds)) {
+      paymentsByGuest.computeIfAbsent(payment.guestId(), id -> new ArrayList<>()).add(payment);
+    }
+    Map<Long, List<Refund>> refundsByGuest = new HashMap<>();
+    for (Refund refund : refunds.findByGuests(guestIds)) {
+      refundsByGuest.computeIfAbsent(refund.guestId(), id -> new ArrayList<>()).add(refund);
+    }
+    LocalDate today = BusinessDay.today(clock);
+    Map<Long, Ledger> ledgers = new HashMap<>();
+    for (Long guestId : guestIds) {
+      ledgers.put(
+          guestId,
+          ledger(
+              contractsByGuest.getOrDefault(guestId, List.of()),
+              paymentsByGuest.getOrDefault(guestId, List.of()),
+              staysByGuest.getOrDefault(guestId, Map.of()),
+              refundsByGuest.getOrDefault(guestId, List.of()),
+              today));
+    }
+    return ledgers;
+  }
+
+  /** The ledger of one guest from what was read of it. */
+  private static Ledger ledger(
+      List<ContractInfo> owned,
+      List<Payment> all,
+      Map<Long, StayTerms> stayTerms,
+      List<Refund> refundsOfGuest,
+      LocalDate today) {
     Map<Long, ContractInfo> byId = new HashMap<>();
     Map<Long, CreditLedger> ledgers = new HashMap<>();
     List<Origin> origins = new ArrayList<>();
@@ -97,14 +169,10 @@ final class Credits {
                 contract.terms().startDate()));
       }
     }
-    Map<Long, StayTerms> stayTerms = new HashMap<>();
-    if (all.stream().anyMatch(p -> p.stayId() != null)) {
-      (own ? stays.staysOf(guestId) : stays.staysOfGuest(guestId))
-          .forEach(stay -> stayTerms.put(stay.id(), stay));
-    }
-    Map<Long, BigDecimal> staySurplus = staySurplus(all, stayTerms, origins);
-    GuestCredit credit = GuestCredit.of(usable, origins, refunds.findByGuest(guestId));
-    return new Ledger(byId, ledgers, stayTerms, staySurplus, credit);
+    Map<Long, StayTerms> stayCopy = new HashMap<>(stayTerms);
+    Map<Long, BigDecimal> staySurplus = staySurplus(all, stayCopy, origins);
+    GuestCredit credit = GuestCredit.of(usable, origins, refundsOfGuest);
+    return new Ledger(byId, ledgers, stayCopy, staySurplus, credit);
   }
 
   /**

@@ -37,6 +37,9 @@ interface PaymentJpaRepository
   /** RN-38: every payment of the guest; read by ix_payments_history (guest_id, ...). */
   List<PaymentJpaEntity> findByGuestId(Long guestId);
 
+  /** The same for several guests; read by ix_payments_history (guest_id, ...). */
+  List<PaymentJpaEntity> findByGuestIdIn(Collection<Long> guestIds);
+
   /** RN-38: the guests with a payment in that state. */
   @Query("SELECT DISTINCT p.guestId FROM PaymentJpaEntity p WHERE p.status = :status")
   List<Long> findGuestIdsByStatus(@Param("status") PaymentStatus status);

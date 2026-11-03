@@ -83,7 +83,7 @@ public class ExpenseService implements ManageExpensesUseCase {
   @Transactional(readOnly = true)
   public MonthTotal totalOf(YearMonth month) {
     requireValid(month);
-    var total = expenses.totalOfMonth(month);
+    ExpenseRepositoryPort.Total total = expenses.totalOfMonth(month);
     return new MonthTotal(total.amount(), total.count());
   }
 

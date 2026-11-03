@@ -17,9 +17,11 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.P
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentDetailView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentView;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofEdit;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofFileView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofSource;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.QueueItemView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.Resolution;
@@ -497,7 +499,7 @@ public class PaymentsBffController {
   public PaymentResponse correct(
       @PathVariable UUID id, MultipartHttpServletRequest request, Authentication authentication) {
     ProofParts.checkParts(CORRECTION_FORM, request);
-    var proofs = ProofParts.edits(request, json, ids);
+    List<ProofEdit> proofs = ProofParts.edits(request, json, ids);
     return PaymentResponse.of(
         payments.correct(
             Long.valueOf(authentication.getName()), ids.unmask(IdKind.PAYMENT, id), proofs),
@@ -512,7 +514,7 @@ public class PaymentsBffController {
     ProofParts.checkParts(DIRECT_FORM, request);
     YearMonth period = period(form.period());
     LocalDate receivedOn = receivedOn(form.receivedOn());
-    var proofs = ProofParts.uploads(request, json);
+    List<ProofUpload> proofs = ProofParts.uploads(request, json);
     PaymentResponse created =
         PaymentResponse.of(
             payments.registerDirect(

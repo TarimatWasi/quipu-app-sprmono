@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
 import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
+import com.tarimatwasi.quipu.payment.domain.GuestCredit;
 import com.tarimatwasi.quipu.payment.domain.GuestCredit.Source;
 import com.tarimatwasi.quipu.payment.domain.MonthlyBalance;
 import com.tarimatwasi.quipu.payment.domain.Payment;
@@ -102,7 +103,7 @@ public class RefundService implements ManageRefundsUseCase {
     } catch (GuestNotFoundException missing) {
       throw new RefundGuestNotFoundException();
     }
-    var credit = credits.of(guestId, false).credit();
+    GuestCredit credit = credits.of(guestId, false).credit();
     Source first = credit.firstPending();
     if (first == null || amount.compareTo(credit.pendingRefund()) > 0) {
       throw new InvalidRefundException("amount");
@@ -132,11 +133,13 @@ public class RefundService implements ManageRefundsUseCase {
   @Transactional(readOnly = true)
   public List<PendingCreditView> pendingCredits() {
     List<Pending> found = new ArrayList<>();
-    for (Long guestId : payments.guestsWithApprovedPayments()) {
-      Credits.Ledger ledger = credits.of(guestId, false);
+    // BE-SPR-DAT-10 (TAR-279): the ledgers of every guest with an approved payment in one batch.
+    Map<Long, Credits.Ledger> ledgers = credits.ofGuests(payments.guestsWithApprovedPayments());
+    for (Map.Entry<Long, Credits.Ledger> entry : ledgers.entrySet()) {
+      Credits.Ledger ledger = entry.getValue();
       Source first = ledger.credit().firstPending();
       if (first != null) {
-        found.add(new Pending(guestId, ledger, first, ledger.credit().pendingRefund()));
+        found.add(new Pending(entry.getKey(), ledger, first, ledger.credit().pendingRefund()));
       }
     }
     Set<Long> guestIds = new HashSet<>();
