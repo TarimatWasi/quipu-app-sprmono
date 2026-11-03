@@ -47,7 +47,7 @@ public class BffOccupancyExceptionHandler {
         .body(
             new BffGuestHasPendingDebtResponse(
                 "GUEST_HAS_PENDING_DEBT",
-                "El huésped tiene períodos pendientes de pago; primero regístralos",
+                "El huésped tiene deuda pendiente: salda sus períodos impagos antes de crear un contrato nuevo o reactivarlo",
                 e.periods().stream().map(YearMonth::toString).toList(),
                 e.debts().stream().map(this::debt).toList()));
   }

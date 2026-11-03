@@ -213,7 +213,8 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     period("2026-09", "800")
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_EXISTS_FOR_PERIOD"));
+        .andExpect(jsonPath("$.code").value("PAYMENT_ALREADY_EXISTS_FOR_PERIOD"))
+        .andExpect(jsonPath("$.message").value("Ya existe un pago aprobado para este período"));
     // TAR-239: a rejected payment is corrected with correctOwnPayment, not replaced
     period("2026-08", "800")
         .andExpect(status().isConflict())
@@ -267,7 +268,10 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
                 .cookie(guest()))
         .andExpect(status().isConflict())
         .andExpect(answersTheContract())
-        .andExpect(jsonPath("$.code").value("PAYMENT_NOT_CORRECTABLE"));
+        .andExpect(jsonPath("$.code").value("PAYMENT_NOT_CORRECTABLE"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Este pago ya no se puede corregir: está en revisión o ya se aprobó"));
   }
 
   /** RN-09: a payment of another guest does not exist for this one. */
