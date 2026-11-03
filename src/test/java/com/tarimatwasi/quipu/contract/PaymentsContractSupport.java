@@ -279,18 +279,19 @@ abstract class PaymentsContractSupport {
     Long id = TestIds.next();
     PaymentRows.insert(
         jdbc,
-        id,
-        guest,
-        contractId,
-        stayId,
-        period == null ? null : period + "-01",
-        "800",
-        status,
-        adminId,
-        "GUEST",
-        createdDate,
-        KEY + "-" + id,
-        "application/pdf");
+        new PaymentRows.Row(
+            id,
+            guest,
+            contractId,
+            stayId,
+            period == null ? null : period + "-01",
+            "800",
+            status,
+            adminId,
+            "GUEST",
+            createdDate,
+            KEY + "-" + id,
+            "application/pdf"));
     return id;
   }
 }

@@ -166,6 +166,11 @@ class GuestAccessContractTest {
                     .formatted(number, password)));
   }
 
+  private ResultActions registerWith(String body) throws Exception {
+    return mockMvc.perform(
+        post(GUESTS).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
   private static String read(MvcResult result, String path) throws Exception {
     return JsonPath.read(result.getResponse().getContentAsString(), path);
   }
@@ -190,26 +195,16 @@ class GuestAccessContractTest {
           "\"documentNumber\":\"12345678\",\"phone\":\"abc123456\"",
           "\"documentNumber\":\"12345678\",\"phone\":\"12\""
         }) {
-      mockMvc
-          .perform(
-              post(GUESTS)
-                  .cookie(admin())
-                  .contentType(MediaType.APPLICATION_JSON)
-                  .content(
-                      "{\"documentType\":\"DNI\",%s,\"type\":\"CONTRACT\",\"accessMode\":\"LINK\"}"
-                          .formatted(field)))
+      registerWith(
+              "{\"documentType\":\"DNI\",%s,\"type\":\"CONTRACT\",\"accessMode\":\"LINK\"}"
+                  .formatted(field))
           .andExpect(status().isBadRequest())
           .andExpect(satisfiesTheContractToAnInvalidRequest())
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
-    mockMvc
-        .perform(
-            post(GUESTS)
-                .cookie(admin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"documentType\":\"CE\",\"documentNumber\":\"ab-123\",\"phone\":\"+51 999-111"
-                        + " 222\",\"type\":\"CONTRACT\",\"accessMode\":\"LINK\"}"))
+    registerWith(
+            "{\"documentType\":\"CE\",\"documentNumber\":\"ab-123\",\"phone\":\"+51 999-111"
+                + " 222\",\"type\":\"CONTRACT\",\"accessMode\":\"LINK\"}")
         .andExpect(status().isCreated())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.guest.documentNumber").value("AB-123"));
@@ -561,9 +556,8 @@ class GuestAccessContractTest {
   @Test
   void correctingTheDocumentAlsoCorrectsTheAccount() throws Exception {
     String guestId = read(register("12345678", "LINK", null).andReturn(), "$.guest.id");
-    // TAR-276: the edit sends back the version the detail showed.
-    Number version =
-        com.jayway.jsonpath.JsonPath.read(
+    Object version =
+        JsonPath.read(
             mockMvc
                 .perform(get(GUESTS + "/" + guestId).cookie(admin()))
                 .andReturn()

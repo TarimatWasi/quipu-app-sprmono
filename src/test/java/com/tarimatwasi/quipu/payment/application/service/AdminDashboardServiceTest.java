@@ -27,6 +27,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.Guest
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.NotActivated;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.PendingGuest;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.ChargedStay;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
@@ -69,12 +70,18 @@ class AdminDashboardServiceTest {
   @Mock PaymentStayPort stays;
   @Mock PaymentGuestPort guests;
   @Mock PaymentEnvironmentPort environments;
+  @Mock PaymentReviewerPort reviewers;
   @Mock ManagePaymentsUseCase queue;
   @Mock ManageRefundsUseCase refunds;
 
   private AdminDashboardService service() {
     return new AdminDashboardService(
-        payments, contracts, stays, guests, environments, queue, refunds, clock);
+        payments,
+        contracts,
+        new PaymentDirectory(guests, environments, stays, reviewers),
+        queue,
+        refunds,
+        clock);
   }
 
   @BeforeEach

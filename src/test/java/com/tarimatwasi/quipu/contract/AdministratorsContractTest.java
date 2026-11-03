@@ -184,7 +184,11 @@ class AdministratorsContractTest {
     verify(notices, never())
         .administratorCreated(eq("creador@example.com"), anyString(), anyString());
 
-    // Before choosing a password nothing opens the account.
+    choosesItsPasswordAndLogsIn(code.getValue(), id);
+  }
+
+  /** Before choosing a password nothing opens the account; with the link it does. */
+  private void choosesItsPasswordAndLogsIn(String code, Long id) throws Exception {
     login(NEW_DOCUMENT, PASSWORD).andExpect(status().isUnauthorized());
     mockMvc
         .perform(
@@ -192,7 +196,7 @@ class AdministratorsContractTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"code\":\"%s\",\"newPassword\":\"Nueva12345\",\"name\":\"Rosa Huaman\"}"
-                        .formatted(code.getValue())))
+                        .formatted(code)))
         .andExpect(status().isNoContent());
     org.assertj.core.api.Assertions.assertThat(
             jdbc.queryForObject("SELECT name FROM users WHERE id = ?", String.class, id))

@@ -53,6 +53,28 @@ class PaymentProofsMigrationTest {
   @Test
   void thePaymentsOfBeforeKeepTheirVoucherTheirDecisionAndOneCorrectableRejection() {
     String s = SCHEMA + ".";
+    seedBeforeV5(s);
+
+    flyway("latest").migrate();
+
+    assertThat(
+            jdbc.queryForList(
+                "SELECT id || ':' || status FROM " + s + "payments ORDER BY id", String.class))
+        .containsExactly(
+            "100:APPROVED",
+            "101:SUPERSEDED",
+            "102:PENDING",
+            "103:SUPERSEDED",
+            "104:REJECTED",
+            "105:REJECTED");
+    theVouchersAndTheDecisionsAreCarried(s);
+  }
+
+  /**
+   * October approved; September rejected, then a pending one; August rejected twice; a stay
+   * rejected once.
+   */
+  private void seedBeforeV5(String s) {
     jdbc.update(
         "INSERT INTO "
             + s
@@ -81,27 +103,15 @@ class PaymentProofsMigrationTest {
             + s
             + "stays (id, guest_id, start_date, end_date, agreed_amount) VALUES (40, 11,"
             + " '2026-10-01', '2026-10-20', 150)");
-    // October approved; September rejected, then a pending one; August rejected twice; a stay
-    // rejected once.
     payment(s, 100, "30", "NULL", "'2026-10-01'", "APPROVED", "2026-10-02");
     payment(s, 101, "30", "NULL", "'2026-09-01'", "REJECTED", "2026-09-02");
     payment(s, 102, "30", "NULL", "'2026-09-01'", "PENDING", "2026-09-05");
     payment(s, 103, "30", "NULL", "'2026-08-01'", "REJECTED", "2026-08-02");
     payment(s, 104, "30", "NULL", "'2026-08-01'", "REJECTED", "2026-08-06");
     payment(s, 105, "NULL", "40", "NULL", "REJECTED", "2026-10-03");
+  }
 
-    flyway("latest").migrate();
-
-    assertThat(
-            jdbc.queryForList(
-                "SELECT id || ':' || status FROM " + s + "payments ORDER BY id", String.class))
-        .containsExactly(
-            "100:APPROVED",
-            "101:SUPERSEDED",
-            "102:PENDING",
-            "103:SUPERSEDED",
-            "104:REJECTED",
-            "105:REJECTED");
+  private void theVouchersAndTheDecisionsAreCarried(String s) {
     assertThat(
             jdbc.queryForMap(
                 "SELECT kind, declared_amount, verified_amount, method, file_key, uploaded_by FROM "

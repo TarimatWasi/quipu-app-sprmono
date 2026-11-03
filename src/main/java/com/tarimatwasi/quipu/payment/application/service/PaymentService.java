@@ -86,20 +86,17 @@ public class PaymentService implements ManagePaymentsUseCase {
   PaymentService(
       PaymentRepositoryPort payments,
       PaymentFilePort files,
-      PaymentGuestPort guests,
       PaymentContractPort contracts,
-      PaymentEnvironmentPort environments,
-      PaymentStayPort stays,
-      PaymentReviewerPort reviewers,
+      PaymentDirectory directory,
       RefundRepositoryPort refunds,
       Clock clock) {
     this.payments = payments;
     this.files = files;
-    this.guests = guests;
+    this.guests = directory.guests();
     this.contracts = contracts;
-    this.environments = environments;
-    this.stays = stays;
-    this.reviewers = reviewers;
+    this.environments = directory.environments();
+    this.stays = directory.stays();
+    this.reviewers = directory.reviewers();
     this.clock = clock;
     this.recorder = new ProofRecorder(files, payments);
     this.accountStatus = new AccountStatus(payments, contracts, clock);
@@ -274,37 +271,45 @@ public class PaymentService implements ManagePaymentsUseCase {
   public List<PayablePeriodView> payablePeriods(Long guestId) {
     GuestProfile guest = guests.profileOf(guestId);
     LocalDate today = BusinessDay.today(clock);
+    return guest.contractType()
+        ? payablePeriodsOfContracts(guestId, today)
+        : payableStays(guestId, today);
+  }
+
+  private List<PayablePeriodView> payablePeriodsOfContracts(Long guestId, LocalDate today) {
     List<PayablePeriodView> payable = new ArrayList<>();
-    if (guest.contractType()) {
-      for (ContractInfo contract : contracts.contractsOf(guestId)) {
-        CreditLedger ledger =
-            CreditLedger.of(
-                contract.terms(),
-                contract.monthlyAmount(),
-                payments.findAllByContract(contract.id()),
-                today);
-        for (CreditLedger.Line line : ledger.lines()) {
-          PayableState state = payableState(line.status().state(), line.status().paymentId());
-          if (state != null) {
-            payable.add(
-                new PayablePeriodView(
-                    contract.id(),
-                    line.period(),
-                    null,
-                    null,
-                    null,
-                    state,
-                    line.status().dueDate(),
-                    line.amount(),
-                    line.creditApplied(),
-                    line.amountDue(),
-                    line.last(),
-                    line.status().paymentId()));
-          }
+    for (ContractInfo contract : contracts.contractsOf(guestId)) {
+      CreditLedger ledger =
+          CreditLedger.of(
+              contract.terms(),
+              contract.monthlyAmount(),
+              payments.findAllByContract(contract.id()),
+              today);
+      for (CreditLedger.Line line : ledger.lines()) {
+        PayableState state = payableState(line.status().state(), line.status().paymentId());
+        if (state != null) {
+          payable.add(
+              new PayablePeriodView(
+                  contract.id(),
+                  line.period(),
+                  null,
+                  null,
+                  null,
+                  state,
+                  line.status().dueDate(),
+                  line.amount(),
+                  line.creditApplied(),
+                  line.amountDue(),
+                  line.last(),
+                  line.status().paymentId()));
         }
       }
-      return payable;
     }
+    return payable;
+  }
+
+  private List<PayablePeriodView> payableStays(Long guestId, LocalDate today) {
+    List<PayablePeriodView> payable = new ArrayList<>();
     List<StayTerms> ofGuest =
         stays.staysOfGuest(guestId).stream()
             .sorted(Comparator.comparing(StayTerms::startDate).thenComparing(StayTerms::id))

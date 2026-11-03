@@ -102,6 +102,17 @@ final class Credits {
       (own ? stays.staysOf(guestId) : stays.staysOfGuest(guestId))
           .forEach(stay -> stayTerms.put(stay.id(), stay));
     }
+    Map<Long, BigDecimal> staySurplus = staySurplus(all, stayTerms, origins);
+    GuestCredit credit = GuestCredit.of(usable, origins, refunds.findByGuest(guestId));
+    return new Ledger(byId, ledgers, stayTerms, staySurplus, credit);
+  }
+
+  /**
+   * What each approved stay payment was paid over the agreed amount: a stay keeps no credit, so it
+   * is refunded (RN-38, T1); each one is added to the origins of what is to refund.
+   */
+  private static Map<Long, BigDecimal> staySurplus(
+      List<Payment> all, Map<Long, StayTerms> stayTerms, List<Origin> origins) {
     Map<Long, BigDecimal> staySurplus = new HashMap<>();
     for (Payment payment : all) {
       Long stayId = payment.stayId();
@@ -110,15 +121,13 @@ final class Credits {
       if (stay == null || verified == null || payment.status() != PaymentStatus.APPROVED) {
         continue;
       }
-      // A stay keeps no credit: what was paid over the agreed amount is refunded (RN-38, T1).
       BigDecimal over = cents(verified).subtract(cents(stay.agreedAmount()));
       if (over.signum() > 0) {
         staySurplus.put(payment.id(), over);
         origins.add(new Origin(payment.id(), null, stayId, null, over, stay.startDate()));
       }
     }
-    GuestCredit credit = GuestCredit.of(usable, origins, refunds.findByGuest(guestId));
-    return new Ledger(byId, ledgers, stayTerms, staySurplus, credit);
+    return staySurplus;
   }
 
   private static BigDecimal cents(BigDecimal amount) {

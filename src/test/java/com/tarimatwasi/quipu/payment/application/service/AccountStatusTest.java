@@ -73,7 +73,12 @@ class AccountStatusTest {
   void setUp() {
     service =
         new PaymentService(
-            payments, files, guests, contracts, environments, stays, reviewers, refunds, clock);
+            payments,
+            files,
+            contracts,
+            new PaymentDirectory(guests, environments, stays, reviewers),
+            refunds,
+            clock);
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {

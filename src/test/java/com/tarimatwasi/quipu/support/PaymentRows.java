@@ -12,14 +12,13 @@ public final class PaymentRows {
   private PaymentRows() {}
 
   /**
-   * Inserts the payment and its voucher; a resolved one is reviewed by {@code reviewerId} now, a
-   * rejected one with the reason «No coincide», an approved one verified at its amount.
+   * A payment to write and its voucher.
    *
    * @param period the first day of the month, or {@code null} for a stay
+   * @param reviewerId who resolved it; a resolved one is reviewed now
    * @param createdDate the creation and submission date; {@code null} for now
    */
-  public static void insert(
-      JdbcTemplate jdbc,
+  public record Row(
       Long id,
       Long guestId,
       @Nullable Long contractId,
@@ -31,7 +30,13 @@ public final class PaymentRows {
       String recordedBy,
       @Nullable String createdDate,
       String fileKey,
-      String contentType) {
+      String contentType) {}
+
+  /**
+   * Inserts the payment and its voucher; a resolved one is reviewed by its reviewer now, a rejected
+   * one with the reason «No coincide», an approved one verified at its amount.
+   */
+  public static void insert(JdbcTemplate jdbc, Row row) {
     jdbc.update(
         "INSERT INTO payments (id, guest_id, contract_id, stay_id, period, amount, verified_amount,"
             + " status, rejection_reason, reviewed_at, reviewed_by_id, recorded_by, created_date,"
@@ -41,46 +46,50 @@ public final class PaymentRows {
             + " CASE WHEN ? = 'PENDING' THEN NULL ELSE now() END,"
             + " CASE WHEN ? = 'PENDING' THEN NULL ELSE ?::bigint END, ?,"
             + " COALESCE(?::timestamptz, now()), COALESCE(?::timestamptz, now()))",
-        id,
-        guestId,
-        contractId,
-        stayId,
-        period,
-        amount,
-        status,
-        amount,
-        status,
-        status,
-        status,
-        status,
-        reviewerId,
-        recordedBy,
-        createdDate,
-        createdDate);
+        row.id(),
+        row.guestId(),
+        row.contractId(),
+        row.stayId(),
+        row.period(),
+        row.amount(),
+        row.status(),
+        row.amount(),
+        row.status(),
+        row.status(),
+        row.status(),
+        row.status(),
+        row.reviewerId(),
+        row.recordedBy(),
+        row.createdDate(),
+        row.createdDate());
+    insertProofAndReview(jdbc, row);
+  }
+
+  private static void insertProofAndReview(JdbcTemplate jdbc, Row row) {
     jdbc.update(
         "INSERT INTO payment_proofs (id, payment_id, kind, declared_amount, verified_amount,"
             + " file_key, original_name, content_type, size_bytes, uploaded_by)"
             + " VALUES (?, ?, 'VOUCHER', ?::numeric, CASE WHEN ? = 'APPROVED' THEN ?::numeric END,"
             + " ?, 'v.pdf', ?, 10, ?)",
         TestIds.next(),
-        id,
-        amount,
-        status,
-        amount,
-        fileKey,
-        contentType,
-        recordedBy);
-    if (!"PENDING".equals(status) && reviewerId != null) {
+        row.id(),
+        row.amount(),
+        row.status(),
+        row.amount(),
+        row.fileKey(),
+        row.contentType(),
+        row.recordedBy());
+    if (!"PENDING".equals(row.status()) && row.reviewerId() != null) {
       // As V5 records it: the decision of a resolved payment, a past rejection as REJECTED.
       jdbc.update(
           "INSERT INTO payment_reviews (id, payment_id, decision, reason, reviewed_at,"
               + " reviewed_by_id) VALUES (?, ?, ?, CASE WHEN ? = 'APPROVED' THEN NULL"
               + " ELSE 'No coincide' END, now(), ?)",
           TestIds.next(),
-          id,
-          "APPROVED".equals(status) ? "APPROVED" : "REJECTED",
-          status,
-          reviewerId);
+          row.id(),
+          "APPROVED".equals(row.status()) ? "APPROVED" : "REJECTED",
+          row.status(),
+          row.reviewerId());
     }
   }
 }

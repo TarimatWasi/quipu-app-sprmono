@@ -66,18 +66,19 @@ class RefundConcurrencyTest {
     // Paid 250 for a stay of 150: 100 to refund
     PaymentRows.insert(
         jdbc,
-        TestIds.next(),
-        guest,
-        null,
-        stay,
-        null,
-        "250",
-        "APPROVED",
-        admin,
-        "ADMIN",
-        null,
-        "vouchers/" + stay,
-        "application/pdf");
+        new PaymentRows.Row(
+            TestIds.next(),
+            guest,
+            null,
+            stay,
+            null,
+            "250",
+            "APPROVED",
+            admin,
+            "ADMIN",
+            null,
+            "vouchers/" + stay,
+            "application/pdf"));
   }
 
   @AfterEach

@@ -46,21 +46,14 @@ import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictExcepti
 import com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.StayOverlapException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
-import com.tarimatwasi.quipu.payment.application.port.in.InvalidVoucherFileException;
-import com.tarimatwasi.quipu.payment.application.port.in.NoActiveContractException;
-import com.tarimatwasi.quipu.payment.application.port.in.NoActiveStayException;
-import com.tarimatwasi.quipu.payment.application.port.in.NoStayYetException;
 import com.tarimatwasi.quipu.payment.application.port.in.OnboardingRequiredException;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
-import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyResolvedException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentConcurrentChangeException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
-import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotCorrectableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayableException;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentReasonRequiredException;
-import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -491,29 +484,6 @@ public class BffExceptionHandler {
                 "VALIDATION_ERROR", "Los datos del pago no son válidos", e.field()));
   }
 
-  /** RF-15: a JPG, a PNG or a PDF by content, up to 5 MB. */
-  @ExceptionHandler(InvalidVoucherFileException.class)
-  public ResponseEntity<BffErrorResponse> handleInvalidVoucherFile(InvalidVoucherFileException e) {
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_INVALID_FILE",
-                "El comprobante debe ser una imagen JPG o PNG, o un PDF, de hasta 5 MB",
-                e.field()));
-  }
-
-  /**
-   * TAR-239: the guest corrects only a rejected payment, the administrator a pending or rejected
-   * one.
-   */
-  @ExceptionHandler(PaymentNotCorrectableException.class)
-  public ResponseEntity<BffErrorResponse> handlePaymentNotCorrectable() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "PAYMENT_NOT_CORRECTABLE", "Este pago ya no se puede corregir; vuelve a cargarlo"));
-  }
-
   /** The payment is no longer pending: another process resolved it first. */
   @ExceptionHandler(PaymentAlreadyResolvedException.class)
   public ResponseEntity<BffErrorResponse> handlePaymentAlreadyResolved() {
@@ -542,53 +512,6 @@ public class BffExceptionHandler {
   @ExceptionHandler(PaymentConcurrentChangeException.class)
   public ResponseEntity<BffErrorResponse> handlePaymentConcurrentChange() {
     return handleConcurrentModification();
-  }
-
-  /** RN-02: an approved payment covers the period or the stay. */
-  @ExceptionHandler(PaymentAlreadyExistsForPeriodException.class)
-  public ResponseEntity<BffErrorResponse> handlePaymentAlreadyExistsForPeriod() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "PAYMENT_ALREADY_EXISTS_FOR_PERIOD",
-                "El período o la estadía ya tiene un pago aprobado"));
-  }
-
-  /** RN-15: a voucher is still waiting for its review. */
-  @ExceptionHandler(VoucherAlreadyExistsException.class)
-  public ResponseEntity<BffErrorResponse> handleVoucherAlreadyExists() {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_ALREADY_EXISTS",
-                "Ya hay un comprobante pendiente de revisión; resuélvelo primero"));
-  }
-
-  /** RN-27: a guest uploads a voucher only while its contract is in force. */
-  @ExceptionHandler(NoActiveContractException.class)
-  public ResponseEntity<BffErrorResponse> handleNoActiveContract() {
-    return ResponseEntity.status(HttpStatus.FORBIDDEN)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_NO_ACTIVE_CONTRACT",
-                "No tienes un contrato vigente; consulta con la administración"));
-  }
-
-  /** CU-22: a temporary guest pays only a stay in course or to come. */
-  @ExceptionHandler(NoActiveStayException.class)
-  public ResponseEntity<BffErrorResponse> handleNoActiveStay() {
-    return ResponseEntity.status(HttpStatus.FORBIDDEN)
-        .body(
-            new BffErrorResponse(
-                "VOUCHER_NO_ACTIVE_STAY",
-                "No tienes una estadía vigente ni próxima; consulta con la administración"));
-  }
-
-  /** CU-21: a temporary guest with no stay has no payment status. */
-  @ExceptionHandler(NoStayYetException.class)
-  public ResponseEntity<BffErrorResponse> handleNoStayYet() {
-    return ResponseEntity.status(HttpStatus.NOT_FOUND)
-        .body(new BffErrorResponse("RESOURCE_NOT_FOUND", "Aún no tienes una estadía registrada"));
   }
 
   /** RN-09: a route of the other type of guest, answered like any route the role cannot use. */

@@ -170,18 +170,19 @@ class PaymentRepositoryAdapterTest {
     Long id = TestIds.next();
     PaymentRows.insert(
         jdbc,
-        id,
-        guest,
-        contract,
-        null,
-        month + "-01",
-        "800",
-        "PENDING",
-        null,
-        "GUEST",
-        createdDate,
-        "vouchers/" + id,
-        "image/jpeg");
+        new PaymentRows.Row(
+            id,
+            guest,
+            contract,
+            null,
+            month + "-01",
+            "800",
+            "PENDING",
+            null,
+            "GUEST",
+            createdDate,
+            "vouchers/" + id,
+            "image/jpeg"));
     return id;
   }
 
@@ -540,12 +541,7 @@ class PaymentRepositoryAdapterTest {
     }
 
     // reviewing the payment of the cursor does not lose the place in the queue of pending ones
-    jdbc.update(
-        "UPDATE payments SET status = 'APPROVED', verified_amount = amount, reviewed_at = now(),"
-            + " reviewed_by_id = ?"
-            + " WHERE id = ?",
-        admin,
-        middle);
+    approve(middle);
     CursorPage<StoredPayment> second =
         adapter.findQueue(PaymentStatus.PENDING, new PageQuery(cursor, 2));
     assertThat(ids(second)).containsExactly(newest);
@@ -571,6 +567,14 @@ class PaymentRepositoryAdapterTest {
     SecurityContextHolder.clearContext();
     assertThatThrownBy(() -> adapter.findQueue(null, new PageQuery(null, 1)))
         .isInstanceOf(NoMaskSessionException.class);
+  }
+
+  private void approve(Long id) {
+    jdbc.update(
+        "UPDATE payments SET status = 'APPROVED', verified_amount = amount, reviewed_at = now(),"
+            + " reviewed_by_id = ? WHERE id = ?",
+        admin,
+        id);
   }
 
   /**

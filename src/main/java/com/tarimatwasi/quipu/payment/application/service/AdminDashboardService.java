@@ -70,17 +70,15 @@ public class AdminDashboardService implements AdminDashboardUseCase {
   AdminDashboardService(
       PaymentRepositoryPort payments,
       PaymentContractPort contracts,
-      PaymentStayPort stays,
-      PaymentGuestPort guests,
-      PaymentEnvironmentPort environments,
+      PaymentDirectory directory,
       ManagePaymentsUseCase queue,
       ManageRefundsUseCase refunds,
       Clock clock) {
     this.payments = payments;
     this.contracts = contracts;
-    this.stays = stays;
-    this.guests = guests;
-    this.environments = environments;
+    this.stays = directory.stays();
+    this.guests = directory.guests();
+    this.environments = directory.environments();
     this.queue = queue;
     this.refunds = refunds;
     this.clock = clock;
@@ -101,10 +99,55 @@ public class AdminDashboardService implements AdminDashboardUseCase {
       PeriodState state,
       @Nullable Long paymentId) {}
 
+  /** Everything the home shows, before the guests and the environments are named. */
+  private record Read(
+      List<Charge> ofToday,
+      List<Charge> overdue,
+      List<ChargedStay> stays,
+      List<Payment> rejected,
+      @Nullable Payment oldestRejected,
+      List<GuestContract> expiring) {}
+
+  /** The names of the guests and the codes of the environments the home shows. */
+  private record Names(Map<Long, GuestProfile> profiles, Map<Long, String> codes) {}
+
   @Override
   @Transactional(readOnly = true)
   public DashboardView dashboard() {
-    LocalDate today = BusinessDay.today(clock);
+    Read read = read(BusinessDay.today(clock));
+    Names names = names(read);
+    PaymentsOverview overview =
+        PaymentsOverview.of(read.ofToday().stream().map(Charge::state).toList());
+    List<QueueItemView> pending =
+        queue.list(PaymentState.PENDING, new PageQuery(null, MAX_PENDING_VOUCHERS)).content();
+    // Read after the page: a voucher that arrives in between is counted, never one listed more.
+    long pendingTotal = Math.max(payments.countByStatus(PaymentStatus.PENDING), pending.size());
+    List<PendingCreditView> credits = refunds.pendingCredits();
+    return new DashboardView(
+        overview.upToDate(),
+        overview.underReview(),
+        overview.pending(),
+        overview.overdue(),
+        pending,
+        pendingTotal,
+        read.ofToday().stream().map(charge -> view(charge, names)).toList(),
+        new OverdueView(
+            read.overdue().size(),
+            sum(read.overdue().stream().map(Charge::amount).toList()),
+            read.overdue().stream()
+                .limit(MAX_OVERDUE_LISTED)
+                .map(charge -> view(charge, names))
+                .toList()),
+        new RejectedView(
+            read.rejected().size(),
+            rejectedView(read.oldestRejected(), names.profiles(), read.stays())),
+        new RefundsView(
+            credits.size(), sum(credits.stream().map(PendingCreditView::amount).toList())),
+        expiringView(read.expiring(), names),
+        notActivated());
+  }
+
+  private Read read(LocalDate today) {
     List<Charge> ofToday = new ArrayList<>();
     List<Charge> overdue = new ArrayList<>();
     List<GuestContract> allContracts = contracts.allContracts();
@@ -121,58 +164,39 @@ public class AdminDashboardService implements AdminDashboardUseCase {
                         Comparator.nullsLast(Comparator.<Instant>naturalOrder()))
                     .thenComparing(Payment::id))
             .orElse(null);
-    List<GuestContract> expiring = expiring(allContracts, today);
+    return new Read(
+        ofToday, overdue, allStays, rejected, oldestRejected, expiring(allContracts, today));
+  }
 
+  /** One read of the guests and one of the environments, for what the home names. */
+  private Names names(Read read) {
     Set<Long> guestIds = new HashSet<>();
-    ofToday.forEach(charge -> guestIds.add(charge.guestId()));
-    overdue.stream().limit(MAX_OVERDUE_LISTED).forEach(charge -> guestIds.add(charge.guestId()));
-    if (oldestRejected != null) {
-      guestIds.add(oldestRejected.guestId());
+    read.ofToday().forEach(charge -> guestIds.add(charge.guestId()));
+    read.overdue().stream()
+        .limit(MAX_OVERDUE_LISTED)
+        .forEach(charge -> guestIds.add(charge.guestId()));
+    Payment oldest = read.oldestRejected();
+    if (oldest != null) {
+      guestIds.add(oldest.guestId());
     }
-    if (!expiring.isEmpty()) {
-      guestIds.add(expiring.get(0).guestId());
+    if (!read.expiring().isEmpty()) {
+      guestIds.add(read.expiring().get(0).guestId());
     }
-    Map<Long, GuestProfile> profiles = guestIds.isEmpty() ? Map.of() : guests.profilesOf(guestIds);
     Set<Long> environmentIds = new HashSet<>();
-    ofToday.forEach(charge -> addIfPresent(environmentIds, charge.environmentId()));
-    overdue.forEach(charge -> addIfPresent(environmentIds, charge.environmentId()));
-    expiring.forEach(c -> environmentIds.add(c.contract().environmentId()));
-    Map<Long, String> codes =
-        environmentIds.isEmpty() ? Map.of() : environments.codesOf(environmentIds);
+    read.ofToday().forEach(charge -> addIfPresent(environmentIds, charge.environmentId()));
+    read.overdue().forEach(charge -> addIfPresent(environmentIds, charge.environmentId()));
+    read.expiring().forEach(c -> environmentIds.add(c.contract().environmentId()));
+    return new Names(
+        guestIds.isEmpty() ? Map.of() : guests.profilesOf(guestIds),
+        environmentIds.isEmpty() ? Map.of() : environments.codesOf(environmentIds));
+  }
 
-    PaymentsOverview overview = PaymentsOverview.of(ofToday.stream().map(Charge::state).toList());
-    List<QueueItemView> pending =
-        queue.list(PaymentState.PENDING, new PageQuery(null, MAX_PENDING_VOUCHERS)).content();
-    // Read after the page: a voucher that arrives in between is counted, never one listed more.
-    long pendingTotal = Math.max(payments.countByStatus(PaymentStatus.PENDING), pending.size());
-    BigDecimal overdueTotal = NONE;
-    for (Charge charge : overdue) {
-      overdueTotal = overdueTotal.add(charge.amount());
+  private static BigDecimal sum(List<BigDecimal> amounts) {
+    BigDecimal total = NONE;
+    for (BigDecimal amount : amounts) {
+      total = total.add(amount);
     }
-    List<PendingCreditView> credits = refunds.pendingCredits();
-    BigDecimal toRefund = NONE;
-    for (PendingCreditView credit : credits) {
-      toRefund = toRefund.add(credit.amount());
-    }
-    return new DashboardView(
-        overview.upToDate(),
-        overview.underReview(),
-        overview.pending(),
-        overview.overdue(),
-        pending,
-        pendingTotal,
-        ofToday.stream().map(charge -> view(charge, profiles, codes)).toList(),
-        new OverdueView(
-            overdue.size(),
-            overdueTotal,
-            overdue.stream()
-                .limit(MAX_OVERDUE_LISTED)
-                .map(charge -> view(charge, profiles, codes))
-                .toList()),
-        new RejectedView(rejected.size(), rejectedView(oldestRejected, profiles, allStays)),
-        new RefundsView(credits.size(), toRefund),
-        expiringView(expiring, profiles, codes),
-        notActivated());
+    return total;
   }
 
   /** The period of the current month of each active contract, and every overdue period. */
@@ -271,8 +295,9 @@ public class AdminDashboardService implements AdminDashboardUseCase {
         .toList();
   }
 
-  private static ExpiringView expiringView(
-      List<GuestContract> expiring, Map<Long, GuestProfile> profiles, Map<Long, String> codes) {
+  private static ExpiringView expiringView(List<GuestContract> expiring, Names names) {
+    Map<Long, GuestProfile> profiles = names.profiles();
+    Map<Long, String> codes = names.codes();
     if (expiring.isEmpty()) {
       return new ExpiringView(0, null);
     }
@@ -323,8 +348,9 @@ public class AdminDashboardService implements AdminDashboardUseCase {
                 first.id(), first.documentType(), first.documentNumber(), first.accessExpiresAt()));
   }
 
-  private static ChargeView view(
-      Charge charge, Map<Long, GuestProfile> profiles, Map<Long, String> codes) {
+  private static ChargeView view(Charge charge, Names names) {
+    Map<Long, GuestProfile> profiles = names.profiles();
+    Map<Long, String> codes = names.codes();
     // A guest is never deleted (the foreign keys hold it), so every charge has its profile.
     GuestProfile guest = Objects.requireNonNull(profiles.get(charge.guestId()));
     Long environmentId = charge.environmentId();

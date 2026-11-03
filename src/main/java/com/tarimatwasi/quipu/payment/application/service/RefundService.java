@@ -236,6 +236,32 @@ public class RefundService implements ManageRefundsUseCase {
     Set<Long> guestIds = new HashSet<>();
     found.forEach(refund -> guestIds.add(refund.guestId()));
     Map<Long, GuestProfile> profiles = guests.profilesOf(guestIds);
+    Map<Long, Long> environmentOf = environmentsOf(found);
+    Map<Long, String> codes =
+        environmentOf.isEmpty()
+            ? Map.of()
+            : environments.codesOf(new HashSet<>(environmentOf.values()));
+    return found.stream()
+        .map(
+            refund -> {
+              GuestProfile guest = profiles.get(refund.guestId());
+              Long environmentId = environmentOf.get(refund.id());
+              return new RefundView(
+                  refund.id(),
+                  refund.guestId(),
+                  guest == null ? null : guest.name(),
+                  environmentId == null ? null : codes.get(environmentId),
+                  refund.amount(),
+                  refund.date(),
+                  refund.method(),
+                  refund.note(),
+                  refund.createdAt());
+            })
+        .toList();
+  }
+
+  /** The environment the credit of each refund came from: of its contract, or of its stay. */
+  private Map<Long, Long> environmentsOf(List<Refund> found) {
     Map<Long, Payment> origins = new HashMap<>();
     Set<Long> contractIds = new HashSet<>();
     Set<Long> stayIds = new HashSet<>();
@@ -270,27 +296,7 @@ public class RefundService implements ManageRefundsUseCase {
         environmentOf.put(origin.getKey(), environmentId);
       }
     }
-    Map<Long, String> codes =
-        environmentOf.isEmpty()
-            ? Map.of()
-            : environments.codesOf(new HashSet<>(environmentOf.values()));
-    return found.stream()
-        .map(
-            refund -> {
-              GuestProfile guest = profiles.get(refund.guestId());
-              Long environmentId = environmentOf.get(refund.id());
-              return new RefundView(
-                  refund.id(),
-                  refund.guestId(),
-                  guest == null ? null : guest.name(),
-                  environmentId == null ? null : codes.get(environmentId),
-                  refund.amount(),
-                  refund.date(),
-                  refund.method(),
-                  refund.note(),
-                  refund.createdAt());
-            })
-        .toList();
+    return environmentOf;
   }
 
   private static String method(String method) {

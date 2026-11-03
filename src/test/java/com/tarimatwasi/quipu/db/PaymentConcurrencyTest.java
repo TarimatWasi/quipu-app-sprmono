@@ -111,18 +111,19 @@ class PaymentConcurrencyTest {
     Long id = TestIds.next();
     PaymentRows.insert(
         jdbc,
-        id,
-        guest,
-        contract,
-        null,
-        "2026-01-01",
-        "800",
-        "PENDING",
-        null,
-        "GUEST",
-        null,
-        "vouchers/" + id,
-        "application/pdf");
+        new PaymentRows.Row(
+            id,
+            guest,
+            contract,
+            null,
+            "2026-01-01",
+            "800",
+            "PENDING",
+            null,
+            "GUEST",
+            null,
+            "vouchers/" + id,
+            "application/pdf"));
     return id;
   }
 

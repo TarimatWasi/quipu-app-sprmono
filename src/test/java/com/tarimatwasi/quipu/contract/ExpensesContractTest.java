@@ -95,6 +95,14 @@ class ExpensesContractTest {
     return openApi().isValid(validator);
   }
 
+  private ResultActions edit(String id, String body) throws Exception {
+    return mockMvc.perform(
+        patch(URL + "/" + id)
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
+  }
+
   @Test
   void createListEditAndDeleteAnExpense() throws Exception {
     var created =
@@ -110,24 +118,14 @@ class ExpensesContractTest {
         .andExpect(jsonPath("$.content.length()").value(1))
         .andExpect(jsonPath("$.content[0].version").value(0))
         .andExpect(jsonPath("$.totalCount").value(2));
-    String edit =
+    String body =
         "{\"category\":\"MAINTENANCE\",\"amount\":99.9,\"month\":\"2026-10\",\"version\":0}";
-    mockMvc
-        .perform(
-            patch(URL + "/" + id)
-                .cookie(admin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(edit))
+    edit(id, body)
         .andExpect(status().isOk())
         .andExpect(answersTheContractToAnEdit())
         .andExpect(jsonPath("$.version").value(1));
     // BE-SPR-DAT-13: an edit made with the version loaded before the last one changes nothing
-    mockMvc
-        .perform(
-            patch(URL + "/" + id)
-                .cookie(admin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(edit.replace("99.9", "12")))
+    edit(id, body.replace("99.9", "12"))
         .andExpect(status().isConflict())
         .andExpect(answersTheContractToAnEdit())
         .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
@@ -136,12 +134,7 @@ class ExpensesContractTest {
         .andExpect(jsonPath("$.content[0].amount").value(99.9))
         .andExpect(jsonPath("$.totalCount").value(1));
     // Without the version the edit is not valid
-    mockMvc
-        .perform(
-            patch(URL + "/" + id)
-                .cookie(admin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(edit.replace(",\"version\":0", "")))
+    edit(id, body.replace(",\"version\":0", ""))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("version"));
     mockMvc

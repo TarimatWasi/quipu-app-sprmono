@@ -139,6 +139,13 @@ class RefundsContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(get(CREDITS).param("pending", "true").cookie(admin()))
         .andExpect(jsonPath("$[0].amount").value(70));
+  }
+
+  /** RN-39: a refund counts in the month of its date and is taken out of its income. */
+  @Test
+  void theRefundsOfAMonthAreListedAndTakenOutOfItsIncome() throws Exception {
+    refund(luis, "50", "2026-10-14", "Yape").andExpect(status().isCreated());
+
     mockMvc
         .perform(get(REFUNDS).param("month", "2026-10").cookie(admin()))
         .andExpect(status().isOk())
@@ -150,7 +157,6 @@ class RefundsContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(get(REFUNDS).param("month", "2026-09").cookie(admin()))
         .andExpect(jsonPath("$.totalCount").value(0));
-    // RN-39: the refund is taken out of the income of the month of its date
     mockMvc
         .perform(get("/bff/admin/finance").param("month", "2026-10").cookie(admin()))
         .andExpect(jsonPath("$.refundsTotal").value(50.00))
@@ -251,7 +257,13 @@ class RefundsContractTest extends PaymentsContractSupport {
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.surplus.outcome").value("CREDIT"));
-    // A5.1: September is paid and left out; October is due with the credit discounted
+  }
+
+  /** A5.1: September is paid and left out; October is due with the credit discounted. */
+  @Test
+  void thePayablePeriodsDiscountTheCreditAndAnApprovalCoversWhatIsLeft() throws Exception {
+    approved(contractGuest, contract, null, "2026-09", "850");
+
     mockMvc
         .perform(
             get("/bff/admin/guests/" + id(IdKind.GUEST, contractGuest) + "/payable-periods")

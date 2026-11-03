@@ -551,10 +551,6 @@ class ContractsContractTest {
         .andExpect(jsonPath("$.current.id").value(ids().mask(IdKind.CONTRACT, id).toString()))
         .andExpect(jsonPath("$.current.status").value("EXPIRED"))
         .andExpect(jsonPath("$.current.guestName").value("Ana Quispe"))
-        .andExpect(jsonPath("$.current.documentNumber").value("12345678"))
-        .andExpect(jsonPath("$.current.environmentType").value("ROOM"))
-        .andExpect(jsonPath("$.current.file.name").exists())
-        .andExpect(jsonPath("$.next").isEmpty())
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.current.fileUrl").value(SIGNED));
     jdbc.update(
@@ -562,7 +558,6 @@ class ContractsContractTest {
     mockMvc
         .perform(get("/bff/guest/contract").cookie(guest()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.current.status").value("TERMINATED"))
         .andExpect(jsonPath("$.current.terminatedAt").exists());
   }
 

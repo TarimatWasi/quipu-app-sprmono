@@ -52,8 +52,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
     assertThat(balance("2026-10"))
         .isEqualTo(
             summary(
-                "2026-10", "1100.30", 2, "25.30", 2, "50.00", 1, "1075.60", "2000.00", 1,
-                "-924.40"));
+                "2026-10", "1100.30/2", "25.30/2", "50.00/1", "1075.60", "2000.00/1", "-924.40"));
   }
 
   @Test
@@ -68,8 +67,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
     assertThat(balance("2026-09"))
         .isEqualTo(
-            summary(
-                "2026-09", "1200.00", 2, "99.00", 1, "0.00", 0, "1299.00", "50.00", 1, "1249.00"));
+            summary("2026-09", "1200.00/2", "99.00/1", "0.00/0", "1299.00", "50.00/1", "1249.00"));
   }
 
   @Test
@@ -85,7 +83,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
     assertThat(balance("2026-10"))
         .isEqualTo(
-            summary("2026-10", "850.00", 2, "40.00", 1, "0.00", 0, "890.00", "0.00", 0, "890.00"));
+            summary("2026-10", "850.00/2", "40.00/1", "0.00/0", "890.00", "0.00/0", "890.00"));
   }
 
   @Test
@@ -94,7 +92,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
     for (String month : new String[] {"2026-08", "0001-01", "9999-12"}) {
       assertThat(balance(month))
-          .isEqualTo(summary(month, "0.00", 0, "0.00", 0, "0.00", 0, "0.00", "0.00", 0, "0.00"));
+          .isEqualTo(summary(month, "0.00/0", "0.00/0", "0.00/0", "0.00", "0.00/0", "0.00"));
     }
   }
 
@@ -109,7 +107,7 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
     insertExpense("0.40", "2026-10");
 
     assertThat(balance("2026-10"))
-        .isEqualTo(summary("2026-10", "0.30", 2, "0.30", 2, "0.00", 0, "0.60", "0.70", 3, "-0.10"));
+        .isEqualTo(summary("2026-10", "0.30/2", "0.30/2", "0.00/0", "0.60", "0.70/3", "-0.10"));
   }
 
   @Test
@@ -146,42 +144,41 @@ class FinanceSummaryContractTest extends PaymentsContractSupport {
 
   // ------------------------------------------------------------------ helpers
 
-  /** The answer as the BFF writes it, in the order of its fields (TAR-240 adds the counts). */
+  /**
+   * The answer as the BFF writes it, in the order of its fields. Each counted part is written
+   * {@code "amount/count"} (TAR-240 adds the counts).
+   */
   private static String summary(
       String month,
       String payments,
-      int paymentsCount,
       String fines,
-      int finesCount,
       String refunds,
-      int refundsCount,
       String income,
       String expenses,
-      int expensesCount,
       String net) {
     return "{\"month\":\""
         + month
         + "\",\"totalIncome\":"
         + income
-        + ",\"incomeFromPayments\":"
-        + payments
-        + ",\"paymentsCount\":"
-        + paymentsCount
-        + ",\"incomeFromFines\":"
-        + fines
-        + ",\"finesCount\":"
-        + finesCount
-        + ",\"refundsTotal\":"
-        + refunds
-        + ",\"refundsCount\":"
-        + refundsCount
-        + ",\"totalExpenses\":"
-        + expenses
-        + ",\"expensesCount\":"
-        + expensesCount
+        + part("incomeFromPayments", "paymentsCount", payments)
+        + part("incomeFromFines", "finesCount", fines)
+        + part("refundsTotal", "refundsCount", refunds)
+        + part("totalExpenses", "expensesCount", expenses)
         + ",\"net\":"
         + net
         + "}";
+  }
+
+  private static String part(String amountField, String countField, String amountAndCount) {
+    int slash = amountAndCount.indexOf('/');
+    return ",\""
+        + amountField
+        + "\":"
+        + amountAndCount.substring(0, slash)
+        + ",\""
+        + countField
+        + "\":"
+        + amountAndCount.substring(slash + 1);
   }
 
   private void insertRefund(Long guest, Long fromPayment, String amount, String date) {

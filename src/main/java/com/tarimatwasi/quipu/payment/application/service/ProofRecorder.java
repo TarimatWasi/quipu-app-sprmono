@@ -273,20 +273,7 @@ final class ProofRecorder {
     }
     Map<Long, PaymentProof> current = new HashMap<>();
     locked.proofs().forEach(proof -> current.put(proof.id(), proof));
-    for (int i = 0; i < edits.size(); i++) {
-      Long id = edits.get(i).id();
-      if (id != null && !current.containsKey(id)) {
-        throw new InvalidPaymentException("proofs[" + i + "].id");
-      }
-      PaymentProof kept = id == null ? null : current.get(id);
-      if (kept != null
-          && edits.get(i).kind() == ProofType.VOUCHER
-          && edits.get(i).file() == null
-          && kept.file() == null) {
-        // Cash becoming a voucher needs a file.
-        throw new InvalidPaymentException("proofs[" + i + "].fileIndex");
-      }
-    }
+    checkAgainst(edits, current);
     List<String> stored = new ArrayList<>();
     removeUnlessCommitted(payment.guestId(), stored);
     List<String> leftBehind = new ArrayList<>();
@@ -296,36 +283,11 @@ final class ProofRecorder {
       ProofFile newFile = store(edit.file(), types.get(i), stored);
       Long id = edit.id();
       if (id == null) {
-        payments.addProof(
-            payment.id(),
-            new NewProof(
-                kindOf(edit.kind()),
-                edit.amount().setScale(2),
-                null,
-                blankToNull(edit.method()),
-                newFile,
-                author,
-                null));
+        add(payment.id(), edit, newFile, author);
         continue;
       }
       keptIds.add(id);
-      PaymentProof kept = Objects.requireNonNull(current.get(id));
-      ProofFile oldFile = kept.file();
-      ProofFile file = edit.kind() == ProofType.CASH ? null : newFile != null ? newFile : oldFile;
-      if (oldFile != null && !oldFile.equals(file)) {
-        leftBehind.add(oldFile.key());
-      }
-      payments.updateProof(
-          new PaymentProof(
-              id,
-              kindOf(edit.kind()),
-              edit.amount().setScale(2),
-              null,
-              blankToNull(edit.method()),
-              file,
-              kept.uploadedBy(),
-              kept.receivedOn(),
-              kept.addedAt()));
+      update(Objects.requireNonNull(current.get(id)), edit, newFile, leftBehind);
     }
     List<Long> removed = new ArrayList<>();
     for (PaymentProof proof : locked.proofs()) {
@@ -341,6 +303,58 @@ final class ProofRecorder {
     StoredPayment saved = payments.save(corrected);
     removeOnceCommitted(payment.guestId(), leftBehind);
     return saved;
+  }
+
+  /** A proof the correction adds. */
+  private void add(Long paymentId, ProofEdit edit, @Nullable ProofFile file, ProofAuthor author) {
+    payments.addProof(
+        paymentId,
+        new NewProof(
+            kindOf(edit.kind()),
+            edit.amount().setScale(2),
+            null,
+            blankToNull(edit.method()),
+            file,
+            author,
+            null));
+  }
+
+  /** Every id names a proof of the payment, and cash becoming a voucher brings its file. */
+  private static void checkAgainst(List<ProofEdit> edits, Map<Long, PaymentProof> current) {
+    for (int i = 0; i < edits.size(); i++) {
+      Long id = edits.get(i).id();
+      if (id != null && !current.containsKey(id)) {
+        throw new InvalidPaymentException("proofs[" + i + "].id");
+      }
+      PaymentProof kept = id == null ? null : current.get(id);
+      if (kept != null
+          && edits.get(i).kind() == ProofType.VOUCHER
+          && edits.get(i).file() == null
+          && kept.file() == null) {
+        throw new InvalidPaymentException("proofs[" + i + "].fileIndex");
+      }
+    }
+  }
+
+  /** A kept proof with the edit applied; a file it no longer uses is left behind to remove. */
+  private void update(
+      PaymentProof kept, ProofEdit edit, @Nullable ProofFile newFile, List<String> leftBehind) {
+    ProofFile oldFile = kept.file();
+    ProofFile file = edit.kind() == ProofType.CASH ? null : newFile != null ? newFile : oldFile;
+    if (oldFile != null && !oldFile.equals(file)) {
+      leftBehind.add(oldFile.key());
+    }
+    payments.updateProof(
+        new PaymentProof(
+            kept.id(),
+            kindOf(edit.kind()),
+            edit.amount().setScale(2),
+            null,
+            blankToNull(edit.method()),
+            file,
+            kept.uploadedBy(),
+            kept.receivedOn(),
+            kept.addedAt()));
   }
 
   private static ProofKind kindOf(ProofType type) {
