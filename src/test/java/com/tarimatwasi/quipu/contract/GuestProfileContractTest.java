@@ -116,6 +116,44 @@ class GuestProfileContractTest extends PaymentsContractSupport {
     assertThat(jdbc.queryForMap("SELECT * FROM stays WHERE id = ?", stay)).isEqualTo(stayBefore);
   }
 
+  /** RN-29: the emergency contact keeps the limits of its columns, 200, 50 and 30. */
+  @Test
+  void theEmergencyContactKeepsTheLimitsOfItsColumns() throws Exception {
+    Map<String, Object> before = row(contractGuest);
+
+    for (String[] tooLong :
+        new String[][] {
+          {"name", "a".repeat(201)}, {"relationship", "a".repeat(51)}, {"phone", "9".repeat(31)}
+        }) {
+      edit(
+              CONTRACT_PROFILE,
+              guest(),
+              "{\"emergencyContact\":{\"" + tooLong[0] + "\":\"" + tooLong[1] + "\"}}")
+          .andExpect(status().isBadRequest())
+          .andExpect(satisfiesTheContractToAnInvalidRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.field").value("emergencyContact." + tooLong[0]));
+    }
+    assertThat(row(contractGuest)).isEqualTo(before);
+
+    edit(
+            CONTRACT_PROFILE,
+            guest(),
+            "{\"emergencyContact\":{\"name\":\""
+                + "a".repeat(200)
+                + "\",\"relationship\":\""
+                + "a".repeat(50)
+                + "\",\"phone\":\""
+                + "9".repeat(30)
+                + "\"}}")
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract());
+    assertThat(row(contractGuest))
+        .containsEntry("emergency_contact_name", "a".repeat(200))
+        .containsEntry("emergency_contact_relationship", "a".repeat(50))
+        .containsEntry("emergency_contact_phone", "9".repeat(30));
+  }
+
   @Test
   void anEmptyBodyIsRefused() throws Exception {
     Map<String, Object> before = row(contractGuest);

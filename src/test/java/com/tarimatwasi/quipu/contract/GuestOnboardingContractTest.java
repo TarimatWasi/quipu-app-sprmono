@@ -299,6 +299,54 @@ class GuestOnboardingContractTest {
         .andExpect(jsonPath("$.personalData.emergencyContact.relationship").doesNotExist());
   }
 
+  /** RN-29: the emergency contact keeps the limits of its columns, 200, 50 and 30. */
+  @Test
+  void theEmergencyContactKeepsTheLimitsOfItsColumns() throws Exception {
+    for (String[] tooLong :
+        new String[][] {
+          {"name", "a".repeat(201)}, {"relationship", "a".repeat(51)}, {"phone", "9".repeat(31)}
+        }) {
+      personalData(
+              guest(),
+              "{\"name\":\"Ana\",\"phone\":\"1\",\"emergencyContact\":{\""
+                  + tooLong[0]
+                  + "\":\""
+                  + tooLong[1]
+                  + "\"}}")
+          .andExpect(status().isBadRequest())
+          .andExpect(satisfiesTheContractToAnInvalidRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.field").value("emergencyContact." + tooLong[0]));
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT personal_data_completed_at IS NULL FROM guests WHERE id = ?",
+                Boolean.class,
+                contractGuest))
+        .isTrue();
+
+    personalData(
+            guest(),
+            "{\"name\":\"Ana\",\"phone\":\"1\",\"emergencyContact\":{\"name\":\""
+                + "a".repeat(200)
+                + "\",\"relationship\":\""
+                + "a".repeat(50)
+                + "\",\"phone\":\""
+                + "9".repeat(30)
+                + "\"}}")
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract());
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT length(emergency_contact_name) AS name,"
+                    + " length(emergency_contact_relationship) AS relationship,"
+                    + " length(emergency_contact_phone) AS phone FROM guests WHERE id = ?",
+                contractGuest))
+        .containsEntry("name", 200)
+        .containsEntry("relationship", 50)
+        .containsEntry("phone", 30);
+  }
+
   // ------------------------------------------------------------------ the documents (RN-37)
 
   @Test
