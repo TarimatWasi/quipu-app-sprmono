@@ -37,7 +37,7 @@
     <spotless.version>3.10.4</spotless.version>
     <google-java-format.version>1.36.1</google-java-format.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-    <checkstyle.version>14.3.0</checkstyle.version>
+    <checkstyle.version>14.4.0</checkstyle.version>
     <jacoco.version>0.8.16</jacoco.version>
     <awssdk.version>2.57.8</awssdk.version>
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
