@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.S
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.ChargeState;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.CreditOriginView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestCreditView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestHistoryView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.GuestPaymentView;
@@ -175,9 +176,23 @@ public class GuestPaymentsBffController {
     }
   }
 
-  /** GuestCredit (H1): the own credit, whether it is refunded, and the last refund. */
+  /**
+   * GuestCredit (H1): the own credit, whether it is refunded, the payments the credit to use was
+   * left over from (TAR-284), and the last refund.
+   */
   public record GuestCreditResponse(
-      BigDecimal balance, boolean toRefund, @Nullable LastRefundResponse lastRefund) {}
+      BigDecimal balance,
+      boolean toRefund,
+      List<CreditOriginResponse> origins,
+      @Nullable LastRefundResponse lastRefund) {}
+
+  /** An item of GuestCredit.origins: the payment by its id of the session, and its period. */
+  public record CreditOriginResponse(UUID paymentId, String period, BigDecimal amount) {
+    static CreditOriginResponse of(CreditOriginView view, IdMasker ids) {
+      return new CreditOriginResponse(
+          ids.mask(IdKind.PAYMENT, view.paymentId()), view.period().toString(), view.amount());
+    }
+  }
 
   /** The last refund Quipu made to the guest. */
   public record LastRefundResponse(BigDecimal amount, LocalDate date, String method) {}
@@ -280,6 +295,7 @@ public class GuestPaymentsBffController {
             new GuestCreditResponse(
                 credit.balance(),
                 credit.toRefund(),
+                credit.origins().stream().map(o -> CreditOriginResponse.of(o, ids)).toList(),
                 last == null
                     ? null
                     : new LastRefundResponse(last.amount(), last.date(), last.method())));

@@ -195,6 +195,9 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     return new GuestCreditView(
         credit.balance(),
         credit.toRefund(),
+        credit.usableOrigins().stream()
+            .map(o -> new CreditOriginView(o.paymentId(), o.period(), o.amount()))
+            .toList(),
         last == null ? null : new LastRefundView(last.amount(), last.date(), last.method()));
   }
 

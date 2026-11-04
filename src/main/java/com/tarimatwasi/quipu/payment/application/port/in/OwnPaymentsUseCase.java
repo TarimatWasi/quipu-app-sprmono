@@ -106,9 +106,17 @@ public interface OwnPaymentsUseCase {
    *
    * @param balance the credit it has now; 0 when none
    * @param toRefund no period is left where to use it, so Quipu refunds it
+   * @param origins the payments the credit still to use was left over from, oldest first; empty
+   *     when there is none (TAR-284)
    */
   record GuestCreditView(
-      BigDecimal balance, boolean toRefund, @Nullable LastRefundView lastRefund) {}
+      BigDecimal balance,
+      boolean toRefund,
+      List<CreditOriginView> origins,
+      @Nullable LastRefundView lastRefund) {}
+
+  /** A payment the credit still to use was left over from, with what is left of it (TAR-284). */
+  record CreditOriginView(Long paymentId, YearMonth period, BigDecimal amount) {}
 
   /**
    * One own payment as the guest sees it (H3 «Tu pago», H4): its proofs without URLs, its
