@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.Charge
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
 import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
+import com.tarimatwasi.quipu.payment.domain.GuestCredit.UsableOrigin;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.Refund;
@@ -199,5 +200,54 @@ class CreditsTest {
     assertThat(credits.ofGuests(List.of())).isEmpty();
 
     verifyNoInteractions(payments, contracts, stays, refunds);
+  }
+
+  /**
+   * TAR-284: the usable credit keeps the payments it was left over from, oldest first, after the
+   * periods took it; a contract that ended passes its credit to what is to refund.
+   */
+  @Test
+  void of_theUsableCreditListsItsOriginsAndAnEndedContractPassesItsCreditToTheRefunds() {
+    // Ended in September: September is paid 30 over, which is to refund.
+    ContractInfo ended =
+        new ContractInfo(
+            TestIds.next(),
+            TestIds.next(),
+            new ContractTerms(
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-09-30"), null, 5, 3),
+            new BigDecimal("100.00"));
+    Payment augustEnded = approved(GUEST_A, ended.id(), null, YearMonth.parse("2026-08"), "100.00");
+    Payment septemberEnded =
+        approved(GUEST_A, ended.id(), null, YearMonth.parse("2026-09"), "130.00");
+    // Open since September: September leaves 150 and October takes 100 of it, so the 20 paid in
+    // October are left over whole.
+    Payment septemberOpen =
+        approved(GUEST_A, contractA.id(), null, YearMonth.parse("2026-09"), "250.00");
+    Payment octoberOpen =
+        approved(GUEST_A, contractA.id(), null, YearMonth.parse("2026-10"), "20.00");
+    when(contracts.contractsOf(GUEST_A)).thenReturn(List.of(ended, contractA));
+    when(payments.findAllOfGuest(GUEST_A))
+        .thenReturn(List.of(augustEnded, septemberEnded, septemberOpen, octoberOpen));
+    when(refunds.findByGuest(GUEST_A)).thenReturn(List.of());
+
+    var credit = credits.of(GUEST_A, true).credit();
+
+    assertThat(credit.usable()).isEqualByComparingTo("70");
+    assertThat(credit.usableOrigins())
+        .containsExactly(
+            new UsableOrigin(septemberOpen.id(), YearMonth.of(2026, 9), new BigDecimal("50.00")),
+            new UsableOrigin(octoberOpen.id(), YearMonth.of(2026, 10), new BigDecimal("20.00")));
+    assertThat(credit.usableOrigins())
+        .extracting(UsableOrigin::paymentId)
+        .doesNotContain(septemberEnded.id());
+    assertThat(credit.sources())
+        .singleElement()
+        .satisfies(
+            source -> {
+              assertThat(source.paymentId()).isEqualTo(septemberEnded.id());
+              assertThat(source.amount()).isEqualByComparingTo("30");
+            });
+    assertThat(credit.balance()).isEqualByComparingTo("100");
+    verifyNoInteractions(stays);
   }
 }

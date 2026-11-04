@@ -16,11 +16,36 @@ import org.jspecify.annotations.Nullable;
  * the credit left is to refund, and so is what a stay was paid over its agreed amount (a stay keeps
  * no credit). The refunds are taken from what is to refund oldest first.
  *
- * @param usable the credit the guest still uses in a coming period
+ * @param usable the credit the guest still uses in a coming period: what its origins add
+ * @param usableOrigins the payments that credit was left over from, oldest first (TAR-284)
  * @param sources what is to refund, oldest first, each with what was already refunded of it
  * @param refunds the refunds of the guest, oldest first
  */
-public record GuestCredit(BigDecimal usable, List<Source> sources, List<Refund> refunds) {
+public record GuestCredit(
+    BigDecimal usable,
+    List<UsableOrigin> usableOrigins,
+    List<Source> sources,
+    List<Refund> refunds) {
+
+  private static final BigDecimal NONE = BigDecimal.ZERO.setScale(2);
+
+  public GuestCredit {
+    usableOrigins = List.copyOf(usableOrigins);
+    sources = List.copyOf(sources);
+    refunds = List.copyOf(refunds);
+    if (sum(usableOrigins).compareTo(usable) != 0) {
+      throw new IllegalArgumentException("The usable credit is not what its origins add");
+    }
+  }
+
+  /**
+   * A payment the credit to use was left over from (RN-38, TAR-284): what the periods after it did
+   * not take yet. Once the contract reaches its last period it is a {@link Source} instead.
+   *
+   * @param period the period of that payment
+   * @param amount what is left of it, more than 0
+   */
+  public record UsableOrigin(Long paymentId, YearMonth period, BigDecimal amount) {}
 
   /**
    * Something to refund: the credit left by a contract that has no period left, or the surplus of a
@@ -67,8 +92,18 @@ public record GuestCredit(BigDecimal usable, List<Source> sources, List<Refund> 
       BigDecimal amount,
       LocalDate startedOn) {}
 
-  /** The credit from what is to refund and the refunds, which are taken oldest first. */
-  public static GuestCredit of(BigDecimal usable, List<Origin> origins, List<Refund> refunds) {
+  /**
+   * The credit from what is still to use, what is to refund and the refunds, which are taken oldest
+   * first. The usable credit is what its origins add; those with nothing left are dropped.
+   */
+  public static GuestCredit of(
+      List<UsableOrigin> usableOrigins, List<Origin> origins, List<Refund> refunds) {
+    List<UsableOrigin> usable =
+        usableOrigins.stream()
+            .filter(o -> o.amount().signum() > 0)
+            .sorted(
+                Comparator.comparing(UsableOrigin::period).thenComparing(UsableOrigin::paymentId))
+            .toList();
     List<Origin> ordered =
         origins.stream()
             .filter(o -> o.amount().signum() > 0)
@@ -107,7 +142,15 @@ public record GuestCredit(BigDecimal usable, List<Source> sources, List<Refund> 
               refunded,
               last));
     }
-    return new GuestCredit(usable, List.copyOf(sources), byDate);
+    return new GuestCredit(sum(usable), usable, sources, byDate);
+  }
+
+  private static BigDecimal sum(List<UsableOrigin> usableOrigins) {
+    BigDecimal total = NONE;
+    for (UsableOrigin origin : usableOrigins) {
+      total = total.add(origin.amount());
+    }
+    return total;
   }
 
   /** What is still to refund, after every refund. */

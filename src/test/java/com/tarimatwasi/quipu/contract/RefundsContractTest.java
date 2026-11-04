@@ -206,6 +206,9 @@ class RefundsContractTest extends PaymentsContractSupport {
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.balance").value(120))
         .andExpect(jsonPath("$.toRefund").value(true))
+        // TAR-284: what passed to be refunded is no credit to use
+        .andExpect(jsonPath("$.origins").isArray())
+        .andExpect(jsonPath("$.origins").isEmpty())
         .andExpect(jsonPath("$.lastRefund").isEmpty());
     refund(luis, "120", "2026-10-14", "Yape").andExpect(status().isCreated());
 
@@ -244,8 +247,13 @@ class RefundsContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$[9].amountDue").value(750));
     mockMvc
         .perform(get("/bff/guest/credit").cookie(guest()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.balance").value(0))
-        .andExpect(jsonPath("$.toRefund").value(false));
+        .andExpect(jsonPath("$.toRefund").value(false))
+        // TAR-284: October took all of it, so nothing is left from September
+        .andExpect(jsonPath("$.origins").isArray())
+        .andExpect(jsonPath("$.origins").isEmpty());
     mockMvc
         .perform(get("/bff/guest/payments/" + id(IdKind.PAYMENT, september)).cookie(guest()))
         .andExpect(status().isOk())
@@ -257,6 +265,34 @@ class RefundsContractTest extends PaymentsContractSupport {
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.surplus.outcome").value("CREDIT"));
+  }
+
+  /**
+   * TAR-284, H1: the credit to use says which payments it was left over from, oldest first, with
+   * the ids of the session: September leaves 1200, October takes 800 of it and leaves 250 more.
+   */
+  @Test
+  void theGuestSeesWhichPaymentsItsCreditWasLeftOverFrom() throws Exception {
+    Long september = approved(contractGuest, contract, null, "2026-09", "2000");
+    Long october = approved(contractGuest, contract, null, "2026-10", "250");
+
+    mockMvc
+        .perform(get("/bff/guest/credit").cookie(guest()))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.balance").value(650))
+        .andExpect(jsonPath("$.toRefund").value(false))
+        .andExpect(jsonPath("$.origins.length()").value(2))
+        .andExpect(jsonPath("$.origins[0].paymentId").value(id(IdKind.PAYMENT, september)))
+        .andExpect(jsonPath("$.origins[0].period").value("2026-09"))
+        .andExpect(jsonPath("$.origins[0].amount").value(400))
+        .andExpect(jsonPath("$.origins[1].paymentId").value(id(IdKind.PAYMENT, october)))
+        .andExpect(jsonPath("$.origins[1].period").value("2026-10"))
+        .andExpect(jsonPath("$.origins[1].amount").value(250))
+        // The ids are masked: the database ids never leave the BFF
+        .andExpect(jsonPath("$.origins[?(@.paymentId == '" + september + "')]").isEmpty())
+        .andExpect(jsonPath("$.origins[?(@.paymentId == '" + october + "')]").isEmpty());
   }
 
   /** A5.1: September is paid and left out; October is due with the credit discounted. */

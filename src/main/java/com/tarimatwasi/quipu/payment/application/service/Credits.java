@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.payment.domain.CreditLedger;
 import com.tarimatwasi.quipu.payment.domain.GuestCredit;
 import com.tarimatwasi.quipu.payment.domain.GuestCredit.Origin;
 import com.tarimatwasi.quipu.payment.domain.GuestCredit.Source;
+import com.tarimatwasi.quipu.payment.domain.GuestCredit.UsableOrigin;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.Refund;
@@ -142,7 +143,7 @@ final class Credits {
     Map<Long, ContractInfo> byId = new HashMap<>();
     Map<Long, CreditLedger> ledgers = new HashMap<>();
     List<Origin> origins = new ArrayList<>();
-    BigDecimal usable = NONE;
+    List<UsableOrigin> usable = new ArrayList<>();
     for (ContractInfo contract : owned) {
       List<Payment> ofContract =
           all.stream().filter(p -> contract.id().equals(p.contractId())).toList();
@@ -150,7 +151,7 @@ final class Credits {
           CreditLedger.of(contract.terms(), contract.monthlyAmount(), ofContract, today);
       byId.put(contract.id(), contract);
       ledgers.put(contract.id(), ledger);
-      usable = usable.add(ledger.usable());
+      usable.addAll(ledger.usableOrigins());
       Long from = ledger.carryPaymentId();
       if (ledger.refundable().signum() > 0 && from != null) {
         YearMonth period =

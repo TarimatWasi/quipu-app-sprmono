@@ -151,6 +151,72 @@ class CreditLedgerTest {
     assertThat(terms("2026-01-01", null).lastPeriod()).isNull();
   }
 
+  /** TAR-284: the credit kept by each payment, after the periods took it oldest first. */
+  @Test
+  void theUsableCreditSaysWhichPaymentsItWasLeftOverFromOldestFirst() {
+    // September leaves 1200; October takes 800 of it and its own payment leaves 250 more.
+    var ledger =
+        CreditLedger.of(
+            terms("2026-09-01", null),
+            MONTHLY,
+            List.of(approved(1, "2026-09", "2000"), approved(2, "2026-10", "250")),
+            TODAY);
+
+    assertThat(ledger.usable()).isEqualByComparingTo("650");
+    assertThat(ledger.usableOrigins())
+        .containsExactly(
+            new GuestCredit.UsableOrigin(1L, YearMonth.of(2026, 9), new BigDecimal("400.00")),
+            new GuestCredit.UsableOrigin(2L, YearMonth.of(2026, 10), new BigDecimal("250.00")));
+  }
+
+  /** TAR-284: a period takes the oldest credit first, so the newest one is what is left. */
+  @Test
+  void aPeriodTakesTheOldestCreditFirst() {
+    // August leaves 1200 and September 500; September takes 800 of August's, October takes the
+    // 400 August has left and 400 of September's.
+    var ledger =
+        CreditLedger.of(
+            terms("2026-08-01", null),
+            MONTHLY,
+            List.of(approved(1, "2026-08", "2000"), approved(2, "2026-09", "500")),
+            TODAY);
+
+    assertThat(ledger.lines().get(2).creditApplied()).isEqualByComparingTo("800");
+    assertThat(ledger.usable()).isEqualByComparingTo("100");
+    assertThat(ledger.usableOrigins())
+        .containsExactly(
+            new GuestCredit.UsableOrigin(2L, YearMonth.of(2026, 9), new BigDecimal("100.00")));
+  }
+
+  /** TAR-284: a credit the next periods took whole leaves no origin. */
+  @Test
+  void aCreditTakenWholeLeavesNoOrigin() {
+    var ledger =
+        CreditLedger.of(
+            terms("2026-08-01", null),
+            MONTHLY,
+            List.of(approved(1, "2026-08", "1000"), approved(2, "2026-09", "600")),
+            TODAY);
+
+    assertThat(ledger.lines().get(1).creditApplied()).isEqualByComparingTo("200");
+    assertThat(ledger.usable()).isEqualByComparingTo("0");
+    assertThat(ledger.usableOrigins()).isEmpty();
+  }
+
+  /** TAR-284: once the last period is reached the credit is to refund, not to use. */
+  @Test
+  void theCreditOfAContractThatEndedHasNoUsableOrigin() {
+    var ledger =
+        CreditLedger.of(
+            terms("2026-08-01", "2026-09-30"),
+            MONTHLY,
+            List.of(approved(1, "2026-08", "900"), approved(2, "2026-09", "820")),
+            TODAY);
+
+    assertThat(ledger.refundable()).isEqualByComparingTo("120");
+    assertThat(ledger.usableOrigins()).isEmpty();
+  }
+
   @Test
   void aPeriodPaidByCreditIsNotDebt() {
     var debt =
