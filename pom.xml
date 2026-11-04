@@ -33,13 +33,13 @@
     <springdoc.version>3.2.0</springdoc.version>
     <archunit.version>1.5.1</archunit.version>
     <error-prone.version>2.51.0</error-prone.version>
-    <nullaway.version>0.14.2</nullaway.version>
+    <nullaway.version>0.14.3</nullaway.version>
     <spotless.version>3.10.4</spotless.version>
     <google-java-format.version>1.36.1</google-java-format.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-    <checkstyle.version>14.3.0</checkstyle.version>
-    <jacoco.version>0.8.15</jacoco.version>
-    <awssdk.version>2.57.3</awssdk.version>
+    <checkstyle.version>14.4.0</checkstyle.version>
+    <jacoco.version>0.8.16</jacoco.version>
+    <awssdk.version>2.57.8</awssdk.version>
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
     <download-maven-plugin.version>2.1.0</download-maven-plugin.version>
     <bucket4j.version>8.21.0</bucket4j.version>
