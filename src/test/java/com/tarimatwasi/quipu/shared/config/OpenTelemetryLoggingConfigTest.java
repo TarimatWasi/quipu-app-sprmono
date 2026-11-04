@@ -23,6 +23,12 @@ import org.slf4j.LoggerFactory;
  * through the same batch processor that production uses. If the appender and the SDK of the Boot
  * BOM do not match (the appender 2.33.0-alpha against the SDK 1.62.0), the worker thread of the
  * batch dies with a NoClassDefFoundError and nothing is exported.
+ *
+ * <p>{@code OpenTelemetryAppender.install} reaches every appender of the shared logback context and
+ * sends the logs each one kept while it waited. A Spring context of another test (for example the
+ * "prod" one of {@code ProfilesContractTest}, which fails on purpose) can leave the OTEL appender
+ * of {@code logback-spring.xml} on the root with logs waiting, so the assertion only looks at the
+ * records of this test's logger.
  */
 class OpenTelemetryLoggingConfigTest {
 
@@ -48,6 +54,8 @@ class OpenTelemetryLoggingConfigTest {
     }
   }
 
+  private static final String LOGGER_NAME = "tar278.otel";
+
   @Test
   void openTelemetryAppenderInstaller_logThroughTheAppender_reachesTheExporter() throws Exception {
     CollectingExporter exporter = new CollectingExporter();
@@ -57,12 +65,16 @@ class OpenTelemetryLoggingConfigTest {
             .build();
     OpenTelemetrySdk sdk = OpenTelemetrySdk.builder().setLoggerProvider(loggerProvider).build();
     LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
-    Logger logger = context.getLogger("tar278.otel");
-    OpenTelemetryAppender appender = new OpenTelemetryAppender();
-    appender.setContext(context);
-    appender.start();
+    Logger logger = context.getLogger(LOGGER_NAME);
+    OpenTelemetryAppender appender = startedAppender(context);
     logger.addAppender(appender);
     logger.setAdditive(false);
+    // Stands in for the appender another test's context leaves behind with a log waiting.
+    Logger elsewhere = context.getLogger("tar278.elsewhere");
+    OpenTelemetryAppender leftBehind = startedAppender(context);
+    elsewhere.addAppender(leftBehind);
+    elsewhere.setAdditive(false);
+    elsewhere.info("A log of another context");
     try {
       new OpenTelemetryLoggingConfig().openTelemetryAppenderInstaller(sdk).afterPropertiesSet();
 
@@ -70,13 +82,23 @@ class OpenTelemetryLoggingConfigTest {
       assertThat(loggerProvider.forceFlush().join(10, TimeUnit.SECONDS).isSuccess()).isTrue();
 
       assertThat(exporter.exported)
+          .filteredOn(record -> LOGGER_NAME.equals(record.getInstrumentationScopeInfo().getName()))
           .extracting(
               record -> record.getBodyValue() == null ? null : record.getBodyValue().asString())
           .containsExactly("A log for Grafana Cloud");
     } finally {
       logger.detachAppender(appender);
       appender.stop();
+      elsewhere.detachAppender(leftBehind);
+      leftBehind.stop();
       sdk.shutdown().join(10, TimeUnit.SECONDS);
     }
+  }
+
+  private static OpenTelemetryAppender startedAppender(LoggerContext context) {
+    OpenTelemetryAppender appender = new OpenTelemetryAppender();
+    appender.setContext(context);
+    appender.start();
+    return appender;
   }
 }
