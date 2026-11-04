@@ -38,7 +38,7 @@
     <google-java-format.version>1.36.1</google-java-format.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
     <checkstyle.version>14.3.0</checkstyle.version>
-    <jacoco.version>0.8.15</jacoco.version>
+    <jacoco.version>0.8.16</jacoco.version>
     <awssdk.version>2.57.8</awssdk.version>
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
     <download-maven-plugin.version>2.1.0</download-maven-plugin.version>
