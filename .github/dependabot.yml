@@ -8,7 +8,7 @@ updates:
     ignore:
       # TAR-278: el appender queda en la versión construida sobre el SDK de OpenTelemetry que trae
       # el BOM de Spring Boot. Uno más nuevo arrastra un api-incubator sin ExtendedAttributes y la
-      # exportación de logs muere (#134, #141). Se sube a mano junto con el SDK del BOM.
+      # exportación de logs muere (#134, #141). Se sube a mano junto con el SDK del BOM (TAR-295).
       - dependency-name: io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0
   - package-ecosystem: docker
     directory: /
