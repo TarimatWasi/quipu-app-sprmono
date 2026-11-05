@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.LoginAttemptLimiterPort;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
 import java.nio.charset.StandardCharsets;
@@ -142,7 +143,7 @@ public class AuthApplicationService
     return new LoginResult(
         userId,
         user.role().name(),
-        user.email(),
+        displayNameOf(user),
         user.guestId(),
         temporary != null || user.mustChangePassword(),
         temporary == null
@@ -195,7 +196,19 @@ public class AuthApplicationService
             .filter(account -> !account.isDisabled())
             .orElseThrow(NoActiveSessionException::new);
     return new CurrentSession(
-        user.role().name(), user.email(), user.guestId(), user.mustChangePassword());
+        user.role().name(), displayNameOf(user), user.guestId(), user.mustChangePassword());
+  }
+
+  /**
+   * TAR-188: an administrator shows the full name it wrote when activating the account (A0.5); one
+   * that has none yet (activated before TAR-127) shows its email, so the session always carries a
+   * name. A guest's name comes from its own module, so the email stays for it.
+   */
+  private @Nullable String displayNameOf(UserAccount user) {
+    if (user.role() != Role.ADMIN) {
+      return user.email();
+    }
+    return userRepository.findName(user.id()).orElse(user.email());
   }
 
   /**

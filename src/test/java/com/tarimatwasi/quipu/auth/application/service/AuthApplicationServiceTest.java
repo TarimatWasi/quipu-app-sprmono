@@ -349,8 +349,60 @@ class AuthApplicationServiceTest {
     CurrentSession session = service.currentSession(user.id().toString());
 
     assertThat(session.role()).isEqualTo("GUEST");
-    assertThat(session.displayEmail()).isEqualTo("user@tarimatwasi.local");
+    assertThat(session.displayName()).isEqualTo("user@tarimatwasi.local");
     assertThat(session.mustChangePassword()).isTrue();
+  }
+
+  /** TAR-188: an administrator that activated its account shows its full name, not its email. */
+  @Test
+  void currentSession_adminWithName_showsTheName() {
+    UserAccount admin = savedAdmin();
+    repository.name(admin.id(), "Rosa Huaman");
+
+    CurrentSession session = service.currentSession(admin.id().toString());
+
+    assertThat(session.displayName()).isEqualTo("Rosa Huaman");
+  }
+
+  /** TAR-188: one without a name yet (activated before TAR-127) still shows its email. */
+  @Test
+  void currentSession_adminWithoutName_showsTheEmail() {
+    UserAccount admin = savedAdmin();
+
+    CurrentSession session = service.currentSession(admin.id().toString());
+
+    assertThat(session.displayName()).isEqualTo("admin@tarimatwasi.local");
+  }
+
+  /** TAR-188: the login answers the same name as the session restored after a reload. */
+  @Test
+  void login_adminWithName_showsTheName() {
+    UserAccount admin = savedAdmin();
+    repository.name(admin.id(), "Rosa Huaman");
+
+    LoginResult result =
+        service.login(new LoginCommand(DocumentKind.DNI, "00000000", "Admin12345"));
+
+    assertThat(result.displayName()).isEqualTo("Rosa Huaman");
+  }
+
+  private UserAccount savedAdmin() {
+    UserAccount admin =
+        new UserAccount(
+            TestIds.next(),
+            "admin@tarimatwasi.local",
+            DocumentType.DNI,
+            "00000000",
+            encoder.encode("Admin12345"),
+            Role.ADMIN,
+            null,
+            false,
+            "ACTIVE",
+            0,
+            null,
+            null);
+    repository.save(admin);
+    return admin;
   }
 
   @Test

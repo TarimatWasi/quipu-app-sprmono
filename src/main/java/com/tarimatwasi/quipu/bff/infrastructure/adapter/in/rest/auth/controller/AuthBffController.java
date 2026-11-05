@@ -101,13 +101,20 @@ public class AuthBffController {
   public record ForgotPasswordRequest(@NotBlank @Email @Size(max = 200) String email) {}
 
   /**
-   * {@code name}: the full name an administrator created by another one writes when activating the
-   * account (A0.5, TAR-127); required while the account has none, ignored otherwise.
+   * TAR-188: something besides spaces and no control character (line break, tab, NUL): a person's
+   * name has none, and it is shown in the session and in the list of administrators.
+   */
+  private static final String NAME_PATTERN = "\\P{Cc}*[^\\s\\p{Cc}]\\P{Cc}*";
+
+  /**
+   * {@code name}: the full name an administrator without one (the initial one or one created by
+   * another) writes when activating the account (A0.5, TAR-127); required while the account has
+   * none, ignored otherwise.
    */
   public record ResetPasswordRequest(
       @NotBlank @Size(max = MAX_CODE) String code,
       @NotNull @Size(max = MAX_PASSWORD) String newPassword,
-      @Nullable @Size(min = 1, max = 100) @Pattern(regexp = "(?s).*\\S.*") String name) {}
+      @Nullable @Size(min = 1, max = 100) @Pattern(regexp = NAME_PATTERN) String name) {}
 
   @PostMapping("/bff/auth/login")
   public ResponseEntity<SessionResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -119,7 +126,7 @@ public class AuthBffController {
         .body(
             session(
                 result.role(),
-                result.displayEmail(),
+                result.displayName(),
                 result.mustChangePassword(),
                 result.guestId()));
   }
@@ -143,7 +150,7 @@ public class AuthBffController {
     CurrentSession current = currentSessionUseCase.currentSession(authentication.getName());
     return session(
         current.role(),
-        current.displayEmail(),
+        current.displayName(),
         current.mustChangePassword() || isTemporary(authentication),
         current.guestId());
   }

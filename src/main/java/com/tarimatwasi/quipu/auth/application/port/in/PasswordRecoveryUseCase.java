@@ -14,9 +14,9 @@ public interface PasswordRecoveryUseCase {
 
   /**
    * Sets a new password with the code from the email and invalidates the code. An administrator
-   * whose account has no name yet (created by another one, RF-22) activates it this way and writes
-   * its full name (A0.5, TAR-127); for any account that already has one, or a guest, the name is
-   * ignored.
+   * whose account has no name yet (the initial one, ADR-F2, or one created by another, RF-22)
+   * activates it this way and writes its full name (A0.5, TAR-127, TAR-188); for any account that
+   * already has one, or a guest, the name is ignored.
    *
    * @param name the full name, already stripped and within the limits of the contract; may be null
    * @throws InvalidResetCodeException if the code is unknown, expired, already used, or belongs to
