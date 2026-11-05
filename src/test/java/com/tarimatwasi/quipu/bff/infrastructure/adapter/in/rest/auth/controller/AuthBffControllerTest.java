@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
@@ -295,6 +296,31 @@ class AuthBffControllerTest {
     assertTooLong(
         post("/bff/auth/reset-password").content(body.formatted("c", "b".repeat(129))),
         "newPassword");
+  }
+
+  /** TAR-188: a name with a control character or only spaces is refused before the service. */
+  @ParameterizedTest
+  @ValueSource(strings = {"Rosa\\nHuaman", "Rosa\\tHuaman", "Rosa\\u0000", "\\u0007", "   "})
+  void resetPassword_nameWithControlCharacterOrBlank_isValidationError(String name)
+      throws Exception {
+    assertTooLong(
+        post("/bff/auth/reset-password")
+            .content(
+                "{\"code\":\"c\",\"newPassword\":\"Nueva12345\",\"name\":\"%s\"}".formatted(name)),
+        "name");
+  }
+
+  /** TAR-188: accents, the eñe and inner spaces are a valid name; the unknown code answers. */
+  @Test
+  void resetPassword_nameWithAccentsAndSpaces_passesValidation() throws Exception {
+    mockMvc
+        .perform(
+            post("/bff/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"code\":\"c\",\"newPassword\":\"Nueva12345\",\"name\":\"María Ñahui Q.\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("AUTH_INVALID_OR_EXPIRED_CODE"));
   }
 
   private void assertTooLong(MockHttpServletRequestBuilder request, String field) throws Exception {

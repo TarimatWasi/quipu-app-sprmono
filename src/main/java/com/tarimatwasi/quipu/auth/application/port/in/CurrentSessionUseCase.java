@@ -13,10 +13,15 @@ public interface CurrentSessionUseCase {
    */
   CurrentSession currentSession(String userId);
 
-  /** What the client needs to restore the session after a reload. */
+  /**
+   * What the client needs to restore the session after a reload.
+   *
+   * @param displayName what the session shows: the full name of an administrator, or its email
+   *     while it has none (TAR-188); a guest's comes from its own module
+   */
   record CurrentSession(
       String role,
-      @Nullable String displayEmail,
+      @Nullable String displayName,
       @Nullable Long guestId,
       boolean mustChangePassword) {}
 }

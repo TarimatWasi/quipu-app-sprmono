@@ -31,12 +31,13 @@ public interface LoginUseCase {
    * Outcome of a successful login.
    *
    * @param role the name of the account role
+   * @param displayName the full name of an administrator, or its email while it has none (TAR-188)
    * @param sessionToken the signed session the caller puts in the cookie
    */
   record LoginResult(
       String userId,
       String role,
-      @Nullable String displayEmail,
+      @Nullable String displayName,
       @Nullable Long guestId,
       boolean mustChangePassword,
       String sessionToken) {}
