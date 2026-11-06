@@ -38,7 +38,8 @@ class GuestAccountServiceTest {
             status,
             0,
             null,
-            null);
+            null,
+            0L);
     users.save(account);
     return account;
   }
@@ -111,7 +112,8 @@ class GuestAccountServiceTest {
             "ACTIVE",
             0,
             null,
-            null));
+            null,
+            0L));
 
     var states = service.stateOf(List.of(withoutAccount, other));
 
@@ -133,7 +135,8 @@ class GuestAccountServiceTest {
             status,
             0,
             null,
-            null));
+            null,
+            0L));
   }
 
   @Test
@@ -185,7 +188,8 @@ class GuestAccountServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     users.save(admin);
 
     assertThat(service.guestOf(admin.id())).isEmpty();

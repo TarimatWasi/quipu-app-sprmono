@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.auth.application.port.out.AccountAlreadyExistsException;
+import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
@@ -18,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -31,6 +36,10 @@ class UserRepositoryAdapterTest {
   @Autowired UserRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
   @Autowired TransactionTemplate transaction;
+  @Autowired SessionTokenPort tokens;
+  @Autowired JwtDecoder decoder;
+  @Autowired AccountJwtAuthenticationConverter sessions;
+  @Autowired AdministratorStoreAdapter administrators;
 
   private final Long guestId = TestIds.next();
   private final Long accountId = TestIds.next();
@@ -53,6 +62,71 @@ class UserRepositoryAdapterTest {
   @AfterEach
   void tearDown() {
     TestTables.clear(jdbc);
+  }
+
+  @Test
+  void reactivatingAGuestNeverRevivesItsOldSession() {
+    String old = tokens.issue(accountId.toString());
+    assertThat(sessions.convert(decoder.decode(old))).isNotNull();
+    transaction.executeWithoutResult(tx -> adapter.setGuestAccountStatus(guestId, "INACTIVE"));
+    transaction.executeWithoutResult(tx -> adapter.setGuestAccountStatus(guestId, "INACTIVE"));
+    transaction.executeWithoutResult(tx -> adapter.setGuestAccountStatus(guestId, "ACTIVE"));
+
+    assertThat(adapter.securityVersion(accountId)).isEqualTo(1L);
+    assertThatThrownBy(() -> sessions.convert(decoder.decode(old)))
+        .isInstanceOf(InvalidBearerTokenException.class);
+    assertThat(sessions.convert(decoder.decode(tokens.issue(accountId.toString())))).isNotNull();
+  }
+
+  @Test
+  void reactivatingAnAdministratorNeverRevivesItsOldSession() {
+    jdbc.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", accountId);
+    String old = tokens.issue(accountId.toString());
+    transaction.executeWithoutResult(
+        tx -> administrators.setAdministratorStatus(accountId, "INACTIVE", accountId));
+    transaction.executeWithoutResult(
+        tx -> administrators.setAdministratorStatus(accountId, "ACTIVE", accountId));
+
+    assertThat(adapter.securityVersion(accountId)).isEqualTo(1L);
+    assertThatThrownBy(() -> sessions.convert(decoder.decode(old)))
+        .isInstanceOf(InvalidBearerTokenException.class);
+  }
+
+  @Test
+  void aReplacementTokenUsesTheVersionOfThePasswordChangeInItsTransaction() {
+    String old = tokens.issue(accountId.toString());
+    String replacement =
+        transaction.execute(
+            tx -> {
+              assertThat(adapter.findByIdForUpdate(accountId)).isPresent();
+              adapter.changePassword(accountId, "new-hash", Instant.EPOCH);
+              return tokens.renew(
+                  accountId.toString(),
+                  java.util.Objects.requireNonNull(decoder.decode(old).getClaimAsString("sid")));
+            });
+
+    assertThat(adapter.securityVersion(accountId)).isEqualTo(1L);
+    assertThatThrownBy(() -> sessions.convert(decoder.decode(old)))
+        .isInstanceOf(InvalidBearerTokenException.class);
+    assertThat(sessions.convert(decoder.decode(replacement))).isNotNull();
+    assertThat(decoder.decode(replacement).<Long>getClaim("sv")).isEqualTo(1L);
+    assertThat(decoder.decode(replacement).getClaimAsString("sid"))
+        .isEqualTo(java.util.Objects.requireNonNull(decoder.decode(old).getClaimAsString("sid")));
+  }
+
+  @Test
+  void rollingBackAPasswordChangeAlsoRollsBackItsRevocation() {
+    String old = tokens.issue(accountId.toString());
+    transaction.executeWithoutResult(
+        tx -> {
+          assertThat(adapter.findByIdForUpdate(accountId)).isPresent();
+          adapter.changePassword(accountId, "new-hash", Instant.EPOCH);
+          assertThat(adapter.securityVersion(accountId)).isEqualTo(1L);
+          tx.setRollbackOnly();
+        });
+
+    assertThat(adapter.securityVersion(accountId)).isZero();
+    assertThat(sessions.convert(decoder.decode(old))).isNotNull();
   }
 
   @Test

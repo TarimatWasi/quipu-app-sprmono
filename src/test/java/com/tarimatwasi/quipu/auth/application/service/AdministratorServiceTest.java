@@ -112,7 +112,8 @@ class AdministratorServiceTest {
         status,
         0,
         null,
-        null);
+        null,
+        0L);
   }
 
   private CreateAdministratorCommand command(String password) {
@@ -468,7 +469,8 @@ class AdministratorServiceTest {
               "ACTIVE",
               0,
               null,
-              null));
+              null,
+              0L));
       return id;
     }
 

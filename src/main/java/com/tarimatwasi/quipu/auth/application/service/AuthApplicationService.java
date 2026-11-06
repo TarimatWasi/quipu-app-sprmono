@@ -172,7 +172,7 @@ public class AuthApplicationService
       throw new PasswordUnchangedException(firstAccess);
     }
     PasswordPolicy.requireNotALiveAccess(grants, guestId, command.newPassword(), clock.instant());
-    // The cutoff is taken after the (slow) hash: a token issued before it stops being valid.
+    // The version changes atomically with the password; the date remains an audit timestamp.
     String newHash = passwordEncoder.encode(command.newPassword());
     // TAR-205: to the microsecond, as TIMESTAMPTZ stores it, so the database rounds nothing.
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);

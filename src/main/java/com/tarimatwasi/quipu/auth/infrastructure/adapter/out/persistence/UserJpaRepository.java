@@ -12,6 +12,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
+  /** A scalar query flushes a password change before its replacement token is issued. */
+  @Query("SELECT u.securityVersion FROM UserJpaEntity u WHERE u.id = :id")
+  Optional<Long> findSecurityVersion(@Param("id") Long id);
+
   List<UserJpaEntity> findByGuestIdIn(Collection<Long> guestIds);
 
   /**
@@ -22,7 +26,9 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
   @Modifying(flushAutomatically = true, clearAutomatically = true)
   @Query(
       value =
-          "UPDATE users SET status = :status, last_modified_date = now() WHERE guest_id = :guestId",
+          "UPDATE users SET security_version = security_version +"
+              + " CASE WHEN status <> :status AND :status = 'INACTIVE' THEN 1 ELSE 0 END,"
+              + " status = :status, last_modified_date = now() WHERE guest_id = :guestId",
       nativeQuery = true)
   int updateStatusByGuestId(@Param("guestId") Long guestId, @Param("status") String status);
 

@@ -50,6 +50,9 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   @Column(name = "password_changed_at")
   private @Nullable Instant passwordChangedAt;
 
+  @Column(name = "security_version")
+  private long securityVersion;
+
   @Column(name = "reset_token_hash")
   private @Nullable String resetTokenHash;
 
@@ -69,6 +72,7 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   }
 
   public void changePassword(String newPasswordHash, Instant changedAt) {
+    this.securityVersion = Math.incrementExact(securityVersion);
     this.passwordHash = newPasswordHash;
     this.passwordChangedAt = changedAt;
     this.mustChangePassword = false;
@@ -122,6 +126,7 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
         status,
         failedLoginAttempts,
         lockedUntil,
-        passwordChangedAt);
+        passwordChangedAt,
+        securityVersion);
   }
 }

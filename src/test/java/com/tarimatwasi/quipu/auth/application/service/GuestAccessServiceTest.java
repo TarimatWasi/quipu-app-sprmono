@@ -58,7 +58,8 @@ class GuestAccessServiceTest {
             "ACTIVE",
             0,
             null,
-            null));
+            null,
+            0L));
   }
 
   @Test

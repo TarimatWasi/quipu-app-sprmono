@@ -160,8 +160,12 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
     // The audit columns, as the JPA auditing fills them: when and who changed the row.
     int updated =
         jdbc.update(
-            "UPDATE users SET status = ?, last_modified_date = now(), last_modified_by_id = ?"
+            "UPDATE users SET security_version = security_version +"
+                + " CASE WHEN status <> ? AND ? = 'INACTIVE' THEN 1 ELSE 0 END,"
+                + " status = ?, last_modified_date = now(), last_modified_by_id = ?"
                 + " WHERE id = ? AND role = 'ADMIN'",
+            status,
+            status,
             status,
             modifiedBy,
             id);

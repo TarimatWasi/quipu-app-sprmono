@@ -101,6 +101,7 @@ class AccountUserDetailsServiceTest {
         status,
         0,
         lockedUntil,
-        null);
+        null,
+        0L);
   }
 }

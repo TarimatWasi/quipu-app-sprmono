@@ -87,7 +87,8 @@ class DocumentIdentityTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
 
     assertThat(account.identity()).isEqualTo(new DocumentIdentity(DocumentType.DNI, "12345678"));
   }

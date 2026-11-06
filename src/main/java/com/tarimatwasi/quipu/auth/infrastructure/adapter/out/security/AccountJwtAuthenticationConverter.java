@@ -7,11 +7,8 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.core.GrantedAuthority;
@@ -23,10 +20,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * Turns a valid token into the session of its account. The token is only as good as the account
- * behind it, read on every request: the account must exist and not be disabled, and a password
- * change after the token was issued ends the session (TAR-125). The role and the pending password
- * change come from the account, not from the token, so a closed account, a changed password or a
- * new role take effect at once. The name of the authentication is the (unmasked) id of the user.
+ * behind it, read on every request: the account must exist and not be disabled, and its security
+ * version must match the token (TAR-298). The role and the pending password change come from the
+ * account, not from the token, so a closed account, a changed password or a new role take effect at
+ * once. The name of the authentication is the (unmasked) id of the user.
  *
  * <p>TAR-227: the token must name its session ({@link AccessSessions#SESSION_ID_CLAIM}); the
  * subject is unmasked with the key of that session, and the masking of the session goes with the
@@ -39,8 +36,6 @@ public class AccountJwtAuthenticationConverter
 
   /** The session may only change the password (RF-12); the HTTP rules look for this authority. */
   public static final String PASSWORD_CHANGE_PENDING = "PASSWORD_CHANGE_PENDING";
-
-  private static final long MICROS_PER_SECOND = 1_000_000L;
 
   private final UserRepositoryPort users;
   private final IdMasker masker;
@@ -59,10 +54,13 @@ public class AccountJwtAuthenticationConverter
     if (subject == null) {
       throw invalid("The token has no subject");
     }
-    Instant issuedAt = preciseIssuedAt(jwt);
     MaskSession session = sessionOf(jwt);
     UserAccount account = accountOf(session, subject);
-    if (account.isDisabled() || account.issuedBeforePasswordChange(issuedAt)) {
+    Object version = jwt.getClaim(JwtTokenProvider.SECURITY_VERSION_CLAIM);
+    if (!(version instanceof Long || version instanceof Integer)
+        || ((Number) version).longValue() < 0
+        || account.isDisabled()
+        || ((Number) version).longValue() != account.securityVersion()) {
       throw invalid("The session is no longer valid");
     }
     List<GrantedAuthority> authorities = new ArrayList<>();
@@ -88,37 +86,6 @@ public class AccountJwtAuthenticationConverter
     } catch (IllegalArgumentException notASession) {
       throw invalid("The session is no longer valid");
     }
-  }
-
-  /**
-   * The issue time to compare with the password change (TAR-201). A token issued before the precise
-   * claim existed has only the second, so it counts as issued at the last instant of that second:
-   * the rule it was issued under, until it expires.
-   *
-   * <p>TAR-205: the precise claim must be a whole number of microseconds inside the second of
-   * {@code iat}, both ends included (the issuer rounds the instant up, so the last nanoseconds of a
-   * second give the first microsecond of the next); anything else, or a value that overflows, is an
-   * invalid token.
-   */
-  private static Instant preciseIssuedAt(Jwt jwt) {
-    Instant issuedAt = Objects.requireNonNull(jwt.getIssuedAt());
-    Object claim = jwt.getClaim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM);
-    if (claim == null) {
-      return issuedAt.plusSeconds(1).minusNanos(1);
-    }
-    if (!(claim instanceof Long || claim instanceof Integer)) {
-      throw invalid("The precise issue time is not a whole number");
-    }
-    long micros = ((Number) claim).longValue();
-    try {
-      long first = Math.multiplyExact(issuedAt.getEpochSecond(), MICROS_PER_SECOND);
-      if (micros < first || micros > Math.addExact(first, MICROS_PER_SECOND)) {
-        throw invalid("The precise issue time is outside the second of the token");
-      }
-    } catch (ArithmeticException overflow) {
-      throw invalid("The issue time is out of range");
-    }
-    return Instant.EPOCH.plus(micros, ChronoUnit.MICROS);
   }
 
   /**

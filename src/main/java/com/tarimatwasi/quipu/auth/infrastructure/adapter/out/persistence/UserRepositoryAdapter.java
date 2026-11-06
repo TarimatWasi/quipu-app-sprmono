@@ -148,6 +148,13 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
+  public long securityVersion(Long id) {
+    return jpaRepository
+        .findSecurityVersion(id)
+        .orElseThrow(() -> new IllegalStateException("Unknown account"));
+  }
+
+  @Override
   public Optional<Long> findGuestIdOf(Long id) {
     return jpaRepository.findGuestIdById(id);
   }
