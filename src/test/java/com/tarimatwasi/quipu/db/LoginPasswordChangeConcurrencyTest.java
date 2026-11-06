@@ -238,6 +238,9 @@ class LoginPasswordChangeConcurrencyTest {
    * accounts.
    */
   private boolean someoneWaitsOn(int holder) {
+    // PostgreSQL caches pg_stat_activity within a transaction. Each poll needs a fresh snapshot
+    // or it can keep seeing no waiter even after the other transaction has reached the lock.
+    jdbc.execute("SELECT pg_stat_clear_snapshot()");
     Integer waiting =
         jdbc.queryForObject(
             "SELECT count(*) FROM pg_stat_activity a"
