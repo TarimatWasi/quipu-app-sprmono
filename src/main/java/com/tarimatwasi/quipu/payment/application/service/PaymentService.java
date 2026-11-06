@@ -181,6 +181,8 @@ public class PaymentService implements ManagePaymentsUseCase {
         view.voucherCount(),
         view.hasCash(),
         reviewer(payment, names),
+        payment.pending() ? null : payment.rejectionReason(),
+        payment.pending() ? null : payment.reviewedAt(),
         payment.submittedAt(),
         stored.createdAt());
   }
