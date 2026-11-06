@@ -56,7 +56,10 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
     assertThat(temporary)
         .containsEntry("environmentCode", null)
         .containsEntry("period", null)
-        .containsEntry("guestName", null);
+        .containsEntry("guestName", null)
+        // TAR-296: a pending payment has not been resolved yet
+        .containsEntry("rejectionReason", null)
+        .containsEntry("reviewedAt", null);
   }
 
   @Test
@@ -194,7 +197,9 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(get(URL).cookie(admin()))
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.content[0].reviewedBy.id").value(id(IdKind.USER, adminId)));
+        .andExpect(jsonPath("$.content[0].reviewedBy.id").value(id(IdKind.USER, adminId)))
+        .andExpect(jsonPath("$.content[0].reviewedAt").value("2026-10-14T14:00:00Z"))
+        .andExpect(jsonPath("$.content[0].rejectionReason").value((Object) null));
 
     assertThat(
             jdbc.queryForObject("SELECT reviewed_by_id FROM payments WHERE id = ?", Long.class, id))
@@ -293,6 +298,12 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.status").value("REJECTED"))
         .andExpect(jsonPath("$.rejectionReason").value("El monto no coincide"));
+    // TAR-296: the row of the Rechazados view says why and when
+    mockMvc
+        .perform(get(URL).param("status", "REJECTED").cookie(admin()))
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.content[0].rejectionReason").value("El monto no coincide"))
+        .andExpect(jsonPath("$.content[0].reviewedAt").value("2026-10-14T14:00:00Z"));
 
     // TAR-239: the rejected payment is corrected, so another one cannot take its period
     org.assertj.core.api.Assertions.assertThatThrownBy(

@@ -183,6 +183,8 @@ public interface ManagePaymentsUseCase {
    * @param stayStartDate {@code null} for a guest with a contract
    * @param stayEndDate {@code null} for a guest with a contract
    * @param reviewedBy {@code null} while pending
+   * @param rejectionReason why it was rejected (TAR-296); {@code null} unless it is rejected
+   * @param reviewedAt when it was resolved (TAR-296); {@code null} while pending
    * @param submittedAt the last time it was sent; it orders the queue
    */
   record QueueItemView(
@@ -200,6 +202,8 @@ public interface ManagePaymentsUseCase {
       int voucherCount,
       boolean hasCash,
       @Nullable ReviewerView reviewedBy,
+      @Nullable String rejectionReason,
+      @Nullable Instant reviewedAt,
       Instant submittedAt,
       Instant createdAt) {}
 

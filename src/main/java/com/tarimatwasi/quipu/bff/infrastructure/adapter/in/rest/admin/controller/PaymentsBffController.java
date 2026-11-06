@@ -285,6 +285,8 @@ public class PaymentsBffController {
       int voucherCount,
       boolean hasCash,
       @Nullable ReviewerResponse reviewedBy,
+      @Nullable String rejectionReason,
+      @Nullable Instant reviewedAt,
       Instant submittedAt,
       Instant createdAt) {
     public static QueueItemResponse of(QueueItemView item, IdMasker ids) {
@@ -303,6 +305,8 @@ public class PaymentsBffController {
           item.voucherCount(),
           item.hasCash(),
           ReviewerResponse.of(item.reviewedBy(), ids),
+          item.rejectionReason(),
+          item.reviewedAt(),
           item.submittedAt(),
           item.createdAt());
     }
