@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -162,7 +163,8 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
 
   private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder
       multipart() {
-    return org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(URL);
+    return org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(URL)
+        .with(csrf());
   }
 
   @Test
@@ -356,13 +358,17 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(
             patch(one)
+                .with(csrf())
                 .cookie(guest())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"APPROVED\"}"))
         .andExpect(status().isForbidden());
     mockMvc
         .perform(
-            patch(one).contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"APPROVED\"}"))
+            patch(one)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"APPROVED\"}"))
         .andExpect(status().isUnauthorized());
     mockMvc
         .perform(builder(PDF).header("Origin", ORIGIN).cookie(guest()))

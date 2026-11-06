@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -179,6 +180,7 @@ class GuestDocumentActionsSessionContractTest {
                     + "/documents/"
                     + masked(session, document)
                     + "/deletion")
+                .with(csrf())
                 .cookie(session)
                 .header("Origin", ORIGIN)
                 .contentType(MediaType.APPLICATION_JSON)

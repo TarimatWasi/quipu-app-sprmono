@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -116,7 +117,8 @@ class BffContractTest {
     var body =
         "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}"
             .formatted(document, password);
-    return mockMvc.perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body));
+    return mockMvc.perform(
+        post(LOGIN).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body));
   }
 
   private Cookie sessionOf(ResultActions login) {
@@ -126,6 +128,7 @@ class BffContractTest {
   private ResultActions changePassword(Cookie session, String body) throws Exception {
     return mockMvc.perform(
         post(CHANGE_PASSWORD)
+            .with(csrf())
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
@@ -165,6 +168,7 @@ class BffContractTest {
     mockMvc
         .perform(
             post(LOGIN)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"documentType\":\"DNI\",\"documentNumber\":\"00000000\"}"))
         .andExpect(status().isBadRequest())
@@ -194,7 +198,7 @@ class BffContractTest {
     Cookie session = sessionOf(login("00000000", TEMPORARY));
 
     mockMvc
-        .perform(post(LOGOUT).cookie(session))
+        .perform(post(LOGOUT).with(csrf()).cookie(session))
         .andExpect(status().isNoContent())
         .andExpect(satisfiesTheContract());
   }
@@ -202,7 +206,7 @@ class BffContractTest {
   @Test
   void logoutWithoutASession() throws Exception {
     mockMvc
-        .perform(post(LOGOUT))
+        .perform(post(LOGOUT).with(csrf()))
         .andExpect(status().isUnauthorized())
         .andExpect(answersTheContractToARequestWith("validation.request.security.missing"));
   }
@@ -239,6 +243,7 @@ class BffContractTest {
     mockMvc
         .perform(
             post(CHANGE_PASSWORD)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"newPassword\":\"Nueva12345\"}"))
         .andExpect(status().isUnauthorized())
@@ -250,6 +255,7 @@ class BffContractTest {
     mockMvc
         .perform(
             post("/bff/auth/forgot-password")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"" + ADMIN_EMAIL + "\"}"))
         .andExpect(status().isAccepted())
@@ -261,7 +267,10 @@ class BffContractTest {
 
   private ResultActions resetPassword(String body) throws Exception {
     return mockMvc.perform(
-        post("/bff/auth/reset-password").contentType(MediaType.APPLICATION_JSON).content(body));
+        post("/bff/auth/reset-password")
+            .with(csrf())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
   }
 
   @Test
@@ -274,6 +283,7 @@ class BffContractTest {
     mockMvc
         .perform(
             post("/bff/auth/forgot-password")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"nobody@example.com\"}"))
         .andExpect(status().isAccepted())
@@ -285,6 +295,7 @@ class BffContractTest {
     mockMvc
         .perform(
             post("/bff/auth/forgot-password")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"not-an-email\"}"))
         .andExpect(status().isBadRequest())

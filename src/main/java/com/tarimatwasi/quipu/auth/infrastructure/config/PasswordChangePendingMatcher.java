@@ -17,6 +17,7 @@ final class PasswordChangePendingMatcher implements RequestMatcher {
   /** What a session pending a password change may still reach. */
   private static final Set<String> ALLOWED_WHILE_PENDING =
       Set.of(
+          "/bff/auth/csrf",
           "/bff/auth/login",
           "/bff/auth/activate",
           "/bff/auth/forgot-password",

@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -94,6 +95,7 @@ class UploadRateLimitBffTest {
   /** A complete form: past the limit, the controller hands it to the use case. */
   private MockMultipartHttpServletRequestBuilder contract() {
     return multipart(UploadRoutes.CONTRACTS)
+        .with(csrf())
         .file(new MockMultipartFile("file", "c.pdf", "application/pdf", new byte[] {1}))
         .param("environmentId", sessionIds().mask(IdKind.ENVIRONMENT, 1L).toString())
         .param("guestId", sessionIds().mask(IdKind.GUEST, 1L).toString())

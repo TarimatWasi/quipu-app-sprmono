@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -96,6 +97,7 @@ class RefundsContractTest extends PaymentsContractSupport {
   private ResultActions refund(String body) throws Exception {
     return mockMvc.perform(
         MockMvcRequestBuilders.post(REFUNDS)
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));

@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -163,6 +164,7 @@ class GuestDebtContractTest extends PaymentsContractSupport {
     return mockMvc.perform(
         MockMvcRequestBuilders.post(
                 CONTRACTS + "/" + ids().mask(IdKind.CONTRACT, contract) + "/terminate")
+            .with(csrf())
             .cookie(admin()));
   }
 
@@ -173,6 +175,7 @@ class GuestDebtContractTest extends PaymentsContractSupport {
   private ResultActions load(Long environment, Long guestId) throws Exception {
     return mockMvc.perform(
         multipart(CONTRACTS)
+            .with(csrf())
             .file(new MockMultipartFile("file", "c.pdf", "application/pdf", PDF))
             .param("environmentId", id(IdKind.ENVIRONMENT, environment))
             .param("guestId", id(IdKind.GUEST, guestId))

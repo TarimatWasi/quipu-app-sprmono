@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,6 +33,7 @@ class RateLimitBffTest {
     return mockMvc
         .perform(
             post("/bff/auth/forgot-password")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"nobody@example.test\"}"))
         .andReturn()
@@ -48,6 +50,7 @@ class RateLimitBffTest {
     mockMvc
         .perform(
             post("/bff/auth/login")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"documentType\":\"DNI\",\"documentNumber\":\"1\",\"password\":\"x\"}"))
         .andExpect(status().isTooManyRequests())

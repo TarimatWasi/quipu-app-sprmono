@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -137,6 +138,7 @@ class SessionMaskingContractTest {
             mockMvc
                 .perform(
                     post("/bff/auth/change-password")
+                        .with(csrf())
                         .cookie(signedIn)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
@@ -217,6 +219,7 @@ class SessionMaskingContractTest {
         mockMvc
             .perform(
                 post("/bff/auth/login")
+                    .with(csrf())
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}"
@@ -231,6 +234,7 @@ class SessionMaskingContractTest {
     return mockMvc
         .perform(
             post(URL)
+                .with(csrf())
                 .cookie(session)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"201\",\"type\":\"ROOM\"}"))

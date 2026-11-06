@@ -1,9 +1,10 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.postWithCsrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -86,10 +87,7 @@ class GuestAccessContractTest {
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
 
-  /**
-   * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
-   * of its checks are masked alike.
-   */
+  /** TAR-227: all accounts share a test session, so request and assertion ids match. */
   private final String sessionId = SessionIds.newSessionId();
 
   @Autowired Clock clock;
@@ -134,7 +132,7 @@ class GuestAccessContractTest {
       throws Exception {
     String contact = email == null ? "" : ",\"contactEmail\":\"" + email + "\"";
     return mockMvc.perform(
-        post(GUESTS)
+        postWithCsrf(GUESTS)
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(
@@ -144,7 +142,7 @@ class GuestAccessContractTest {
 
   private ResultActions generate(String guestId, String mode, Cookie session) throws Exception {
     return mockMvc.perform(
-        post(GUESTS + "/" + guestId + "/access")
+        postWithCsrf(GUESTS + "/" + guestId + "/access")
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"accessMode\":\"%s\"}".formatted(mode)));
@@ -152,14 +150,14 @@ class GuestAccessContractTest {
 
   private ResultActions activate(String token, String password) throws Exception {
     return mockMvc.perform(
-        post("/bff/auth/activate")
+        postWithCsrf("/bff/auth/activate")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"token\":\"%s\",\"newPassword\":\"%s\"}".formatted(token, password)));
   }
 
   private ResultActions login(String number, String password) throws Exception {
     return mockMvc.perform(
-        post("/bff/auth/login")
+        postWithCsrf("/bff/auth/login")
             .contentType(MediaType.APPLICATION_JSON)
             .content(
                 "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}"
@@ -168,7 +166,7 @@ class GuestAccessContractTest {
 
   private ResultActions registerWith(String body) throws Exception {
     return mockMvc.perform(
-        post(GUESTS).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+        postWithCsrf(GUESTS).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
   }
 
   private static String read(MvcResult result, String path) throws Exception {
@@ -386,7 +384,7 @@ class GuestAccessContractTest {
       throws Exception {
     String currentField = current == null ? "" : "\"currentPassword\":\"" + current + "\",";
     return mockMvc.perform(
-        post("/bff/auth/change-password")
+        postWithCsrf("/bff/auth/change-password")
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content("{%s\"newPassword\":\"%s\"}".formatted(currentField, next)));
@@ -452,7 +450,7 @@ class GuestAccessContractTest {
 
     mockMvc
         .perform(
-            post("/bff/auth/reset-password")
+            postWithCsrf("/bff/auth/reset-password")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"code\":\"%s\",\"newPassword\":\"%s\"}".formatted(code, handed.secret())))
@@ -569,6 +567,7 @@ class GuestAccessContractTest {
         .perform(
             org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(
                     GUESTS + "/" + guestId)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":" + version + ",\"documentNumber\":\"87654321\"}"))
@@ -616,7 +615,7 @@ class GuestAccessContractTest {
     assertThat(hasLoginAccess(temporaryGuest)).isFalse();
 
     mockMvc
-        .perform(post(GUESTS + "/" + linkGuest + "/deactivate").cookie(admin()))
+        .perform(postWithCsrf(GUESTS + "/" + linkGuest + "/deactivate").cookie(admin()))
         .andExpect(status().isNoContent());
     assertThat(hasLoginAccess(linkGuest)).isFalse();
   }
@@ -645,10 +644,10 @@ class GuestAccessContractTest {
     String token = tokenOf(read(created, "$.access.activationUrl"));
 
     mockMvc
-        .perform(post(GUESTS + "/" + guestId + "/deactivate").cookie(admin()))
+        .perform(postWithCsrf(GUESTS + "/" + guestId + "/deactivate").cookie(admin()))
         .andExpect(status().isNoContent());
     mockMvc
-        .perform(post(GUESTS + "/" + guestId + "/reactivate").cookie(admin()))
+        .perform(postWithCsrf(GUESTS + "/" + guestId + "/reactivate").cookie(admin()))
         .andExpect(status().isOk());
 
     activate(token, NEW_PASSWORD)
@@ -663,7 +662,7 @@ class GuestAccessContractTest {
 
     mockMvc
         .perform(
-            post("/bff/auth/forgot-password")
+            postWithCsrf("/bff/auth/forgot-password")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"ana@example.com\"}"))
         .andExpect(status().isAccepted());
@@ -741,7 +740,7 @@ class GuestAccessContractTest {
 
     mockMvc
         .perform(
-            post(GUESTS)
+            postWithCsrf(GUESTS)
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(

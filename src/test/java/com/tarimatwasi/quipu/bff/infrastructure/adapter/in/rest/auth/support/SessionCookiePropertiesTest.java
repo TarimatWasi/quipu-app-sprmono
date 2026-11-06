@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.auth.support;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,6 +54,7 @@ class SessionCookiePropertiesTest {
         mockMvc
             .perform(
                 post("/bff/auth/login")
+                    .with(csrf())
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -60,7 +62,11 @@ class SessionCookiePropertiesTest {
                         """))
             .andReturn()
             .getResponse()
-            .getHeader("Set-Cookie");
+            .getHeaders("Set-Cookie")
+            .stream()
+            .filter(value -> value.startsWith("sessionToken="))
+            .findFirst()
+            .orElseThrow();
 
     assertThat(setCookie).contains("; SameSite=None").contains("; Secure").contains("; HttpOnly");
   }

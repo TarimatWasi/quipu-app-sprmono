@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -40,6 +41,7 @@ class AccountRateLimitBffTest {
     return mockMvc
         .perform(
             post("/bff/auth/login")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"documentType\":\"DNI\",\"documentNumber\":\""
@@ -58,6 +60,7 @@ class AccountRateLimitBffTest {
     mockMvc
         .perform(
             post("/bff/auth/login")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("X-Forwarded-For", "203.0.113.50")
                 .content(

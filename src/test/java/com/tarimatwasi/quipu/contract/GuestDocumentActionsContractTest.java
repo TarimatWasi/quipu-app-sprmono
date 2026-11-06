@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.postWithCsrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,7 +14,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -167,7 +168,7 @@ class GuestDocumentActionsContractTest {
   void anUploadErrorTakesNeitherDateNorChannelAndABlankNoteCountsAsAbsent() throws Exception {
     mockMvc
         .perform(
-            post(deletion(guestId, documentId))
+            postWithCsrf(deletion(guestId, documentId))
                 .cookie(admin())
                 .header("Origin", ORIGIN)
                 .contentType("application/json;charset=UTF-8")
@@ -218,11 +219,12 @@ class GuestDocumentActionsContractTest {
   void theBodyIsCheckedBeforeTheIdsAreUnmasked() throws Exception {
     mockMvc
         .perform(
-            post("/bff/admin/guests/"
-                    + UUID.randomUUID()
-                    + "/documents/"
-                    + UUID.randomUUID()
-                    + "/deletion")
+            postWithCsrf(
+                    "/bff/admin/guests/"
+                        + UUID.randomUUID()
+                        + "/documents/"
+                        + UUID.randomUUID()
+                        + "/deletion")
                 .cookie(admin())
                 .header("Origin", ORIGIN)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -250,7 +252,7 @@ class GuestDocumentActionsContractTest {
     for (String route : routes) {
       mockMvc
           .perform(
-              post(route)
+              postWithCsrf(route)
                   .cookie(admin())
                   .header("Origin", ORIGIN)
                   .contentType(MediaType.APPLICATION_JSON)
@@ -270,7 +272,7 @@ class GuestDocumentActionsContractTest {
   void neitherTheGuestNorAnAnonymousRequestReachesItEvenForItsOwnDocument() throws Exception {
     mockMvc
         .perform(
-            post(deletion(guestId, documentId))
+            postWithCsrf(deletion(guestId, documentId))
                 .cookie(session(guestAccount))
                 .header("Origin", ORIGIN)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -280,7 +282,7 @@ class GuestDocumentActionsContractTest {
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
         .perform(
-            post(deletion(guestId, documentId))
+            postWithCsrf(deletion(guestId, documentId))
                 .header("Origin", ORIGIN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(UPLOAD_ERROR))
@@ -301,7 +303,7 @@ class GuestDocumentActionsContractTest {
   void theDeletionSaysWhereItComesFromAndTakesJsonOnly() throws Exception {
     mockMvc
         .perform(
-            post(deletion(guestId, documentId))
+            postWithCsrf(deletion(guestId, documentId))
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(UPLOAD_ERROR))
@@ -310,7 +312,7 @@ class GuestDocumentActionsContractTest {
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
         .perform(
-            post(deletion(guestId, documentId))
+            postWithCsrf(deletion(guestId, documentId))
                 .cookie(admin())
                 .header("Origin", "https://evil.example")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -321,7 +323,7 @@ class GuestDocumentActionsContractTest {
             "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x")) {
       mockMvc
           .perform(
-              post(deletion(guestId, documentId))
+              postWithCsrf(deletion(guestId, documentId))
                   .cookie(admin())
                   .header("Origin", ORIGIN)
                   .contentType(type)
@@ -554,6 +556,7 @@ class GuestDocumentActionsContractTest {
     mockMvc
         .perform(
             multipart(HttpMethod.PUT, replacement(guestId, documentId))
+                .with(csrf())
                 .param("reason", "UPLOAD_ERROR")
                 .header("Origin", ORIGIN)
                 .cookie(admin()))
@@ -577,6 +580,7 @@ class GuestDocumentActionsContractTest {
     mockMvc
         .perform(
             multipart(HttpMethod.PUT, replacement(guestId, documentId))
+                .with(csrf())
                 .file(new MockMultipartFile("file", FILE_NAME, "application/pdf", PDF))
                 .param("reason", "UPLOAD_ERROR")
                 .cookie(admin()))
@@ -705,7 +709,7 @@ class GuestDocumentActionsContractTest {
 
   private ResultActions delete(Long guest, Long document, String body) throws Exception {
     return mockMvc.perform(
-        post(deletion(guest, document))
+        postWithCsrf(deletion(guest, document))
             .cookie(admin())
             .header("Origin", ORIGIN)
             .contentType(MediaType.APPLICATION_JSON)
@@ -717,6 +721,7 @@ class GuestDocumentActionsContractTest {
       throws Exception {
     MockMultipartHttpServletRequestBuilder request =
         multipart(HttpMethod.PUT, replacement(guest, document))
+            .with(csrf())
             .file(new MockMultipartFile("file", FILE_NAME, "application/pdf", content));
     fields.forEach(request::param);
     return mockMvc.perform(request.header("Origin", ORIGIN).cookie(who));

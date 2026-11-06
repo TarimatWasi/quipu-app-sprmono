@@ -32,7 +32,7 @@ class TestConventionsTest {
   static final ArchRule BE_SPR_TST_07 =
       noClasses().should().callMethod(Thread.class, "sleep", long.class);
 
-  /** ADR-006: bodyless state-changing requests are defended only by CORS; the test must exist. */
+  /** TAR-300: preserve the CORS defense alongside CSRF tokens for bodyless requests. */
   @ArchTest
   static final ArchRule ADR_006_CONTRACT_TEST =
       methods()
@@ -41,7 +41,7 @@ class TestConventionsTest {
           .should()
           .beDeclaredInClassesThat()
           .haveSimpleName("SecurityContractTest")
-          .because("ADR-006: a bodyless request relies on CORS rejecting a foreign Origin");
+          .because("TAR-300: CORS must still reject a foreign Origin even with a valid CSRF token");
 
   @ArchTest
   static final ArchRule ADR_006_CONTROLLER_TEST =

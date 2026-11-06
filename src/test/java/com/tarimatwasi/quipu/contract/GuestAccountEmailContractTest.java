@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -147,6 +148,7 @@ class GuestAccountEmailContractTest {
     String contact = email == null ? "" : ",\"contactEmail\":\"" + email + "\"";
     return mockMvc.perform(
         post(GUESTS)
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(
@@ -171,6 +173,7 @@ class GuestAccountEmailContractTest {
   private ResultActions setEmail(String guestId, String body, Cookie session) throws Exception {
     return mockMvc.perform(
         put(GUESTS + "/" + guestId + "/account-email")
+            .with(csrf())
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
@@ -183,6 +186,7 @@ class GuestAccountEmailContractTest {
   private ResultActions forgot(String email) throws Exception {
     return mockMvc.perform(
         post("/bff/auth/forgot-password")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"email\":\"" + email + "\"}"));
   }
@@ -282,6 +286,7 @@ class GuestAccountEmailContractTest {
     mockMvc
         .perform(
             post("/bff/auth/reset-password")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"%s\",\"newPassword\":\"Nueva-Clave-2026\"}".formatted(code)))
         .andExpect(status().isBadRequest())
@@ -403,6 +408,7 @@ class GuestAccountEmailContractTest {
     mockMvc
         .perform(
             put(GUESTS + "/" + guestId + "/account-email")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"x@example.com\"}"))
         .andExpect(status().isUnauthorized())

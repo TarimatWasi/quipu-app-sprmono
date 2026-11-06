@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.csrf.CsrfException;
 
 /**
  * Answers a valid session that cannot use the endpoint with 403 and the BFF error body the contract
@@ -28,6 +29,10 @@ final class ForbiddenHandler implements AccessDeniedHandler {
       "{\"code\":\"AUTH_PASSWORD_CHANGE_REQUIRED\","
           + "\"message\":\"Debes cambiar tu contraseña para continuar\"}";
 
+  private static final String CSRF_BODY =
+      "{\"code\":\"AUTH_CSRF_INVALID\","
+          + "\"message\":\"No se pudo validar la solicitud. Actualiza la página e inténtalo nuevamente.\"}";
+
   @Override
   public void handle(
       HttpServletRequest request,
@@ -37,6 +42,10 @@ final class ForbiddenHandler implements AccessDeniedHandler {
     response.setStatus(HttpStatus.FORBIDDEN.value());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+    if (accessDeniedException instanceof CsrfException) {
+      response.getWriter().write(CSRF_BODY);
+      return;
+    }
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     boolean pending =
         authentication != null && PasswordChangePendingMatcher.isPending(authentication);

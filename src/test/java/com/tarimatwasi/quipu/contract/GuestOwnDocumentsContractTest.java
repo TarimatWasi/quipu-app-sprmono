@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -151,6 +152,7 @@ class GuestOwnDocumentsContractTest {
     mockMvc
         .perform(
             multipart(CONTRACT_DOCUMENTS)
+                .with(csrf())
                 .file(new MockMultipartFile("file", "nota.pdf", "application/pdf", new byte[] {1}))
                 .header("Origin", ORIGIN)
                 .cookie(guest()))
@@ -188,6 +190,7 @@ class GuestOwnDocumentsContractTest {
     mockMvc
         .perform(
             multipart(CONTRACT_DOCUMENTS)
+                .with(csrf())
                 .file(new MockMultipartFile("file", "dni.pdf", "application/pdf", PDF))
                 .cookie(guest()))
         .andExpect(status().isForbidden())
@@ -315,6 +318,7 @@ class GuestOwnDocumentsContractTest {
   private ResultActions upload(String url, Cookie who) throws Exception {
     return mockMvc.perform(
         multipart(url)
+            .with(csrf())
             .file(new MockMultipartFile("file", "dni.pdf", "application/pdf", PDF))
             .header("Origin", ORIGIN)
             .cookie(who));

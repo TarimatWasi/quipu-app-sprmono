@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -140,7 +141,7 @@ class AdministratorsContractTest {
   }
 
   private ResultActions create(@Nullable Cookie session, String body) throws Exception {
-    var request = post(URL).contentType(MediaType.APPLICATION_JSON).content(body);
+    var request = post(URL).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body);
     if (session != null) {
       request.cookie(session);
     }
@@ -193,6 +194,7 @@ class AdministratorsContractTest {
     mockMvc
         .perform(
             post("/bff/auth/reset-password")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"code\":\"%s\",\"newPassword\":\"Nueva12345\",\"name\":\"Rosa Huaman\"}"
@@ -396,6 +398,7 @@ class AdministratorsContractTest {
   private ResultActions login(String document, String password) throws Exception {
     return mockMvc.perform(
         post("/bff/auth/login")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON)
             .content(
                 "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}"

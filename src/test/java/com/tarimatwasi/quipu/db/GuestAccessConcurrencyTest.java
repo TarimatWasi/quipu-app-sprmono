@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.db;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -178,6 +179,7 @@ class GuestAccessConcurrencyTest {
     return mockMvc
         .perform(
             post("/bff/auth/change-password")
+                .with(csrf())
                 .cookie(session)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"currentPassword\":\"Actual-2026\",\"newPassword\":\"Nueva-2026\"}"))
@@ -190,6 +192,7 @@ class GuestAccessConcurrencyTest {
     return mockMvc
         .perform(
             post("/bff/admin/guests")
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -203,7 +206,7 @@ class GuestAccessConcurrencyTest {
 
   private int deactivate(String guestId) throws Exception {
     return mockMvc
-        .perform(post("/bff/admin/guests/" + guestId + "/deactivate").cookie(admin()))
+        .perform(post("/bff/admin/guests/" + guestId + "/deactivate").with(csrf()).cookie(admin()))
         .andReturn()
         .getResponse()
         .getStatus();
@@ -213,6 +216,7 @@ class GuestAccessConcurrencyTest {
     return mockMvc
         .perform(
             post("/bff/auth/login")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}"

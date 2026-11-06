@@ -6,12 +6,15 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.auth.support.Ses
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 /** QP-SPRMONO-SES-01, BE-SPR-SEC-03 (TAR-173): the attributes of the session cookie. */
 class SessionCookiesTest {
 
   private final SessionCookies cookies =
-      new SessionCookies(new SessionCookieProperties(SameSite.NONE, Duration.ofDays(30)));
+      new SessionCookies(
+          new SessionCookieProperties(SameSite.NONE, Duration.ofDays(30)),
+          CookieCsrfTokenRepository.withHttpOnlyFalse());
 
   @Test
   void session_carriesTheTokenWithTheConfiguredAttributes() {

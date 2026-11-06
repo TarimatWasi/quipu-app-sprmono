@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
@@ -355,7 +356,7 @@ class AdministratorManagementContractTest {
         .andExpect(status().isBadRequest())
         .andExpect(content().json("{\"code\":\"VALIDATION_ERROR\",\"field\":\"currentPassword\"}"))
         .andExpect(answersTheContractToARequestWith("validation.request.body.schema.maxLength"));
-    perform(post(URL + "/no-es-un-uuid/deactivate"), session(actorId), BODY)
+    perform(post(URL + "/no-es-un-uuid/deactivate").with(csrf()), session(actorId), BODY)
         .andExpect(status().isBadRequest())
         .andExpect(
             exactly(
@@ -426,7 +427,7 @@ class AdministratorManagementContractTest {
   }
 
   private ResultActions deactivate(UUID id, String body) throws Exception {
-    return perform(post(URL + "/" + id + "/deactivate"), session(actorId), body);
+    return perform(post(URL + "/" + id + "/deactivate").with(csrf()), session(actorId), body);
   }
 
   private ResultActions reactivate(Long id, String body) throws Exception {
@@ -434,7 +435,7 @@ class AdministratorManagementContractTest {
   }
 
   private ResultActions reactivate(UUID id, String body) throws Exception {
-    return perform(post(URL + "/" + id + "/reactivate"), session(actorId), body);
+    return perform(post(URL + "/" + id + "/reactivate").with(csrf()), session(actorId), body);
   }
 
   private ResultActions perform(
@@ -456,9 +457,11 @@ class AdministratorManagementContractTest {
     return new MockHttpServletRequestBuilder[] {
       get(URL),
       post(URL + "/" + masked(targetId) + "/deactivate")
+          .with(csrf())
           .contentType(MediaType.APPLICATION_JSON)
           .content(BODY),
       post(URL + "/" + masked(targetId) + "/reactivate")
+          .with(csrf())
           .contentType(MediaType.APPLICATION_JSON)
           .content(BODY)
     };
@@ -467,6 +470,7 @@ class AdministratorManagementContractTest {
   private ResultActions login(String type, String document) throws Exception {
     return mockMvc.perform(
         post("/bff/auth/login")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON)
             .content(
                 "{\"documentType\":\"%s\",\"documentNumber\":\"%s\",\"password\":\"%s\"}"

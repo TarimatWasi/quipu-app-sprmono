@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -251,6 +252,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
             org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(
                     org.springframework.http.HttpMethod.PUT,
                     URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
+                .with(csrf())
                 .file(
                     proofsPart(
                         "[{\"id\":\""
@@ -280,6 +282,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
             org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(
                     org.springframework.http.HttpMethod.PUT,
                     URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
+                .with(csrf())
                 .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800}]"))
                 .header("Origin", ORIGIN)
                 .cookie(admin()))
@@ -430,6 +433,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(
             patch(URL + "/" + UUID.randomUUID())
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"APPROVED\"}"))

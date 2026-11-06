@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.reset;
@@ -165,6 +166,7 @@ abstract class PaymentsContractSupport {
   protected ResultActions resolve(Long id, String body) throws Exception {
     return mockMvc.perform(
         patch(URL + "/" + ids().mask(IdKind.PAYMENT, id))
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
@@ -172,7 +174,9 @@ abstract class PaymentsContractSupport {
 
   /** A direct payment form with one file in {@code files} and no other part yet. */
   protected static MockMultipartHttpServletRequestBuilder builder(byte[] content) {
-    return multipart(URL).file(new MockMultipartFile("files", "v.pdf", "application/pdf", content));
+    return multipart(URL)
+        .with(csrf())
+        .file(new MockMultipartFile("files", "v.pdf", "application/pdf", content));
   }
 
   /**
@@ -224,6 +228,7 @@ abstract class PaymentsContractSupport {
       throws Exception {
     return postForm(
         multipart(URL)
+            .with(csrf())
             .file(new MockMultipartFile("files", name, "application/pdf", content))
             .file(proofs(amount, "Efectivo"))
             .param("guestId", id(IdKind.GUEST, guestId))

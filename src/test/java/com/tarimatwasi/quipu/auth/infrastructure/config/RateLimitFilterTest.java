@@ -75,6 +75,19 @@ class RateLimitFilterTest {
   }
 
   @Test
+  void csrfBootstrapSharesTheSensitiveEndpointAllowance() throws Exception {
+    var filter = limitedTo(1, "");
+    var bootstrap = post("/bff/auth/csrf", "10.0.0.1");
+    bootstrap.setMethod("GET");
+    assertThat(run(filter, bootstrap).getStatus()).isEqualTo(200);
+
+    assertThat(run(filter, post(LOGIN, "10.0.0.1")).getStatus()).isEqualTo(429);
+    var again = post("/bff/auth/csrf", "10.0.0.1");
+    again.setMethod("GET");
+    assertThat(run(filter, again).getStatus()).isEqualTo(429);
+  }
+
+  @Test
   void leavesOtherEndpointsAndMethodsAlone() throws Exception {
     var filter = limitedTo(1, "");
     run(filter, post(LOGIN, "10.0.0.1"));

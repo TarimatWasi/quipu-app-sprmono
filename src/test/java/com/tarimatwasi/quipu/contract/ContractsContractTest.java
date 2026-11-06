@@ -1,6 +1,8 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.postWithCsrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -10,7 +12,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -55,11 +56,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
-/**
- * TAR-40: the real answers of the contracts (RF-03, RF-09, CU-03, CU-07, CU-12, CU-18) satisfy the
- * shared contract, the one of the tag pinned in pom.xml. The bucket is a fake of the port; the day
- * is fixed at 2026-10-14 in Lima.
- */
+/** TAR-40: contract responses (RF-03/09, CU-03/07/12/18) match the pinned BFF spec. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
 @AutoConfigureMockMvc
 @ImportTestcontainers(PostgresContainers.class)
@@ -119,10 +116,7 @@ class ContractsContractTest {
     return openApi().isValid(SPEC);
   }
 
-  /**
-   * MockMvc keeps the parts of a multipart request apart from its body, so the validator would see
-   * a body that is not there: only the answer is checked against the contract.
-   */
+  /** MockMvc omits the multipart body: validate the response only. */
   private static ResultMatcher answersTheContract() {
     var validator =
         OpenApiInteractionValidator.createFor(SPEC)
@@ -200,7 +194,7 @@ class ContractsContractTest {
   void aRequestWithoutTheFileIsAValidationError() throws Exception {
     mockMvc
         .perform(
-            fields(multipart(URL), room, contractGuest, OPEN_ENDED)
+            fields(multipart(URL).with(csrf()), room, contractGuest, OPEN_ENDED)
                 .header("Origin", "http://localhost:3000")
                 .cookie(admin()))
         .andExpect(status().isBadRequest())
@@ -467,7 +461,7 @@ class ContractsContractTest {
           .andExpect(satisfiesTheContract())
           .andExpect(jsonPath("$.code").value("CONTRACT_NOT_FOUND"));
       mockMvc
-          .perform(post(URL + "/" + unknown + "/terminate").cookie(admin()))
+          .perform(postWithCsrf(URL + "/" + unknown + "/terminate").cookie(admin()))
           .andExpect(status().isNotFound())
           .andExpect(satisfiesTheContract());
     }
@@ -526,14 +520,14 @@ class ContractsContractTest {
         "/bff/admin/environments/" + ids().mask(IdKind.ENVIRONMENT, room) + "/deactivate";
 
     mockMvc
-        .perform(post(deactivate).cookie(admin()))
+        .perform(postWithCsrf(deactivate).cookie(admin()))
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("ENVIRONMENT_OCCUPIED"));
 
     terminate(id).andExpect(status().isNoContent());
     mockMvc
-        .perform(post(deactivate).cookie(admin()))
+        .perform(postWithCsrf(deactivate).cookie(admin()))
         .andExpect(status().isNoContent())
         .andExpect(satisfiesTheContract());
   }
@@ -586,7 +580,7 @@ class ContractsContractTest {
         .perform(get(URL + "/" + UUID.randomUUID()).cookie(guest()))
         .andExpect(status().isForbidden());
     mockMvc
-        .perform(post(URL + "/" + UUID.randomUUID() + "/terminate").cookie(guest()))
+        .perform(postWithCsrf(URL + "/" + UUID.randomUUID() + "/terminate").cookie(guest()))
         .andExpect(status().isForbidden());
     upload(room, contractGuest, PDF, "c.pdf", "2026-11-01", null, guest())
         .andExpect(status().isForbidden());
@@ -602,6 +596,7 @@ class ContractsContractTest {
     mockMvc
         .perform(
             multipart("/bff/admin/environments")
+                .with(csrf())
                 .file(new MockMultipartFile("file", "c.pdf", "application/pdf", PDF))
                 .cookie(admin()))
         .andExpect(status().isUnsupportedMediaType())
@@ -609,6 +604,7 @@ class ContractsContractTest {
     mockMvc
         .perform(
             multipart(URL + "/" + UUID.randomUUID() + "/terminate")
+                .with(csrf())
                 .file(new MockMultipartFile("file", "c.pdf", "application/pdf", PDF))
                 .cookie(admin()))
         .andExpect(status().isUnsupportedMediaType());
@@ -677,7 +673,9 @@ class ContractsContractTest {
   }
 
   private MockMultipartHttpServletRequestBuilder multipartWith(byte[] content, String name) {
-    return multipart(URL).file(new MockMultipartFile("file", name, "application/pdf", content));
+    return multipart(URL)
+        .with(csrf())
+        .file(new MockMultipartFile("file", name, "application/pdf", content));
   }
 
   /** What the form carries besides the ids and the file; the strings are sent as they are. */
@@ -728,7 +726,7 @@ class ContractsContractTest {
 
   private ResultActions terminate(Long id) throws Exception {
     return mockMvc.perform(
-        post(URL + "/" + ids().mask(IdKind.CONTRACT, id) + "/terminate").cookie(admin()));
+        postWithCsrf(URL + "/" + ids().mask(IdKind.CONTRACT, id) + "/terminate").cookie(admin()));
   }
 
   private Long contractId() {

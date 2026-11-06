@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -385,6 +386,7 @@ class GuestOnboardingContractTest {
     mockMvc
         .perform(
             multipart(DOCUMENTS)
+                .with(csrf())
                 .file(new MockMultipartFile("file", "d.pdf", "application/pdf", PDF))
                 .param("guestId", UUID.randomUUID().toString())
                 .header("Origin", ORIGIN)
@@ -395,6 +397,7 @@ class GuestOnboardingContractTest {
     mockMvc
         .perform(
             multipart(DOCUMENTS)
+                .with(csrf())
                 .file(new MockMultipartFile("other", "d.pdf", "application/pdf", PDF))
                 .header("Origin", ORIGIN)
                 .cookie(guest()))
@@ -424,6 +427,7 @@ class GuestOnboardingContractTest {
     mockMvc
         .perform(
             multipart(DOCUMENTS)
+                .with(csrf())
                 .file(new MockMultipartFile("file", "d.pdf", "application/pdf", PDF))
                 .cookie(guest()))
         .andExpect(status().isForbidden())
@@ -532,6 +536,7 @@ class GuestOnboardingContractTest {
     mockMvc
         .perform(
             post(CONSENT)
+                .with(csrf())
                 .cookie(guest())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -636,7 +641,11 @@ class GuestOnboardingContractTest {
 
   private ResultActions personalData(Cookie who, String body) throws Exception {
     return mockMvc.perform(
-        put(PERSONAL_DATA).cookie(who).contentType(MediaType.APPLICATION_JSON).content(body));
+        put(PERSONAL_DATA)
+            .with(csrf())
+            .cookie(who)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
   }
 
   private void savePersonalData() throws Exception {
@@ -646,18 +655,20 @@ class GuestOnboardingContractTest {
   private ResultActions upload(Cookie who, byte[] content, String name) throws Exception {
     return mockMvc.perform(
         multipart(DOCUMENTS)
+            .with(csrf())
             .file(new MockMultipartFile("file", name, "application/pdf", content))
             .header("Origin", ORIGIN)
             .cookie(who));
   }
 
   private ResultActions done(Cookie who) throws Exception {
-    return mockMvc.perform(post(DONE).cookie(who));
+    return mockMvc.perform(post(DONE).with(csrf()).cookie(who));
   }
 
   private ResultActions accept(Cookie who, String accepted, String version) throws Exception {
     return mockMvc.perform(
         post(CONSENT)
+            .with(csrf())
             .cookie(who)
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"accepted\":%s,\"consentVersion\":\"%s\"}".formatted(accepted, version)));

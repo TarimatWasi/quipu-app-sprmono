@@ -13,9 +13,11 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -31,6 +33,7 @@ class SecurityConfig {
   private static final String[] PUBLIC_PATHS = {
     "/actuator/health",
     "/actuator/health/**",
+    "/bff/auth/csrf",
     "/bff/auth/login",
     "/bff/auth/activate",
     "/bff/auth/forgot-password",
@@ -44,14 +47,17 @@ class SecurityConfig {
       JwtDecoder jwtDecoder,
       AccountJwtAuthenticationConverter sessionConverter,
       RateLimitProperties rateLimit,
-      SessionUserLimits sessionUserLimits)
+      SessionUserLimits sessionUserLimits,
+      CookieCsrfTokenRepository csrfTokenRepository)
       throws Exception {
-    // CSRF is disabled on purpose (ADR-006). Mitigation, in layers: the session cookie is
-    // SameSite=Lax (the browser talks to the frontend origin and the hosting layer rewrites
-    // /bff, TAR-75); JsonOnlyFilter rejects any request with a body that is not JSON (415);
-    // bodyless requests pass it and rely on CORS rejecting a foreign Origin (an allow-list of
-    // exact origins and anchored patterns, see CorsProperties).
-    http.csrf(csrf -> csrf.disable())
+    // TAR-300: Spring owns token generation and validation; Angular supplies the cookie value
+    // in X-XSRF-TOKEN. Explicit lifecycle handling is needed for our controller-based login.
+    http.csrf(
+            csrf ->
+                csrf.spa()
+                    .csrfTokenRepository(csrfTokenRepository)
+                    .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
+                    .withObjectPostProcessor(new CookieSessionCsrfProtection()))
         .cors(Customizer.withDefaults()) // uses the corsConfigurationSource bean
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .headers(
@@ -85,10 +91,18 @@ class SecurityConfig {
                     .anyRequest()
                     .authenticated())
         // Both run before the session is read, so a flood of bad requests costs no account lookup.
-        .addFilterBefore(new RateLimitFilter(rateLimit), BearerTokenAuthenticationFilter.class)
-        .addFilterBefore(new JsonOnlyFilter(), BearerTokenAuthenticationFilter.class);
+        .addFilterBefore(new RateLimitFilter(rateLimit), CsrfFilter.class)
+        .addFilterBefore(new JsonOnlyFilter(), CsrfFilter.class);
     addSessionUserLimits(http, sessionUserLimits);
     return http.build();
+  }
+
+  /** Host-only session cookie; only the CSRF cookie is readable by Angular. */
+  @Bean
+  CookieCsrfTokenRepository csrfTokenRepository() {
+    CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+    repository.setCookieCustomizer(cookie -> cookie.secure(true).path("/").sameSite("Lax"));
+    return repository;
   }
 
   /**
