@@ -74,7 +74,11 @@ class AccountJwtAuthenticationConverterTest {
 
   private JwtTokenProvider providerFor(SecretKey signingKey, Duration expiration) {
     return new JwtTokenProvider(
-        new JwtProperties(SECRET, expiration), clock, SessionJwt.encoder(signingKey), masker);
+        new JwtProperties(SECRET, expiration),
+        clock,
+        SessionJwt.encoder(signingKey),
+        masker,
+        users);
   }
 
   /** What the filter chain does with a cookie: decode it, then build the authentication. */
@@ -128,65 +132,6 @@ class AccountJwtAuthenticationConverterTest {
     assertThat(authenticate(provider.issue(disabled.toString()))).isEmpty();
 
     assertThat(authenticate(signed(Map.of("sub", "not-a-uuid", "role", "ADMIN")))).isEmpty();
-  }
-
-  @Test
-  void aTokenIssuedBeforeThePasswordWasChangedOpensNoSession() {
-    String old = provider.issue(id.toString());
-    clock.advance(Duration.ofSeconds(5));
-    Instant changedAt = clock.instant();
-    when(users.findById(id))
-        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
-
-    assertThat(authenticate(old)).isEmpty();
-  }
-
-  /** TAR-201 (D-20): the second of the JWT is not enough; a token of that same second is ended. */
-  @Test
-  void aTokenIssuedInTheSameSecondButBeforeThePasswordChangeOpensNoSession() {
-    clock.advance(Duration.ofMillis(100));
-    String old = provider.issue(id.toString());
-    Instant changedAt = NOW.plusMillis(900);
-    when(users.findById(id))
-        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
-
-    assertThat(authenticate(old)).isEmpty();
-  }
-
-  @Test
-  void aTokenIssuedAtOrAfterThePasswordChangeStillWorks() {
-    Instant changedAt = NOW.plusNanos(900_000_123);
-    when(users.findById(id))
-        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
-
-    // The change replaces the session cookie in the same request, with the clock read after it.
-    clock.advance(Duration.between(NOW, changedAt));
-    assertThat(authenticate(provider.issue(id.toString()))).isPresent();
-    clock.advance(Duration.ofSeconds(30));
-    assertThat(authenticate(provider.issue(id.toString()))).isPresent();
-  }
-
-  /**
-   * Tokens issued before TAR-201 have only the second: they keep the old rule until they expire.
-   */
-  @Test
-  void aTokenWithoutThePreciseIssueTimeIsJudgedByItsSecond() {
-    Instant changedAt = NOW.plusMillis(900);
-    when(users.findById(id))
-        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, changedAt)));
-    String sub = inSession.mask(IdKind.USER, id).toString();
-
-    assertThat(authenticate(signed(Map.of("sub", sub)))).isPresent();
-    when(users.findById(id))
-        .thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, NOW.plusSeconds(1))));
-    assertThat(authenticate(signed(Map.of("sub", sub)))).isEmpty();
-  }
-
-  @Test
-  void anAccountThatNeverChangedItsPasswordAcceptsAnyValidToken() {
-    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
-
-    assertThat(authenticate(provider.issue(id.toString()))).isPresent();
   }
 
   @Test
@@ -420,45 +365,30 @@ class AccountJwtAuthenticationConverterTest {
         .isEmpty();
   }
 
-  /**
-   * TAR-205: the precise issue time must fall in the second of {@code iat}, in microseconds; a
-   * value out of it, not a whole number, or one that overflows is an invalid token, never a 500.
-   * The last microsecond of the second is in: the issuer rounds the instant up.
-   */
   @Test
-  void aPreciseIssueTimeOutsideTheSecondOfIatIsAnInvalidToken() {
+  void tokensWithoutAnIntegerSecurityVersionAreRefused() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
-    long iatMicros = NOW.getEpochSecond() * 1_000_000L;
-
-    for (Object good : List.<Object>of(iatMicros, iatMicros + 999_999L, iatMicros + 1_000_000L)) {
-      assertThat(converter.convert(jwt(NOW, good))).as(String.valueOf(good)).isNotNull();
+    Map<String, Object> claims =
+        new HashMap<>(decoder.decode(provider.issue(id.toString())).getClaims());
+    claims.remove("sv");
+    assertThat(authenticate(signedWithoutSession(claims))).isEmpty();
+    for (Object bad : List.<Object>of(-1L, "0", 0.5, true, Long.MAX_VALUE)) {
+      claims.put("sv", bad);
+      assertThat(authenticate(signed(claims))).as(String.valueOf(bad)).isEmpty();
     }
-    for (Object bad :
-        List.<Object>of(
-            iatMicros - 1,
-            iatMicros + 1_000_001L,
-            Long.MAX_VALUE,
-            Long.MIN_VALUE,
-            1.5e300,
-            (double) iatMicros,
-            "1")) {
-      assertThatThrownBy(() -> converter.convert(jwt(NOW, bad)))
-          .as(String.valueOf(bad))
-          .isInstanceOf(InvalidBearerTokenException.class);
-    }
-    // An iat so far ahead that it overflows in microseconds.
-    assertThatThrownBy(() -> converter.convert(jwt(Instant.MAX, 0L)))
-        .isInstanceOf(InvalidBearerTokenException.class);
   }
 
-  private Jwt jwt(Instant issuedAt, Object preciseIssuedAt) {
-    return Jwt.withTokenValue("t")
-        .header("alg", "HS256")
-        .subject(inSession.mask(IdKind.USER, id).toString())
-        .issuedAt(issuedAt)
-        .claim(AccessSessions.SESSION_ID_CLAIM, SESSION)
-        .claim(JwtTokenProvider.ISSUED_AT_MICROS_CLAIM, preciseIssuedAt)
-        .build();
+  @Test
+  void aVersionChangeRevokesTokensEvenWhenTheClockHasNotAdvanced() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String old = provider.issue(id.toString());
+    when(users.findById(id)).thenReturn(Optional.of(accountWithVersion(1L)));
+    when(users.securityVersion(id)).thenReturn(1L);
+
+    assertThat(authenticate(old)).isEmpty();
+    String replacement = provider.renew(id.toString(), sessionOf(decoder.decode(old)));
+    assertThat(authenticate(replacement)).isPresent();
+    assertThat(decoder.decode(replacement).<Long>getClaim("sv")).isEqualTo(1L);
   }
 
   /**
@@ -486,7 +416,10 @@ class AccountJwtAuthenticationConverterTest {
   /** Names {@link #SESSION} unless the claims name another. */
   private String encode(Map<String, Object> claims, @Nullable Instant expiresAt) {
     JwtClaimsSet.Builder builder =
-        JwtClaimsSet.builder().issuedAt(NOW).claim(AccessSessions.SESSION_ID_CLAIM, SESSION);
+        JwtClaimsSet.builder()
+            .issuedAt(NOW)
+            .claim(AccessSessions.SESSION_ID_CLAIM, SESSION)
+            .claim(JwtTokenProvider.SECURITY_VERSION_CLAIM, 0L);
     if (expiresAt != null) {
       builder.expiresAt(expiresAt);
     }
@@ -495,6 +428,23 @@ class AccountJwtAuthenticationConverterTest {
         .encode(
             JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), builder.build()))
         .getTokenValue();
+  }
+
+  private UserAccount accountWithVersion(long version) {
+    return new UserAccount(
+        id,
+        "a@example.test",
+        DocumentType.DNI,
+        "12345678",
+        "hash",
+        Role.ADMIN,
+        null,
+        false,
+        "ACTIVE",
+        0,
+        null,
+        null,
+        version);
   }
 
   private UserAccount account(
@@ -516,6 +466,7 @@ class AccountJwtAuthenticationConverterTest {
         status,
         0,
         null,
-        passwordChangedAt);
+        passwordChangedAt,
+        0L);
   }
 }

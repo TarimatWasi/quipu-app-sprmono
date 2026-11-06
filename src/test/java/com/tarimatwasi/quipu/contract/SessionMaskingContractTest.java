@@ -169,6 +169,7 @@ class SessionMaskingContractTest {
     String old =
         signed(
             JwtClaimsSet.builder()
+                .claim("sv", 0L)
                 .subject(masker.session(sessionId).mask(IdKind.USER, adminId).toString())
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(600))
@@ -192,6 +193,7 @@ class SessionMaskingContractTest {
     String current =
         signed(
             JwtClaimsSet.builder()
+                .claim("sv", 0L)
                 .subject(masker.session(sessionId).mask(IdKind.USER, adminId).toString())
                 .claim("sid", sessionId)
                 .issuedAt(now)

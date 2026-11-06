@@ -25,6 +25,11 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   private final Map<Long, ResetToken> resetTokens = new HashMap<>();
   private final Map<Long, String> names = new HashMap<>();
 
+  @Override
+  public long securityVersion(Long id) {
+    return find(id).securityVersion();
+  }
+
   void save(UserAccount user) {
     byDocument.put(user.documentType() + ":" + user.documentNumber(), user);
     byId.put(user.id(), user);
@@ -163,7 +168,10 @@ final class InMemoryUserRepository implements UserRepositoryPort {
                         status,
                         user.failedLoginAttempts(),
                         user.lockedUntil(),
-                        user.passwordChangedAt())));
+                        user.passwordChangedAt(),
+                        "INACTIVE".equals(status) && !user.isDisabled()
+                            ? Math.incrementExact(user.securityVersion())
+                            : user.securityVersion())));
   }
 
   private long nextId = 1_000_000L;
@@ -188,7 +196,8 @@ final class InMemoryUserRepository implements UserRepositoryPort {
             "ACTIVE",
             0,
             null,
-            null));
+            null,
+            0L));
   }
 
   @Override
@@ -227,7 +236,8 @@ final class InMemoryUserRepository implements UserRepositoryPort {
             user.status(),
             user.failedLoginAttempts(),
             user.lockedUntil(),
-            user.passwordChangedAt()));
+            user.passwordChangedAt(),
+            user.securityVersion()));
     resetTokens.remove(id);
   }
 
@@ -249,7 +259,8 @@ final class InMemoryUserRepository implements UserRepositoryPort {
                         user.status(),
                         user.failedLoginAttempts(),
                         user.lockedUntil(),
-                        user.passwordChangedAt())));
+                        user.passwordChangedAt(),
+                        user.securityVersion())));
   }
 
   @Override
@@ -276,7 +287,8 @@ final class InMemoryUserRepository implements UserRepositoryPort {
         user.status(),
         attempts,
         lockedUntil,
-        user.passwordChangedAt());
+        user.passwordChangedAt(),
+        user.securityVersion());
   }
 
   private static UserAccount withPassword(
@@ -293,6 +305,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
         user.status(),
         0,
         null,
-        changedAt);
+        changedAt,
+        Math.incrementExact(user.securityVersion()));
   }
 }

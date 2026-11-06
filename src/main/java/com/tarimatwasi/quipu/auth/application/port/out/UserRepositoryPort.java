@@ -14,6 +14,9 @@ public interface UserRepositoryPort {
 
   Optional<UserAccount> findById(Long id);
 
+  /** Current security version, read after flushing pending account changes; unknown ids fail. */
+  long securityVersion(Long id);
+
   /**
    * The guest of the account, read as a single value: no account is kept by the persistence
    * context, so a later read under a lock is fresh. Empty for an unknown account or one of no
@@ -40,7 +43,7 @@ public interface UserRepositoryPort {
 
   /**
    * Stores the new hash and clears the pending-change flag of the account. {@code changedAt} is
-   * when the password changed: tokens issued before it stop being valid (TAR-125).
+   * when the password changed; its security version increments in the same write (TAR-298).
    */
   void changePassword(Long id, String newPasswordHash, Instant changedAt);
 

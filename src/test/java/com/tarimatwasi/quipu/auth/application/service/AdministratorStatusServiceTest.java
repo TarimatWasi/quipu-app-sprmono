@@ -101,7 +101,19 @@ class AdministratorStatusServiceTest {
   private UserAccount account(
       Long id, String email, String document, Role role, String status, boolean mustChange) {
     return new UserAccount(
-        id, email, DocumentType.DNI, document, hash, role, null, mustChange, status, 0, null, null);
+        id,
+        email,
+        DocumentType.DNI,
+        document,
+        hash,
+        role,
+        null,
+        mustChange,
+        status,
+        0,
+        null,
+        null,
+        0L);
   }
 
   private StatusChangeCommand command(@Nullable Long administrator, String password) {
@@ -405,7 +417,8 @@ class AdministratorStatusServiceTest {
             "ACTIVE",
             0,
             null,
-            null),
+            null,
+            0L),
         "00");
 
     List<AdministratorView> list = service.list(actorId);
@@ -476,7 +489,8 @@ class AdministratorStatusServiceTest {
               status,
               a.failedLoginAttempts(),
               a.lockedUntil(),
-              a.passwordChangedAt()));
+              a.passwordChangedAt(),
+              0L));
     }
 
     private StoredAdministrator stored(UserAccount a) {

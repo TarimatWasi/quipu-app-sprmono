@@ -643,7 +643,7 @@ class AuthBffControllerTest {
   /** TAR-125: a session opened before a password change does not survive it. */
   @Test
   void aSessionOpenedBeforeThePasswordChangeStopsWorkingAfterIt() throws Exception {
-    // The token's issue time has second precision: the old session is one from ten seconds ago.
+    // The old token carries the current version; choosing a password increments it.
     String id =
         Objects.requireNonNull(jdbc.queryForObject("SELECT id::text FROM users", String.class));
     Cookie old = new Cookie("sessionToken", craftedToken(id, Instant.now().minusSeconds(10)));
@@ -667,7 +667,7 @@ class AuthBffControllerTest {
   @Test
   void aSessionOpenedBeforeAPasswordResetStopsWorking() throws Exception {
     Cookie session = loginCookie("Temporal123!");
-    jdbc.update("UPDATE users SET password_changed_at = now() + interval '1 minute'");
+    jdbc.update("UPDATE users SET security_version = security_version + 1");
 
     mockMvc
         .perform(get(ME).cookie(session))
@@ -713,6 +713,13 @@ class AuthBffControllerTest {
         JwtClaimsSet.builder()
             .subject(masker.session(sessionId).mask(IdKind.USER, Long.parseLong(userId)).toString())
             .claim(AccessSessions.SESSION_ID_CLAIM, sessionId)
+            .claim(
+                "sv",
+                Objects.requireNonNull(
+                    jdbc.queryForObject(
+                        "SELECT security_version FROM users WHERE id = ?",
+                        Long.class,
+                        Long.parseLong(userId))))
             .issuedAt(issuedAt)
             .expiresAt(issuedAt.plusSeconds(600))
             .build();

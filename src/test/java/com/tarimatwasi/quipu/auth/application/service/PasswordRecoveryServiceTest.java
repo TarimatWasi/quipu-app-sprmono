@@ -75,7 +75,8 @@ class PasswordRecoveryServiceTest {
             status,
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(user);
     return user;
   }
@@ -95,7 +96,8 @@ class PasswordRecoveryServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(admin);
     return admin;
   }
@@ -150,7 +152,8 @@ class PasswordRecoveryServiceTest {
             "ACTIVE",
             0,
             null,
-            null));
+            null,
+            0L));
     service.requestReset(EMAIL);
 
     assertThat(mail.sent).allSatisfy(sent -> assertThat(sent.activation()).isFalse());
@@ -400,7 +403,8 @@ class PasswordRecoveryServiceTest {
             "INACTIVE",
             0,
             null,
-            null));
+            null,
+            0L));
 
     assertThatThrownBy(() -> service.resetPassword(code, NEW_PASSWORD, null))
         .isInstanceOf(InvalidResetCodeException.class);
@@ -473,7 +477,8 @@ class PasswordRecoveryServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(user);
     return user;
   }

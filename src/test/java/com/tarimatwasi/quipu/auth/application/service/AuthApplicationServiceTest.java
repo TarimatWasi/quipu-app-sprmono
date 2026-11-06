@@ -118,7 +118,8 @@ class AuthApplicationServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(admin);
 
     LoginResult result =
@@ -143,7 +144,8 @@ class AuthApplicationServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(admin);
 
     assertThatThrownBy(() -> service.login(new LoginCommand(DocumentKind.DNI, "00000000", "wrong")))
@@ -189,7 +191,8 @@ class AuthApplicationServiceTest {
             status,
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(user);
     return user;
   }
@@ -400,7 +403,8 @@ class AuthApplicationServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(admin);
     return admin;
   }
@@ -548,7 +552,8 @@ class AuthApplicationServiceTest {
             "ACTIVE",
             4,
             null,
-            null);
+            null,
+            0L);
     UserRepositoryPort stale = mock(UserRepositoryPort.class);
     when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
         .thenReturn(Optional.of(unlocked));
@@ -622,7 +627,8 @@ class AuthApplicationServiceTest {
             "ACTIVE",
             0,
             null,
-            null);
+            null,
+            0L);
     repository.save(user);
     return user;
   }

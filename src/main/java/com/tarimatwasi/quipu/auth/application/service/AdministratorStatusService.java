@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
 /**
  * TAR-127 (RF-22): lists the administrators and deactivates or reactivates another one, keeping at
  * least one active ADMIN. The session of a deactivated administrator stops working from its next
- * request on (the session rejects an INACTIVE account), so no token is revoked here.
+ * request on; the status write also increments its security version (TAR-298), so reactivation
+ * never revives the old sessions.
  *
  * <p>Not transactional on purpose: the re-authentication commits first (a wrong password is counted
  * even though the change ends in an exception), then {@link AdministratorStatusChanger} changes the
