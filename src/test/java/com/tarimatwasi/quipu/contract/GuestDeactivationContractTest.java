@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -123,6 +124,7 @@ class GuestDeactivationContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/bff/auth/login")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"documentType\":\"DNI\",\"documentNumber\":\"00000002\",\"password\":\"%s\"}"
@@ -172,7 +174,10 @@ class GuestDeactivationContractTest extends PaymentsContractSupport {
   void anUnknownGuestIsNotFound() throws Exception {
     for (String action : new String[] {"/deactivate", "/reactivate"}) {
       mockMvc
-          .perform(MockMvcRequestBuilders.post(GUESTS + UUID.randomUUID() + action).cookie(admin()))
+          .perform(
+              MockMvcRequestBuilders.post(GUESTS + UUID.randomUUID() + action)
+                  .with(csrf())
+                  .cookie(admin()))
           .andExpect(status().isNotFound())
           .andExpect(satisfiesTheContract());
     }
@@ -184,11 +189,11 @@ class GuestDeactivationContractTest extends PaymentsContractSupport {
     for (String action : new String[] {"/deactivate", "/reactivate"}) {
       String url = GUESTS + id(IdKind.GUEST, temporaryGuest) + action;
       mockMvc
-          .perform(MockMvcRequestBuilders.post(url).cookie(guest()))
+          .perform(MockMvcRequestBuilders.post(url).with(csrf()).cookie(guest()))
           .andExpect(status().isForbidden())
           .andExpect(satisfiesTheContract());
       mockMvc
-          .perform(MockMvcRequestBuilders.post(url))
+          .perform(MockMvcRequestBuilders.post(url).with(csrf()))
           .andExpect(status().isUnauthorized())
           .andExpect(withoutSession());
     }
@@ -216,12 +221,14 @@ class GuestDeactivationContractTest extends PaymentsContractSupport {
   private ResultActions deactivate(Long guestId) throws Exception {
     return mockMvc.perform(
         MockMvcRequestBuilders.post(GUESTS + id(IdKind.GUEST, guestId) + "/deactivate")
+            .with(csrf())
             .cookie(admin()));
   }
 
   private ResultActions reactivate(Long guestId) throws Exception {
     return mockMvc.perform(
         MockMvcRequestBuilders.post(GUESTS + id(IdKind.GUEST, guestId) + "/reactivate")
+            .with(csrf())
             .cookie(admin()));
   }
 

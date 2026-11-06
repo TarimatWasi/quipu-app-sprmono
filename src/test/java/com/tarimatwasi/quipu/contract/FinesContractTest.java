@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -137,11 +138,11 @@ class FinesContractTest {
         .andExpect(jsonPath("$[0].environmentCode").value("105"))
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(delete(URL + "/" + id).cookie(admin()))
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(admin()))
         .andExpect(status().isNoContent())
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(delete(URL + "/" + id).cookie(admin()))
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(admin()))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
         .andExpect(satisfiesTheContract());
@@ -208,13 +209,14 @@ class FinesContractTest {
     mockMvc
         .perform(
             post(URL)
+                .with(csrf())
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body(maskedGuest, "10", "2026-09", "")))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(delete(URL + "/" + sessionIds().mask(IdKind.FINE, 1L)).cookie(guest))
+        .perform(delete(URL + "/" + sessionIds().mask(IdKind.FINE, 1L)).with(csrf()).cookie(guest))
         .andExpect(status().isForbidden())
         .andExpect(satisfiesTheContract());
   }
@@ -225,7 +227,11 @@ class FinesContractTest {
 
   private ResultActions create(String body) throws Exception {
     return mockMvc.perform(
-        post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+        post(URL)
+            .with(csrf())
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
   }
 
   private void insertUser(Long id, String role, String document) {

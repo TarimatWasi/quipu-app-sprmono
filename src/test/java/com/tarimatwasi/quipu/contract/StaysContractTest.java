@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -245,6 +246,7 @@ class StaysContractTest {
     mockMvc
         .perform(
             post(stays(guest))
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -285,6 +287,7 @@ class StaysContractTest {
     mockMvc
         .perform(
             post(URL + "/" + adminIds().mask(IdKind.GUEST, 999_999L) + "/stays")
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -416,6 +419,7 @@ class StaysContractTest {
     mockMvc
         .perform(
             patch(stays(guest) + "/" + UUID.randomUUID())
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":0,\"agreedAmount\":120}"))
@@ -444,6 +448,7 @@ class StaysContractTest {
     mockMvc
         .perform(
             post(stays(guest))
+                .with(csrf())
                 .cookie(guestCookie)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -478,6 +483,7 @@ class StaysContractTest {
   private ResultActions postStay(Long guest, String body) throws Exception {
     return mockMvc.perform(
         post(stays(guest))
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(withEnvironment(body)));
@@ -487,6 +493,7 @@ class StaysContractTest {
   private ResultActions patchStay(Long guest, Long stay, String body) throws Exception {
     return mockMvc.perform(
         patch(stays(guest) + "/" + adminIds().mask(IdKind.STAY, stay))
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(withField("version", Long.toString(versionOf(stay)), body)));

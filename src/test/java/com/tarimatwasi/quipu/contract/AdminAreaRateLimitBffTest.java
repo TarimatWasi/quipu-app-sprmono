@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -147,12 +148,17 @@ class AdminAreaRateLimitBffTest {
   /** A body the schema refuses: a deterministic 400 when the request gets through. */
   private ResultActions createFine(Long user) throws Exception {
     return mockMvc.perform(
-        post(FINES).cookie(session(user)).contentType(MediaType.APPLICATION_JSON).content("{}"));
+        post(FINES)
+            .with(csrf())
+            .cookie(session(user))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{}"));
   }
 
   private ResultActions createAdministrator(Long user) throws Exception {
     return mockMvc.perform(
         post("/bff/admin/administrators")
+            .with(csrf())
             .cookie(session(user))
             .contentType(MediaType.APPLICATION_JSON)
             .content(

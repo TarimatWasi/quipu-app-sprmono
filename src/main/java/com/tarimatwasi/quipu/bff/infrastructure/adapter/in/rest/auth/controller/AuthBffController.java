@@ -20,6 +20,8 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestSessionUseCase.Guest
 import com.tarimatwasi.quipu.guest.application.port.in.GuestSessionUseCase.OnboardingStep;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.shared.access.AccessSessions;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -27,7 +29,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.jspecify.annotations.Nullable;
-import org.springframework.http.HttpHeaders;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -116,13 +118,24 @@ public class AuthBffController {
       @NotNull @Size(max = MAX_PASSWORD) String newPassword,
       @Nullable @Size(min = 1, max = 100) @Pattern(regexp = NAME_PATTERN) String name) {}
 
+  /** Public bootstrap, including before sign-in or with an expired session cookie. */
+  @GetMapping("/bff/auth/csrf")
+  public ResponseEntity<Void> csrf(HttpServletRequest request, HttpServletResponse response) {
+    sessionCookies.ensureCsrf(request, response);
+    return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+  }
+
   @PostMapping("/bff/auth/login")
-  public ResponseEntity<SessionResponse> login(@Valid @RequestBody LoginRequest request) {
+  public ResponseEntity<SessionResponse> login(
+      @Valid @RequestBody LoginRequest request,
+      HttpServletRequest servletRequest,
+      HttpServletResponse servletResponse) {
     LoginResult result =
         loginUseCase.login(
             new LoginCommand(request.documentType(), request.documentNumber(), request.password()));
+    sessionCookies.rotateCsrf(servletRequest, servletResponse);
+    sessionCookies.writeSession(result.sessionToken(), servletResponse);
     return ResponseEntity.ok()
-        .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
         .body(
             session(
                 result.role(),
@@ -136,12 +149,15 @@ public class AuthBffController {
    * never logged nor echoed.
    */
   @PostMapping("/bff/auth/activate")
-  public ResponseEntity<SessionResponse> activate(@Valid @RequestBody ActivateRequest request) {
+  public ResponseEntity<SessionResponse> activate(
+      @Valid @RequestBody ActivateRequest request,
+      HttpServletRequest servletRequest,
+      HttpServletResponse servletResponse) {
     ActivationResult result =
         activateAccessUseCase.activate(request.token(), request.newPassword());
-    return ResponseEntity.ok()
-        .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
-        .body(session("GUEST", null, false, result.guestId()));
+    sessionCookies.rotateCsrf(servletRequest, servletResponse);
+    sessionCookies.writeSession(result.sessionToken(), servletResponse);
+    return ResponseEntity.ok().body(session("GUEST", null, false, result.guestId()));
   }
 
   /** TAR-74: restores the session after a reload; answers the account as it is now. */
@@ -213,14 +229,14 @@ public class AuthBffController {
   }
 
   /**
-   * TAR-74: the JWT cannot be revoked, so logging out expires the browser's cookie (same path and
-   * flags as the login). Needs a session, as the contract says.
+   * TAR-300: logout expires the browser session and CSRF cookies. It does not revoke other sessions
+   * of the account. Needs a session and a valid CSRF token, as the contract says.
    */
   @PostMapping("/bff/auth/logout")
-  public ResponseEntity<Void> logout() {
-    return ResponseEntity.noContent()
-        .header(HttpHeaders.SET_COOKIE, sessionCookies.expired().toString())
-        .build();
+  public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+    sessionCookies.clearCsrf(request, response);
+    sessionCookies.clearSession(response);
+    return ResponseEntity.noContent().build();
   }
 
   /**
@@ -229,7 +245,10 @@ public class AuthBffController {
    */
   @PostMapping("/bff/auth/change-password")
   public ResponseEntity<Void> changePassword(
-      @Valid @RequestBody ChangePasswordRequest request, Authentication authentication) {
+      @Valid @RequestBody ChangePasswordRequest request,
+      Authentication authentication,
+      HttpServletRequest servletRequest,
+      HttpServletResponse servletResponse) {
     ChangePasswordResult result =
         changePasswordUseCase.changePassword(
             new ChangePasswordCommand(
@@ -238,9 +257,9 @@ public class AuthBffController {
                 request.currentPassword(),
                 request.newPassword(),
                 temporaryGrantOf(authentication)));
-    return ResponseEntity.noContent()
-        .header(HttpHeaders.SET_COOKIE, sessionCookies.session(result.sessionToken()).toString())
-        .build();
+    sessionCookies.rotateCsrf(servletRequest, servletResponse);
+    sessionCookies.writeSession(result.sessionToken(), servletResponse);
+    return ResponseEntity.noContent().build();
   }
 
   /** RF-16: always 202, whether the email belongs to an account or not. */

@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -54,7 +55,7 @@ class GuestProfileContractTest extends PaymentsContractSupport {
 
   private ResultActions edit(String url, Cookie who, String body) throws Exception {
     return mockMvc.perform(
-        patch(url).cookie(who).contentType(MediaType.APPLICATION_JSON).content(body));
+        patch(url).with(csrf()).cookie(who).contentType(MediaType.APPLICATION_JSON).content(body));
   }
 
   private Map<String, Object> row(Long guest) {

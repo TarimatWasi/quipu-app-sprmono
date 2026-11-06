@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -98,6 +99,7 @@ class ExpensesContractTest {
   private ResultActions edit(String id, String body) throws Exception {
     return mockMvc.perform(
         patch(URL + "/" + id)
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
@@ -138,11 +140,11 @@ class ExpensesContractTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("version"));
     mockMvc
-        .perform(delete(URL + "/" + id).cookie(admin()))
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(admin()))
         .andExpect(status().isNoContent())
         .andExpect(satisfiesTheContract());
     mockMvc
-        .perform(delete(URL + "/" + id).cookie(admin()))
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(admin()))
         .andExpect(status().isNotFound())
         .andExpect(satisfiesTheContract());
   }
@@ -197,7 +199,11 @@ class ExpensesContractTest {
 
   private ResultActions create(String body) throws Exception {
     return mockMvc.perform(
-        post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+        post(URL)
+            .with(csrf())
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
   }
 
   private void insertUser(Long id, String role, String document) {

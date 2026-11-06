@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -104,6 +105,7 @@ class EnvironmentsContractTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":0,\"type\":\"CABIN\"}"))
@@ -138,6 +140,7 @@ class EnvironmentsContractTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":0}"))
@@ -168,16 +171,17 @@ class EnvironmentsContractTest {
 
     for (var action : new String[] {"deactivate", "reactivate"}) {
       mockMvc
-          .perform(post(URL + "/" + id + "/" + action).cookie(admin()))
+          .perform(post(URL + "/" + id + "/" + action).with(csrf()).cookie(admin()))
           .andExpect(status().isNoContent())
           .andExpect(satisfiesTheContract());
       mockMvc
-          .perform(post(URL + "/" + UUID.randomUUID() + "/" + action).cookie(admin()))
+          .perform(post(URL + "/" + UUID.randomUUID() + "/" + action).with(csrf()).cookie(admin()))
           .andExpect(status().isNotFound())
           .andExpect(satisfiesTheContract());
       mockMvc
           .perform(
               post(URL + "/" + id + "/" + action)
+                  .with(csrf())
                   .cookie(
                       new Cookie(
                           "sessionToken", jwtTokenProvider.renew(guestId.toString(), sessionId))))
@@ -210,7 +214,9 @@ class EnvironmentsContractTest {
 
     mockMvc
         .perform(
-            post(URL + "/" + ids().mask(IdKind.ENVIRONMENT, room) + "/deactivate").cookie(admin()))
+            post(URL + "/" + ids().mask(IdKind.ENVIRONMENT, room) + "/deactivate")
+                .with(csrf())
+                .cookie(admin()))
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("ENVIRONMENT_OCCUPIED"))
@@ -245,7 +251,11 @@ class EnvironmentsContractTest {
 
   private ResultActions create(String body) throws Exception {
     return mockMvc.perform(
-        post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+        post(URL)
+            .with(csrf())
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
   }
 
   private static String idOf(ResultActions created) throws Exception {

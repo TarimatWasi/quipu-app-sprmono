@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,6 +33,7 @@ class ActivateRateLimitBffTest {
   private ResultActions activate() throws Exception {
     return mockMvc.perform(
         post("/bff/auth/activate")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"token\":\"guess\",\"newPassword\":\"MiClave-2026\"}"));
   }

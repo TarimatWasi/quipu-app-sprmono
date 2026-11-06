@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -72,6 +73,7 @@ class UploadRoutesContractTest {
   private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder
       upload(String route) {
     return multipart(route)
+        .with(csrf())
         .file(new MockMultipartFile("file", "c.pdf", "application/pdf", new byte[] {1}));
   }
 

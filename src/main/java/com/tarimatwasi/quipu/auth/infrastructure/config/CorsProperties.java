@@ -47,7 +47,7 @@ public record CorsProperties(List<String> allowedOrigins, List<String> allowedOr
     var config = new WildcardCorsConfiguration(allowedOriginPatterns);
     config.setAllowedOrigins(origins);
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
-    config.setAllowedHeaders(List.of("Content-Type"));
+    config.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
     // The login counts down from Retry-After (423, TAR-131) and the rate limit uses it too (429):
     // a page on another origin only reads a response header that is exposed.
     config.setExposedHeaders(List.of("Retry-After"));

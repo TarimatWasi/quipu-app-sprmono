@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -83,7 +84,8 @@ class PasswordRecoveryBffTest {
   }
 
   private ResultActions postJson(String uri, String body) throws Exception {
-    return mockMvc.perform(post(uri).contentType(MediaType.APPLICATION_JSON).content(body));
+    return mockMvc.perform(
+        post(uri).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body));
   }
 
   private ResultActions login(String password) throws Exception {
@@ -177,6 +179,7 @@ class PasswordRecoveryBffTest {
     mockMvc
         .perform(
             post("/bff/auth/change-password")
+                .with(csrf())
                 .cookie(session)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"newPassword\":\"" + NEW_PASSWORD + "\"}"))
@@ -341,6 +344,7 @@ class PasswordRecoveryBffTest {
     mockMvc
         .perform(
             post(FORGOT)
+                .with(csrf())
                 .cookie(pending)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"" + EMAIL + "\"}"))

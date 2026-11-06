@@ -1,8 +1,8 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.auth.controller;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.postWithCsrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -96,7 +96,8 @@ class AuthBffControllerTest {
   @Test
   void loginWithAdminSucceedsAndSetsCookie() throws Exception {
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+        .perform(
+            postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.role").value("ADMIN"))
         .andExpect(jsonPath("$.mustChangePassword").value(true))
@@ -113,11 +114,18 @@ class AuthBffControllerTest {
   void loginCookieIsLaxSecureHttpOnlyAndLastsAsLongAsTheToken() throws Exception {
     var setCookie =
         mockMvc
-            .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+            .perform(
+                postWithCsrf(LOGIN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(ADMIN_LOGIN_BODY))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
-            .getHeader("Set-Cookie");
+            .getHeaders("Set-Cookie")
+            .stream()
+            .filter(value -> value.startsWith("sessionToken="))
+            .findFirst()
+            .orElseThrow();
 
     assertThat(setCookie)
         .startsWith("sessionToken=")
@@ -137,7 +145,7 @@ class AuthBffControllerTest {
         """;
 
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
@@ -153,7 +161,7 @@ class AuthBffControllerTest {
         """;
 
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.type").doesNotExist());
@@ -167,7 +175,7 @@ class AuthBffControllerTest {
         """;
 
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
@@ -176,7 +184,7 @@ class AuthBffControllerTest {
   void loginWithFormUrlencodedContentTypeIsRejectedBeforeLoginLogic() throws Exception {
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .content("documentType=DNI&documentNumber=00000000&password=Temporal123!"))
         .andExpect(status().isUnsupportedMediaType())
@@ -188,7 +196,7 @@ class AuthBffControllerTest {
     // A bodiless POST carries no Content-Type, so JsonOnlyFilter lets it through; a cross-site one
     // always sends Origin and exact-origin CORS rejects it (ADR-006, reviewed in TAR-59).
     mockMvc
-        .perform(post(LOGIN).header("Origin", "https://evil.example.com"))
+        .perform(postWithCsrf(LOGIN).header("Origin", "https://evil.example.com"))
         .andExpect(status().isForbidden());
   }
 
@@ -196,7 +204,7 @@ class AuthBffControllerTest {
   void loginWithDisallowedOriginGetsCorsRejection() throws Exception {
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(ADMIN_LOGIN_BODY)
                 .header("Origin", "https://evil.example.com"))
@@ -220,7 +228,7 @@ class AuthBffControllerTest {
   void loginWithMissingOrBlankFieldsReturns400WithTheFieldName(String body, String field)
       throws Exception {
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.field").value(field))
@@ -238,13 +246,15 @@ class AuthBffControllerTest {
     String atCap = "{\"documentType\":\"DNI\",\"documentNumber\":\"%s\",\"password\":\"%s\"}";
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(atCap.formatted("9".repeat(20), "a".repeat(128))))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
-    assertTooLong(post(LOGIN).content(atCap.formatted("9".repeat(21), "a")), "documentNumber");
-    assertTooLong(post(LOGIN).content(atCap.formatted("9".repeat(8), "a".repeat(129))), "password");
+    assertTooLong(
+        postWithCsrf(LOGIN).content(atCap.formatted("9".repeat(21), "a")), "documentNumber");
+    assertTooLong(
+        postWithCsrf(LOGIN).content(atCap.formatted("9".repeat(8), "a".repeat(129))), "password");
   }
 
   /** TAR-179: a password beyond bcrypt's 72 bytes against a stored hash is just a wrong one. */
@@ -254,7 +264,7 @@ class AuthBffControllerTest {
         "{\"documentType\":\"DNI\",\"documentNumber\":\"00000000\",\"password\":\"%s\"}"
             .formatted("a".repeat(100));
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
@@ -271,12 +281,12 @@ class AuthBffControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("AUTH_WEAK_PASSWORD"));
     assertTooLong(
-        post(CHANGE_PASSWORD)
+        postWithCsrf(CHANGE_PASSWORD)
             .cookie(session)
             .content(body.formatted("a".repeat(129), "b".repeat(9))),
         "currentPassword");
     assertTooLong(
-        post(CHANGE_PASSWORD).cookie(session).content(body.formatted("a", "b".repeat(129))),
+        postWithCsrf(CHANGE_PASSWORD).cookie(session).content(body.formatted("a", "b".repeat(129))),
         "newPassword");
   }
 
@@ -285,16 +295,17 @@ class AuthBffControllerTest {
     String body = "{\"code\":\"%s\",\"newPassword\":\"%s\"}";
     mockMvc
         .perform(
-            post("/bff/auth/reset-password")
+            postWithCsrf("/bff/auth/reset-password")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body.formatted("c".repeat(100), "b".repeat(128))))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_OR_EXPIRED_CODE"));
     assertTooLong(
-        post("/bff/auth/reset-password").content(body.formatted("c".repeat(101), "b".repeat(9))),
+        postWithCsrf("/bff/auth/reset-password")
+            .content(body.formatted("c".repeat(101), "b".repeat(9))),
         "code");
     assertTooLong(
-        post("/bff/auth/reset-password").content(body.formatted("c", "b".repeat(129))),
+        postWithCsrf("/bff/auth/reset-password").content(body.formatted("c", "b".repeat(129))),
         "newPassword");
   }
 
@@ -304,7 +315,7 @@ class AuthBffControllerTest {
   void resetPassword_nameWithControlCharacterOrBlank_isValidationError(String name)
       throws Exception {
     assertTooLong(
-        post("/bff/auth/reset-password")
+        postWithCsrf("/bff/auth/reset-password")
             .content(
                 "{\"code\":\"c\",\"newPassword\":\"Nueva12345\",\"name\":\"%s\"}".formatted(name)),
         "name");
@@ -315,7 +326,7 @@ class AuthBffControllerTest {
   void resetPassword_nameWithAccentsAndSpaces_passesValidation() throws Exception {
     mockMvc
         .perform(
-            post("/bff/auth/reset-password")
+            postWithCsrf("/bff/auth/reset-password")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"code\":\"c\",\"newPassword\":\"Nueva12345\",\"name\":\"María Ñahui Q.\"}"))
@@ -339,7 +350,7 @@ class AuthBffControllerTest {
             .formatted(password);
     return Objects.requireNonNull(
         mockMvc
-            .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+            .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
@@ -348,7 +359,7 @@ class AuthBffControllerTest {
 
   private ResultActions changePassword(Cookie session, String body) throws Exception {
     return mockMvc.perform(
-        post(CHANGE_PASSWORD)
+        postWithCsrf(CHANGE_PASSWORD)
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
@@ -386,14 +397,15 @@ class AuthBffControllerTest {
                 Long.class))
         .isEqualTo(userId);
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+        .perform(
+            postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
         .andExpect(status().isUnauthorized());
     var newLogin =
         """
         {"documentType":"DNI","documentNumber":"00000000","password":"Nueva12345"}
         """;
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(newLogin))
+        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(newLogin))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.mustChangePassword").value(false));
   }
@@ -434,7 +446,7 @@ class AuthBffControllerTest {
 
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .cookie(forced)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -520,11 +532,15 @@ class AuthBffControllerTest {
 
     var setCookie =
         mockMvc
-            .perform(post(LOGOUT).cookie(session))
+            .perform(postWithCsrf(LOGOUT).cookie(session))
             .andExpect(status().isNoContent())
             .andReturn()
             .getResponse()
-            .getHeader("Set-Cookie");
+            .getHeaders("Set-Cookie")
+            .stream()
+            .filter(value -> value.startsWith("sessionToken="))
+            .findFirst()
+            .orElseThrow();
 
     assertThat(setCookie)
         .startsWith("sessionToken=;")
@@ -538,7 +554,7 @@ class AuthBffControllerTest {
   @Test
   void logoutWithoutASessionIs401NoSession() throws Exception {
     mockMvc
-        .perform(post(LOGOUT))
+        .perform(postWithCsrf(LOGOUT))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
   }
@@ -552,13 +568,16 @@ class AuthBffControllerTest {
         """;
     for (int i = 0; i < 5; i++) {
       mockMvc
-          .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(wrong))
+          .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(wrong))
           .andExpect(status().isUnauthorized());
     }
 
     var locked =
         mockMvc
-            .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+            .perform(
+                postWithCsrf(LOGIN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(ADMIN_LOGIN_BODY))
             .andExpect(status().isLocked())
             .andExpect(jsonPath("$.code").value("AUTH_ACCOUNT_LOCKED"))
             .andReturn()
@@ -586,7 +605,8 @@ class AuthBffControllerTest {
         "UPDATE users SET failed_login_attempts = 5, locked_until = now() - interval '1 minute'");
 
     mockMvc
-        .perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+        .perform(
+            postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
         .andExpect(status().isOk());
 
     assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
@@ -631,7 +651,7 @@ class AuthBffControllerTest {
 
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -679,7 +699,7 @@ class AuthBffControllerTest {
   void changingThePasswordWithoutASessionIs401() throws Exception {
     mockMvc
         .perform(
-            post(CHANGE_PASSWORD)
+            postWithCsrf(CHANGE_PASSWORD)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"newPassword\":\"Nueva12345\"}"))
         .andExpect(status().isUnauthorized());
@@ -741,7 +761,7 @@ class AuthBffControllerTest {
   void aGarbageSessionCookieDoesNotStopALogin() throws Exception {
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .cookie(new Cookie("sessionToken", "not-a-jwt"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(ADMIN_LOGIN_BODY))
@@ -768,7 +788,7 @@ class AuthBffControllerTest {
         .andExpect(jsonPath("$.code").value("AUTH_NO_SESSION"));
     mockMvc
         .perform(
-            post(LOGIN)
+            postWithCsrf(LOGIN)
                 .cookie(expired)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(ADMIN_LOGIN_BODY))

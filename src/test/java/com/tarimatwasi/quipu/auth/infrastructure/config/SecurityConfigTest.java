@@ -201,7 +201,7 @@ class SecurityConfigTest {
     var config = vercelDev();
 
     assertThat(config.getAllowCredentials()).isTrue();
-    assertThat(config.getAllowedHeaders()).containsExactly("Content-Type");
+    assertThat(config.getAllowedHeaders()).containsExactly("Content-Type", "X-XSRF-TOKEN");
     assertThat(config.getAllowedMethods()).containsExactly("GET", "POST", "PUT", "PATCH", "DELETE");
   }
 

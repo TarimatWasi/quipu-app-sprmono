@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.db;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -155,6 +156,7 @@ class GuestDocumentActionConcurrencyTest {
     return mockMvc
         .perform(
             post(route(document) + "/deletion")
+                .with(csrf())
                 .cookie(admin())
                 .header("Origin", ORIGIN)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -168,6 +170,7 @@ class GuestDocumentActionConcurrencyTest {
     return mockMvc
         .perform(
             multipart(HttpMethod.PUT, route(document))
+                .with(csrf())
                 .file(new MockMultipartFile("file", "d.pdf", "application/pdf", TestPdfs.plain()))
                 .param("reason", "UPLOAD_ERROR")
                 .header("Origin", ORIGIN)

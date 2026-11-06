@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -101,11 +102,17 @@ class EnvironmentsBffControllerTest {
         .andExpect(jsonPath("$.field").value("code"));
     create("x".repeat(51), "ROOM").andExpect(status().isBadRequest());
     mockMvc
-        .perform(post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .perform(
+            post(URL)
+                .with(csrf())
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
         .andExpect(status().isBadRequest());
     mockMvc
         .perform(
             post(URL)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"201\",\"type\":\"TENT\"}"))
@@ -156,13 +163,19 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(
             post(URL)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"201\",\"type\":\"TENT\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     mockMvc
-        .perform(post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content("{"))
+        .perform(
+            post(URL)
+                .with(csrf())
+                .cookie(admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
   }
@@ -213,6 +226,7 @@ class EnvironmentsBffControllerTest {
               mockMvc
                   .perform(
                       patch(URL + "/" + id)
+                          .with(csrf())
                           .cookie(token)
                           .contentType(MediaType.APPLICATION_JSON)
                           .content("{\"version\":" + version + ",\"type\":\"CABIN\"}"))
@@ -242,6 +256,7 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":" + version + ",\"type\":\"ROOM\"}"))
@@ -348,12 +363,14 @@ class EnvironmentsBffControllerTest {
 
     for (var action : new String[] {"deactivate", "reactivate"}) {
       mockMvc
-          .perform(post(URL + "/" + unknown + "/" + action).cookie(admin()))
+          .perform(post(URL + "/" + unknown + "/" + action).with(csrf()).cookie(admin()))
           .andExpect(status().isNotFound());
       mockMvc
-          .perform(post(URL + "/" + id + "/" + action).cookie(guest))
+          .perform(post(URL + "/" + id + "/" + action).with(csrf()).cookie(guest))
           .andExpect(status().isForbidden());
-      mockMvc.perform(post(URL + "/" + id + "/" + action)).andExpect(status().isUnauthorized());
+      mockMvc
+          .perform(post(URL + "/" + id + "/" + action).with(csrf()))
+          .andExpect(status().isUnauthorized());
     }
     mockMvc
         .perform(get(URL + "/" + id).cookie(admin()))
@@ -376,6 +393,7 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(
             post(URL)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"201\",\"type\":\"ROOM\"}"))
         .andExpect(status().isUnauthorized())
@@ -383,6 +401,7 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"1\"}"))
         .andExpect(status().isUnauthorized());
@@ -402,6 +421,7 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(
             post(URL)
+                .with(csrf())
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"999\",\"type\":\"ROOM\"}"))
@@ -409,6 +429,7 @@ class EnvironmentsBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"code\":\"999\"}"))
@@ -427,6 +448,7 @@ class EnvironmentsBffControllerTest {
   private ResultActions create(String code, String type) throws Exception {
     return mockMvc.perform(
         post(URL)
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"code\":\"" + code + "\",\"type\":\"" + type + "\"}"));
@@ -444,7 +466,7 @@ class EnvironmentsBffControllerTest {
 
   private void post204(String id, String action) throws Exception {
     mockMvc
-        .perform(post(URL + "/" + id + "/" + action).cookie(admin()))
+        .perform(post(URL + "/" + id + "/" + action).with(csrf()).cookie(admin()))
         .andExpect(status().isNoContent());
   }
 
@@ -454,6 +476,7 @@ class EnvironmentsBffControllerTest {
     String versioned = "{\"version\":" + versionOf(id) + (fields.equals("}") ? "" : ",") + fields;
     return mockMvc.perform(
         patch(URL + "/" + id)
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(versioned));

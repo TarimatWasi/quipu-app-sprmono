@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -221,6 +222,7 @@ class AdministratorRateLimitBffTest {
   private ResultActions setGuestEmail(String guest, Cookie session) throws Exception {
     return mockMvc.perform(
         put("/bff/admin/guests/" + guest + "/account-email")
+            .with(csrf())
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"email\":\"nueva@example.com\"}"));
@@ -235,6 +237,7 @@ class AdministratorRateLimitBffTest {
   private ResultActions change(String action, @Nullable Cookie session) throws Exception {
     var request =
         post(URL + "/" + target + "/" + action)
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON)
             .content(REAUTHENTICATION);
     if (session != null) {
@@ -244,7 +247,7 @@ class AdministratorRateLimitBffTest {
   }
 
   private ResultActions create(@Nullable Cookie session) throws Exception {
-    var request = post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY);
+    var request = post(URL).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(BODY);
     if (session != null) {
       request.cookie(session);
     }

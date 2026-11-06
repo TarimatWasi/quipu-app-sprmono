@@ -48,13 +48,15 @@ class CorsPreflightContractTest {
                 options(LOGIN)
                     .header("Origin", origin)
                     .header("Access-Control-Request-Method", "POST")
-                    .header("Access-Control-Request-Headers", "content-type"))
+                    .header("Access-Control-Request-Headers", "content-type,x-xsrf-token"))
             .andExpect(status().isOk())
             .andExpect(header().string("Access-Control-Allow-Origin", origin))
             .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
             .andReturn()
             .getResponse();
 
+    assertThat(response.getHeader("Access-Control-Allow-Headers"))
+        .containsIgnoringCase("x-xsrf-token");
     // The answer depends on the Origin, so caches must key on it.
     assertThat(String.join(",", response.getHeaders("Vary"))).contains("Origin");
   }
@@ -73,7 +75,7 @@ class CorsPreflightContractTest {
             options(LOGIN)
                 .header("Origin", origin)
                 .header("Access-Control-Request-Method", "POST")
-                .header("Access-Control-Request-Headers", "content-type"))
+                .header("Access-Control-Request-Headers", "content-type,x-xsrf-token"))
         .andExpect(status().isForbidden())
         .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
   }

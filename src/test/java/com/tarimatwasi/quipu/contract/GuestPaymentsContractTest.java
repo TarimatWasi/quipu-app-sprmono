@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -56,7 +57,9 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   }
 
   private static MockMultipartHttpServletRequestBuilder form(String url, byte[] content) {
-    return multipart(url).file(new MockMultipartFile("files", "v.pdf", "application/pdf", content));
+    return multipart(url)
+        .with(csrf())
+        .file(new MockMultipartFile("files", "v.pdf", "application/pdf", content));
   }
 
   private ResultActions send(MockMultipartHttpServletRequestBuilder request, Cookie who)
@@ -260,6 +263,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(
             multipart(HttpMethod.PUT, url)
+                .with(csrf())
                 .file(new MockMultipartFile("files", "nuevo.pdf", "application/pdf", PDF))
                 .file(
                     proofsPart(
@@ -279,6 +283,7 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(
             multipart(HttpMethod.PUT, url)
+                .with(csrf())
                 .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800}]"))
                 .header("Origin", ORIGIN)
                 .cookie(guest()))

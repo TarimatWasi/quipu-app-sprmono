@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.contract;
 
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -291,6 +292,7 @@ class GuestsContractTest {
     mockMvc
         .perform(
             patch(URL + "/" + masked(id))
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":" + loaded + ",\"documentNumber\":\"11112222\"}"))
@@ -416,6 +418,7 @@ class GuestsContractTest {
     String versioned = "{\"version\":" + versionOf(id) + (rest.equals("}") ? "" : ",") + rest;
     return mockMvc.perform(
         patch(URL + "/" + masked(id))
+            .with(csrf())
             .cookie(admin())
             .contentType(MediaType.APPLICATION_JSON)
             .content(versioned));

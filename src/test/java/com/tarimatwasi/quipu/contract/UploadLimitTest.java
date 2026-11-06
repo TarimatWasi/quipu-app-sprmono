@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.io.ByteArrayOutputStream;
+import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -32,6 +33,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
@@ -64,6 +68,8 @@ class UploadLimitTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired JwtTokenProvider jwtTokenProvider;
   @Autowired IdMasker masker;
+  @Autowired CsrfTokenRepository csrfTokens;
+  @Autowired PasswordEncoder passwords;
 
   /**
    * TAR-227: every account of a test signs in to this one session, so the ids of its requests and
@@ -101,6 +107,51 @@ class UploadLimitTest {
   @AfterEach
   void tearDown() {
     TestTables.clear(jdbc);
+  }
+
+  /** The servlet must send both cookies on the wire; MockMvc also keeps an internal cookie list. */
+  @Test
+  void theBrowserBootstrapAndLoginReceiveBothRealCookieHeaders() throws Exception {
+    jdbc.update(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        passwords.encode("Elegida12345"),
+        adminId);
+    HttpClient client = HttpClient.newHttpClient();
+    HttpResponse<String> bootstrap =
+        client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/bff/auth/csrf"))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(bootstrap.statusCode()).isEqualTo(204);
+    var bootstrapCookies = bootstrap.headers().allValues("Set-Cookie");
+    assertThat(bootstrapCookies).hasSize(1);
+    String csrfHeader = bootstrapCookies.getFirst();
+    assertThat(csrfHeader)
+        .startsWith("XSRF-TOKEN=")
+        .contains("Path=/", "Secure", "SameSite=Lax")
+        .doesNotContain("HttpOnly", "Domain=");
+    String csrf = HttpCookie.parse(csrfHeader).getFirst().getValue();
+    HttpResponse<String> login =
+        client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/bff/auth/login"))
+                .header("Cookie", "XSRF-TOKEN=" + csrf)
+                .header("X-XSRF-TOKEN", csrf)
+                .header("Content-Type", "application/json")
+                .POST(
+                    HttpRequest.BodyPublishers.ofString(
+                        "{\"documentType\":\"DNI\",\"documentNumber\":\"00000009\","
+                            + "\"password\":\"Elegida12345\"}"))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(login.statusCode()).isEqualTo(200);
+    var loginCookies = login.headers().allValues("Set-Cookie");
+    assertThat(loginCookies).hasSize(2);
+    assertThat(loginCookies.stream().filter(value -> value.startsWith("XSRF-TOKEN=")).count())
+        .isEqualTo(1);
+    assertThat(loginCookies.stream().filter(value -> value.startsWith("sessionToken=")).findFirst())
+        .hasValueSatisfying(value -> assertThat(value).contains("HttpOnly", "Secure", "Path=/"));
+    assertThat(loginCookies.toString()).doesNotContain("JSESSIONID");
   }
 
   @Test
@@ -268,12 +319,18 @@ class UploadLimitTest {
             .getBytes(StandardCharsets.UTF_8));
     body.write(pdf);
     body.write(("\r\n--" + BOUNDARY + "--\r\n").getBytes(StandardCharsets.UTF_8));
+    String csrf = csrfTokens.generateToken(new MockHttpServletRequest()).getToken();
     var request =
         HttpRequest.newBuilder(URI.create("http://localhost:" + port + route))
             .header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
             .header("Origin", "http://localhost:3000")
+            .header("X-XSRF-TOKEN", csrf)
             .header(
-                "Cookie", "sessionToken=" + jwtTokenProvider.renew(account.toString(), sessionId))
+                "Cookie",
+                "sessionToken="
+                    + jwtTokenProvider.renew(account.toString(), sessionId)
+                    + "; XSRF-TOKEN="
+                    + csrf)
             .method(method, HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
             .build();
     return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());

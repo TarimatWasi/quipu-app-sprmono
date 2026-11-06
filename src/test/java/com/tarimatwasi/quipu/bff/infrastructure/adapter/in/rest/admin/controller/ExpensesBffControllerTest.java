@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -178,6 +179,7 @@ class ExpensesBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(edit(body)))
@@ -210,6 +212,7 @@ class ExpensesBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -230,13 +233,15 @@ class ExpensesBffControllerTest {
   void anExpenseIsDeletedForGood() throws Exception {
     var id = idOf(create(UTILITIES));
 
-    mockMvc.perform(delete(URL + "/" + id).cookie(admin())).andExpect(status().isNoContent());
+    mockMvc
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(admin()))
+        .andExpect(status().isNoContent());
 
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
         .andExpect(jsonPath("$.content.length()").value(0));
     mockMvc
-        .perform(delete(URL + "/" + id).cookie(admin()))
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(admin()))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("EXPENSE_NOT_FOUND"));
   }
@@ -246,6 +251,7 @@ class ExpensesBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + UUID.randomUUID())
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(edit(UTILITIES)))
@@ -253,6 +259,7 @@ class ExpensesBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/not-a-uuid")
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(edit(UTILITIES)))
@@ -271,16 +278,24 @@ class ExpensesBffControllerTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     mockMvc
-        .perform(post(URL).cookie(guest).contentType(MediaType.APPLICATION_JSON).content(UTILITIES))
+        .perform(
+            post(URL)
+                .with(csrf())
+                .cookie(guest)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(UTILITIES))
         .andExpect(status().isForbidden());
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(guest)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(edit(UTILITIES)))
         .andExpect(status().isForbidden());
-    mockMvc.perform(delete(URL + "/" + id).cookie(guest)).andExpect(status().isForbidden());
+    mockMvc
+        .perform(delete(URL + "/" + id).with(csrf()).cookie(guest))
+        .andExpect(status().isForbidden());
 
     mockMvc
         .perform(get(URL).param("month", "2026-09").cookie(admin()))
@@ -296,6 +311,7 @@ class ExpensesBffControllerTest {
       mockMvc
           .perform(
               patch(URL + "/" + id)
+                  .with(csrf())
                   .cookie(admin())
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(edit(body)))
@@ -322,6 +338,7 @@ class ExpensesBffControllerTest {
     mockMvc
         .perform(
             patch(URL + "/" + id)
+                .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(edit(yearZero)))
@@ -348,7 +365,11 @@ class ExpensesBffControllerTest {
 
   private ResultActions create(String body) throws Exception {
     return mockMvc.perform(
-        post(URL).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(body));
+        post(URL)
+            .with(csrf())
+            .cookie(admin())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
   }
 
   private static String idOf(ResultActions created) throws Exception {

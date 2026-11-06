@@ -11,9 +11,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * SEC-01: at most {@code perMinute} requests per minute and client on the login and password
- * recovery endpoints (the path is matched after decoding, so {@code %6Cogin} does not escape it);
- * the next one gets 429 with {@code Retry-After}. It complements the lockout by failed attempts
- * (SEG-06).
+ * recovery endpoints and GET CSRF bootstrap (the path is matched after decoding, so {@code %6Cogin}
+ * does not escape it); the next one gets 429 with {@code Retry-After}. It complements the lockout
+ * by failed attempts (SEG-06).
  *
  * <p>The counters are a {@link RateLimitBuckets}: in memory and bounded to the most recent clients.
  */
@@ -39,9 +39,10 @@ final class RateLimitFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    if (!"POST".equals(request.getMethod())
-        || !LIMITED.contains(decodedPath(request))
-        || buckets.tryConsume(clientOf(request), response)) {
+    boolean limited =
+        ("POST".equals(request.getMethod()) && LIMITED.contains(decodedPath(request)))
+            || ("GET".equals(request.getMethod()) && "/bff/auth/csrf".equals(decodedPath(request)));
+    if (!limited || buckets.tryConsume(clientOf(request), response)) {
       chain.doFilter(request, response);
     }
   }

@@ -21,20 +21,16 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * CSRF mitigation of ADR-006 (QP-SPRMONO-CSR-01): a state-changing request that carries a body or a
- * {@code Content-Type} must be {@code application/json}; otherwise it is rejected with 415 before
- * it reaches authorization.
+ * Content restrictions retained from ADR-006, in addition to Spring CSRF tokens (TAR-300): a
+ * state-changing request that carries a body or a {@code Content-Type} must be {@code
+ * application/json}; otherwise it is rejected with 415 before it reaches authorization.
  *
  * <p>A request with neither body nor {@code Content-Type} (a bodyless DELETE or action POST) is let
  * through: a cross-site one still carries an {@code Origin} header, which the exact-origin CORS
  * configuration rejects with 403 before this filter runs.
  *
- * <p><b>ADR-006 justification:</b> for bodyless state-changing requests this filter does nothing,
- * so the defense rests entirely on CORS rejecting a foreign {@code Origin}. Two tests keep that
- * true and must not be deleted: {@code
- * SecurityContractTest.bodyless_cross_site_request_is_stopped_by_cors} and {@code
- * AuthBffControllerTest.crossSiteBodilessPostIsStoppedByCors} (enforced by {@code
- * TestConventionsTest}).
+ * <p>Bodyless state-changing requests still require Spring's CSRF token. The CORS tests remain
+ * defense-in-depth checks; this filter only owns media types, upload routing and origin checks.
  *
  * <p>A multipart body is taken by the exact upload routes only: with any other route or method,
  * GET, HEAD and OPTIONS included, it is rejected with the same 415 (TAR-205). The upload routes are

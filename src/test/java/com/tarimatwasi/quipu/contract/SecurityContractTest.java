@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.contract;
 
+import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -60,19 +61,22 @@ class SecurityContractTest {
   @Test
   void json_with_charset_reaches_authorization() throws Exception {
     mvc.perform(
-            post("/api/v1/anything").contentType("application/json;charset=UTF-8").content("{}"))
+            post("/api/v1/anything")
+                .with(csrf())
+                .contentType("application/json;charset=UTF-8")
+                .content("{}"))
         .andExpect(status().isUnauthorized());
   }
 
   @Test
   void bodyless_action_requests_reach_authorization() throws Exception {
-    mvc.perform(post("/api/v1/anything")).andExpect(status().isUnauthorized());
-    mvc.perform(delete("/api/v1/anything")).andExpect(status().isUnauthorized());
+    mvc.perform(post("/api/v1/anything").with(csrf())).andExpect(status().isUnauthorized());
+    mvc.perform(delete("/api/v1/anything").with(csrf())).andExpect(status().isUnauthorized());
   }
 
   @Test
   void bodyless_cross_site_request_is_stopped_by_cors() throws Exception {
-    mvc.perform(post("/api/v1/anything").header("Origin", "https://evil.example"))
+    mvc.perform(post("/api/v1/anything").with(csrf()).header("Origin", "https://evil.example"))
         .andExpect(status().isForbidden());
   }
 
