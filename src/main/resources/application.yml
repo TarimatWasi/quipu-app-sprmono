@@ -151,6 +151,9 @@ springdoc:
     path: /swagger-ui.html
 
 # TAR-39: PDFBox logs tokens of the files it parses; uploads must not reach the logs.
+# TAR-281: Hibernate registra en INFO (HHH10001005) la URL JDBC con la contraseña en la query.
+# BE-SPR-OBS-06.
 logging:
   level:
     org.apache.pdfbox: OFF
+    org.hibernate.orm.connections.pooling: WARN
