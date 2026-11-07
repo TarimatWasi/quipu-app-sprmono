@@ -7,8 +7,8 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller.PaymentsBffController.ReviewResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller.ProofParts;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
-import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
-import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentView;
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentLabelsUseCase;
+import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentLabelsUseCase.Label;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofEdit;
@@ -78,14 +78,14 @@ public class GuestPaymentsBffController {
 
   private final OwnPaymentsUseCase payments;
   private final GuestAccountUseCase accounts;
-  private final ManageEnvironmentsUseCase environments;
+  private final EnvironmentLabelsUseCase environments;
   private final IdMasker ids;
   private final JsonMapper json;
 
   public GuestPaymentsBffController(
       OwnPaymentsUseCase payments,
       GuestAccountUseCase accounts,
-      ManageEnvironmentsUseCase environments,
+      EnvironmentLabelsUseCase environments,
       IdMasker ids,
       JsonMapper json) {
     this.payments = payments;
@@ -133,14 +133,14 @@ public class GuestPaymentsBffController {
       @Nullable String rejectionReason,
       @Nullable StaySurplusResponse surplus) {
     static StayPaymentStatusResponse of(
-        StayStatusView view, @Nullable EnvironmentView environment, IdMasker ids) {
+        StayStatusView view, @Nullable Label environment, IdMasker ids) {
       StaySurplusView surplus = view.surplus();
       return new StayPaymentStatusResponse(
           ids.mask(IdKind.STAY, view.stayId()),
           view.startDate(),
           view.endDate(),
           environment == null ? null : environment.code(),
-          environment == null ? null : environment.type().name(),
+          environment == null ? null : environment.type(),
           view.status(),
           view.agreedAmount(),
           view.paymentId() == null ? null : ids.mask(IdKind.PAYMENT, view.paymentId()),
@@ -340,7 +340,10 @@ public class GuestPaymentsBffController {
   public ResponseEntity<StayPaymentStatusResponse> stayStatus(Authentication authentication) {
     StayStatusView status = payments.stayStatus(guestOf(authentication));
     Long environmentId = status.environmentId();
-    EnvironmentView environment = environmentId == null ? null : environments.get(environmentId);
+    Label environment =
+        environmentId == null
+            ? null
+            : environments.labelsOf(List.of(environmentId)).get(environmentId);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(StayPaymentStatusResponse.of(status, environment, ids));
