@@ -164,6 +164,12 @@ class ProfileFilesContractTest {
     assertThat(base.get("spring.datasource.hikari.idle-timeout")).isEqualTo(60000);
   }
 
+  /** TAR-281: Hibernate's connection info line carries the JDBC URL, and with it the password. */
+  @Test
+  void hibernateDoesNotLogTheJdbcUrl() {
+    assertThat(base.get("logging.level.org.hibernate.orm.connections.pooling")).isEqualTo("WARN");
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"application-local.yml", "application-dev.yml", "application-prod.yml"})
   void noProfileOverridesThePoolOrTheUploadLimit(String file) throws IOException {
