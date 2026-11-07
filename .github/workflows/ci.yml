@@ -83,7 +83,8 @@ jobs:
           pgpass=$(openssl rand -hex 8)
           jwt=$(openssl rand -base64 48 | tr -d '\n=')
           idmask=$(openssl rand -base64 48 | tr -d '\n=')
-          echo "::add-mask::$pgpass"; echo "::add-mask::$jwt"; echo "::add-mask::$idmask"
+          edge=$(openssl rand -hex 32)
+          echo "::add-mask::$pgpass"; echo "::add-mask::$jwt"; echo "::add-mask::$idmask"; echo "::add-mask::$edge"
           docker run -d --name pg --network quipu-ci \
             -e "POSTGRES_PASSWORD=$pgpass" -e POSTGRES_USER=quipu -e POSTGRES_DB=quipu \
             postgres:17 >/dev/null
@@ -92,7 +93,7 @@ jobs:
           docker run -d --name api --network quipu-ci --memory 512m -p 10000:10000 \
             -e SPRING_PROFILES_ACTIVE=dev -e PORT=10000 \
             -e "DATABASE_URL=jdbc:postgresql://pg:5432/quipu?user=quipu&password=$pgpass" \
-            -e "JWT_SECRET=$jwt" -e "ID_MASK_KEY=$idmask" \
+            -e "JWT_SECRET=$jwt" -e "ID_MASK_KEY=$idmask" -e "EDGE_SHARED_SECRETS=$edge" \
             -e CORS_ALLOWED_ORIGIN=https://example.vercel.app \
             -e ADMIN_DOCUMENT_NUMBER=12345678 -e ADMIN_EMAIL=ci@example.test \
             -e R2_ACCOUNT_ID=ci -e R2_ACCESS_KEY_ID=ci -e R2_SECRET_ACCESS_KEY=ci-dummy \
@@ -106,6 +107,10 @@ jobs:
             if curl -fsS http://localhost:10000/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
               echo "health UP tras ~$((i * 2)) s"
               [ "$(docker inspect -f '{{.State.OOMKilled}}' api)" = "false" ]
+              # TAR-144: /bff solo responde a lo que reenvía Vercel (con el secreto compartido).
+              [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:10000/bff/auth/csrf)" = "403" ]
+              [ "$(curl -s -o /dev/null -w '%{http_code}' -H "X-Quipu-Edge-Secret: $edge" http://localhost:10000/bff/auth/csrf)" = "204" ]
+              echo "compuerta de /bff: 403 sin secreto, 204 con secreto"
               exit 0
             fi
             [ "$(docker inspect -f '{{.State.Running}}' api)" = "true" ] || { echo "El contenedor se detuvo"; exit 1; }
