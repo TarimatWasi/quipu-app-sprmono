@@ -223,6 +223,20 @@ class EdgeGateFilterTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  /** TAR-144: a refused value says what is wrong (length, first bad character), never the value. */
+  @Test
+  void aRefusedSecretIsDiagnosedWithoutRevealingIt() {
+    String quoted = "\"" + "a".repeat(64) + "\"";
+    assertThatThrownBy(() -> props(List.of(quoted)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("length 66")
+        .hasMessageContaining("U+0022 at position 0")
+        .hasMessageNotContaining("aaaa");
+    assertThatThrownBy(() -> props(List.of("a".repeat(10))))
+        .hasMessageContaining("length 10")
+        .hasMessageNotContaining("position");
+  }
+
   /** TAR-144: dev and prod never run with the gate off, not even with an empty variable. */
   @Test
   void aRequiredGateRefusesAnEmptyValue() {

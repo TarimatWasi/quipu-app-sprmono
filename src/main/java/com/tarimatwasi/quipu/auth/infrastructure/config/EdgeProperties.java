@@ -38,9 +38,24 @@ public record EdgeProperties(
     for (String secret : secrets) {
       if (!SECRET.matcher(secret).matches()) {
         throw new IllegalArgumentException(
-            "app.edge.secrets: each secret is 32 to 128 characters of letters, digits and . _ ~ -");
+            "app.edge.secrets: each secret is 32 to 128 characters of letters, digits and . _ ~ -"
+                + " ("
+                + diagnose(secret)
+                + ")");
       }
     }
+  }
+
+  /** What is wrong, never the value: the length and the first character outside the alphabet. */
+  private static String diagnose(String secret) {
+    String found = "length " + secret.length();
+    for (int i = 0; i < secret.length(); i++) {
+      char c = secret.charAt(i);
+      if (!String.valueOf(c).matches("[A-Za-z0-9._~-]")) {
+        return found + ", first invalid character U+%04X at position %d".formatted((int) c, i);
+      }
+    }
+    return found;
   }
 
   boolean enabled() {
