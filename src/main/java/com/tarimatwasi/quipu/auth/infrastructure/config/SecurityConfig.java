@@ -19,6 +19,7 @@ import org.springframework.security.web.authentication.session.NullAuthenticated
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.session.DisableEncodeUrlFilter;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -47,6 +48,7 @@ class SecurityConfig {
       JwtDecoder jwtDecoder,
       AccountJwtAuthenticationConverter sessionConverter,
       RateLimitProperties rateLimit,
+      EdgeProperties edge,
       SessionUserLimits sessionUserLimits,
       CookieCsrfTokenRepository csrfTokenRepository)
       throws Exception {
@@ -94,7 +96,18 @@ class SecurityConfig {
         .addFilterBefore(new RateLimitFilter(rateLimit), CsrfFilter.class)
         .addFilterBefore(new JsonOnlyFilter(), CsrfFilter.class);
     addSessionUserLimits(http, sessionUserLimits);
+    addEdgeGate(http, edge);
     return http.build();
+  }
+
+  /**
+   * TAR-144: first of the chain, before CORS and the limits: only what Vercel forwards gets in.
+   * Without secrets (the local profile) there is no gate.
+   */
+  private static void addEdgeGate(HttpSecurity http, EdgeProperties edge) {
+    if (edge.enabled()) {
+      http.addFilterBefore(new EdgeGateFilter(edge), DisableEncodeUrlFilter.class);
+    }
   }
 
   /** Host-only session cookie; only the CSRF cookie is readable by Angular. */
