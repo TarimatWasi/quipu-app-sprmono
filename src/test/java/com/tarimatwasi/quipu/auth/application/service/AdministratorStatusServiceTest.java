@@ -79,7 +79,7 @@ class AdministratorStatusServiceTest {
   private AdministratorStatusService serviceWithLimit(int max) {
     return new AdministratorStatusService(
         new AdministratorReauthentication(users, encoder, clock),
-        new AdministratorStatusChanger(users, store, max),
+        new AdministratorStatusChanger(users, store, () -> max),
         store,
         notices);
   }

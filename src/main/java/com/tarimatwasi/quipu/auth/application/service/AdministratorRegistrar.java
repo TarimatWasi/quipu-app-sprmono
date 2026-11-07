@@ -5,12 +5,12 @@ import com.tarimatwasi.quipu.auth.application.port.in.AdministratorEmailTakenExc
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorLimitReachedException;
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorReauthenticationException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorLimitPort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort.NewAdministrator;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.util.Objects;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,9 +34,6 @@ class AdministratorRegistrar {
   /** The new account and the email of who created it, for the notices. */
   record Registered(Long id, String creatorEmail) {}
 
-  /** RF-22: the maximum of administrators not inactive, also checked by a reactivation. */
-  static final String MAX_ADMINISTRATORS = "${app.administrators.max:5}";
-
   private final AdministratorReauthentication reauthentication;
   private final AdministratorStorePort store;
   private final int maxAdministrators;
@@ -44,13 +41,10 @@ class AdministratorRegistrar {
   AdministratorRegistrar(
       AdministratorReauthentication reauthentication,
       AdministratorStorePort store,
-      @Value(MAX_ADMINISTRATORS) int maxAdministrators) {
-    if (maxAdministrators < 1) {
-      throw new IllegalArgumentException("app.administrators.max must be at least 1");
-    }
+      AdministratorLimitPort limit) {
     this.reauthentication = reauthentication;
     this.store = store;
-    this.maxAdministrators = maxAdministrators;
+    this.maxAdministrators = limit.maxAdministrators();
   }
 
   /**

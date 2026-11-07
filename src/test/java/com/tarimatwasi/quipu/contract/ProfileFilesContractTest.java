@@ -327,12 +327,13 @@ class ProfileFilesContractTest {
 
   /**
    * TAR-75: the Vercel rewrite keeps the Origin of the Vercel host while the Host is the backend,
-   * so dev lists the host of the project: the primary origin from CORS_ALLOWED_ORIGIN, the second
-   * production alias and the branch and deployment aliases as anchored patterns. Nothing else.
+   * so dev lists the hosts of the project quipu: the primary origin (the dev domain) from
+   * CORS_ALLOWED_ORIGIN, the alias of the project and the branch aliases as an anchored pattern.
+   * Nothing else.
    */
   @Test
-  void dev_corsAllowsTheVercelAliasesAndTheDevDomainAndNothingElse() throws IOException {
-    var primary = "https://quipu-app-angweb-dev.vercel.app";
+  void dev_corsAllowsTheDevDomainAndTheVercelAliasesAndNothingElse() throws IOException {
+    var primary = "https://quipu-dev.tarimatwasi.com";
     var env = new MockEnvironment().withProperty("CORS_ALLOWED_ORIGIN", primary);
     new YamlPropertySourceLoader()
         .load("dev", new ClassPathResource("application-dev.yml"))
@@ -343,10 +344,9 @@ class ProfileFilesContractTest {
 
     List.of(
             primary,
-            "https://quipu-app-angweb-dev-shizukajikus-projects.vercel.app",
-            "https://quipu-app-angweb-dev-git-development-shizukajikus-projects.vercel.app",
-            "https://quipu-app-angweb-9n80jc9hm-shizukajikus-projects.vercel.app",
-            "https://quipu-dev.tarimatwasi.com")
+            "https://quipu-tarimatwasi.vercel.app",
+            "https://quipu-git-development-tarimatwasi.vercel.app",
+            "https://quipu-git-feat-tar-12-tarimatwasi.vercel.app")
         .forEach(origin -> assertThat(config.checkOrigin(origin)).isEqualTo(origin));
     List.of(
             "https://quipu-dev.tarimatwasi.com.evil.com",
@@ -354,10 +354,12 @@ class ProfileFilesContractTest {
             "http://quipu-dev.tarimatwasi.com",
             // the production domain is not an origin of dev
             "https://quipu.tarimatwasi.com",
-            "https://quipu-app-angweb-dev.vercel.app.evil.com",
-            "https://evil-quipu-app-angweb-dev-git-x-shizukajikus-projects.vercel.app",
-            "https://quipu-app-angweb-9n80jc9hm-other-projects.vercel.app",
-            "http://quipu-app-angweb-dev.vercel.app")
+            // the old project of the frontend is not an origin any more
+            "https://quipu-app-angweb-dev-shizukajikus-projects.vercel.app",
+            "https://quipu-tarimatwasi.vercel.app.evil.com",
+            "https://evil-quipu-git-x-tarimatwasi.vercel.app",
+            "https://quipu-git-x-other-projects.vercel.app",
+            "http://quipu-tarimatwasi.vercel.app")
         .forEach(origin -> assertThat(config.checkOrigin(origin)).isNull());
   }
 

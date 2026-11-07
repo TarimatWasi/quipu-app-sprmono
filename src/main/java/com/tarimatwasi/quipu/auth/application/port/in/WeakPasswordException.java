@@ -1,11 +1,13 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /**
  * The new password breaks the length rule (RNF-08: at least 8; bcrypt hashes at most 72 bytes) or
  * is the single-use credential presented to set it.
  */
 public class WeakPasswordException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Which rule was broken. */
   public enum Reason {

@@ -1,12 +1,13 @@
 package com.tarimatwasi.quipu.shared.debt;
 
+import java.io.Serial;
 import java.time.YearMonth;
 import java.util.List;
 
 /** The guest owes periods, so it cannot take a new contract until they are paid (RN-25, RN-35). */
 public class GuestHasPendingDebtException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   // Never serialized: they only travel from the use case to the handler of the answer.
   private final transient List<YearMonth> periods;

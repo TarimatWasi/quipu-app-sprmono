@@ -1,8 +1,10 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /** The session's account no longer exists or is disabled, so the session is no longer valid. */
 public class NoActiveSessionException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public NoActiveSessionException() {

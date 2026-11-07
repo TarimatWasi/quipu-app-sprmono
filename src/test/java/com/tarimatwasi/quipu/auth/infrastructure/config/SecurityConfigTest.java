@@ -137,7 +137,10 @@ class SecurityConfigTest {
     var source =
         (UrlBasedCorsConfigurationSource)
             new SecurityConfig()
-                .corsConfigurationSource(primary, new CorsProperties(origins, patterns), env);
+                .corsConfigurationSource(
+                    new FrontendOriginProperties(primary),
+                    new CorsProperties(origins, patterns),
+                    env);
     return Objects.requireNonNull(source.getCorsConfigurations().get("/**"));
   }
 

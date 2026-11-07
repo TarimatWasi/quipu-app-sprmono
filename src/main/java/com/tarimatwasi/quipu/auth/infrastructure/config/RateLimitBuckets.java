@@ -5,6 +5,7 @@ import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -34,7 +35,7 @@ final class RateLimitBuckets {
   private final Map<String, Bucket> buckets =
       Collections.synchronizedMap(
           new LinkedHashMap<>(16, 0.75f, true) {
-            private static final long serialVersionUID = 1L;
+            @Serial private static final long serialVersionUID = 1L;
 
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, Bucket> eldest) {

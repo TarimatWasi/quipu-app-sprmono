@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.LoginAttemptLimiterPort;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
+import java.io.Serial;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -25,7 +26,7 @@ public class LoginAttemptLimiter implements LoginAttemptLimiterPort {
   private final Map<String, Bucket> buckets =
       Collections.synchronizedMap(
           new LinkedHashMap<>(16, 0.75f, true) {
-            private static final long serialVersionUID = 1L;
+            @Serial private static final long serialVersionUID = 1L;
 
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, Bucket> eldest) {

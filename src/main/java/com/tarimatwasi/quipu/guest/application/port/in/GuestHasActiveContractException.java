@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /** The guest has a contract in force, so it cannot be deactivated (RN-12). */
 public class GuestHasActiveContractException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final Long contractId;
 

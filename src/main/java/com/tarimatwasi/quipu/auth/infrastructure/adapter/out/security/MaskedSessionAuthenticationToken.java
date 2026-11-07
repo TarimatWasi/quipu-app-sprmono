@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security;
 
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
+import java.io.Serial;
 import java.util.Collection;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -16,7 +17,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
  */
 public final class MaskedSessionAuthenticationToken extends JwtAuthenticationToken {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final transient @Nullable MaskSession maskSession;
 

@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.payment.application.port.out;
 
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import java.io.Serial;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -9,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  */
 public class LivePaymentExistsException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final @Nullable PaymentStatus liveStatus;
 

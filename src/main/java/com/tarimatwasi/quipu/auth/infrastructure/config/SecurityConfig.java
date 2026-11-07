@@ -3,7 +3,6 @@ package com.tarimatwasi.quipu.auth.infrastructure.config;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.CookieBearerTokenResolver;
 import java.util.Arrays;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -164,12 +163,10 @@ class SecurityConfig {
    */
   @Bean
   CorsConfigurationSource corsConfigurationSource(
-      @Value("${app.cors.allowed-origin}") String allowedOrigin,
-      CorsProperties cors,
-      Environment environment) {
+      FrontendOriginProperties frontend, CorsProperties cors, Environment environment) {
     boolean deployed = environment.acceptsProfiles(Profiles.of("dev", "prod"));
     var source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/**", cors.configuration(allowedOrigin, deployed));
+    source.registerCorsConfiguration("/**", cors.configuration(frontend.allowedOrigin(), deployed));
     return source;
   }
 

@@ -1,12 +1,14 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error;
 
+import java.io.Serial;
+
 /**
  * A body field sent as an explicit {@code null} where the contract does not allow it: a field that
  * may be left out to keep its value cannot be nulled to erase it.
  */
 public class NullFieldException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final String field;
 

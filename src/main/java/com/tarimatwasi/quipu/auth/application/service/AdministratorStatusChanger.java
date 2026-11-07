@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNotFoundExcep
 import com.tarimatwasi.quipu.auth.application.port.in.AdministratorSelfDeactivationException;
 import com.tarimatwasi.quipu.auth.application.port.in.LastActiveAdministratorException;
 import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCase.AdministratorStatus;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorLimitPort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort.StoredAdministrator;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
@@ -12,7 +13,6 @@ import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,15 +40,10 @@ class AdministratorStatusChanger {
   private final int maxAdministrators;
 
   AdministratorStatusChanger(
-      UserRepositoryPort users,
-      AdministratorStorePort store,
-      @Value(AdministratorRegistrar.MAX_ADMINISTRATORS) int maxAdministrators) {
-    if (maxAdministrators < 1) {
-      throw new IllegalArgumentException("app.administrators.max must be at least 1");
-    }
+      UserRepositoryPort users, AdministratorStorePort store, AdministratorLimitPort limit) {
     this.users = users;
     this.store = store;
-    this.maxAdministrators = maxAdministrators;
+    this.maxAdministrators = limit.maxAdministrators();
   }
 
   /**

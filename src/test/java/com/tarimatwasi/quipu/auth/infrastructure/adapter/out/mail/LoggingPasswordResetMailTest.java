@@ -23,7 +23,7 @@ class LoggingPasswordResetMailTest {
     appender.start();
     logger.addAppender(appender);
     try {
-      new LoggingPasswordResetMail("http://localhost:4200/")
+      new LoggingPasswordResetMail(() -> "http://localhost:4200/")
           .sendResetLink(email, "CODE123", Duration.ofMinutes(30), false);
     } finally {
       logger.detachAppender(appender);
@@ -50,7 +50,7 @@ class LoggingPasswordResetMailTest {
     boolean sent;
     try {
       sent =
-          new LoggingPasswordResetMail("http://localhost:4200/")
+          new LoggingPasswordResetMail(() -> "http://localhost:4200/")
               .sendAccessLinkNow("admin@quipu.local", "CODE123", Duration.ofMinutes(30));
     } finally {
       logger.detachAppender(appender);

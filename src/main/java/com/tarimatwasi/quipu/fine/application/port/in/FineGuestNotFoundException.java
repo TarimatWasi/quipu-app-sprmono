@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.fine.application.port.in;
 
+import java.io.Serial;
+
 /** The guest of a new fine does not exist; the message names no guest. */
 public class FineGuestNotFoundException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public FineGuestNotFoundException() {

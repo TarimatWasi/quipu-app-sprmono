@@ -1,11 +1,13 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /**
  * An account received more login attempts in a minute than SEC-01 allows (TAR-124), whatever the
  * address they came from. It is refused before the account is even read.
  */
 public class TooManyLoginAttemptsException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final long retryAfterSeconds;
 

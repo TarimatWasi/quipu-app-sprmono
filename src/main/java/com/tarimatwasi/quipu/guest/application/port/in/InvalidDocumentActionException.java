@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /** A field of the reason of a deletion or replacement that the rules of RN-37 do not take. */
 public class InvalidDocumentActionException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final String field;
 

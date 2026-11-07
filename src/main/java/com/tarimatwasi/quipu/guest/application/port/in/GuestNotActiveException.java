@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /** The guest is not active, so it cannot take a stay (RN-35). */
 public class GuestNotActiveException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final Long guestId;
 

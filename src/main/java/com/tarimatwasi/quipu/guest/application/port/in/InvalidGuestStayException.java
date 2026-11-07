@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /** A stay field that is not valid: dates out of order or out of range, or a bad amount. */
 public class InvalidGuestStayException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final String field;
 

@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security;
 
 import com.tarimatwasi.quipu.auth.domain.DocumentIdentity;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
@@ -16,7 +17,7 @@ import org.springframework.security.core.userdetails.UserDetails;
  */
 public final class AccountUserDetails implements UserDetails {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final DocumentIdentity identity;
   private final Long userId;

@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
+import com.tarimatwasi.quipu.auth.application.port.out.FrontendOriginPort;
 import com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties;
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -7,7 +8,6 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -21,7 +21,7 @@ import org.springframework.web.client.RestClientException;
  * goes through the Spring proxy: the request that asked for the email does not wait for the
  * provider, so every answer of "forgot password" takes the same time whether the account exists or
  * not (ADR-F4). The link points to the frontend, whose origin is the one CORS already trusts
- * ({@code app.cors.allowed-origin}).
+ * ({@link FrontendOriginPort}).
  */
 @Component
 @Profile("!local")
@@ -34,13 +34,12 @@ public class ResendMailSender {
   private final String frontendOrigin;
 
   @Autowired
-  public ResendMailSender(
-      ResendProperties resend, @Value("${app.cors.allowed-origin}") String frontendOrigin) {
+  public ResendMailSender(ResendProperties resend, FrontendOriginPort frontend) {
     this(
         RestClient.builder().requestFactory(withTimeouts()),
         resend.apiKey(),
         resend.fromEmail(),
-        frontendOrigin);
+        frontend.frontendOrigin());
   }
 
   /** The tests bind a mock server to the builder. */

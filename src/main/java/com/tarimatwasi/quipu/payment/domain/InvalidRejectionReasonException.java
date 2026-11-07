@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.payment.domain;
 
+import java.io.Serial;
+
 /** A rejection needs a reason that is not blank and has at most 500 characters (RN-05). */
 public class InvalidRejectionReasonException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public InvalidRejectionReasonException() {

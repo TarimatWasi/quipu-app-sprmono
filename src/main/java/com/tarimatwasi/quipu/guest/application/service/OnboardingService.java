@@ -170,12 +170,9 @@ public class OnboardingService implements OnboardingUseCase {
     List<DocumentView> documents =
         records.documentsOf(guest.id()).stream().map(GuestDocumentUploader::view).toList();
     if (guest.status() == GuestStatus.ACTIVE) {
-      // A guest made active before the consents were recorded shows the text in force.
-      ConsentView consent =
-          records
-              .lastConsentOf(guest.id())
-              .map(c -> new ConsentView(c.version(), ConsentTexts.textOf(c.version()), true))
-              .orElseGet(() -> new ConsentView(consents.current(), consents.currentText(), true));
+      // Only the text in force is published (TAR-305), so an active guest sees that one, even if
+      // the version they accepted was an earlier one: guest_consents keeps what they accepted.
+      ConsentView consent = new ConsentView(consents.current(), consents.currentText(), true);
       return new OnboardingView(true, null, personalData(guest), documents, consent);
     }
     return new OnboardingView(

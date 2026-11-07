@@ -1,11 +1,13 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /**
  * The new password is the same as the current one, which defeats the forced change (RF-12) and the
  * change from the account menu (A0.6, TAR-127).
  */
 public class PasswordUnchangedException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final boolean firstAccess;
 

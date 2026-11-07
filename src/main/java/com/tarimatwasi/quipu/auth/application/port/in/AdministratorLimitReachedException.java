@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /** RF-22: the maximum number of administrators already exists. */
 public class AdministratorLimitReachedException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final int maximum;
 

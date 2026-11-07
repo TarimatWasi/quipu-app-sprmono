@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.fine.application.port.in;
 
+import java.io.Serial;
+
 /** The month is outside the years that the base stores as they are (1 to 9999). */
 public class InvalidFineMonthException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public InvalidFineMonthException() {

@@ -14,24 +14,20 @@ import org.springframework.core.io.ClassPathResource;
 /** TAR-207: the text of a published consent version cannot change without failing the startup. */
 class ConsentTextsTest {
 
-  private static final String CURRENT = "borrador-2026-10";
+  private static final String CURRENT = "2026-11";
   private static final String HASH =
-      "23795aa537f750434b48694ec522d18af4005959801e27996960f5227ff2f9d8";
-  private static final String DEFINITIVE_HASH =
       "6a2552ab771870557d5b61559d14eb027501df53a97f2674bb372d4bcf3ff501";
-  private static final String PREVIOUS_HASH =
-      "0348877596af3c0308425f2cf29c7cf34c1af7a3b77951ada58edc7f46f926c1";
 
-  /** The manifest in the repository matches every text and names the version in force. */
+  /** The manifest in the repository matches the text and names the version in force. */
   @Test
   void theManifestOfTheRepositoryHolds() {
     assertThatCode(() -> ConsentTexts.verify(CURRENT)).doesNotThrowAnyException();
-    assertThat(ConsentTexts.manifest()).containsEntry(CURRENT, HASH);
-    assertThat(ConsentTexts.textVersions()).contains(CURRENT);
-    assertThatCode(() -> new ConsentTexts(CURRENT)).doesNotThrowAnyException();
+    assertThat(ConsentTexts.manifest()).containsOnlyKeys(CURRENT).containsEntry(CURRENT, HASH);
+    assertThat(ConsentTexts.textVersions()).containsExactly(CURRENT);
+    assertThatCode(() -> new ConsentTexts(() -> CURRENT)).doesNotThrowAnyException();
   }
 
-  /** TAR-168: the version in force is the definitive text approved by the lawyer (D-62). */
+  /** TAR-168, TAR-246: the version in force is the definitive text approved by the lawyer. */
   @Test
   void theConfiguredVersionIsTheDefinitiveText() throws IOException {
     String configured =
@@ -41,27 +37,11 @@ class ConsentTextsTest {
                 .get(0)
                 .getProperty("app.consent.version"));
 
-    assertThat(configured).isEqualTo("2026-11");
-    assertThatCode(() -> ConsentTexts.verify(configured)).doesNotThrowAnyException();
-    String text = new ConsentTexts(configured).currentText();
-    assertThat(ConsentTexts.manifest()).containsEntry(configured, DEFINITIVE_HASH);
-    assertThat(ConsentTexts.sha256(text)).isEqualTo(DEFINITIVE_HASH);
-    assertThat(text).doesNotContainIgnoringCase("BORRADOR");
-  }
-
-  /** TAR-246: 2026-10 stays as it was accepted; 2026-11 only adds the guest to who sees photos. */
-  @Test
-  void thePreviousVersionKeepsItsTextAndTheNewOneChangesOnlyWhoSeesThePhotos() {
-    assertThat(ConsentTexts.manifest()).containsEntry("2026-10", PREVIOUS_HASH);
-    assertThat(ConsentTexts.sha256(ConsentTexts.textOf("2026-10"))).isEqualTo(PREVIOUS_HASH);
-
-    String previous = ConsentTexts.textOf("2026-10");
-    String current = ConsentTexts.textOf("2026-11");
-    assertThat(current)
-        .isEqualTo(
-            previous.replace(
-                "solo las ve un administrador, mediante",
-                "las ven un administrador y tú mismo, cada uno mediante"))
+    assertThat(configured).isEqualTo(CURRENT);
+    String text = new ConsentTexts(() -> configured).currentText();
+    assertThat(ConsentTexts.sha256(text)).isEqualTo(HASH);
+    assertThat(text)
+        .doesNotContainIgnoringCase("BORRADOR")
         .contains("las ven un administrador y tú mismo, cada uno mediante un enlace");
   }
 
