@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /**
  * TAR-127 (A0.5): an administrator without a name yet activates its account with the code of its
  * email, and its full name is required while the account has none. It holds for the initial
@@ -7,7 +9,7 @@ package com.tarimatwasi.quipu.auth.application.port.in;
  * consumed, so the administrator can send it again with the name.
  */
 public class AdministratorNameRequiredException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public AdministratorNameRequiredException() {

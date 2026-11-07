@@ -1,12 +1,14 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /**
  * TAR-229 (RF-02, D-76, D-77): another access account, administrator or guest, already has that
  * email as its account email, ignoring case; {@link #field()} says which input carried it.
  */
 public class GuestAccountEmailTakenException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** The input that carried the email. */
   public enum Field {

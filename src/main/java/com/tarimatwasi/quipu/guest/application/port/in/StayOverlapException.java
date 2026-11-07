@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
 import java.time.LocalDate;
 
 /**
@@ -8,7 +9,7 @@ import java.time.LocalDate;
  */
 public class StayOverlapException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final LocalDate otherStart;
   private final LocalDate otherEnd;

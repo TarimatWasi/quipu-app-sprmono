@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /** Another guest, or an administrator account, already has that document (RN-18, D-34e). */
 public class GuestDocumentTakenException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception for a document that belongs to an administrator account. */
   public GuestDocumentTakenException() {

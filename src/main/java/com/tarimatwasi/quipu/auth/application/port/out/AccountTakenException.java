@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.auth.application.port.out;
 
+import java.io.Serial;
+
 /** A unique rule of the accounts refused the new one; {@link #taken()} says which. */
 public class AccountTakenException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** What another account already has. */
   public enum Taken {

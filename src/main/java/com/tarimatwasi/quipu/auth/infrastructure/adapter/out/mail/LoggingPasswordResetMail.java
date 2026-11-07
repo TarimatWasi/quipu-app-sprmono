@@ -1,10 +1,10 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
+import com.tarimatwasi.quipu.auth.application.port.out.FrontendOriginPort;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -22,8 +22,8 @@ public class LoggingPasswordResetMail implements PasswordResetMailPort {
 
   private final String frontendOrigin;
 
-  public LoggingPasswordResetMail(@Value("${app.cors.allowed-origin}") String frontendOrigin) {
-    this.frontendOrigin = frontendOrigin;
+  public LoggingPasswordResetMail(FrontendOriginPort frontend) {
+    this.frontendOrigin = frontend.frontendOrigin();
   }
 
   @Override

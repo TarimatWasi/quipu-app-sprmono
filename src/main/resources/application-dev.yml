@@ -20,20 +20,19 @@ app:
     client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
-    # La reescritura de Vercel (/bff) conserva el Origin del host de Vercel (TAR-75): se listan el
-    # segundo alias de producción y, con comodín solo dentro de la primera etiqueta, los alias de
-    # rama y los despliegues por hash del proyecto. Cualquier otro origen recibe 403. Un patrón
-    # ligado al equipo no distingue un host del equipo de una etiqueta parecida que termine igual:
-    # Vercel asigna las etiquetas y la cookie de sesión vive en el dominio de Vercel.
+    # La reescritura de Vercel (/bff) conserva el Origin del host de Vercel (TAR-75). El dominio
+    # propio de desarrollo (quipu-dev.tarimatwasi.com, TAR-128) es CORS_ALLOWED_ORIGIN; aquí van el
+    # alias del proyecto quipu y, con comodín solo dentro de la primera etiqueta, los alias de rama.
+    # Cualquier otro origen recibe 403. Un patrón ligado al equipo no
+    # distingue un host del equipo de una etiqueta parecida que termine igual: Vercel asigna las
+    # etiquetas y la cookie de sesión vive en el dominio de Vercel. El de producción
+    # (quipu.tarimatwasi.com) es de application-prod.yml.
     allowed-origins:
-      - https://quipu-app-angweb-dev-shizukajikus-projects.vercel.app
-      # Dominio propio del frontend de desarrollo (TAR-128). El de producción
-      # (quipu.tarimatwasi.com) no se lista aquí: es de application-prod.yml.
-      - https://quipu-dev.tarimatwasi.com
+      - https://quipu-tarimatwasi.vercel.app
     # El comodín casa [a-z0-9-]+ (nunca un punto) y cubre los alias de rama
-    # (quipu-app-angweb-dev-git-<rama>-...) y los despliegues por hash; un solo patrón.
+    # (quipu-git-<rama>-tarimatwasi); un solo patrón.
     allowed-origin-patterns:
-      - https://quipu-app-angweb-*-shizukajikus-projects.vercel.app
+      - https://quipu-git-*-tarimatwasi.vercel.app
   # Primer ADMIN (AdminBootstrap): solo se crea si no existe ninguno. Son las únicas variables
   # opcionales con valor vacío por defecto: una vez creado el ADMIN ya no hacen falta.
   admin:

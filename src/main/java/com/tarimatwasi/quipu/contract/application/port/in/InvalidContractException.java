@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.contract.application.port.in;
 
+import java.io.Serial;
+
 /** A field of a contract is out of range. */
 public class InvalidContractException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final String field;
 

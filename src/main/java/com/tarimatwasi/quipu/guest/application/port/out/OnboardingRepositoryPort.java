@@ -18,9 +18,6 @@ public interface OnboardingRepositoryPort {
   GuestDocument addDocument(
       Long guestId, String storageKey, String originalName, String contentType, long sizeBytes);
 
-  /** The last consent the guest accepted, if any. */
-  Optional<GuestConsent> lastConsentOf(Long guestId);
-
   /** The consent of the guest for this version of the text, if any; there is one per version. */
   Optional<GuestConsent> consentOf(Long guestId, String version);
 

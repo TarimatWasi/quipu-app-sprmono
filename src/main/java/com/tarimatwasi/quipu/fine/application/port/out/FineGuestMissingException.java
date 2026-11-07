@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.fine.application.port.out;
 
+import java.io.Serial;
+
 /** The base refused a fine because its guest is not in guests (the foreign key fk_fines_guest). */
 public class FineGuestMissingException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception from the refusal of the base. */
   public FineGuestMissingException(Throwable cause) {

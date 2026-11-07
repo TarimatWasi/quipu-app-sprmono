@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /**
  * The temporary password was right but its 30 minutes are over (RN-32): the guest asks the
  * administrator for a new access. Only thrown when the password matched, so it never tells whether
@@ -7,7 +9,7 @@ package com.tarimatwasi.quipu.auth.application.port.in;
  */
 public class TemporaryPasswordExpiredException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public TemporaryPasswordExpiredException() {

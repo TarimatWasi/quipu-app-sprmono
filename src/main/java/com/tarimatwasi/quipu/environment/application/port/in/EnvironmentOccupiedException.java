@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.environment.application.port.in;
 
 import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
+import java.io.Serial;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -9,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  */
 public class EnvironmentOccupiedException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final boolean forStay;
 

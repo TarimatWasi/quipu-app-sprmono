@@ -1,12 +1,14 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /**
  * The guest of the session may not edit its profile on that route (RN-09, RN-33): the route is of
  * the other type of guest, or the onboarding is not complete yet.
  */
 public class OwnProfileRefusedException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Why the edit is refused. */
   public enum Reason {

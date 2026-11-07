@@ -57,7 +57,7 @@ class OnboardingServiceTest {
   @Mock OnboardingRepositoryPort records;
   @Mock GuestDocumentFilePort files;
 
-  private final ConsentTexts consents = new ConsentTexts("borrador-2026-10");
+  private final ConsentTexts consents = new ConsentTexts(() -> "2026-11");
 
   private OnboardingService service() {
     return new OnboardingService(
@@ -202,10 +202,10 @@ class OnboardingServiceTest {
 
   @Test
   void aVersionWithoutItsTextFailsTheStartup() {
-    assertThatThrownBy(() -> new ConsentTexts("no-existe"))
+    assertThatThrownBy(() -> new ConsentTexts(() -> "no-existe"))
         .isInstanceOf(IllegalStateException.class);
-    assertThatThrownBy(() -> new ConsentTexts("../application"))
+    assertThatThrownBy(() -> new ConsentTexts(() -> "../application"))
         .isInstanceOf(IllegalStateException.class);
-    assertThat(consents.currentText()).startsWith("BORRADOR PROVISIONAL");
+    assertThat(consents.currentText()).startsWith("Consentimiento");
   }
 }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.Serial;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -20,7 +21,7 @@ class EdgeGateFilterTest {
 
   /** The endpoint behind the filters: it answers 200 to any method. */
   private static final class Endpoint extends HttpServlet {
-    private static final long serialVersionUID = 1L;
+    @Serial private static final long serialVersionUID = 1L;
 
     @Override
     protected void service(HttpServletRequest request, HttpServletResponse response) {

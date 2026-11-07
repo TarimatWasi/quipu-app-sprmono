@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /** An input of the onboarding that the schema let through but the rules do not take. */
 public class InvalidOnboardingInputException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** What is wrong. */
   public enum Reason {

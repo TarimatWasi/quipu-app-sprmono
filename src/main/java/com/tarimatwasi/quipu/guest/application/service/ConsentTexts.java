@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
+import com.tarimatwasi.quipu.guest.application.port.out.ConsentVersionPort;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -15,16 +16,15 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
- * The consent texts (RF-14, RN-14). The version in force is the property {@code
- * app.consent.version}; its text, and the text of every version that was ever in force, is the
- * classpath resource {@code consent/<version>.txt}, kept so that an accepted text can be shown
- * again. A version without its text fails the startup.
+ * The consent text in force (RF-14, RN-14). The version in force is the property {@code
+ * app.consent.version}; its text is the classpath resource {@code consent/<version>.txt}. Only the
+ * version in force is kept (TAR-305): a guest who accepted a version that is no longer published
+ * sees the one in force. A version without its text fails the startup.
  *
  * <p>TAR-207: {@code consent/manifest.properties} fixes the SHA-256 of the text of every published
  * version. The startup fails unless every version of the manifest has its text with that hash, the
@@ -39,9 +39,9 @@ class ConsentTexts {
   private final String current;
   private final String currentText;
 
-  ConsentTexts(@Value("${app.consent.version}") String current) {
+  ConsentTexts(ConsentVersionPort version) {
+    this.current = version.currentVersion();
     verify(current);
-    this.current = current;
     this.currentText = textOf(current);
   }
 
@@ -53,7 +53,7 @@ class ConsentTexts {
     return currentText;
   }
 
-  /** The text of a version that was in force; its resource is never removed. */
+  /** The text of the version, as it is shown. */
   static String textOf(String version) {
     if (!VERSION.matcher(version).matches()) {
       throw new IllegalStateException("Not a consent version: " + version);

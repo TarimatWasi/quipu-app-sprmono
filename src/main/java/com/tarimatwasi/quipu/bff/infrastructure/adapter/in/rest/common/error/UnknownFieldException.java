@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error;
 
+import java.io.Serial;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
@@ -12,7 +13,7 @@ import org.jspecify.annotations.Nullable;
  */
 public class UnknownFieldException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final String field;
 

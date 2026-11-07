@@ -1,11 +1,13 @@
 package com.tarimatwasi.quipu.guest.application.port.in;
 
+import java.io.Serial;
+
 /**
  * The onboarding is not where the operation needs it (RN-33), or the documents are full (RN-37).
  */
 public class OnboardingConflictException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Why the operation cannot run now. */
   public enum Reason {

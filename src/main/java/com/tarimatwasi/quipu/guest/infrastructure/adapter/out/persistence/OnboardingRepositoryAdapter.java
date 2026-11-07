@@ -46,13 +46,6 @@ public class OnboardingRepositoryAdapter implements OnboardingRepositoryPort {
   }
 
   @Override
-  public Optional<GuestConsent> lastConsentOf(Long guestId) {
-    return consents
-        .findFirstByGuestIdOrderByAcceptedAtDescIdDesc(guestId)
-        .map(GuestConsentJpaEntity::toDomain);
-  }
-
-  @Override
   public Optional<GuestConsent> consentOf(Long guestId, String version) {
     return consents.findByGuestIdAndVersion(guestId, version).map(GuestConsentJpaEntity::toDomain);
   }

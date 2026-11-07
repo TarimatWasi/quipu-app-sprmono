@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.payment.application.port.in;
 
+import java.io.Serial;
+
 /** The file is not a JPG, PNG or PDF by content, or is over 5 MB (RF-15). */
 public class InvalidVoucherFileException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final String field;
 

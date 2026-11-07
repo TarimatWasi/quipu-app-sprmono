@@ -1,8 +1,10 @@
 package com.tarimatwasi.quipu.auth.application.port.in;
 
+import java.io.Serial;
+
 /** Unknown document or wrong password: the same error for both, so it does not reveal which. */
 public class InvalidCredentialsException extends RuntimeException {
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception. */
   public InvalidCredentialsException() {

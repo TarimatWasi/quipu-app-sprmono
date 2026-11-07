@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.shared.masking;
 
+import java.io.Serial;
+
 /** A masked id that this service never issued for the kind asked, or that was altered. */
 public class UnknownMaskedIdException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   private final IdKind kind;
 

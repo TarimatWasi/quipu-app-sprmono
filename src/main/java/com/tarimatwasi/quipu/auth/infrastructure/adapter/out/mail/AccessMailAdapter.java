@@ -1,19 +1,19 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
 import com.tarimatwasi.quipu.auth.application.port.out.AccessMailPort;
+import com.tarimatwasi.quipu.auth.application.port.out.FrontendOriginPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Component;
 
 /**
- * The activation link points to the frontend, whose origin is the one CORS already trusts ({@code
- * app.cors.allowed-origin}), like the recovery link. The email leaves through {@link
- * ResendMailSender} in another thread (ADR-F4). The local profile has no provider: nothing is sent
- * and, unlike the recovery link, nothing is written to the console either, because the access is
- * already in the answer the administrator receives.
+ * The activation link points to the frontend, whose origin is the one CORS already trusts ({@link
+ * FrontendOriginPort}), like the recovery link. The email leaves through {@link ResendMailSender}
+ * in another thread (ADR-F4). The local profile has no provider: nothing is sent and, unlike the
+ * recovery link, nothing is written to the console either, because the access is already in the
+ * answer the administrator receives.
  */
 @Component
 public class AccessMailAdapter implements AccessMailPort {
@@ -23,11 +23,9 @@ public class AccessMailAdapter implements AccessMailPort {
   private final ObjectProvider<ResendMailSender> sender;
   private final String frontendOrigin;
 
-  public AccessMailAdapter(
-      ObjectProvider<ResendMailSender> sender,
-      @Value("${app.cors.allowed-origin}") String frontendOrigin) {
+  public AccessMailAdapter(ObjectProvider<ResendMailSender> sender, FrontendOriginPort frontend) {
     this.sender = sender;
-    this.frontendOrigin = frontendOrigin;
+    this.frontendOrigin = frontend.frontendOrigin();
   }
 
   @Override

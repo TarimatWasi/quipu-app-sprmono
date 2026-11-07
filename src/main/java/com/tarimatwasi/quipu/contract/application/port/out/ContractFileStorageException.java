@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.contract.application.port.out;
 
+import java.io.Serial;
+
 /** The file store (R2) is not configured or did not answer. */
 public class ContractFileStorageException extends RuntimeException {
 
-  private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1L;
 
   /** Creates the exception with the reason. */
   public ContractFileStorageException(String message, Throwable cause) {
