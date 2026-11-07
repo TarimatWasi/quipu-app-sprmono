@@ -115,9 +115,10 @@ app:
     max-age: ${app.jwt.expiration}
   # Consentimiento de datos personales del onboarding (RF-14, TAR-137): versión vigente; su texto es
   # el recurso consent/<versión>.txt. Texto definitivo aprobado por el abogado (D-62, TAR-168). Una
-  # versión nueva llega como archivo nuevo, sin borrar el de la anterior.
+  # versión nueva llega como archivo nuevo, sin borrar el de la anterior. 2026-11 (TAR-246): las
+  # fotos del documento también las ve el propio huésped; el abogado la aprobó el 2026-11-07.
   consent:
-    version: 2026-10
+    version: 2026-11
 
 server:
   error:

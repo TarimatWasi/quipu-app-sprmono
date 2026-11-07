@@ -18,6 +18,8 @@ class ConsentTextsTest {
   private static final String HASH =
       "23795aa537f750434b48694ec522d18af4005959801e27996960f5227ff2f9d8";
   private static final String DEFINITIVE_HASH =
+      "6a2552ab771870557d5b61559d14eb027501df53a97f2674bb372d4bcf3ff501";
+  private static final String PREVIOUS_HASH =
       "0348877596af3c0308425f2cf29c7cf34c1af7a3b77951ada58edc7f46f926c1";
 
   /** The manifest in the repository matches every text and names the version in force. */
@@ -39,12 +41,28 @@ class ConsentTextsTest {
                 .get(0)
                 .getProperty("app.consent.version"));
 
-    assertThat(configured).isEqualTo("2026-10");
+    assertThat(configured).isEqualTo("2026-11");
     assertThatCode(() -> ConsentTexts.verify(configured)).doesNotThrowAnyException();
     String text = new ConsentTexts(configured).currentText();
     assertThat(ConsentTexts.manifest()).containsEntry(configured, DEFINITIVE_HASH);
     assertThat(ConsentTexts.sha256(text)).isEqualTo(DEFINITIVE_HASH);
     assertThat(text).doesNotContainIgnoringCase("BORRADOR");
+  }
+
+  /** TAR-246: 2026-10 stays as it was accepted; 2026-11 only adds the guest to who sees photos. */
+  @Test
+  void thePreviousVersionKeepsItsTextAndTheNewOneChangesOnlyWhoSeesThePhotos() {
+    assertThat(ConsentTexts.manifest()).containsEntry("2026-10", PREVIOUS_HASH);
+    assertThat(ConsentTexts.sha256(ConsentTexts.textOf("2026-10"))).isEqualTo(PREVIOUS_HASH);
+
+    String previous = ConsentTexts.textOf("2026-10");
+    String current = ConsentTexts.textOf("2026-11");
+    assertThat(current)
+        .isEqualTo(
+            previous.replace(
+                "solo las ve un administrador, mediante",
+                "las ven un administrador y tú mismo, cada uno mediante"))
+        .contains("las ven un administrador y tú mismo, cada uno mediante un enlace");
   }
 
   @Test
