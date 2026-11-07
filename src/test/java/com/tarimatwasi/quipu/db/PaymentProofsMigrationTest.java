@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.db;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
@@ -46,6 +47,8 @@ class PaymentProofsMigrationTest {
         .dataSource(dataSource)
         .schemas(SCHEMA)
         .createSchemas(true)
+        // TAR-214: the privileges script needs the placeholder; empty, it grants nothing
+        .placeholders(Map.of("app_role", ""))
         .target(target)
         .load();
   }

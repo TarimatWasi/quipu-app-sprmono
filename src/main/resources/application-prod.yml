@@ -20,6 +20,14 @@ app:
     required: true # sin ADMIN y sin ADMIN_DOCUMENT_NUMBER / ADMIN_EMAIL el arranque falla
     document-number: ${ADMIN_DOCUMENT_NUMBER:}
     email: ${ADMIN_EMAIL:}
+  # TAR-214: conexión propia de Flyway con el rol dueño de las tablas y rol de aplicación al que las migraciones
+  # conceden privilegios (R__application_role_privileges.sql). Opcionales: vacías, Flyway y la aplicación comparten
+  # DATABASE_URL como hasta ahora. Con FLYWAY_URL, DATABASE_URL es la del rol FLYWAY_APP_ROLE.
+  migration:
+    url: ${FLYWAY_URL:}
+    user: ${FLYWAY_USER:}
+    password: ${FLYWAY_PASSWORD:}
+    app-role: ${FLYWAY_APP_ROLE:}
   r2:
     account-id: ${R2_ACCOUNT_ID}
     access-key-id: ${R2_ACCESS_KEY_ID}
