@@ -10,6 +10,12 @@ spring:
     url: ${DATABASE_URL}
 
 app:
+  # TAR-144, TAR-9: Vercel agrega este secreto a lo que reenvía a /bff; sin él, 403. Una o dos
+  # (la vigente y la anterior, al rotar) separadas por coma. Con el secreto verificado, el límite por
+  # dirección usa X-Vercel-Forwarded-For (la IP del navegador).
+  edge:
+    required: true # un EDGE_SHARED_SECRETS vacío dejaría la API abierta: el arranque falla
+    secrets: ${EDGE_SHARED_SECRETS}
   rate-limit:
     client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
   cors:

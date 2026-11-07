@@ -53,8 +53,14 @@ final class RateLimitFilter extends OncePerRequestFilter {
     return request.getServletPath() + (pathInfo == null ? "" : pathInfo);
   }
 
-  /** The configured header (first address of a list) or, without it, the connection's address. */
+  /**
+   * The address of the browser that {@link EdgeGateFilter} verified (TAR-144); else the configured
+   * header (first address of a list); else the connection's address.
+   */
   private String clientOf(HttpServletRequest request) {
+    if (request.getAttribute(EdgeGateFilter.CLIENT_ADDRESS) instanceof String browser) {
+      return browser;
+    }
     if (!clientIpHeader.isEmpty()) {
       String value = request.getHeader(clientIpHeader);
       if (value != null && !value.isBlank()) {

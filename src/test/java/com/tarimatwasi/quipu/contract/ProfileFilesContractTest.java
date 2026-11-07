@@ -140,6 +140,25 @@ class ProfileFilesContractTest {
     assertThat(load(file).get("app.rate-limit.client-ip-header")).isEqualTo("CF-Connecting-IP");
   }
 
+  /**
+   * TAR-144, TAR-9: the deployed profiles read the secret that Vercel adds to /bff, with no
+   * default; the base and local never carry one (the local profile runs without the gate).
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"application-dev.yml", "application-prod.yml"})
+  void strictProfiles_requireTheSharedSecretOfTheEdge(String file) throws IOException {
+    var profile = load(file);
+
+    assertThat(profile.get("app.edge.secrets")).isEqualTo("${EDGE_SHARED_SECRETS}");
+    assertThat(profile.get("app.edge.required")).isEqualTo(true);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"application.yml", "application-local.yml"})
+  void baseAndLocal_haveNoSharedSecretOfTheEdge(String file) throws IOException {
+    assertThat(load(file).keySet()).noneMatch(key -> key.startsWith("app.edge."));
+  }
+
   @Test
   void base_limitsPerAddressGenerouslyAndPerAccountTightly() throws IOException {
     var base = load("application.yml");
