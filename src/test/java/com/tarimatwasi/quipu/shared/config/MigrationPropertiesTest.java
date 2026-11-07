@@ -52,6 +52,18 @@ class MigrationPropertiesTest {
   }
 
   @Test
+  void thePasswordKeepsItsWhitespace() {
+    String withSpaces = "  " + SECRET + " ";
+    var configuration =
+        customize(new MigrationProperties(URL, "quipu_owner", withSpaces, "quipu_app"));
+
+    assertThat(configuration.getDataSource())
+        .isInstanceOfSatisfying(
+            SimpleDriverDataSource.class,
+            owner -> assertThat(owner.getPassword()).isEqualTo(withSpaces));
+  }
+
+  @Test
   void credentialsInsideTheUrlNeedNoUserNorPassword() {
     var configuration = customize(new MigrationProperties(URL, "", "", "quipu_app"));
 

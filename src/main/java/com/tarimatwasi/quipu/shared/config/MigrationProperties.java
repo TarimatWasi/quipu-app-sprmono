@@ -40,7 +40,8 @@ record MigrationProperties(
   MigrationProperties {
     url = clean(url);
     user = clean(user);
-    password = clean(password);
+    // The password is kept as it came: whitespace may be part of it. Only an empty one means none.
+    password = StringUtils.hasText(password) ? password : "";
     appRole = clean(appRole);
     if (url.isEmpty() && (!user.isEmpty() || !password.isEmpty())) {
       throw new IllegalStateException(
