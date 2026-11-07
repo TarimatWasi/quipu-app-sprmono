@@ -166,7 +166,9 @@ class ProfileFilesContractTest {
 
   /** TAR-281: Hibernate's connection info line carries the JDBC URL, and with it the password. */
   @Test
-  void hibernateDoesNotLogTheJdbcUrl() {
+  void hibernateDoesNotLogTheJdbcUrl() throws IOException {
+    var base = load("application.yml");
+
     assertThat(base.get("logging.level.org.hibernate.orm.connections.pooling")).isEqualTo("WARN");
   }
 
