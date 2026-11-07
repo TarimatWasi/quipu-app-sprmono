@@ -42,7 +42,8 @@ public class StayPaymentAdapter implements PaymentStayPort {
   }
 
   private static StayTerms terms(StayView stay) {
-    return new StayTerms(stay.id(), stay.startDate(), stay.endDate(), stay.agreedAmount());
+    return new StayTerms(
+        stay.id(), stay.startDate(), stay.endDate(), stay.agreedAmount(), stay.environmentId());
   }
 
   @Override

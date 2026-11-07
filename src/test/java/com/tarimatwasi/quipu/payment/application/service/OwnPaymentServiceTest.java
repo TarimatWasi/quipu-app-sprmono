@@ -541,6 +541,19 @@ class OwnPaymentServiceTest {
     assertThat(view.agreedAmount()).isEqualByComparingTo("150");
     assertThat(view.paymentId()).isEqualTo(PAYMENT);
     assertThat(view.rejectionReason()).isEqualTo("Monto incompleto");
+    assertThat(view.environmentId()).isNull();
+  }
+
+  @Test
+  void stayStatus_carriesTheEnvironmentTheStayOccupies() {
+    guest(false, Standing.ACTIVE);
+    StayTerms stay =
+        new StayTerms(
+            STAY, LocalDate.parse("2026-10-10"), LocalDate.parse("2026-10-20"), BigDecimal.TEN, 7L);
+    when(stays.relevantStayOf(GUEST, LocalDate.parse("2026-10-14"))).thenReturn(Optional.of(stay));
+    when(payments.findAllByStay(STAY)).thenReturn(List.of());
+
+    assertThat(service.stayStatus(GUEST).environmentId()).isEqualTo(7L);
   }
 
   // ------------------------------------------------------------------ the history (RF-10)

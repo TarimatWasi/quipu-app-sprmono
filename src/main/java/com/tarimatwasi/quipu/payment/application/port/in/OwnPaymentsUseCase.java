@@ -54,6 +54,7 @@ public interface OwnPaymentsUseCase {
   /**
    * The stay of a temporary guest with the state of its payment.
    *
+   * @param environmentId the environment the stay occupies, {@code null} for one without (TAR-237)
    * @param paymentId the payment that holds the stay, else the last rejection, if any
    * @param rejectionReason the reason of the last rejection while the payment stays rejected
    */
@@ -63,6 +64,7 @@ public interface OwnPaymentsUseCase {
       LocalDate endDate,
       ChargeState status,
       BigDecimal agreedAmount,
+      @Nullable Long environmentId,
       @Nullable Long paymentId,
       @Nullable String rejectionReason,
       @Nullable StaySurplusView surplus) {}

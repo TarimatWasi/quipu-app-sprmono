@@ -111,6 +111,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
         stay.endDate(),
         state(status.state()),
         stay.agreedAmount(),
+        stay.environmentId(),
         status.paymentId(),
         status.rejectionReason(),
         staySurplus(guestId, status));

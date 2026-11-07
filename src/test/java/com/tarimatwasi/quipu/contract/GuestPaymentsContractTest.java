@@ -531,6 +531,28 @@ class GuestPaymentsContractTest extends PaymentsContractSupport {
   }
 
   @Test
+  void theStayStatusNamesTheEnvironmentTheStayOccupiesOrNullWithoutOne() throws Exception {
+    mockMvc
+        .perform(get(STAY_STATUS).cookie(temporary()))
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.environmentCode").isEmpty())
+        .andExpect(jsonPath("$.environmentType").isEmpty());
+
+    Long cabin = TestIds.next();
+    jdbc.update(
+        "INSERT INTO environments (id, code, type, status) VALUES (?, 'C1', 'CABIN', 'ACTIVE')",
+        cabin);
+    jdbc.update("UPDATE stays SET environment_id = ? WHERE id = ?", cabin, stay);
+
+    mockMvc
+        .perform(get(STAY_STATUS).cookie(temporary()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.environmentCode").value("C1"))
+        .andExpect(jsonPath("$.environmentType").value("CABIN"));
+  }
+
+  @Test
   void aTemporaryGuestWithoutAnyStayHasNoPaymentStatus() throws Exception {
     jdbc.update("DELETE FROM stays");
 
