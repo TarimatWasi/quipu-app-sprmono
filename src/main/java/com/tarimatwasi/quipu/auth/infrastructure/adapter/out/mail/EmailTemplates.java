@@ -305,7 +305,7 @@ class EmailTemplates {
         + " style=\"border-collapse:collapse\"><tr>"
         + "<td style=\"padding:0 14px 0 0;vertical-align:middle\"><img src=\""
         + esc(frontendOrigin)
-        + "/emblema.png\" width=\"48\" height=\"48\" alt=\"Emblema de Quipu\""
+        + "/quipu-emblema.png\" width=\"48\" height=\"48\" alt=\"Emblema de Quipu\""
         + " style=\"display:block;width:48px;height:48px;border:0\"></td>"
         + "<td style=\"vertical-align:middle\"><span style=\"font-family:"
         + GEORGIA
