@@ -42,9 +42,11 @@ class ConfigurationContractTest {
 
   @Test
   void error_responses_hide_internal_details() {
-    for (var key : new String[] {"message", "stacktrace", "binding-errors", "exception"}) {
-      assertThat(env.getProperty("server.error.include-" + key)).as(key).isEqualTo("never");
+    // Boot 4 moved these from server.error.* (deprecated) to spring.web.error.*.
+    for (var key : new String[] {"message", "stacktrace", "binding-errors"}) {
+      assertThat(env.getProperty("spring.web.error.include-" + key)).as(key).isEqualTo("never");
     }
+    assertThat(env.getProperty("spring.web.error.include-exception")).isEqualTo("false");
   }
 
   @Test
