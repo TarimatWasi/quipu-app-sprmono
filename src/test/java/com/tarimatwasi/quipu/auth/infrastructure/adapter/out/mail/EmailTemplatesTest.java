@@ -9,9 +9,10 @@ import org.junit.jupiter.api.Test;
 class EmailTemplatesTest {
 
   private static final String ORIGIN = "https://app.example.test";
+  private static final String ASSETS = "https://assets.example.test";
   private static final String LINK = ORIGIN + "/reset-password?code=abc-DEF_123";
 
-  private final EmailTemplates templates = new EmailTemplates(() -> ORIGIN + "/");
+  private final EmailTemplates templates = new EmailTemplates(() -> ORIGIN + "/", () -> ASSETS);
 
   private List<MailContent> all() {
     return List.of(
@@ -32,7 +33,7 @@ class EmailTemplatesTest {
       assertThat(mail.html())
           .startsWith("<!doctype html>")
           .contains("<html lang=\"es\">")
-          .contains("src=\"" + ORIGIN + "/quipu-emblema.png\"")
+          .contains("src=\"" + ASSETS + "/quipu-emblema.png\"")
           .contains("Quipu · Tarimat Wasi")
           .endsWith("</html>\n");
       assertThat(mail.text()).startsWith("Hola").doesNotContain("<").doesNotContain("&amp;");

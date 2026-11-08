@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
+import com.tarimatwasi.quipu.auth.application.port.out.AssetsBaseUrlPort;
 import com.tarimatwasi.quipu.auth.application.port.out.FrontendOriginPort;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.HtmlUtils;
@@ -8,8 +9,8 @@ import org.springframework.web.util.HtmlUtils;
  * TAR-309: the eight emails of the system as the design of the page "Correos" shows them. Every
  * email carries the plain text too, the one that always existed, so a client that does not show
  * HTML loses nothing. The styles are inline because email clients ignore style sheets. Every value
- * that comes from a person or an account is escaped. The emblem is served by the frontend, which is
- * the origin that CORS already trusts ({@link FrontendOriginPort}).
+ * that comes from a person or an account is escaped. The emblem is served from the public bucket
+ * ({@link AssetsBaseUrlPort}), not from the frontend, so it does not depend on its deployment.
  */
 @Component
 class EmailTemplates {
@@ -23,9 +24,11 @@ class EmailTemplates {
   private static final String REVIEW = "Revísalo con los demás administradores.";
 
   private final String frontendOrigin;
+  private final String emblemUrl;
 
-  EmailTemplates(FrontendOriginPort frontend) {
+  EmailTemplates(FrontendOriginPort frontend, AssetsBaseUrlPort assets) {
     this.frontendOrigin = frontend.frontendOrigin().replaceAll("/+$", "");
+    this.emblemUrl = assets.assetsBaseUrl().replaceAll("/+$", "") + "/quipu-emblema.png";
   }
 
   /** The recovery email, also the link of an administrator without name (TAR-127). */
@@ -304,8 +307,8 @@ class EmailTemplates {
         + "\"><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\""
         + " style=\"border-collapse:collapse\"><tr>"
         + "<td style=\"padding:0 14px 0 0;vertical-align:middle\"><img src=\""
-        + esc(frontendOrigin)
-        + "/quipu-emblema.png\" width=\"48\" height=\"48\" alt=\"Emblema de Quipu\""
+        + esc(emblemUrl)
+        + "\" width=\"48\" height=\"48\" alt=\"Emblema de Quipu\""
         + " style=\"display:block;width:48px;height:48px;border:0\"></td>"
         + "<td style=\"vertical-align:middle\"><span style=\"font-family:"
         + GEORGIA

@@ -79,7 +79,8 @@ class MailAsyncConfigTest {
           "key",
           "no-reply@example.test",
           "https://app.example.test",
-          new EmailTemplates(() -> "https://app.example.test"));
+          new EmailTemplates(
+              () -> "https://app.example.test", () -> "https://assets.example.test"));
     }
 
     @Bean

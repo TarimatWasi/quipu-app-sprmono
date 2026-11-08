@@ -29,7 +29,9 @@ class GuestAccountEmailNoticeMailAdapterTest {
 
   private final GuestAccountEmailNoticeMailAdapter adapter =
       new GuestAccountEmailNoticeMailAdapter(
-          provider, new EmailTemplates(() -> "https://app.example.test"));
+          provider,
+          new EmailTemplates(
+              () -> "https://app.example.test", () -> "https://assets.example.test"));
 
   @Test
   void tellsThePreviousEmailWithTheNewOneOnlyPartlyShown() {

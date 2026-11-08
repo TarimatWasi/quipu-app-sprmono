@@ -31,7 +31,8 @@ class ResendMailSenderTest {
 
   private final RestClient.Builder builder = RestClient.builder();
   private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-  private final EmailTemplates templates = new EmailTemplates(() -> "https://app.example.test");
+  private final EmailTemplates templates =
+      new EmailTemplates(() -> "https://app.example.test", () -> "https://assets.example.test");
   private final ResendMailSender sender =
       new ResendMailSender(
           builder,

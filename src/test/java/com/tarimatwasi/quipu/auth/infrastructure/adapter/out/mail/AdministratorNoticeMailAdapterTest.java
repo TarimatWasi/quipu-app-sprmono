@@ -31,7 +31,9 @@ class AdministratorNoticeMailAdapterTest {
 
   private final AdministratorNoticeMailAdapter adapter =
       new AdministratorNoticeMailAdapter(
-          provider, new EmailTemplates(() -> "https://app.example.test"));
+          provider,
+          new EmailTemplates(
+              () -> "https://app.example.test", () -> "https://assets.example.test"));
 
   @Test
   void tellsWhoCreatedWhichAccount() {

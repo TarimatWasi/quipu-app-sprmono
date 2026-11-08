@@ -17,6 +17,8 @@ spring:
 app:
   cors:
     allowed-origin: http://localhost:4200
+  assets:
+    base-url: https://assets.tarimatwasi.com # el bucket público es el mismo en todos los entornos
   jwt:
     # Aleatorio en cada arranque: ningún secreto entra al repositorio público y las sesiones
     # locales se reinician con la aplicación.
