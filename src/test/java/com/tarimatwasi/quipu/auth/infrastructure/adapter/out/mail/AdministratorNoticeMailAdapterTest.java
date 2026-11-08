@@ -2,10 +2,12 @@ package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,7 +30,8 @@ class AdministratorNoticeMailAdapterTest {
   private final ObjectProvider<ResendMailSender> provider = mock(ObjectProvider.class);
 
   private final AdministratorNoticeMailAdapter adapter =
-      new AdministratorNoticeMailAdapter(provider);
+      new AdministratorNoticeMailAdapter(
+          provider, new EmailTemplates(() -> "https://app.example.test"));
 
   @Test
   void tellsWhoCreatedWhichAccount() {
@@ -36,15 +39,17 @@ class AdministratorNoticeMailAdapterTest {
 
     adapter.administratorCreated("otra@example.test", "creador@example.test", "nueva@example.test");
 
-    var text = ArgumentCaptor.forClass(String.class);
-    verify(sender)
-        .sendNotice(
-            eq("otra@example.test"), eq(AdministratorNoticeMailAdapter.SUBJECT), text.capture());
-    assertThat(text.getValue())
+    var mail = ArgumentCaptor.forClass(MailContent.class);
+    verify(sender).sendNotice(eq("otra@example.test"), mail.capture());
+    assertThat(mail.getValue().subject()).isEqualTo("Se creó un administrador en Quipu");
+    assertThat(mail.getValue().text())
         .contains("creador@example.test")
         .contains("nueva@example.test")
         .doesNotContain("http")
         .doesNotContain("code");
+    assertThat(mail.getValue().html())
+        .contains("creador@example.test")
+        .contains("nueva@example.test");
   }
 
   /** TAR-127: who deactivated or reactivated which account, and nothing that gives access. */
@@ -63,25 +68,19 @@ class AdministratorNoticeMailAdapterTest {
         "destino@example.test",
         StatusChange.REACTIVATED);
 
-    var deactivated = ArgumentCaptor.forClass(String.class);
-    verify(sender)
-        .sendNotice(
-            eq("otra@example.test"),
-            eq(AdministratorNoticeMailAdapter.DEACTIVATED_SUBJECT),
-            deactivated.capture());
-    assertThat(deactivated.getValue())
+    var mails = ArgumentCaptor.forClass(MailContent.class);
+    verify(sender, times(2)).sendNotice(eq("otra@example.test"), mails.capture());
+    MailContent deactivated = mails.getAllValues().get(0);
+    MailContent reactivated = mails.getAllValues().get(1);
+    assertThat(deactivated.subject()).isEqualTo("Se desactivó un administrador en Quipu");
+    assertThat(reactivated.subject()).isEqualTo("Se reactivó un administrador en Quipu");
+    assertThat(deactivated.text())
         .contains("actor@example.test desactivó")
         .contains("destino@example.test")
         .contains("ya no puede iniciar sesión")
         .doesNotContain("http")
         .doesNotContain("code");
-    var reactivated = ArgumentCaptor.forClass(String.class);
-    verify(sender)
-        .sendNotice(
-            eq("otra@example.test"),
-            eq(AdministratorNoticeMailAdapter.REACTIVATED_SUBJECT),
-            reactivated.capture());
-    assertThat(reactivated.getValue())
+    assertThat(reactivated.text())
         .contains("actor@example.test reactivó")
         .contains("destino@example.test")
         .contains("puede iniciar sesión de nuevo")
@@ -118,7 +117,7 @@ class AdministratorNoticeMailAdapterTest {
     when(provider.getIfAvailable()).thenReturn(sender);
     doThrow(new TaskRejectedException("limit reached"))
         .when(sender)
-        .sendNotice(anyString(), anyString(), anyString());
+        .sendNotice(anyString(), any(MailContent.class));
     var logger = (Logger) LoggerFactory.getLogger(AdministratorNoticeMailAdapter.class);
     var logs = new ListAppender<ILoggingEvent>();
     logs.start();

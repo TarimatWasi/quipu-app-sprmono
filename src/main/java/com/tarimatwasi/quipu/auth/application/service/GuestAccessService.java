@@ -161,7 +161,7 @@ public class GuestAccessService implements GuestAccessUseCase {
 
   @Override
   public boolean sendAccess(String email, IssuedAccess access) {
-    return mail.send(email, "Tu acceso a Quipu", access.shareMessage());
+    return mail.send(email, access.mode(), access.secret());
   }
 
   @Override

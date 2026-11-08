@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
 import com.tarimatwasi.quipu.auth.application.port.out.AccessMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.FrontendOriginPort;
+import com.tarimatwasi.quipu.shared.access.AccessMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -21,10 +22,15 @@ public class AccessMailAdapter implements AccessMailPort {
   private static final Logger LOG = LoggerFactory.getLogger(AccessMailAdapter.class);
 
   private final ObjectProvider<ResendMailSender> sender;
+  private final EmailTemplates templates;
   private final String frontendOrigin;
 
-  public AccessMailAdapter(ObjectProvider<ResendMailSender> sender, FrontendOriginPort frontend) {
+  public AccessMailAdapter(
+      ObjectProvider<ResendMailSender> sender,
+      EmailTemplates templates,
+      FrontendOriginPort frontend) {
     this.sender = sender;
+    this.templates = templates;
     this.frontendOrigin = frontend.frontendOrigin();
   }
 
@@ -36,13 +42,17 @@ public class AccessMailAdapter implements AccessMailPort {
   }
 
   @Override
-  public boolean send(String toEmail, String subject, String text) {
+  public boolean send(String toEmail, AccessMode mode, String secret) {
     ResendMailSender resend = sender.getIfAvailable();
     if (resend == null) {
       return false;
     }
     try {
-      resend.sendText(toEmail, subject, text);
+      resend.sendAccess(
+          toEmail,
+          mode == AccessMode.LINK
+              ? templates.guestAccessLink(secret)
+              : templates.guestAccessPassword(secret));
       return true;
     } catch (TaskRejectedException e) {
       // Neither the address nor the text (it carries the access): this reaches the logs.

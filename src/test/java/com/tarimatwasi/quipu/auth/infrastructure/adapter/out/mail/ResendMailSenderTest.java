@@ -31,9 +31,14 @@ class ResendMailSenderTest {
 
   private final RestClient.Builder builder = RestClient.builder();
   private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+  private final EmailTemplates templates = new EmailTemplates(() -> "https://app.example.test");
   private final ResendMailSender sender =
       new ResendMailSender(
-          builder, "re_test_key", "Quipu <no-reply@example.test>", "https://app.example.test");
+          builder,
+          "re_test_key",
+          "Quipu <no-reply@example.test>",
+          "https://app.example.test",
+          templates);
   private final Logger logger = (Logger) LoggerFactory.getLogger(ResendMailSender.class);
   private final ListAppender<ILoggingEvent> logs = new ListAppender<>();
 
@@ -62,7 +67,9 @@ class ResendMailSenderTest {
               String body = ((MockClientHttpRequest) request).getBodyAsString();
               assertThat(body)
                   .contains("https://app.example.test/reset-password?code=" + CODE)
-                  .contains("30 minutos");
+                  .contains("30 minutos")
+                  .contains("\"html\":\"<!doctype html>")
+                  .contains("\"text\":\"Hola,");
             })
         .andRespond(withSuccess("{\"id\":\"1\"}", MediaType.APPLICATION_JSON));
 
@@ -78,7 +85,11 @@ class ResendMailSenderTest {
     var otherServer = MockRestServiceServer.bindTo(otherBuilder).build();
     var other =
         new ResendMailSender(
-            otherBuilder, "re_test_key", "no-reply@example.test", "https://app.example.test/");
+            otherBuilder,
+            "re_test_key",
+            "no-reply@example.test",
+            "https://app.example.test/",
+            templates);
     otherServer
         .expect(requestTo("https://api.resend.com/emails"))
         .andExpect(
@@ -164,10 +175,11 @@ class ResendMailSenderTest {
         .expect(requestTo("https://api.resend.com/emails"))
         .andExpect(jsonPath("$.to").value("otra@example.test"))
         .andExpect(jsonPath("$.subject").value("Aviso"))
+        .andExpect(jsonPath("$.html").value("<p>Texto</p>"))
         .andExpect(jsonPath("$.text").value("Texto"))
         .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-    sender.sendNotice("otra@example.test", "Aviso", "Texto");
+    sender.sendNotice("otra@example.test", new MailContent("Aviso", "<p>Texto</p>", "Texto"));
 
     server.verify();
   }
