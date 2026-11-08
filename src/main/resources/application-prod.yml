@@ -20,6 +20,10 @@ app:
     client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
+  assets:
+    # TAR-316: imágenes públicas (el emblema de los correos) en el bucket público de R2 con dominio
+    # propio, aparte del despliegue de la aplicación. https, sin "/" final.
+    base-url: ${ASSETS_BASE_URL}
   # Primer ADMIN (AdminBootstrap): solo se crea si no existe ninguno. Son las únicas variables
   # opcionales con valor vacío por defecto: una vez creado el ADMIN ya no hacen falta.
   admin:
