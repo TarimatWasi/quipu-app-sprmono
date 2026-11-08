@@ -32,7 +32,7 @@ class EmailTemplatesTest {
       assertThat(mail.html())
           .startsWith("<!doctype html>")
           .contains("<html lang=\"es\">")
-          .contains("src=\"" + ORIGIN + "/emblema.png\"")
+          .contains("src=\"" + ORIGIN + "/quipu-emblema.png\"")
           .contains("Quipu · Tarimat Wasi")
           .endsWith("</html>\n");
       assertThat(mail.text()).startsWith("Hola").doesNotContain("<").doesNotContain("&amp;");
