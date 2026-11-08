@@ -60,12 +60,6 @@ spring:
       shutdown:
         await-termination: true
         await-termination-period: 8s
-  web:
-    error:
-      include-message: never
-      include-stacktrace: never
-      include-binding-errors: never
-      include-exception: false
 
 # Sesión (TAR-62 PR3: pasa a @ConfigurationProperties con Duration de 30 días). El secreto viene
 # siempre del entorno: sin valor por defecto en ningún perfil.
@@ -126,6 +120,13 @@ app:
   # 2026-11-07.
   consent:
     version: 2026-11
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    include-exception: never
 
 management:
   endpoints:
