@@ -19,12 +19,13 @@ public class GuestAccountEmailNoticeMailAdapter implements GuestAccountEmailNoti
   private static final Logger LOG =
       LoggerFactory.getLogger(GuestAccountEmailNoticeMailAdapter.class);
 
-  static final String SUBJECT = "Se cambió el correo de tu cuenta de Quipu";
-
   private final ObjectProvider<ResendMailSender> sender;
+  private final EmailTemplates templates;
 
-  public GuestAccountEmailNoticeMailAdapter(ObjectProvider<ResendMailSender> sender) {
+  public GuestAccountEmailNoticeMailAdapter(
+      ObjectProvider<ResendMailSender> sender, EmailTemplates templates) {
     this.sender = sender;
+    this.templates = templates;
   }
 
   @Override
@@ -33,14 +34,8 @@ public class GuestAccountEmailNoticeMailAdapter implements GuestAccountEmailNoti
     if (resend == null) {
       return;
     }
-    String text =
-        "Hola,\n\n"
-            + "El administrador de Quipu cambió el correo de tu cuenta a "
-            + masked(newEmail)
-            + ". Desde ahora la recuperación de contraseña se envía a ese correo y no a este.\n\n"
-            + "Si no pediste este cambio, comunícate con la administración.\n";
     try {
-      resend.sendNotice(previousEmail, SUBJECT, text);
+      resend.sendNotice(previousEmail, templates.accountEmailChanged(masked(newEmail)));
     } catch (TaskRejectedException e) {
       // Neither the addresses nor the text: this reaches the logs.
       LOG.warn(

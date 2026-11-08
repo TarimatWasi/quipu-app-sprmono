@@ -75,7 +75,11 @@ class MailAsyncConfigTest {
                 return withSuccess("{}", MediaType.APPLICATION_JSON).createResponse(request);
               });
       return new ResendMailSender(
-          builder, "key", "no-reply@example.test", "https://app.example.test");
+          builder,
+          "key",
+          "no-reply@example.test",
+          "https://app.example.test",
+          new EmailTemplates(() -> "https://app.example.test"));
     }
 
     @Bean

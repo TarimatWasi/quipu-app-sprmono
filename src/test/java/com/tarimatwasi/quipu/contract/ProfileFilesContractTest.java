@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -249,8 +250,8 @@ class ProfileFilesContractTest {
   @ValueSource(strings = {"application.yml", "application-dev.yml", "application-prod.yml"})
   void noProfileOverridesTheErrorDetailsToExposed(String file) throws IOException {
     assertThat(load(file).entrySet())
-        .filteredOn(e -> e.getKey().startsWith("server.error.include-"))
-        .allMatch(e -> "never".equals(e.getValue()));
+        .filteredOn(e -> e.getKey().startsWith("spring.web.error.include-"))
+        .allMatch(e -> Set.of("never", "false").contains(String.valueOf(e.getValue())));
   }
 
   /**

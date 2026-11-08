@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.mail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -27,7 +28,8 @@ class GuestAccountEmailNoticeMailAdapterTest {
   private final ObjectProvider<ResendMailSender> provider = mock(ObjectProvider.class);
 
   private final GuestAccountEmailNoticeMailAdapter adapter =
-      new GuestAccountEmailNoticeMailAdapter(provider);
+      new GuestAccountEmailNoticeMailAdapter(
+          provider, new EmailTemplates(() -> "https://app.example.test"));
 
   @Test
   void tellsThePreviousEmailWithTheNewOneOnlyPartlyShown() {
@@ -35,11 +37,11 @@ class GuestAccountEmailNoticeMailAdapterTest {
 
     adapter.accountEmailChanged("old@example.test", "nuevo.correo@example.org");
 
-    var text = ArgumentCaptor.forClass(String.class);
-    verify(sender)
-        .sendNotice(
-            eq("old@example.test"), eq(GuestAccountEmailNoticeMailAdapter.SUBJECT), text.capture());
-    assertThat(text.getValue())
+    var mail = ArgumentCaptor.forClass(MailContent.class);
+    verify(sender).sendNotice(eq("old@example.test"), mail.capture());
+    assertThat(mail.getValue().subject()).isEqualTo("Se cambió el correo de tu cuenta de Quipu");
+    assertThat(mail.getValue().html()).contains("n***@example.org").doesNotContain("nuevo.correo");
+    assertThat(mail.getValue().text())
         .contains("n***@example.org")
         .contains("recuperación de contraseña")
         .doesNotContain("nuevo.correo")
@@ -69,7 +71,7 @@ class GuestAccountEmailNoticeMailAdapterTest {
     when(provider.getIfAvailable()).thenReturn(sender);
     doThrow(new TaskRejectedException("limit reached"))
         .when(sender)
-        .sendNotice(anyString(), anyString(), anyString());
+        .sendNotice(anyString(), any(MailContent.class));
     Logger logger = (Logger) LoggerFactory.getLogger(GuestAccountEmailNoticeMailAdapter.class);
     ListAppender<ILoggingEvent> logs = new ListAppender<>();
     logs.start();

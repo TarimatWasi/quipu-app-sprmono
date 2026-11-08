@@ -17,11 +17,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * Calls Resend (free plan) to send the recovery email. It is its own bean so that {@code @Async}
- * goes through the Spring proxy: the request that asked for the email does not wait for the
- * provider, so every answer of "forgot password" takes the same time whether the account exists or
- * not (ADR-F4). The link points to the frontend, whose origin is the one CORS already trusts
- * ({@link FrontendOriginPort}).
+ * Calls Resend (free plan) to send the emails (HTML with the plain text, TAR-309). It is its own
+ * bean so that {@code @Async} goes through the Spring proxy: the request that asked for the email
+ * does not wait for the provider, so every answer of "forgot password" takes the same time whether
+ * the account exists or not (ADR-F4). The link points to the frontend, whose origin is the one CORS
+ * already trusts ({@link FrontendOriginPort}).
  */
 @Component
 @Profile("!local")
@@ -32,19 +32,26 @@ public class ResendMailSender {
   private final RestClient restClient;
   private final String fromEmail;
   private final String frontendOrigin;
+  private final EmailTemplates templates;
 
   @Autowired
-  public ResendMailSender(ResendProperties resend, FrontendOriginPort frontend) {
+  public ResendMailSender(
+      ResendProperties resend, FrontendOriginPort frontend, EmailTemplates templates) {
     this(
         RestClient.builder().requestFactory(withTimeouts()),
         resend.apiKey(),
         resend.fromEmail(),
-        frontend.frontendOrigin());
+        frontend.frontendOrigin(),
+        templates);
   }
 
   /** The tests bind a mock server to the builder. */
   ResendMailSender(
-      RestClient.Builder builder, String apiKey, String fromEmail, String frontendOrigin) {
+      RestClient.Builder builder,
+      String apiKey,
+      String fromEmail,
+      String frontendOrigin,
+      EmailTemplates templates) {
     this.restClient =
         builder
             .baseUrl("https://api.resend.com")
@@ -52,6 +59,7 @@ public class ResendMailSender {
             .build();
     this.fromEmail = fromEmail;
     this.frontendOrigin = frontendOrigin;
+    this.templates = templates;
   }
 
   /** A provider that hangs holds its own thread, never the one of a request. */
@@ -74,16 +82,7 @@ public class ResendMailSender {
         activation
             ? ResetLink.activation(frontendOrigin, code)
             : ResetLink.of(frontendOrigin, code);
-    String text =
-        "Hola,\n\n"
-            + "Recibimos una solicitud para restablecer tu contraseña de Quipu. Abre este enlace"
-            + " para elegir una nueva; vale "
-            + validFor.toMinutes()
-            + " minutos y solo se puede usar una vez:\n\n"
-            + link
-            + "\n\n"
-            + "Si no lo pediste, ignora este correo: tu contraseña no cambia.\n";
-    post(toEmail, "Restablece tu contraseña de Quipu", text, "recovery");
+    post(toEmail, templates.recovery(link, validFor.toMinutes()), "recovery");
   }
 
   /**
@@ -92,8 +91,8 @@ public class ResendMailSender {
    * answer.
    */
   @Async
-  public void sendText(String toEmail, String subject, String text) {
-    post(toEmail, subject, text, "access");
+  public void sendAccess(String toEmail, MailContent mail) {
+    post(toEmail, mail, "access");
   }
 
   /**
@@ -102,8 +101,8 @@ public class ResendMailSender {
    * answer.
    */
   @Async
-  public void sendNotice(String toEmail, String subject, String text) {
-    post(toEmail, subject, text, "administrator notice");
+  public void sendNotice(String toEmail, MailContent mail) {
+    post(toEmail, mail, "administrator notice");
   }
 
   /**
@@ -115,25 +114,27 @@ public class ResendMailSender {
    */
   public boolean sendAdministratorAccessNow(String toEmail, String code, Duration validFor) {
     String link = ResetLink.activation(frontendOrigin, code);
-    String text =
-        "Hola,\n\n"
-            + "Se creó tu cuenta de administrador de Quipu. Abre este enlace para elegir tu"
-            + " contraseña; vale "
-            + validFor.toMinutes()
-            + " minutos y solo se puede usar una vez:\n\n"
-            + link
-            + "\n\n"
-            + "Si el enlace vence, usa \"Olvidé mi contraseña\" con este correo para recibir"
-            + " otro.\n";
-    return post(toEmail, "Tu cuenta de administrador de Quipu", text, "administrator access");
+    return post(
+        toEmail, templates.administratorAccess(link, validFor.toMinutes()), "administrator access");
   }
 
-  private boolean post(String toEmail, String subject, String text, String kind) {
+  private boolean post(String toEmail, MailContent mail, String kind) {
     try {
       restClient
           .post()
           .uri("/emails")
-          .body(Map.of("from", fromEmail, "to", toEmail, "subject", subject, "text", text))
+          .body(
+              Map.of(
+                  "from",
+                  fromEmail,
+                  "to",
+                  toEmail,
+                  "subject",
+                  mail.subject(),
+                  "html",
+                  mail.html(),
+                  "text",
+                  mail.text()))
           .retrieve()
           .toBodilessEntity();
       return true;
