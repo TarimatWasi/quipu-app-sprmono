@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
+import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Clients;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.support.SilentServer;
@@ -12,6 +13,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -25,6 +27,7 @@ class R2GuestDocumentFileAdapterTest {
   private final List<String> requests = new CopyOnWriteArrayList<>();
   private final List<String> contentTypes = new CopyOnWriteArrayList<>();
   private volatile int status = 200;
+  private final List<R2Clients> opened = new ArrayList<>();
 
   @BeforeEach
   void startBucket() throws IOException {
@@ -48,11 +51,19 @@ class R2GuestDocumentFileAdapterTest {
 
   @AfterEach
   void stopBucket() {
+    opened.forEach(R2Clients::close);
     server.stop(0);
   }
 
+  /** The adapter on its own clients, closed after each test as Spring closes the shared ones. */
+  private R2GuestDocumentFileAdapter adapterOn(R2Properties properties) {
+    var clients = new R2Clients(properties);
+    opened.add(clients);
+    return new R2GuestDocumentFileAdapter(properties, clients);
+  }
+
   private R2GuestDocumentFileAdapter adapter() {
-    return new R2GuestDocumentFileAdapter(
+    return adapterOn(
         new R2Properties(
             "account",
             "test-access-key",
@@ -76,7 +87,6 @@ class R2GuestDocumentFileAdapterTest {
     assertThat(requests)
         .contains("PUT /bucket/" + key, "PUT /bucket/" + other, "DELETE /bucket/" + key);
     assertThat(contentTypes).contains("image/png", "application/pdf");
-    adapter.close();
   }
 
   @Test
@@ -93,7 +103,6 @@ class R2GuestDocumentFileAdapterTest {
         .contains("response-content-type=image%2Fjpeg");
     assertThat(url).doesNotContain("test-secret-key");
     assertThat(requests).as("signing is local, nothing is sent").isEmpty();
-    adapter.close();
   }
 
   @Test
@@ -102,7 +111,6 @@ class R2GuestDocumentFileAdapterTest {
 
     assertThat(adapter.signedUrl("guest-documents/a", FileKind.PDF)).contains("documento.pdf");
     assertThat(adapter.signedUrl("guest-documents/a", FileKind.PNG)).contains("documento.png");
-    adapter.close();
   }
 
   @Test
@@ -114,13 +122,12 @@ class R2GuestDocumentFileAdapterTest {
         .isInstanceOf(GuestDocumentStorageException.class);
     assertThatThrownBy(() -> adapter.delete("guest-documents/abc"))
         .isInstanceOf(GuestDocumentStorageException.class);
-    adapter.close();
   }
 
   @Test
   void withoutCredentialsTheApplicationStartsAndUsingTheBucketFailsCleanly() {
     var adapter =
-        new R2GuestDocumentFileAdapter(
+        adapterOn(
             new R2Properties("", "", "", "", "", Duration.ofSeconds(10), Duration.ofSeconds(5)));
 
     assertThatThrownBy(() -> adapter.store(new byte[] {1}, FileKind.PDF))
@@ -129,7 +136,6 @@ class R2GuestDocumentFileAdapterTest {
     assertThatThrownBy(() -> adapter.delete("k")).isInstanceOf(GuestDocumentStorageException.class);
     assertThatThrownBy(() -> adapter.signedUrl("k", FileKind.PDF))
         .isInstanceOf(GuestDocumentStorageException.class);
-    adapter.close();
   }
 
   /**
@@ -139,7 +145,7 @@ class R2GuestDocumentFileAdapterTest {
   void aBucketThatNeverAnswersIsAStorageFailureAfterTheTimeout() throws Exception {
     try (var silent = new SilentServer()) {
       var adapter =
-          new R2GuestDocumentFileAdapter(
+          adapterOn(
               new R2Properties(
                   "account",
                   "test-access-key",
@@ -153,7 +159,6 @@ class R2GuestDocumentFileAdapterTest {
       assertThatThrownBy(() -> adapter.store(new byte[] {1}, FileKind.PDF))
           .isInstanceOf(GuestDocumentStorageException.class);
       assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
-      adapter.close();
     }
   }
 }

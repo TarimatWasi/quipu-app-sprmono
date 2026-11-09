@@ -3,35 +3,25 @@ package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.storage;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
+import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Clients;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
 import com.tarimatwasi.quipu.shared.file.FileKind;
-import jakarta.annotation.PreDestroy;
-import java.net.URI;
 import java.util.UUID;
-import java.util.function.Supplier;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
-import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
-import software.amazon.awssdk.utils.SdkAutoCloseable;
 
 /**
  * The documents of the onboarding in the Cloudflare R2 bucket (RN-37), under their own prefix
- * {@code guest-documents/}. The clients are built on the first use, so the application starts
- * without R2 credentials (local profile, tests); using the port without them fails with {@link
- * GuestDocumentStorageException}. Neither the key nor the signed URL is ever logged.
+ * {@code guest-documents/}. The clients are the shared {@link R2Clients}; without R2 credentials
+ * (local profile, tests) using the port fails with {@link GuestDocumentStorageException}. Neither
+ * the key nor the signed URL is ever logged.
  */
 @Component
 public class R2GuestDocumentFileAdapter implements GuestDocumentFilePort {
@@ -39,19 +29,18 @@ public class R2GuestDocumentFileAdapter implements GuestDocumentFilePort {
   private static final String KEY_PREFIX = "guest-documents/";
 
   private final R2Properties properties;
-  private final Once<S3Client> client = new Once<>(this::buildClient);
-  private final Once<S3Presigner> presigner = new Once<>(this::buildPresigner);
+  private final R2Clients clients;
 
-  R2GuestDocumentFileAdapter(R2Properties properties) {
+  R2GuestDocumentFileAdapter(R2Properties properties, R2Clients clients) {
     this.properties = properties;
+    this.clients = clients;
   }
 
   @Override
   public String store(byte[] content, FileKind kind) {
     String key = KEY_PREFIX + UUID.randomUUID();
     try {
-      client
-          .get()
+      client()
           .putObject(
               PutObjectRequest.builder()
                   .bucket(properties.bucketName())
@@ -69,8 +58,7 @@ public class R2GuestDocumentFileAdapter implements GuestDocumentFilePort {
   @Override
   public void delete(String key) {
     try {
-      client
-          .get()
+      client()
           .deleteObject(
               DeleteObjectRequest.builder().bucket(properties.bucketName()).key(key).build());
     } catch (SdkException e) {
@@ -81,8 +69,7 @@ public class R2GuestDocumentFileAdapter implements GuestDocumentFilePort {
   @Override
   public String signedUrl(String key, FileKind kind) {
     try {
-      return presigner
-          .get()
+      return presigner()
           .presignGetObject(
               GetObjectPresignRequest.builder()
                   .signatureDuration(GuestDocument.URL_VALIDITY)
@@ -104,76 +91,15 @@ public class R2GuestDocumentFileAdapter implements GuestDocumentFilePort {
     }
   }
 
-  private S3Client buildClient() {
-    requireConfigured();
-    return S3Client.builder()
-        .endpointOverride(URI.create(properties.endpoint()))
-        // TAR-204: a bucket that hangs ends the call; the failure is the 503 of the storage.
-        .overrideConfiguration(properties.clientOverrides())
-        .region(Region.of("auto"))
-        .credentialsProvider(credentials())
-        .serviceConfiguration(pathStyle())
-        // R2 does not take the optional checksums that SDK 2.30+ adds by default.
-        .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
-        .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
-        .build();
+  private S3Client client() {
+    return clients
+        .client()
+        .orElseThrow(() -> new GuestDocumentStorageException("R2 is not configured"));
   }
 
-  private S3Presigner buildPresigner() {
-    requireConfigured();
-    return S3Presigner.builder()
-        .endpointOverride(URI.create(properties.endpoint()))
-        .region(Region.of("auto"))
-        .credentialsProvider(credentials())
-        .serviceConfiguration(pathStyle())
-        .build();
-  }
-
-  private StaticCredentialsProvider credentials() {
-    return StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(properties.accessKeyId(), properties.secretAccessKey()));
-  }
-
-  private static S3Configuration pathStyle() {
-    return S3Configuration.builder().pathStyleAccessEnabled(true).build();
-  }
-
-  private void requireConfigured() {
-    if (properties.endpoint().isBlank()
-        || properties.bucketName().isBlank()
-        || properties.accessKeyId().isBlank()
-        || properties.secretAccessKey().isBlank()) {
-      throw new GuestDocumentStorageException("R2 is not configured");
-    }
-  }
-
-  @PreDestroy
-  void close() {
-    client.close();
-    presigner.close();
-  }
-
-  /** A value built on first use, and closed only if it was ever built. */
-  private static final class Once<T extends SdkAutoCloseable> {
-
-    private final Supplier<T> factory;
-    private @Nullable T value;
-
-    Once(Supplier<T> factory) {
-      this.factory = factory;
-    }
-
-    synchronized T get() {
-      if (value == null) {
-        value = factory.get();
-      }
-      return value;
-    }
-
-    synchronized void close() {
-      if (value != null) {
-        value.close();
-      }
-    }
+  private S3Presigner presigner() {
+    return clients
+        .presigner()
+        .orElseThrow(() -> new GuestDocumentStorageException("R2 is not configured"));
   }
 }

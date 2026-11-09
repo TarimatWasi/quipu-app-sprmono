@@ -16,7 +16,9 @@ WORKDIR /app
 COPY --from=build --chown=app:app /build/target/quipu-app-sprmono-*.jar app.jar
 
 # Valor por defecto para Render gratis (512 MB); sobrescribible desde la variable del servicio.
-ENV JAVA_TOOL_OPTIONS="-Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+# TAR-350: 128 MB de Metaspace no alcanzaban al cargar el SDK de S3 (unas 3.000 clases, ~11 MB).
+# Los 64 MB extra salen del heap (-16 MB) y del code cache (solo C1: 32 MB bastan).
+ENV JAVA_TOOL_OPTIONS="-Xmx240m -Xss512k -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=32m -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
 
 # El puerto lo fija la variable PORT (application-dev.yml y application-prod.yml).
 ENTRYPOINT ["java", "-jar", "app.jar"]

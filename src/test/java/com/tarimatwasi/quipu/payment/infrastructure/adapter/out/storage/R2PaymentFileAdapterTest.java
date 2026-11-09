@@ -6,12 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpServer;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Clients;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
 import com.tarimatwasi.quipu.support.SilentServer;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -25,6 +27,7 @@ class R2PaymentFileAdapterTest {
   private final List<String> requests = new CopyOnWriteArrayList<>();
   private final List<String> contentTypes = new CopyOnWriteArrayList<>();
   private volatile int status = 200;
+  private final List<R2Clients> opened = new ArrayList<>();
 
   @BeforeEach
   void startBucket() throws IOException {
@@ -48,11 +51,19 @@ class R2PaymentFileAdapterTest {
 
   @AfterEach
   void stopBucket() {
+    opened.forEach(R2Clients::close);
     server.stop(0);
   }
 
+  /** The adapter on its own clients, closed after each test as Spring closes the shared ones. */
+  private R2PaymentFileAdapter adapterOn(R2Properties properties) {
+    var clients = new R2Clients(properties);
+    opened.add(clients);
+    return new R2PaymentFileAdapter(properties, clients);
+  }
+
   private R2PaymentFileAdapter adapter() {
-    return new R2PaymentFileAdapter(
+    return adapterOn(
         new R2Properties(
             "account",
             "test-access-key",
@@ -76,7 +87,6 @@ class R2PaymentFileAdapterTest {
     assertThat(requests)
         .contains("PUT /bucket/" + key, "PUT /bucket/" + other, "DELETE /bucket/" + key);
     assertThat(contentTypes).contains("image/png", "application/pdf");
-    adapter.close();
   }
 
   @Test
@@ -93,7 +103,6 @@ class R2PaymentFileAdapterTest {
         .contains("response-content-type=image%2Fjpeg");
     assertThat(url).doesNotContain("test-secret-key");
     assertThat(requests).as("signing is local, nothing is sent").isEmpty();
-    adapter.close();
   }
 
   @Test
@@ -102,7 +111,6 @@ class R2PaymentFileAdapterTest {
 
     assertThat(adapter.signedUrl("vouchers/a", VoucherType.PDF)).contains("comprobante.pdf");
     assertThat(adapter.signedUrl("vouchers/a", VoucherType.PNG)).contains("comprobante.png");
-    adapter.close();
   }
 
   @Test
@@ -114,13 +122,12 @@ class R2PaymentFileAdapterTest {
         .isInstanceOf(PaymentFileStorageException.class);
     assertThatThrownBy(() -> adapter.delete("vouchers/abc"))
         .isInstanceOf(PaymentFileStorageException.class);
-    adapter.close();
   }
 
   @Test
   void withoutCredentialsTheApplicationStartsAndUsingTheBucketFailsCleanly() {
     var adapter =
-        new R2PaymentFileAdapter(
+        adapterOn(
             new R2Properties("", "", "", "", "", Duration.ofSeconds(10), Duration.ofSeconds(5)));
 
     assertThatThrownBy(() -> adapter.store(new byte[] {1}, VoucherType.PDF))
@@ -129,7 +136,6 @@ class R2PaymentFileAdapterTest {
     assertThatThrownBy(() -> adapter.delete("k")).isInstanceOf(PaymentFileStorageException.class);
     assertThatThrownBy(() -> adapter.signedUrl("k", VoucherType.PDF))
         .isInstanceOf(PaymentFileStorageException.class);
-    adapter.close();
   }
 
   /**
@@ -139,7 +145,7 @@ class R2PaymentFileAdapterTest {
   void aBucketThatNeverAnswersIsAStorageFailureAfterTheTimeout() throws Exception {
     try (var silent = new SilentServer()) {
       var adapter =
-          new R2PaymentFileAdapter(
+          adapterOn(
               new R2Properties(
                   "account",
                   "test-access-key",
@@ -153,7 +159,6 @@ class R2PaymentFileAdapterTest {
       assertThatThrownBy(() -> adapter.store(new byte[] {1}, VoucherType.PDF))
           .isInstanceOf(PaymentFileStorageException.class);
       assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
-      adapter.close();
     }
   }
 }
