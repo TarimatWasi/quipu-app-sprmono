@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFileStorageException;
+import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Clients;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
 import com.tarimatwasi.quipu.support.SilentServer;
 import java.io.IOException;
@@ -12,6 +13,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -24,6 +26,7 @@ class R2ContractFileAdapterTest {
   private HttpServer server;
   private final List<String> requests = new CopyOnWriteArrayList<>();
   private volatile int status = 200;
+  private final List<R2Clients> opened = new ArrayList<>();
 
   @BeforeEach
   void startBucket() throws IOException {
@@ -43,11 +46,19 @@ class R2ContractFileAdapterTest {
 
   @AfterEach
   void stopBucket() {
+    opened.forEach(R2Clients::close);
     server.stop(0);
   }
 
+  /** The adapter on its own clients, closed after each test as Spring closes the shared ones. */
+  private R2ContractFileAdapter adapterOn(R2Properties properties) {
+    var clients = new R2Clients(properties);
+    opened.add(clients);
+    return new R2ContractFileAdapter(properties, clients);
+  }
+
   private R2ContractFileAdapter adapter() {
-    return new R2ContractFileAdapter(
+    return adapterOn(
         new R2Properties(
             "account",
             "test-access-key",
@@ -69,7 +80,6 @@ class R2ContractFileAdapterTest {
     assertThat(key).startsWith("contracts/").endsWith(".pdf").isNotEqualTo(other);
     assertThat(requests)
         .contains("PUT /bucket/" + key, "PUT /bucket/" + other, "DELETE /bucket/" + key);
-    adapter.close();
   }
 
   @Test
@@ -86,7 +96,6 @@ class R2ContractFileAdapterTest {
         .contains("contrato.pdf");
     assertThat(url).doesNotContain("test-secret-key");
     assertThat(requests).as("signing is local, nothing is sent").isEmpty();
-    adapter.close();
   }
 
   @Test
@@ -98,13 +107,12 @@ class R2ContractFileAdapterTest {
         .isInstanceOf(ContractFileStorageException.class);
     assertThatThrownBy(() -> adapter.delete("contracts/abc.pdf"))
         .isInstanceOf(ContractFileStorageException.class);
-    adapter.close();
   }
 
   @Test
   void withoutCredentialsTheApplicationStartsAndUsingTheBucketFailsCleanly() {
     var adapter =
-        new R2ContractFileAdapter(
+        adapterOn(
             new R2Properties("", "", "", "", "", Duration.ofSeconds(10), Duration.ofSeconds(5)));
 
     assertThatThrownBy(() -> adapter.store(new byte[] {1}))
@@ -113,7 +121,6 @@ class R2ContractFileAdapterTest {
     assertThatThrownBy(() -> adapter.delete("k")).isInstanceOf(ContractFileStorageException.class);
     assertThatThrownBy(() -> adapter.signedUrl("k"))
         .isInstanceOf(ContractFileStorageException.class);
-    adapter.close();
   }
 
   /**
@@ -123,7 +130,7 @@ class R2ContractFileAdapterTest {
   void aBucketThatNeverAnswersIsAStorageFailureAfterTheTimeout() throws Exception {
     try (var silent = new SilentServer()) {
       var adapter =
-          new R2ContractFileAdapter(
+          adapterOn(
               new R2Properties(
                   "account",
                   "test-access-key",
@@ -137,7 +144,6 @@ class R2ContractFileAdapterTest {
       assertThatThrownBy(() -> adapter.store(new byte[] {1}))
           .isInstanceOf(ContractFileStorageException.class);
       assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
-      adapter.close();
     }
   }
 }
