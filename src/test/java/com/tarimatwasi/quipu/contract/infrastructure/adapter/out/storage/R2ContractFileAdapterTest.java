@@ -19,13 +19,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 /** The adapter against a local HTTP server that answers like a bucket: no R2, no credentials. */
+@ExtendWith(OutputCaptureExtension.class)
 class R2ContractFileAdapterTest {
 
   private HttpServer server;
   private final List<String> requests = new CopyOnWriteArrayList<>();
   private volatile int status = 200;
+  private volatile String body = "";
   private final List<R2Clients> opened = new ArrayList<>();
 
   @BeforeEach
@@ -38,7 +43,9 @@ class R2ContractFileAdapterTest {
         exchange -> {
           requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
           exchange.getRequestBody().readAllBytes();
-          exchange.sendResponseHeaders(status, -1);
+          byte[] answer = body.getBytes(StandardCharsets.UTF_8);
+          exchange.sendResponseHeaders(status, answer.length == 0 ? -1 : answer.length);
+          exchange.getResponseBody().write(answer);
           exchange.close();
         });
     server.start();
@@ -145,5 +152,32 @@ class R2ContractFileAdapterTest {
           .isInstanceOf(ContractFileStorageException.class);
       assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
     }
+  }
+
+  /** TAR-356: the log says why the bucket refused, never the key nor the host of the bucket. */
+  @Test
+  void aRefusalOfTheBucketIsLoggedWithItsCodeAndNeverTheKeyNorTheHost(CapturedOutput output) {
+    status = 403;
+    body = "<Error><Code>InvalidAccessKeyId</Code><Message>refused</Message></Error>";
+    var adapter = adapter();
+
+    assertThatThrownBy(() -> adapter.store(new byte[] {1}))
+        .isInstanceOf(ContractFileStorageException.class);
+
+    assertThat(output)
+        .contains("R2 put of a contract file failed: status 403 InvalidAccessKeyId")
+        .doesNotContain("contracts/")
+        .doesNotContain("127.0.0.1");
+  }
+
+  @Test
+  void usingTheBucketWithoutR2IsLogged(CapturedOutput output) {
+    var adapter =
+        adapterOn(
+            new R2Properties("", "", "", "", "", Duration.ofSeconds(10), Duration.ofSeconds(5)));
+
+    assertThatThrownBy(() -> adapter.delete("k")).isInstanceOf(ContractFileStorageException.class);
+
+    assertThat(output).contains("R2 is not configured: the contract file cannot be stored");
   }
 }
