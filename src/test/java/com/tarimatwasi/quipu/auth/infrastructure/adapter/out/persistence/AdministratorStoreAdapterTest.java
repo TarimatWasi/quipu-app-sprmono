@@ -130,18 +130,6 @@ class AdministratorStoreAdapterTest {
     assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isEqualTo(1);
   }
 
-  /** D-33: the contact email of a guest is not the email of an account. */
-  @Test
-  void theContactEmailOfAGuestIsNotTaken() {
-    jdbc.update(
-        "INSERT INTO guests (id, document_type, document_number, guest_type, status, email)"
-            + " VALUES (?, 'DNI', '44444444', 'CONTRACT', 'ACTIVE', 'contacto@example.test')",
-        TestIds.next());
-
-    assertThat(adapter.insert(newAdmin(DocumentType.DNI, "22222222", "Contacto@example.test")))
-        .isNotNull();
-  }
-
   /** Only the unique rules of the accounts are conflicts; any other failure is not hidden. */
   @Test
   void anotherFailureIsNotTakenForAConflict() {

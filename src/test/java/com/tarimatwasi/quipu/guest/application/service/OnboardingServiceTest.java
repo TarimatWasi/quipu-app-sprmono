@@ -12,15 +12,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentUnavailableException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException.Reason;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
-import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.PersonalData;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
@@ -54,6 +52,7 @@ class OnboardingServiceTest {
   private static final byte[] PDF = TestPdfs.plain();
 
   @Mock GuestRepositoryPort guests;
+  @Mock GuestAccountPort accounts;
   @Mock OnboardingRepositoryPort records;
   @Mock GuestDocumentFilePort files;
 
@@ -61,7 +60,7 @@ class OnboardingServiceTest {
 
   private OnboardingService service() {
     return new OnboardingService(
-        guests, records, new GuestDocumentUploader(records, files), consents, CLOCK);
+        guests, accounts, records, new GuestDocumentUploader(records, files), consents, CLOCK);
   }
 
   private static Guest onboarding(@Nullable Instant personalData, @Nullable Instant documents) {
@@ -70,7 +69,6 @@ class OnboardingServiceTest {
         DocumentType.DNI,
         "12345678",
         "Ana",
-        null,
         "1",
         GuestType.CONTRACT,
         GuestStatus.ONBOARDING,
@@ -122,19 +120,6 @@ class OnboardingServiceTest {
 
     assertThatThrownBy(() -> service().uploadDocument(GUEST, new DocumentUpload("d.pdf", PDF)))
         .isInstanceOf(GuestDocumentUnavailableException.class);
-  }
-
-  @Test
-  void aContactEmailOfAnotherGuestIsTheConflictItIs() {
-    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(null, null)));
-    when(guests.save(any()))
-        .thenThrow(new GuestEmailAlreadyExistsException(new IllegalStateException("unique")));
-
-    assertThatThrownBy(
-            () ->
-                service()
-                    .savePersonalData(GUEST, new PersonalData("Ana", "1", "a@example.com", null)))
-        .isInstanceOf(GuestEmailTakenException.class);
   }
 
   @Test

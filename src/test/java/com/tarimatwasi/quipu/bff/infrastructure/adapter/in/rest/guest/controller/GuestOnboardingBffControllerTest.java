@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestEmailVerificationUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controller.GuestOnboardingBffController.DocumentForm;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase;
@@ -24,7 +25,9 @@ class GuestOnboardingBffControllerTest {
   void aDocumentOverTheLimitIsRefusedWithoutReadingIt() throws Exception {
     OnboardingUseCase onboarding = mock(OnboardingUseCase.class);
     GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
-    var controller = new GuestOnboardingBffController(onboarding, accounts, mock(IdMasker.class));
+    var controller =
+        new GuestOnboardingBffController(
+            onboarding, accounts, mock(GuestEmailVerificationUseCase.class), mock(IdMasker.class));
     MultipartFile file = mock(MultipartFile.class);
     when(file.getSize()).thenReturn(5L * 1024 * 1024 + 1);
     MockMultipartHttpServletRequest request = new MockMultipartHttpServletRequest();

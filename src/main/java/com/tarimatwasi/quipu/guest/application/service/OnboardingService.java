@@ -1,14 +1,13 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException.Reason;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestConsentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
@@ -33,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class OnboardingService implements OnboardingUseCase {
 
   private final GuestRepositoryPort guests;
+  private final GuestAccountPort accounts;
   private final OnboardingRepositoryPort records;
   private final GuestDocumentUploader uploader;
   private final ConsentTexts consents;
@@ -40,11 +40,13 @@ public class OnboardingService implements OnboardingUseCase {
 
   OnboardingService(
       GuestRepositoryPort guests,
+      GuestAccountPort accounts,
       OnboardingRepositoryPort records,
       GuestDocumentUploader uploader,
       ConsentTexts consents,
       Clock clock) {
     this.guests = guests;
+    this.accounts = accounts;
     this.records = records;
     this.uploader = uploader;
     this.consents = consents;
@@ -59,7 +61,7 @@ public class OnboardingService implements OnboardingUseCase {
 
   @Override
   @Transactional
-  public OnboardingView savePersonalData(Long guestId, PersonalData data) {
+  public OnboardingView savePersonalData(Long guestId, PersonalDataInput data) {
     Guest guest = onboarding(guestId);
     Guest changed =
         new Guest(
@@ -67,7 +69,6 @@ public class OnboardingService implements OnboardingUseCase {
             guest.documentType(),
             guest.documentNumber(),
             data.name(),
-            data.contactEmail(),
             data.phone(),
             guest.type(),
             guest.status(),
@@ -76,11 +77,7 @@ public class OnboardingService implements OnboardingUseCase {
             // The documents step answers the personal data step: it is offered again.
             null,
             emergencyContact(data.emergencyContact()));
-    try {
-      return view(guests.save(changed));
-    } catch (GuestEmailAlreadyExistsException e) {
-      throw new GuestEmailTakenException(e);
-    }
+    return view(guests.save(changed));
   }
 
   @Override
@@ -111,7 +108,6 @@ public class OnboardingService implements OnboardingUseCase {
                 guest.documentType(),
                 guest.documentNumber(),
                 guest.fullName(),
-                guest.email(),
                 guest.phone(),
                 guest.type(),
                 guest.status(),
@@ -178,17 +174,18 @@ public class OnboardingService implements OnboardingUseCase {
     return new OnboardingView(
         false,
         GuestSessionService.nextStep(guest),
-        guest.personalDataCompletedAt() == null ? null : personalData(guest),
+        personalData(guest),
         documents,
         new ConsentView(consents.current(), consents.currentText(), false));
   }
 
-  private static PersonalData personalData(Guest guest) {
+  /** Before the step is saved the name and the phone are empty; the email is the account's. */
+  private PersonalData personalData(Guest guest) {
     EmergencyContact contact = guest.emergencyContact();
     return new PersonalData(
         Objects.requireNonNullElse(guest.fullName(), ""),
         Objects.requireNonNullElse(guest.phone(), ""),
-        guest.email(),
+        accounts.accountEmail(guest.id()).orElse(null),
         contact == null
             ? null
             : new EmergencyContactView(contact.name(), contact.relationship(), contact.phone()));

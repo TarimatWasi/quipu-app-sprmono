@@ -4,7 +4,7 @@ import java.io.Serial;
 
 /**
  * TAR-229: another access account, administrator or guest, already has that account email, ignoring
- * case. A guest contact email is not an account email (D-33).
+ * case.
  */
 public class AccountEmailAlreadyExistsException extends RuntimeException {
 

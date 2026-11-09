@@ -12,7 +12,6 @@ public record Guest(
     DocumentType documentType,
     String documentNumber,
     @Nullable String fullName,
-    @Nullable String email,
     @Nullable String phone,
     GuestType type,
     GuestStatus status,

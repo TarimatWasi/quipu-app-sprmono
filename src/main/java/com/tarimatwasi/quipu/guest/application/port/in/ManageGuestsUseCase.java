@@ -97,14 +97,13 @@ public interface ManageGuestsUseCase {
    * The 360 view of one guest (CU-06).
    *
    * @param version the optimistic-locking version the edit sends back (TAR-276)
-   * @param accountEmail where the password recovery goes (A3.9); null without one
+   * @param email the one email of the guest, the one of its account (TAR-349); null without one
    */
   record GuestDetailView(
       GuestSummaryView summary,
       long version,
-      @Nullable String accountEmail,
+      @Nullable String email,
       @Nullable String phone,
-      @Nullable String contactEmail,
       @Nullable EmergencyContactView emergencyContact,
       @Nullable LocalDate stayStartDate,
       @Nullable LocalDate stayEndDate,

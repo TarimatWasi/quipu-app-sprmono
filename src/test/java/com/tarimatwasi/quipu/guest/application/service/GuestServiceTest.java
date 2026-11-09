@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentTakenException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidGuestDocumentException;
@@ -25,7 +24,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.Updat
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.StayRepositoryPort;
@@ -83,7 +81,7 @@ class GuestServiceTest {
 
   private static Guest guest(GuestStatus status, GuestType type, String number) {
     return new Guest(
-        ID, DocumentType.DNI, number, null, null, null, type, status, null, null, null, null);
+        ID, DocumentType.DNI, number, null, null, type, status, null, null, null, null);
   }
 
   private static Guest with(
@@ -93,7 +91,6 @@ class GuestServiceTest {
         base.documentType(),
         base.documentNumber(),
         "Ana Quispe",
-        base.email(),
         "999111222",
         base.type(),
         base.status(),
@@ -109,7 +106,6 @@ class GuestServiceTest {
         base.documentType(),
         base.documentNumber(),
         base.fullName(),
-        base.email(),
         base.phone(),
         base.type(),
         GuestStatus.INACTIVE,
@@ -204,7 +200,6 @@ class GuestServiceTest {
         id,
         DocumentType.DNI,
         number,
-        null,
         null,
         null,
         GuestType.CONTRACT,
@@ -426,7 +421,7 @@ class GuestServiceTest {
     var detail = service().get(ID);
 
     assertThat(detail.version()).isEqualTo(4);
-    assertThat(detail.accountEmail()).isEqualTo("ana@example.com");
+    assertThat(detail.email()).isEqualTo("ana@example.com");
   }
 
   @Test
@@ -545,17 +540,6 @@ class GuestServiceTest {
         .isInstanceOf(GuestDocumentTakenException.class);
 
     verify(repository, never()).save(any());
-  }
-
-  @Test
-  void aContactEmailOfAnotherGuestIsTaken() {
-    when(repository.findByIdForUpdate(ID))
-        .thenReturn(Optional.of(guest(GuestStatus.PENDING_ACTIVATION)));
-    when(repository.save(any()))
-        .thenThrow(new GuestEmailAlreadyExistsException(new RuntimeException("unique")));
-
-    assertThatThrownBy(() -> service().update(ID, new UpdateCommand(0L, null, "87654321")))
-        .isInstanceOf(GuestEmailTakenException.class);
   }
 
   @Test

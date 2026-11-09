@@ -10,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
@@ -25,7 +24,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase.Profile
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
@@ -81,10 +79,9 @@ class OwnProfileServiceTest {
     assertThat(view.documentType()).isEqualTo("DNI");
     assertThat(view.documentNumber()).isEqualTo("12345678");
     assertThat(view.name()).isEqualTo("Ana Quispe");
-    assertThat(view.contactEmail()).isEqualTo("ana@example.test");
     assertThat(view.emergencyContact())
         .isEqualTo(new EmergencyContactView("Rosa", "Madre", "988777666"));
-    assertThat(view.accountEmail()).isEqualTo("cuenta@example.test");
+    assertThat(view.email()).isEqualTo("cuenta@example.test");
     assertThat(view.documents()).extracting(DocumentView::id).containsExactly(3L);
     assertThat(view.documentsLimit()).isEqualTo(GuestDocument.MAX_PER_GUEST);
   }
@@ -98,7 +95,6 @@ class OwnProfileServiceTest {
             "12345678",
             "Ana Quispe",
             null,
-            null,
             GuestType.TEMPORARY,
             GuestStatus.ACTIVE,
             null,
@@ -111,7 +107,7 @@ class OwnProfileServiceTest {
 
     OwnProfileView view = service().own(GUEST, GuestKind.TEMPORARY);
 
-    assertThat(view.accountEmail()).isNull();
+    assertThat(view.email()).isNull();
     assertThat(view.emergencyContact()).isNull();
     assertThat(view.phone()).isNull();
     assertThat(view.documents()).isEmpty();
@@ -198,7 +194,6 @@ class OwnProfileServiceTest {
         DocumentType.DNI,
         "12345678",
         "Ana Quispe",
-        "ana@example.test",
         "999111222",
         type,
         status,
@@ -224,7 +219,7 @@ class OwnProfileServiceTest {
   }
 
   private static ProfileChange name(String name) {
-    return new ProfileChange(name, null, null, null);
+    return new ProfileChange(name, null, null);
   }
 
   @Test
@@ -234,8 +229,7 @@ class OwnProfileServiceTest {
     savedAsIs();
 
     GuestSummaryView view =
-        service()
-            .update(GUEST, GuestKind.CONTRACT, new ProfileChange(null, "977000111", null, null));
+        service().update(GUEST, GuestKind.CONTRACT, new ProfileChange(null, "977000111", null));
 
     Guest after = saved();
     assertThat(after.phone()).isEqualTo("977000111");
@@ -245,7 +239,7 @@ class OwnProfileServiceTest {
   }
 
   @Test
-  void everyFieldChangesAndTheDocumentTheTypeAndTheStateStay() {
+  void nameAndPhoneChangeAndTheDocumentTheTypeAndTheStateStay() {
     Guest before = guest(GuestType.TEMPORARY, GuestStatus.ACTIVE);
     locked(before);
     savedAsIs();
@@ -255,19 +249,15 @@ class OwnProfileServiceTest {
             GUEST,
             GuestKind.TEMPORARY,
             new ProfileChange(
-                "Ana Maria",
-                "977000111",
-                "nueva@example.test",
-                new EmergencyContactView("Luis", null, "966555444")));
+                "Ana Maria", "977000111", new EmergencyContactView("Luis", null, "966555444")));
 
     Guest after = saved();
     assertThat(after.fullName()).isEqualTo("Ana Maria");
     assertThat(after.phone()).isEqualTo("977000111");
-    assertThat(after.email()).isEqualTo("nueva@example.test");
     assertThat(after.emergencyContact()).isEqualTo(new EmergencyContact("Luis", null, "966555444"));
     assertThat(after)
         .usingRecursiveComparison()
-        .ignoringFields("fullName", "phone", "email", "emergencyContact")
+        .ignoringFields("fullName", "phone", "emergencyContact")
         .isEqualTo(before);
   }
 
@@ -280,7 +270,7 @@ class OwnProfileServiceTest {
         .update(
             GUEST,
             GuestKind.CONTRACT,
-            new ProfileChange(null, null, null, new EmergencyContactView(null, null, null)));
+            new ProfileChange(null, null, new EmergencyContactView(null, null, null)));
 
     assertThat(saved().emergencyContact()).isNull();
   }
@@ -298,9 +288,7 @@ class OwnProfileServiceTest {
   @Test
   void aChangeWithoutFieldsIsRefusedBeforeTheGuestIsRead() {
     assertThatThrownBy(
-            () ->
-                service()
-                    .update(GUEST, GuestKind.CONTRACT, new ProfileChange(null, null, null, null)))
+            () -> service().update(GUEST, GuestKind.CONTRACT, new ProfileChange(null, null, null)))
         .isInstanceOf(EmptyGuestUpdateException.class);
     verify(guests, never()).findByIdForUpdate(any());
   }
@@ -329,21 +317,5 @@ class OwnProfileServiceTest {
               e -> assertThat(e.reason()).isEqualTo(Reason.ONBOARDING_REQUIRED));
     }
     verify(guests, never()).save(any());
-  }
-
-  @Test
-  void aContactEmailOfAnotherGuestIsTakenEvenWhenTheRaceIsLostAtTheIndex() {
-    locked(guest(GuestType.CONTRACT, GuestStatus.ACTIVE));
-    when(guests.save(any()))
-        .thenThrow(new GuestEmailAlreadyExistsException(new IllegalStateException("unique")));
-
-    assertThatThrownBy(
-            () ->
-                service()
-                    .update(
-                        GUEST,
-                        GuestKind.CONTRACT,
-                        new ProfileChange(null, null, "otra@example.test", null)))
-        .isInstanceOf(GuestEmailTakenException.class);
   }
 }

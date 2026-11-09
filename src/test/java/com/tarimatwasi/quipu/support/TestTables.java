@@ -17,7 +17,8 @@ public final class TestTables {
    */
   public static void clear(JdbcTemplate jdbc) {
     jdbc.execute(
-        "TRUNCATE TABLE guest_document_actions, guest_document_deletions, guest_document_purges, guest_documents, guest_consents, access_grants, users, guests, environments,"
-            + " expenses, fines, stays, contracts, refunds, payment_reviews, payment_proofs, payments");
+        "TRUNCATE TABLE guest_document_actions, guest_document_deletions, guest_document_purges,"
+            + " guest_documents, guest_consents, guest_email_verifications, access_grants, users,"
+            + " guests, environments, expenses, fines, stays, contracts, refunds, payment_reviews, payment_proofs, payments");
   }
 }

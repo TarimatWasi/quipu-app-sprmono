@@ -1,7 +1,6 @@
 package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
 
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
@@ -27,7 +26,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class GuestRepositoryAdapter implements GuestRepositoryPort {
 
-  private static final String EMAIL_CONSTRAINT = "uq_guests_email_lower";
   private static final String DOCUMENT_CONSTRAINT = "uq_guests_document";
 
   private final GuestJpaRepository jpaRepository;
@@ -140,14 +138,10 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
 
   @Override
   public Guest create(
-      DocumentType documentType,
-      String documentNumber,
-      GuestType type,
-      @Nullable String phone,
-      @Nullable String email) {
+      DocumentType documentType, String documentNumber, GuestType type, @Nullable String phone) {
     try {
       return jpaRepository
-          .saveAndFlush(new GuestJpaEntity(documentType, documentNumber, type, phone, email))
+          .saveAndFlush(new GuestJpaEntity(documentType, documentNumber, type, phone))
           .toDomain();
     } catch (DataIntegrityViolationException e) {
       throw conflict(e);
@@ -170,13 +164,10 @@ public class GuestRepositoryAdapter implements GuestRepositoryPort {
   }
 
   /**
-   * Which unique rule broke is read from the name of the constraint, not guessed: a repeated email
-   * must not be reported as a repeated document. Any other failure stays as it is (TAR-207).
+   * Which unique rule broke is read from the name of the constraint. Any other failure stays as it
+   * is (TAR-207).
    */
   static RuntimeException conflict(DataIntegrityViolationException e) {
-    if (ViolatedConstraint.is(e, EMAIL_CONSTRAINT)) {
-      return new GuestEmailAlreadyExistsException(e);
-    }
     if (ViolatedConstraint.is(e, DOCUMENT_CONSTRAINT)) {
       return new GuestDocumentAlreadyExistsException(e);
     }

@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controlle
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestEmailVerificationUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.UnknownFieldException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
@@ -12,13 +13,13 @@ import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.Documen
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentView;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.OnboardingView;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.PersonalData;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.PersonalDataInput;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -58,12 +59,17 @@ public class GuestOnboardingBffController {
 
   private final OnboardingUseCase onboarding;
   private final GuestAccountUseCase accounts;
+  private final GuestEmailVerificationUseCase emailVerification;
   private final IdMasker ids;
 
   public GuestOnboardingBffController(
-      OnboardingUseCase onboarding, GuestAccountUseCase accounts, IdMasker ids) {
+      OnboardingUseCase onboarding,
+      GuestAccountUseCase accounts,
+      GuestEmailVerificationUseCase emailVerification,
+      IdMasker ids) {
     this.onboarding = onboarding;
     this.accounts = accounts;
+    this.emailVerification = emailVerification;
     this.ids = ids;
   }
 
@@ -81,12 +87,12 @@ public class GuestOnboardingBffController {
 
   /**
    * The personal data step; the limits are those of the contract and of the columns. A field the
-   * schema does not define is refused, not silently ignored.
+   * schema does not define is refused, not silently ignored: the email is not one of them, it
+   * changes only through its verification (TAR-349).
    */
   public record PersonalDataBody(
       @NotBlank @Size(max = 200) String name,
       @NotBlank @Size(max = 30) String phone,
-      @Email @Size(min = 3, max = 200) @Nullable String contactEmail,
       @Valid @Nullable EmergencyContactBody emergencyContact,
       @JsonAnySetter @Nullable Map<String, Object> unknown) {}
 
@@ -95,7 +101,7 @@ public class GuestOnboardingBffController {
   public record PersonalDataResponse(
       String name,
       String phone,
-      @Nullable String contactEmail,
+      @Nullable String email,
       @Nullable EmergencyContactResponse emergencyContact) {
 
     static PersonalDataResponse of(PersonalData data) {
@@ -103,7 +109,7 @@ public class GuestOnboardingBffController {
       return new PersonalDataResponse(
           data.name(),
           data.phone(),
-          data.contactEmail(),
+          data.email(),
           contact == null
               ? null
               : new EmergencyContactResponse(
@@ -139,19 +145,24 @@ public class GuestOnboardingBffController {
     }
   }
 
-  /** {@code nextStep} and {@code personalData} are left out where the contract has none. */
+  /**
+   * {@code nextStep} and {@code pendingEmail} are left out where the contract has none; {@code
+   * pendingEmail} is the email waiting for its code (TAR-349).
+   */
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record OnboardingResponse(
       String status,
       @Nullable String nextStep,
-      @Nullable PersonalDataResponse personalData,
+      PersonalDataResponse personalData,
+      @Nullable String pendingEmail,
       List<DocumentRefResponse> documents,
       ConsentResponse consent) {
-    static OnboardingResponse of(OnboardingView view, IdMasker ids) {
+    static OnboardingResponse of(OnboardingView view, @Nullable String pendingEmail, IdMasker ids) {
       return new OnboardingResponse(
           view.completed() ? "ACTIVE" : "ONBOARDING",
           view.nextStep() == null ? null : view.nextStep().name(),
-          view.personalData() == null ? null : PersonalDataResponse.of(view.personalData()),
+          PersonalDataResponse.of(view.personalData()),
+          pendingEmail,
           view.documents().stream().map(document -> DocumentRefResponse.of(document, ids)).toList(),
           ConsentResponse.of(view.consent()));
     }
@@ -159,7 +170,8 @@ public class GuestOnboardingBffController {
 
   @GetMapping("/bff/guest/onboarding")
   public ResponseEntity<OnboardingResponse> state(Authentication authentication) {
-    return answer(onboarding.state(guestOf(authentication)));
+    Long guestId = guestOf(authentication);
+    return answer(guestId, onboarding.state(guestId));
   }
 
   @PutMapping("/bff/guest/onboarding/personal-data")
@@ -170,18 +182,18 @@ public class GuestOnboardingBffController {
     if (contact != null) {
       rejectUnknown("emergencyContact.", contact.unknown());
     }
-    PersonalData data =
-        new PersonalData(
+    PersonalDataInput data =
+        new PersonalDataInput(
             body.name().strip(),
             body.phone().strip(),
-            body.contactEmail(),
             contact == null
                 ? null
                 : new EmergencyContactView(
                     blankToNull(contact.name()),
                     blankToNull(contact.relationship()),
                     blankToNull(contact.phone())));
-    return answer(onboarding.savePersonalData(guestOf(authentication), data));
+    Long guestId = guestOf(authentication);
+    return answer(guestId, onboarding.savePersonalData(guestId, data));
   }
 
   @PostMapping(
@@ -218,22 +230,26 @@ public class GuestOnboardingBffController {
 
   @PostMapping("/bff/guest/onboarding/documents/done")
   public ResponseEntity<OnboardingResponse> finishDocuments(Authentication authentication) {
-    return answer(onboarding.finishDocuments(guestOf(authentication)));
+    Long guestId = guestOf(authentication);
+    return answer(guestId, onboarding.finishDocuments(guestId));
   }
 
   @PostMapping("/bff/guest/onboarding/consent")
   public ResponseEntity<OnboardingResponse> acceptConsent(
       @Valid @RequestBody ConsentBody body, Authentication authentication) {
     rejectUnknown("", body.unknown());
+    Long guestId = guestOf(authentication);
     return answer(
+        guestId,
         onboarding.acceptConsent(
-            guestOf(authentication), Boolean.TRUE.equals(body.accepted()), body.consentVersion()));
+            guestId, Boolean.TRUE.equals(body.accepted()), body.consentVersion()));
   }
 
-  private ResponseEntity<OnboardingResponse> answer(OnboardingView view) {
+  private ResponseEntity<OnboardingResponse> answer(Long guestId, OnboardingView view) {
+    String pending = emailVerification.pendingEmail(guestId).orElse(null);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(OnboardingResponse.of(view, ids));
+        .body(OnboardingResponse.of(view, pending, ids));
   }
 
   /** A GUEST account always belongs to a guest; one that does not is refused (RN-09). */

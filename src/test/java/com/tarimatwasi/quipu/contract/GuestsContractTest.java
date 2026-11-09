@@ -250,7 +250,7 @@ class GuestsContractTest {
     mockMvc
         .perform(get(URL + "/" + masked(pending)).cookie(admin()))
         .andExpect(jsonPath("$.version").value(versionOf(pending)))
-        .andExpect(jsonPath("$.accountEmail").value((Object) null))
+        .andExpect(jsonPath("$.email").value((Object) null))
         .andExpect(jsonPath("$.onboardingProgress").value("NOT_STARTED"))
         .andExpect(jsonPath("$.documentCount").value(0))
         .andExpect(jsonPath("$.paymentHistory.length()").value(0));

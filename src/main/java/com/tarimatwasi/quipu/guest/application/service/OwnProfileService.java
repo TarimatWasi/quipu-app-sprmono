@@ -1,7 +1,6 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
@@ -13,7 +12,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileRefusedExceptio
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileUseCase;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
@@ -66,11 +64,10 @@ public class OwnProfileService implements OwnProfileUseCase {
         guest.documentNumber(),
         Objects.requireNonNullElse(guest.fullName(), ""),
         guest.phone(),
-        guest.email(),
+        accounts.accountEmail(guestId).orElse(null),
         contact == null
             ? null
             : new EmergencyContactView(contact.name(), contact.relationship(), contact.phone()),
-        accounts.accountEmail(guestId).orElse(null),
         records.documentsOf(guestId).stream().map(GuestDocumentUploader::view).toList(),
         GuestDocument.MAX_PER_GUEST);
   }
@@ -92,12 +89,7 @@ public class OwnProfileService implements OwnProfileUseCase {
     }
     Guest guest =
         allowed(guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new), area);
-    Guest saved;
-    try {
-      saved = guests.save(changed(guest, change));
-    } catch (GuestEmailAlreadyExistsException e) {
-      throw new GuestEmailTakenException(e);
-    }
+    Guest saved = guests.save(changed(guest, change));
     AccountState account =
         accounts.stateOf(Set.of(saved.id())).getOrDefault(saved.id(), NO_ACCOUNT);
     return GuestService.summary(saved, account);
@@ -126,7 +118,6 @@ public class OwnProfileService implements OwnProfileUseCase {
         guest.documentType(),
         guest.documentNumber(),
         or(change.name(), guest.fullName()),
-        or(change.contactEmail(), guest.email()),
         or(change.phone(), guest.phone()),
         guest.type(),
         guest.status(),
