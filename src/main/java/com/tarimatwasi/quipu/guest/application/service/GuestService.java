@@ -3,7 +3,6 @@ package com.tarimatwasi.quipu.guest.application.service;
 import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentLockedException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentTakenException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestHasActiveContractException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidGuestDocumentException;
@@ -12,7 +11,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.StayRepositoryPort;
@@ -304,7 +302,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         guests.versionOf(id),
         accounts.accountEmail(id).orElse(null),
         guest.phone(),
-        guest.email(),
         emergencyContact(guest.emergencyContact()),
         stay == null ? null : stay.startDate(),
         stay == null ? null : stay.endDate(),
@@ -345,8 +342,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
       return summary(saved, stateOf(saved));
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
-    } catch (GuestEmailAlreadyExistsException e) {
-      throw new GuestEmailTakenException(e);
     }
   }
 
@@ -406,7 +401,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         guest.documentType(),
         guest.documentNumber(),
         guest.fullName(),
-        guest.email(),
         guest.phone(),
         guest.type(),
         status,
@@ -437,7 +431,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         type,
         number,
         guest.fullName(),
-        guest.email(),
         guest.phone(),
         guest.type(),
         guest.status(),

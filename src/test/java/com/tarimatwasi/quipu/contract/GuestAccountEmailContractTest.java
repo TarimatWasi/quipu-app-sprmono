@@ -65,7 +65,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 
 /**
- * TAR-229 (RF-02, RF-16, D-76, D-77): the account email of a guest, refused at the registration
+ * TAR-229, TAR-349 (RF-02, RF-16, D-77): the account email of a guest, refused at the registration
  * when another account has it and set by the administrator, against the real database, the real
  * security chain and the contract pinned in pom.xml. The email provider is replaced.
  */
@@ -145,7 +145,7 @@ class GuestAccountEmailContractTest {
   }
 
   private ResultActions register(String number, @Nullable String email) throws Exception {
-    String contact = email == null ? "" : ",\"contactEmail\":\"" + email + "\"";
+    String contact = email == null ? "" : ",\"email\":\"" + email + "\"";
     return mockMvc.perform(
         post(GUESTS)
             .with(csrf())
@@ -220,7 +220,7 @@ class GuestAccountEmailContractTest {
             content()
                 .json(
                     "{\"code\":\"ACCOUNT_EMAIL_TAKEN\",\"message\":\"Ese correo ya está en uso por"
-                        + " otra cuenta\",\"field\":\"contactEmail\"}",
+                        + " otra cuenta\",\"field\":\"email\"}",
                     JsonCompareMode.STRICT));
 
     assertThat(count("SELECT count(*) FROM guests")).isZero();
@@ -234,7 +234,7 @@ class GuestAccountEmailContractTest {
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("ACCOUNT_EMAIL_TAKEN"))
-        .andExpect(jsonPath("$.field").value("contactEmail"));
+        .andExpect(jsonPath("$.field").value("email"));
 
     assertThat(count("SELECT count(*) FROM guests")).isZero();
     assertThat(count("SELECT count(*) FROM users WHERE document_number = '12345678'")).isZero();

@@ -59,7 +59,7 @@ public class GuestAccessBffController {
       @NotBlank @Pattern(regexp = DOCUMENT_NUMBER) String documentNumber,
       @NotNull GuestKind type,
       @Nullable @Pattern(regexp = PHONE) String phone,
-      @Nullable @Email @Size(max = 200) String contactEmail,
+      @Nullable @Email @Size(max = 200) String email,
       @NotNull AccessMode accessMode) {}
 
   public record GenerateAccessRequest(@NotNull AccessMode accessMode) {}
@@ -117,7 +117,7 @@ public class GuestAccessBffController {
                 request.documentNumber(),
                 request.type(),
                 request.phone(),
-                request.contactEmail(),
+                request.email(),
                 request.accessMode()));
     GuestSummaryResponse guest = GuestSummaryResponse.of(registration.guest(), ids);
     AccessView issued = registration.access();
@@ -136,7 +136,7 @@ public class GuestAccessBffController {
   }
 
   /**
-   * TAR-229 (RF-16, D-76): sets or changes the account email of the guest. The body is checked
+   * TAR-229, TAR-349 (RF-16): sets or changes the account email of the guest. The body is checked
    * before the id is unmasked; an id of another session answers 404 (TAR-227).
    */
   @PutMapping("/bff/admin/guests/{id}/account-email")

@@ -49,14 +49,9 @@ public interface GuestRepositoryPort {
    * Stores a new guest pending activation (RN-31, RN-36).
    *
    * @throws GuestDocumentAlreadyExistsException if another guest has its document
-   * @throws GuestEmailAlreadyExistsException if another guest has its email
    */
   Guest create(
-      DocumentType documentType,
-      String documentNumber,
-      GuestType type,
-      @Nullable String phone,
-      @Nullable String email);
+      DocumentType documentType, String documentNumber, GuestType type, @Nullable String phone);
 
   /**
    * Stores the guest as given; it must already exist.

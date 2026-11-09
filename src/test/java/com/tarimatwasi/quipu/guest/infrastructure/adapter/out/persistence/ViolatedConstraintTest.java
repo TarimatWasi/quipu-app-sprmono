@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
@@ -22,7 +21,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -84,8 +82,8 @@ class ViolatedConstraintTest {
             + " VALUES (?, NULL, 'DNI', '00000001', 'hash', 'ADMIN', FALSE, 'ACTIVE')",
         admin);
     jdbc.update(
-        "INSERT INTO guests (id, document_type, document_number, guest_type, status, email)"
-            + " VALUES (?, 'DNI', '12345678', 'CONTRACT', 'ACTIVE', 'ana@example.test')",
+        "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
+            + " VALUES (?, 'DNI', '12345678', 'CONTRACT', 'ACTIVE')",
         guest);
     jdbc.update(
         "INSERT INTO guests (id, document_type, document_number, guest_type, status)"
@@ -121,38 +119,25 @@ class ViolatedConstraintTest {
   }
 
   @Test
-  void anEmailOfAnotherGuestIsReportedAsTheEmail() {
-    Guest found = guests.findById(other).orElseThrow();
-
-    Throwable failure = catchThrowable(() -> save(found, "ANA@example.test", "87654321", null));
-
-    assertThat(failure).isInstanceOf(GuestEmailAlreadyExistsException.class);
-    assertThat(messagesOf(failure))
-        .noneMatch(m -> m.toLowerCase(Locale.ROOT).contains("ana@example.test"));
-  }
-
-  @Test
   void theDocumentOfAnotherGuestIsReportedAsTheDocument() {
     Guest found = guests.findById(other).orElseThrow();
 
-    Throwable failure = catchThrowable(() -> save(found, found.email(), "12345678", null));
+    Throwable failure = catchThrowable(() -> save(found, "12345678", null));
 
     assertThat(failure).isInstanceOf(GuestDocumentAlreadyExistsException.class);
     assertThat(messagesOf(failure)).noneMatch(m -> m.contains("12345678"));
   }
 
-  /** LOW of the security review: a CHECK is neither a repeated document nor a repeated email. */
+  /** LOW of the security review: a CHECK is not a repeated document. */
   @Test
   void anotherRuleKeepsTheFailure() {
     Guest found = guests.findById(other).orElseThrow();
 
-    Throwable failure =
-        catchThrowable(() -> save(found, found.email(), "87654321", GuestStatus.INACTIVE));
+    Throwable failure = catchThrowable(() -> save(found, "87654321", GuestStatus.INACTIVE));
 
     assertThat(failure)
         .isInstanceOf(DataIntegrityViolationException.class)
-        .isNotInstanceOf(GuestDocumentAlreadyExistsException.class)
-        .isNotInstanceOf(GuestEmailAlreadyExistsException.class);
+        .isNotInstanceOf(GuestDocumentAlreadyExistsException.class);
     assertThat(ViolatedConstraint.is(failure, "ck_guests_status_before_inactive")).isTrue();
     // The failing row would carry the document number and the statuses.
     assertThat(messagesOf(failure)).noneMatch(m -> m.contains("87654321"));
@@ -173,17 +158,13 @@ class ViolatedConstraintTest {
   }
 
   private void save(
-      Guest found,
-      @Nullable String email,
-      String documentNumber,
-      @Nullable GuestStatus statusBeforeInactive) {
+      Guest found, String documentNumber, @Nullable GuestStatus statusBeforeInactive) {
     Guest changed =
         new Guest(
             found.id(),
             found.documentType(),
             documentNumber,
             found.fullName(),
-            email,
             found.phone(),
             found.type(),
             found.status(),

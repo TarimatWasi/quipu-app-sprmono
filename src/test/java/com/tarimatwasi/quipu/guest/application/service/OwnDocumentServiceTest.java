@@ -61,7 +61,6 @@ class OwnDocumentServiceTest {
         "12345678",
         "Ana Quispe",
         null,
-        null,
         type,
         status,
         null,

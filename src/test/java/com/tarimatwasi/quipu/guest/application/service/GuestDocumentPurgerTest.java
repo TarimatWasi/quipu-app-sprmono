@@ -88,7 +88,6 @@ class GuestDocumentPurgerTest {
         DocumentType.DNI,
         "12345678",
         "Ana",
-        null,
         "1",
         GuestType.CONTRACT,
         GuestStatus.ACTIVE,

@@ -340,19 +340,12 @@ class AdministratorsContractTest {
   }
 
   @Test
-  void anEmailIsTakenIgnoringCaseButAGuestContactEmailIsNot() throws Exception {
+  void anEmailIsTakenIgnoringCase() throws Exception {
     create(body("DNI", NEW_DOCUMENT, "OTRA@Example.com", PASSWORD))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("ACCOUNT_EMAIL_TAKEN"))
         .andExpect(jsonPath("$.field").value("email"))
         .andExpect(satisfiesTheContract());
-
-    jdbc.update(
-        "INSERT INTO guests (id, document_type, document_number, guest_type, status, email)"
-            + " VALUES (?, 'DNI', '40000001', 'CONTRACT', 'ACTIVE', ?)",
-        TestIds.next(),
-        NEW_EMAIL);
-    create(validBody()).andExpect(status().isCreated()).andExpect(satisfiesTheContract());
   }
 
   /** RF-22 (decision of 2026-11-03): a deactivated administrator frees its place. */

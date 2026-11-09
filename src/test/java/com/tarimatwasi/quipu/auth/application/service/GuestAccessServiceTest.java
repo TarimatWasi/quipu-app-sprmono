@@ -40,7 +40,7 @@ class GuestAccessServiceTest {
           users,
           mock(AccessGrantRepositoryPort.class),
           mock(AccessMailPort.class),
-          notices,
+          new GuestAccountEmailChanger(users, notices),
           new BCryptPasswordEncoder(4),
           new MutableClock(NOW));
 

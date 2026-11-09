@@ -190,6 +190,11 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
+  public boolean emailBelongsToAnotherAccount(String email, Long accountId) {
+    return jpaRepository.existsByEmailIgnoreCaseAndIdNot(email, accountId);
+  }
+
+  @Override
   public Optional<Instant> findResetTokenExpiry(Long id) {
     return jpaRepository.findById(id).flatMap(u -> Optional.ofNullable(u.resetTokenExpiresAt()));
   }

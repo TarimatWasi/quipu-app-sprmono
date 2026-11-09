@@ -33,7 +33,7 @@ public interface GuestAccessUseCase {
       Long guestId, String documentType, String documentNumber, @Nullable String email);
 
   /**
-   * TAR-229 (RF-16, D-76): sets or changes the account email of the guest, the one the password
+   * TAR-229, TAR-349 (RF-16): sets or changes the account email of the guest, the one the password
    * recovery writes to. A change removes the pending recovery code of the account. Joins the
    * transaction of the caller, which holds the lock of the guest; the account row stays locked
    * until the commit.

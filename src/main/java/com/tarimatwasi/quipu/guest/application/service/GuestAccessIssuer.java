@@ -1,9 +1,7 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
 import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException.Field;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentTakenException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestEmailTakenException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.RegisterCommand;
@@ -14,7 +12,6 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.Account
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.AccountState;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort.IssuedAccess;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
@@ -61,30 +58,24 @@ class GuestAccessIssuer {
       }
       return new Issued(GuestService.summary(guest, stateOf(guest)), null, null);
     }
-    String email = blankToNull(command.contactEmail());
+    String email = blankToNull(command.email());
     Guest created;
     try {
       created =
           guests.create(
-              type,
-              number,
-              GuestType.valueOf(command.type().name()),
-              blankToNull(command.phone()),
-              email);
-    } catch (GuestEmailAlreadyExistsException e) {
-      throw new GuestEmailTakenException(e);
+              type, number, GuestType.valueOf(command.type().name()), blankToNull(command.phone()));
     } catch (GuestDocumentAlreadyExistsException e) {
       // ponytail: two simultaneous registrations of one document; the loser gets a 409, not RN-18.
       throw new GuestDocumentTakenException(e);
     }
-    // D-77: the contact email becomes the account email or nothing is created; the exception
-    // rolls back the guest inserted above.
+    // D-77, TAR-349: the email is the account email or nothing is created; the exception rolls
+    // back the guest inserted above.
     try {
       accounts.openNewAccount(created.id(), type.name(), number, email);
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
     } catch (AccountEmailAlreadyExistsException e) {
-      throw new GuestAccountEmailTakenException(Field.CONTACT_EMAIL, e);
+      throw new GuestAccountEmailTakenException(e);
     }
     IssuedAccess access = accounts.issueAccess(created.id(), command.accessMode());
     return new Issued(GuestService.summary(created, stateOf(created)), access, email);
@@ -97,14 +88,14 @@ class GuestAccessIssuer {
     if (guest.status() == GuestStatus.INACTIVE) {
       throw new GuestInactiveException(guestId);
     }
-    // A guest registered before RF-11 has no account yet.
+    // A guest registered before RF-11 has no account yet; it gets one without email (TAR-349).
     try {
-      accounts.openAccount(
-          guestId, guest.documentType().name(), guest.documentNumber(), guest.email());
+      accounts.openAccount(guestId, guest.documentType().name(), guest.documentNumber(), null);
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
     }
-    return new Issued(null, accounts.issueAccess(guestId, mode), guest.email());
+    return new Issued(
+        null, accounts.issueAccess(guestId, mode), accounts.accountEmail(guestId).orElse(null));
   }
 
   /**
@@ -121,7 +112,7 @@ class GuestAccessIssuer {
     try {
       change = accounts.changeAccountEmail(guestId, email);
     } catch (AccountEmailAlreadyExistsException e) {
-      throw new GuestAccountEmailTakenException(Field.EMAIL, e);
+      throw new GuestAccountEmailTakenException(e);
     }
     return switch (change.outcome()) {
       // TAR-235: every guest is created with its account, so one without it is corrupt data.

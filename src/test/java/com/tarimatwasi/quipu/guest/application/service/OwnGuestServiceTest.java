@@ -54,7 +54,6 @@ class OwnGuestServiceTest {
                     "12345678",
                     null,
                     null,
-                    null,
                     GuestType.TEMPORARY,
                     GuestStatus.ONBOARDING,
                     null,

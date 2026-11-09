@@ -23,20 +23,20 @@ public interface OwnProfileUseCase {
   record ProfileChange(
       @Nullable String name,
       @Nullable String phone,
-      @Nullable String contactEmail,
       @Nullable EmergencyContactView emergencyContact) {
 
     /** Whether no field is present. */
     public boolean empty() {
-      return name == null && phone == null && contactEmail == null && emergencyContact == null;
+      return name == null && phone == null && emergencyContact == null;
     }
   }
 
   /**
-   * What «Mis datos» shows (H5, T3; TAR-242): the personal and contact data, the account email
-   * (read-only for the guest) and the documents, never their files.
+   * What «Mis datos» shows (H5, T3; TAR-242): the personal and contact data, the email and the
+   * documents, never their files.
    *
-   * @param accountEmail where the password recovery link goes; null when there is none
+   * @param email the one email of the guest, the one of its account, where the password recovery
+   *     goes; the guest changes it only through its verification (TAR-349)
    * @param documentsLimit how many documents a guest may have (RN-37)
    */
   record OwnProfileView(
@@ -44,9 +44,8 @@ public interface OwnProfileUseCase {
       String documentNumber,
       String name,
       @Nullable String phone,
-      @Nullable String contactEmail,
+      @Nullable String email,
       @Nullable EmergencyContactView emergencyContact,
-      @Nullable String accountEmail,
       List<DocumentView> documents,
       int documentsLimit) {}
 
@@ -79,7 +78,6 @@ public interface OwnProfileUseCase {
    * @throws EmptyGuestUpdateException if no field is present
    * @throws GuestNotFoundException if there is no such guest
    * @throws OwnProfileRefusedException if the guest is of the other type or still onboarding
-   * @throws GuestEmailTakenException if another guest has the contact email
    */
   GuestSummaryView update(Long guestId, GuestKind area, ProfileChange change);
 }

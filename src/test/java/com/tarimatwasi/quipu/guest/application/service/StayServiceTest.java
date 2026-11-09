@@ -69,18 +69,7 @@ class StayServiceTest {
 
   private static Guest guest(GuestType type, GuestStatus status) {
     return new Guest(
-        GUEST_ID,
-        DocumentType.DNI,
-        "12345678",
-        null,
-        null,
-        null,
-        type,
-        status,
-        null,
-        null,
-        null,
-        null);
+        GUEST_ID, DocumentType.DNI, "12345678", null, null, type, status, null, null, null, null);
   }
 
   private static LocalDate day(String date) {

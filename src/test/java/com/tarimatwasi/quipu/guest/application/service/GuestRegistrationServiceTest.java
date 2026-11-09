@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException;
-import com.tarimatwasi.quipu.guest.application.port.in.GuestAccountEmailTakenException.Field;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestInactiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestAccessUseCase.RegisterCommand;
@@ -49,7 +48,6 @@ class GuestRegistrationServiceTest {
         DocumentType.DNI,
         "12345678",
         null,
-        "contacto@example.com",
         null,
         GuestType.CONTRACT,
         status,
@@ -62,7 +60,7 @@ class GuestRegistrationServiceTest {
   @Test
   void aRegistrationWhoseContactEmailIsAnAccountEmailIsRefusedBeforeAnyAccess() {
     when(guests.findByDocument(DocumentType.DNI, "12345678")).thenReturn(Optional.empty());
-    when(guests.create(any(), anyString(), any(), any(), any()))
+    when(guests.create(any(), anyString(), any(), any()))
         .thenReturn(guest(GuestStatus.PENDING_ACTIVATION));
     doThrow(new AccountEmailAlreadyExistsException(new IllegalStateException("taken")))
         .when(accounts)
@@ -78,9 +76,7 @@ class GuestRegistrationServiceTest {
                         null,
                         " admin@example.com ",
                         AccessMode.LINK)))
-        .isInstanceOfSatisfying(
-            GuestAccountEmailTakenException.class,
-            e -> assertThat(e.field()).isEqualTo(Field.CONTACT_EMAIL));
+        .isInstanceOf(GuestAccountEmailTakenException.class);
     verify(accounts, never()).openAccount(anyLong(), anyString(), anyString(), any());
     verify(accounts, never()).issueAccess(anyLong(), any());
     verify(accounts, never()).sendAccess(anyString(), any());
@@ -124,9 +120,7 @@ class GuestRegistrationServiceTest {
         .thenThrow(new AccountEmailAlreadyExistsException(new IllegalStateException("taken")));
 
     assertThatThrownBy(() -> service.setAccountEmail(ID, "taken@example.com"))
-        .isInstanceOfSatisfying(
-            GuestAccountEmailTakenException.class,
-            e -> assertThat(e.field()).isEqualTo(Field.EMAIL));
+        .isInstanceOf(GuestAccountEmailTakenException.class);
     verify(accounts, never()).noticeAccountEmailChanged(anyString(), anyString());
   }
 

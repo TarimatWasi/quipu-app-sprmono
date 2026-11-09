@@ -90,6 +90,11 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
+  public boolean emailBelongsToAnotherAccount(String email, Long accountId) {
+    return findByEmail(email).filter(u -> !u.id().equals(accountId)).isPresent();
+  }
+
+  @Override
   public Optional<Instant> findResetTokenExpiry(Long id) {
     return Optional.ofNullable(resetTokens.get(id)).map(ResetToken::expiresAt);
   }

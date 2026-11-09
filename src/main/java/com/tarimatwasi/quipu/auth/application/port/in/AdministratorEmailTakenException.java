@@ -3,8 +3,8 @@ package com.tarimatwasi.quipu.auth.application.port.in;
 import java.io.Serial;
 
 /**
- * RF-22: another account already has the email of the new administrator, ignoring case. A guest
- * contact email is not an account email (D-33).
+ * RF-22: another account, administrator or guest, already has the email of the new administrator,
+ * ignoring case.
  */
 public class AdministratorEmailTakenException extends RuntimeException {
 

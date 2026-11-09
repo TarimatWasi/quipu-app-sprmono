@@ -80,6 +80,9 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<UserJpaEntity> findByEmailIgnoreCase(String email);
 
+  /** Without a lock: only tells whether the email is free (TAR-349). */
+  boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
+
   /** Locked until the commit: of two simultaneous resets with one code only one finds it. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<UserJpaEntity> findByResetTokenHash(String resetTokenHash);

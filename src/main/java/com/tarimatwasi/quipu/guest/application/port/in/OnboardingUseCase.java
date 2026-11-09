@@ -17,12 +17,21 @@ public interface OnboardingUseCase {
   /** The largest document a guest may upload (RF-15). */
   int MAX_DOCUMENT_BYTES = GuestDocument.MAX_BYTES;
 
-  /** The personal data step; the strings are already within the limits of the contract. */
+  /**
+   * The personal data as the guest sees them.
+   *
+   * @param email the one email of the guest, the one of its account; it changes only through its
+   *     verification (TAR-349), never with this step
+   */
   record PersonalData(
       String name,
       String phone,
-      @Nullable String contactEmail,
+      @Nullable String email,
       @Nullable EmergencyContactView emergencyContact) {}
+
+  /** The personal data step; the strings are already within the limits of the contract. */
+  record PersonalDataInput(
+      String name, String phone, @Nullable EmergencyContactView emergencyContact) {}
 
   /** A document as the guest sees it: never its file nor a link to it. */
   record DocumentView(
@@ -35,12 +44,12 @@ public interface OnboardingUseCase {
    * Where the guest is.
    *
    * @param nextStep the first pending step; null once the onboarding is complete
-   * @param personalData null until the personal data step is saved
+   * @param personalData known values, including defaults, even before the step is saved
    */
   record OnboardingView(
       boolean completed,
       @Nullable OnboardingStep nextStep,
-      @Nullable PersonalData personalData,
+      PersonalData personalData,
       List<DocumentView> documents,
       ConsentView consent) {}
 
@@ -78,9 +87,8 @@ public interface OnboardingUseCase {
    * Saves the personal data while the guest is onboarding; the documents step is offered again.
    *
    * @throws OnboardingConflictException if the guest is not onboarding
-   * @throws GuestEmailTakenException if another guest has the contact email
    */
-  OnboardingView savePersonalData(Long guestId, PersonalData data);
+  OnboardingView savePersonalData(Long guestId, PersonalDataInput data);
 
   /**
    * Stores one document of the documents step.

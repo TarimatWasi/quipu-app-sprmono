@@ -34,8 +34,6 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   @Column(name = "full_name")
   private @Nullable String fullName;
 
-  private @Nullable String email;
-
   private @Nullable String phone;
 
   @Column(name = "guest_type")
@@ -75,16 +73,11 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   /** A guest just registered by the administrator: pending activation, without a name (RN-31). */
   GuestJpaEntity(
-      DocumentType documentType,
-      String documentNumber,
-      GuestType type,
-      @Nullable String phone,
-      @Nullable String email) {
+      DocumentType documentType, String documentNumber, GuestType type, @Nullable String phone) {
     this.documentType = documentType;
     this.documentNumber = documentNumber;
     this.type = type;
     this.phone = phone;
-    this.email = email;
     this.status = GuestStatus.PENDING_ACTIVATION;
   }
 
@@ -93,7 +86,6 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
     this.documentType = guest.documentType();
     this.documentNumber = guest.documentNumber();
     this.fullName = guest.fullName();
-    this.email = guest.email();
     this.phone = guest.phone();
     this.type = guest.type();
     this.status = guest.status();
@@ -116,7 +108,6 @@ public class GuestJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
         documentType,
         documentNumber,
         fullName,
-        email,
         phone,
         type,
         status,

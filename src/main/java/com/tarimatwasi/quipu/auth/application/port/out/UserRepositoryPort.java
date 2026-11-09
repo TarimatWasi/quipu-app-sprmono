@@ -56,6 +56,12 @@ public interface UserRepositoryPort {
   /** Emails are unique ignoring case. */
   Optional<UserAccount> findByEmail(String email);
 
+  /**
+   * Whether an account other than this one has the email, ignoring case. It reads without locking
+   * (TAR-349): two guests that ask for each other's email do not wait for one another.
+   */
+  boolean emailBelongsToAnotherAccount(String email, Long accountId);
+
   /** When the account's current recovery code expires; empty if it has none. */
   Optional<Instant> findResetTokenExpiry(Long id);
 

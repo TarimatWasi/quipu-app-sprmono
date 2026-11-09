@@ -192,9 +192,7 @@ class MethodSecurityContractTest {
     assertThatThrownBy(
             () ->
                 ownProfiles.update(
-                    1L,
-                    GuestKind.CONTRACT,
-                    new OwnProfileUseCase.ProfileChange("Ana", null, null, null)))
+                    1L, GuestKind.CONTRACT, new OwnProfileUseCase.ProfileChange("Ana", null, null)))
         .isInstanceOf(AccessDeniedException.class);
   }
 

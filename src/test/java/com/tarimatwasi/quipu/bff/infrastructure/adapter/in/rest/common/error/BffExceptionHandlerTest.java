@@ -68,19 +68,6 @@ class BffExceptionHandlerTest {
   // the error catalog of «SRS 17 - Árbol de Flujo de Pantallas». One test per code.
 
   @Test
-  void guestEmailTaken_answersTheCatalogText() {
-    ResponseEntity<BffErrorResponse> response = handler.handleGuestEmailTaken();
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-    assertThat(response.getBody())
-        .isEqualTo(
-            new BffErrorResponse(
-                "GUEST_EMAIL_TAKEN",
-                "Ese correo ya está registrado para otro huésped",
-                "contactEmail"));
-  }
-
-  @Test
   void documentInvalidFile_answersTheCatalogText() {
     ResponseEntity<BffErrorResponse> response =
         handler.handleInvalidOnboardingInput(

@@ -222,6 +222,28 @@ class EmailTemplates {
         "Recibes este aviso porque eres administrador de Quipu.");
   }
 
+  /** TAR-349: the code that proves the guest owns its new email; it gives no other access. */
+  MailContent guestEmailVerification(String code, long validMinutes) {
+    String text =
+        "Tu código para confirmar el correo de Quipu es "
+            + code
+            + ". Vale "
+            + validMinutes
+            + " minutos. Si no solicitaste el cambio, ignora este mensaje.\n";
+    String body =
+        paragraph("Confirma tu correo")
+            + paragraph("Ingresa este código en Quipu:")
+            + callout(false, code, "Vence en " + validMinutes + " minutos.");
+    return mail(
+        "Confirma tu correo de Quipu",
+        text,
+        text,
+        "Verificación de correo",
+        "Código de confirmación",
+        body,
+        "Si no solicitaste este cambio, ignora este correo.");
+  }
+
   /** TAR-229: tells the previous email of a guest that the account email changed. */
   MailContent accountEmailChanged(String maskedNewEmail) {
     String text =

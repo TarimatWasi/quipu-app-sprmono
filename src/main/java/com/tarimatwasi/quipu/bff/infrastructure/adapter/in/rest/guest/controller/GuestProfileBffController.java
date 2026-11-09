@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.controlle
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
+import com.tarimatwasi.quipu.auth.application.port.in.GuestEmailVerificationUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller.GuestsBffController.GuestSummaryResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.NullFieldException;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.UnknownFieldException;
@@ -26,7 +27,6 @@ import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
@@ -64,16 +64,19 @@ public class GuestProfileBffController {
   private final OwnProfileUseCase profiles;
   private final OwnDocumentUseCase documents;
   private final GuestAccountUseCase accounts;
+  private final GuestEmailVerificationUseCase emailVerification;
   private final IdMasker ids;
 
   public GuestProfileBffController(
       OwnProfileUseCase profiles,
       OwnDocumentUseCase documents,
       GuestAccountUseCase accounts,
+      GuestEmailVerificationUseCase emailVerification,
       IdMasker ids) {
     this.profiles = profiles;
     this.documents = documents;
     this.accounts = accounts;
+    this.emailVerification = emailVerification;
     this.ids = ids;
   }
 
@@ -98,10 +101,6 @@ public class GuestProfileBffController {
     @Pattern(regexp = NOT_BLANK)
     private @Nullable String phone;
 
-    @Email
-    @Size(min = 3, max = 200)
-    private @Nullable String contactEmail;
-
     @Valid private @Nullable EmergencyContactBody emergencyContact;
 
     @JsonSetter("name")
@@ -114,12 +113,6 @@ public class GuestProfileBffController {
     public void setPhone(@Nullable String phone) {
       present.add("phone");
       this.phone = phone;
-    }
-
-    @JsonSetter("contactEmail")
-    public void setContactEmail(@Nullable String contactEmail) {
-      present.add("contactEmail");
-      this.contactEmail = contactEmail;
     }
 
     @JsonSetter("emergencyContact")
@@ -142,7 +135,6 @@ public class GuestProfileBffController {
       }
       rejectNull("name", name);
       rejectNull("phone", phone);
-      rejectNull("contactEmail", contactEmail);
       rejectNull("emergencyContact", emergencyContact);
       EmergencyContactBody contact = emergencyContact;
       if (contact != null) {
@@ -153,7 +145,6 @@ public class GuestProfileBffController {
       return new ProfileChange(
           newName == null ? null : newName.strip(),
           newPhone == null ? null : newPhone.strip(),
-          contactEmail,
           contact == null
               ? null
               : new EmergencyContactView(
@@ -171,32 +162,33 @@ public class GuestProfileBffController {
 
   /**
    * OwnProfile (H5, T3; TAR-242). The nullable fields are always present, as null when missing; the
-   * documents never carry a link to their file (TAR-241 adds it apart).
+   * documents never carry a link to their file (TAR-241 adds it apart). {@code pendingEmail} is the
+   * email waiting for its code (TAR-349).
    */
   public record OwnProfileResponse(
       String documentType,
       String documentNumber,
       String name,
       @Nullable String phone,
-      @Nullable String contactEmail,
+      @Nullable String email,
+      @Nullable String pendingEmail,
       @Nullable EmergencyContactResponse emergencyContact,
-      @Nullable String accountEmail,
       List<DocumentRefResponse> documents,
       int documentsLimit) {
 
-    static OwnProfileResponse of(OwnProfileView view, IdMasker ids) {
+    static OwnProfileResponse of(OwnProfileView view, @Nullable String pendingEmail, IdMasker ids) {
       EmergencyContactView contact = view.emergencyContact();
       return new OwnProfileResponse(
           view.documentType(),
           view.documentNumber(),
           view.name(),
           view.phone(),
-          view.contactEmail(),
+          view.email(),
+          pendingEmail,
           contact == null
               ? null
               : new EmergencyContactResponse(
                   contact.name(), contact.relationship(), contact.phone()),
-          view.accountEmail(),
           view.documents().stream().map(document -> DocumentRefResponse.of(document, ids)).toList(),
           view.documentsLimit());
     }
@@ -285,9 +277,12 @@ public class GuestProfileBffController {
   }
 
   private ResponseEntity<OwnProfileResponse> own(GuestKind area, Authentication authentication) {
+    Long guestId = guestOf(authentication);
+    OwnProfileView view = profiles.own(guestId, area);
+    String pending = emailVerification.pendingEmail(guestId).orElse(null);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(OwnProfileResponse.of(profiles.own(guestOf(authentication), area), ids));
+        .body(OwnProfileResponse.of(view, pending, ids));
   }
 
   private DocumentRefResponse upload(

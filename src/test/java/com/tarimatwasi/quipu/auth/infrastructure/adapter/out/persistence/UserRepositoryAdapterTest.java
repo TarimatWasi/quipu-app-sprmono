@@ -64,6 +64,14 @@ class UserRepositoryAdapterTest {
     TestTables.clear(jdbc);
   }
 
+  /** TAR-349: whether the email is of another account, ignoring case; its own is not taken. */
+  @Test
+  void emailBelongsToAnotherAccount_ignoresCaseAndTheAccountItself() {
+    assertThat(adapter.emailBelongsToAnotherAccount("A@Example.test", accountId)).isFalse();
+    assertThat(adapter.emailBelongsToAnotherAccount("A@Example.test", TestIds.next())).isTrue();
+    assertThat(adapter.emailBelongsToAnotherAccount("libre@example.test", accountId)).isFalse();
+  }
+
   @Test
   void reactivatingAGuestNeverRevivesItsOldSession() {
     String old = tokens.issue(accountId.toString());

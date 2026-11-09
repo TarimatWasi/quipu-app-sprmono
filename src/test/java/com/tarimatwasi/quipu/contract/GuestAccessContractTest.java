@@ -130,7 +130,7 @@ class GuestAccessContractTest {
 
   private ResultActions register(String number, String mode, @Nullable String email)
       throws Exception {
-    String contact = email == null ? "" : ",\"contactEmail\":\"" + email + "\"";
+    String contact = email == null ? "" : ",\"email\":\"" + email + "\"";
     return mockMvc.perform(
         postWithCsrf(GUESTS)
             .cookie(admin())
@@ -711,7 +711,8 @@ class GuestAccessContractTest {
     register("87654321", "LINK", "ANA@example.com")
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("GUEST_EMAIL_TAKEN"));
+        .andExpect(jsonPath("$.code").value("ACCOUNT_EMAIL_TAKEN"))
+        .andExpect(jsonPath("$.field").value("email"));
     register("00000001", "LINK", null)
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())

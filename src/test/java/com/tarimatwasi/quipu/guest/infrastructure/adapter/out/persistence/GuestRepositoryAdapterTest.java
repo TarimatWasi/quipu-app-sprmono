@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentAlreadyExistsException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestEmailAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
@@ -111,18 +110,6 @@ class GuestRepositoryAdapterTest {
         .isInstanceOf(InvalidCursorException.class);
   }
 
-  /** TAR-186 (D-33): a repeated contact email is not reported as a repeated document. */
-  @Test
-  void save_withAnEmailOfAnotherGuest_reportsTheEmailNotTheDocument() {
-    Long first = idOf("DNI", "30000001");
-    Long second = idOf("CE", "20000001");
-    jdbc.update("UPDATE guests SET email = ? WHERE id = ?", "ana@example.test", first);
-    Guest changed = withEmail(adapter.findById(second).orElseThrow(), "ANA@example.test");
-
-    assertThatThrownBy(() -> transaction.execute(status -> adapter.save(changed)))
-        .isInstanceOf(GuestEmailAlreadyExistsException.class);
-  }
-
   @Test
   void save_withTheDocumentOfAnotherGuest_reportsTheDocument() {
     Long second = idOf("CE", "20000001");
@@ -134,12 +121,8 @@ class GuestRepositoryAdapterTest {
 
   @Test
   void conflict_readsTheNameOfTheConstraint() {
-    var email =
-        new ConstraintViolationException("dup", new SQLException(), "uq_guests_email_lower");
     var other = new ConstraintViolationException("dup", new SQLException(), "uq_guests_document");
 
-    assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x", email)))
-        .isInstanceOf(GuestEmailAlreadyExistsException.class);
     assertThat(GuestRepositoryAdapter.conflict(new DataIntegrityViolationException("x", other)))
         .isInstanceOf(GuestDocumentAlreadyExistsException.class);
     var unknown = new DataIntegrityViolationException("x");
@@ -155,29 +138,12 @@ class GuestRepositoryAdapterTest {
             number));
   }
 
-  private static Guest withEmail(Guest guest, String email) {
-    return new Guest(
-        guest.id(),
-        guest.documentType(),
-        guest.documentNumber(),
-        guest.fullName(),
-        email,
-        guest.phone(),
-        guest.type(),
-        guest.status(),
-        guest.statusBeforeInactive(),
-        guest.personalDataCompletedAt(),
-        guest.documentsStepCompletedAt(),
-        guest.emergencyContact());
-  }
-
   private static Guest withDocument(Guest guest, String documentType, String number) {
     return new Guest(
         guest.id(),
         DocumentType.valueOf(documentType),
         number,
         guest.fullName(),
-        guest.email(),
         guest.phone(),
         guest.type(),
         guest.status(),

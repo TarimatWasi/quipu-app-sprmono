@@ -39,7 +39,7 @@ class GuestProfileContractTest extends PaymentsContractSupport {
   void personalData() {
     insertAccount(temporaryAccountId, "GUEST", "00000003", temporaryGuest);
     jdbc.update(
-        "UPDATE guests SET email = 'ana@example.com', phone = '999111222',"
+        "UPDATE guests SET phone = '999111222',"
             + " emergency_contact_name = 'Rosa', emergency_contact_relationship = 'Madre',"
             + " emergency_contact_phone = '988777666' WHERE id = ?",
         contractGuest);
@@ -60,7 +60,7 @@ class GuestProfileContractTest extends PaymentsContractSupport {
 
   private Map<String, Object> row(Long guest) {
     return jdbc.queryForMap(
-        "SELECT full_name, email, phone, emergency_contact_name, emergency_contact_relationship,"
+        "SELECT full_name, phone, emergency_contact_name, emergency_contact_relationship,"
             + " emergency_contact_phone, document_type, document_number, guest_type, status"
             + " FROM guests WHERE id = ?",
         guest);
@@ -97,7 +97,6 @@ class GuestProfileContractTest extends PaymentsContractSupport {
             TEMPORARY_PROFILE,
             temporary(),
             "{\"name\":\"Luis Mamani Q.\",\"phone\":\"944333222\","
-                + "\"contactEmail\":\"luis@example.com\","
                 + "\"emergencyContact\":{\"name\":\"Eva\",\"relationship\":\" \",\"phone\":\"933\"}}")
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
@@ -107,7 +106,6 @@ class GuestProfileContractTest extends PaymentsContractSupport {
     assertThat(row(temporaryGuest))
         .containsEntry("full_name", "Luis Mamani Q.")
         .containsEntry("phone", "944333222")
-        .containsEntry("email", "luis@example.com")
         .containsEntry("emergency_contact_name", "Eva")
         .containsEntry("emergency_contact_relationship", null)
         .containsEntry("emergency_contact_phone", "933")
@@ -186,37 +184,17 @@ class GuestProfileContractTest extends PaymentsContractSupport {
   }
 
   @Test
-  void aNullContactEmailDoesNotEraseIt() throws Exception {
-    edit(CONTRACT_PROFILE, guest(), "{\"contactEmail\":null}")
+  void theEmailIsNotEditedHereAndABlankNameIsRefused() throws Exception {
+    // TAR-349: the email changes only by verifying it.
+    edit(CONTRACT_PROFILE, guest(), "{\"email\":\"otra@example.com\"}")
         .andExpect(status().isBadRequest())
         .andExpect(satisfiesTheContractToAnInvalidRequest())
-        .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-        .andExpect(jsonPath("$.field").value("contactEmail"));
+        .andExpect(jsonPath("$.field").value("email"));
     edit(CONTRACT_PROFILE, guest(), "{\"name\":\"   \"}")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("name"));
-    edit(CONTRACT_PROFILE, guest(), "{\"contactEmail\":\"no-es-correo\"}")
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.field").value("contactEmail"));
 
-    assertThat(row(contractGuest))
-        .containsEntry("email", "ana@example.com")
-        .containsEntry("full_name", "Ana Quispe");
-  }
-
-  @Test
-  void aContactEmailOfAnotherGuestIsTaken() throws Exception {
-    jdbc.update("UPDATE guests SET email = 'luis@example.com' WHERE id = ?", temporaryGuest);
-
-    edit(CONTRACT_PROFILE, guest(), "{\"contactEmail\":\"LUIS@example.com\"}")
-        .andExpect(status().isConflict())
-        .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("GUEST_EMAIL_TAKEN"))
-        .andExpect(jsonPath("$.field").value("contactEmail"));
-    assertThat(row(contractGuest)).containsEntry("email", "ana@example.com");
-    // Its own email again is not taken by anybody else.
-    edit(CONTRACT_PROFILE, guest(), "{\"contactEmail\":\"ana@example.com\"}")
-        .andExpect(status().isOk());
+    assertThat(row(contractGuest)).containsEntry("full_name", "Ana Quispe");
   }
 
   @Test
@@ -291,9 +269,9 @@ class GuestProfileContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.documentNumber").value("12345678"))
         .andExpect(jsonPath("$.name").value("Ana Quispe"))
         .andExpect(jsonPath("$.phone").value("999111222"))
-        .andExpect(jsonPath("$.contactEmail").value("ana@example.com"))
+        .andExpect(jsonPath("$.email").value("cuenta@example.com"))
+        .andExpect(jsonPath("$.pendingEmail").isEmpty())
         .andExpect(jsonPath("$.emergencyContact.relationship").value("Madre"))
-        .andExpect(jsonPath("$.accountEmail").value("cuenta@example.com"))
         .andExpect(jsonPath("$.documentsLimit").value(5))
         .andExpect(jsonPath("$.documents.length()").value(1))
         .andExpect(jsonPath("$.documents[0].originalName").value("dni.pdf"))
@@ -310,8 +288,8 @@ class GuestProfileContractTest extends PaymentsContractSupport {
         .andExpect(satisfiesTheContract())
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.name").value("Luis Mamani"))
-        .andExpect(jsonPath("$.accountEmail").isEmpty())
-        .andExpect(jsonPath("$.contactEmail").isEmpty())
+        .andExpect(jsonPath("$.email").isEmpty())
+        .andExpect(jsonPath("$.pendingEmail").isEmpty())
         .andExpect(jsonPath("$.emergencyContact").isEmpty())
         .andExpect(jsonPath("$.documents").isEmpty());
   }

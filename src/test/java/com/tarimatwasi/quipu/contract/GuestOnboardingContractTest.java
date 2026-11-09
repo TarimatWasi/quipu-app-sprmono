@@ -132,7 +132,9 @@ class GuestOnboardingContractTest {
             .andExpect(satisfiesTheContract())
             .andExpect(jsonPath("$.status").value("ONBOARDING"))
             .andExpect(jsonPath("$.nextStep").value("PERSONAL_DATA"))
-            .andExpect(jsonPath("$.personalData").doesNotExist())
+            .andExpect(jsonPath("$.personalData.name").value(""))
+            .andExpect(jsonPath("$.personalData.email").doesNotExist())
+            .andExpect(jsonPath("$.pendingEmail").doesNotExist())
             .andExpect(jsonPath("$.documents").isEmpty())
             .andExpect(jsonPath("$.consent.accepted").value(false))
             .andReturn();
@@ -143,7 +145,7 @@ class GuestOnboardingContractTest {
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.nextStep").value("DOCUMENTS"))
         .andExpect(jsonPath("$.personalData.name").value("Ana Quispe"))
-        .andExpect(jsonPath("$.personalData.contactEmail").doesNotExist());
+        .andExpect(jsonPath("$.personalData.email").doesNotExist());
     // Resumable: a new session finds the step where it was left.
     onboarding(guest())
         .andExpect(status().isOk())
@@ -275,12 +277,10 @@ class GuestOnboardingContractTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.field").value("name"));
 
-    jdbc.update("UPDATE guests SET email = 'ana@example.com' WHERE id = ?", temporaryGuest);
-    personalData(guest(), "{\"name\":\"Ana\",\"phone\":\"1\",\"contactEmail\":\"ANA@example.com\"}")
-        .andExpect(status().isConflict())
-        .andExpect(satisfiesTheContract())
-        .andExpect(jsonPath("$.code").value("GUEST_EMAIL_TAKEN"))
-        .andExpect(jsonPath("$.field").value("contactEmail"));
+    // TAR-349: the email is not part of this step; it changes only by verifying it.
+    personalData(guest(), "{\"name\":\"Ana\",\"phone\":\"1\",\"email\":\"ana@example.com\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("email"));
     assertThat(
             jdbc.queryForObject(
                 "SELECT personal_data_completed_at IS NULL FROM guests WHERE id = ?",
@@ -290,12 +290,11 @@ class GuestOnboardingContractTest {
 
     personalData(
             guest(),
-            "{\"name\":\" Ana Quispe \",\"phone\":\"1\",\"contactEmail\":\"ana.q@example.com\","
+            "{\"name\":\" Ana Quispe \",\"phone\":\"1\","
                 + "\"emergencyContact\":{\"name\":\"Rosa\",\"phone\":\"2\"}}")
         .andExpect(status().isOk())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.personalData.name").value("Ana Quispe"))
-        .andExpect(jsonPath("$.personalData.contactEmail").value("ana.q@example.com"))
         .andExpect(jsonPath("$.personalData.emergencyContact.name").value("Rosa"))
         .andExpect(jsonPath("$.personalData.emergencyContact.relationship").doesNotExist());
   }

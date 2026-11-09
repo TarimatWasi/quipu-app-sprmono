@@ -7,11 +7,8 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort
 import com.tarimatwasi.quipu.auth.application.port.out.AccessMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountAlreadyExistsException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
-import com.tarimatwasi.quipu.auth.application.port.out.GuestAccountEmailNoticePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
-import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -23,8 +20,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -40,8 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('ADMIN')") // BE-SPR-SEC-02: only the administrator flows hand accesses
 public class GuestAccessService implements GuestAccessUseCase {
 
-  private static final Logger LOG = LoggerFactory.getLogger(GuestAccessService.class);
-
   static final Duration ACCESS_VALIDITY = Duration.ofMinutes(30);
 
   /** No 0/O, 1/l/I: the password is read aloud or copied by hand. */
@@ -54,7 +47,7 @@ public class GuestAccessService implements GuestAccessUseCase {
   private final UserRepositoryPort users;
   private final AccessGrantRepositoryPort grants;
   private final AccessMailPort mail;
-  private final GuestAccountEmailNoticePort notices;
+  private final GuestAccountEmailChanger emails;
   private final PasswordEncoder passwordEncoder;
   private final Clock clock;
 
@@ -62,13 +55,13 @@ public class GuestAccessService implements GuestAccessUseCase {
       UserRepositoryPort users,
       AccessGrantRepositoryPort grants,
       AccessMailPort mail,
-      GuestAccountEmailNoticePort notices,
+      GuestAccountEmailChanger emails,
       PasswordEncoder passwordEncoder,
       Clock clock) {
     this.users = users;
     this.grants = grants;
     this.mail = mail;
-    this.notices = notices;
+    this.emails = emails;
     this.passwordEncoder = passwordEncoder;
     this.clock = clock;
   }
@@ -112,39 +105,15 @@ public class GuestAccessService implements GuestAccessUseCase {
     }
   }
 
-  /**
-   * The same address in other case is the same mailbox (the emails are unique ignoring case): it is
-   * left as it is, and its recovery code keeps working.
-   */
   @Override
   @Transactional
   public AccountEmailChange changeAccountEmail(Long guestId, String email) {
-    Optional<UserAccount> account = users.findByGuestIdForUpdate(guestId);
-    if (account.isEmpty()) {
-      return new AccountEmailChange(EmailChangeOutcome.NO_ACCOUNT, null);
-    }
-    String previous = account.get().email();
-    if (previous != null && previous.equalsIgnoreCase(email)) {
-      return new AccountEmailChange(EmailChangeOutcome.UNCHANGED, null);
-    }
-    try {
-      users.changeEmail(account.get().id(), email);
-    } catch (AccountTakenException e) {
-      throw new AccountEmailTakenException(e);
-    }
-    return new AccountEmailChange(EmailChangeOutcome.CHANGED, previous);
+    return emails.change(guestId, email);
   }
 
   @Override
   public void noticeAccountEmailChanged(String previousEmail, String newEmail) {
-    try {
-      notices.accountEmailChanged(previousEmail, newEmail);
-    } catch (MailDeliveryException e) {
-      // Only the type: the message of a provider can echo the address.
-      LOG.warn(
-          "The previous account email was not told about the change ({})",
-          e.getClass().getSimpleName());
-    }
+    emails.notice(previousEmail, newEmail);
   }
 
   @Override
