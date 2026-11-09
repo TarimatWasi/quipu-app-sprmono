@@ -185,8 +185,10 @@ class GuestEmailVerificationContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_EXPIRED"))
         .andExpect(jsonPath("$.field").value("code"));
     confirm(CONTRACT, guest(), code)
-        .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_INVALID"));
+        .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_EXPIRED"));
     assertThat(emailOf(guestAccountId)).isEqualTo(CURRENT);
+    // The request stays, with the time of its code: the wait for another one still holds.
+    request(CONTRACT, guest(), NEW).andExpect(status().isTooManyRequests());
   }
 
   @Test

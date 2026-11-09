@@ -76,8 +76,7 @@ public class GuestEmailVerificationService implements GuestEmailVerificationUseC
         throw EmailVerificationException.cooldown(Duration.between(now, nextAllowed).toSeconds());
       }
     }
-    Optional<UserAccount> owner = users.findByEmail(email);
-    if (owner.isPresent() && !owner.get().id().equals(account.id())) {
+    if (users.emailBelongsToAnotherAccount(email, account.id())) {
       throw new AccountEmailTakenException();
     }
     String code = String.format("%06d", RANDOM.nextInt(1_000_000));
@@ -92,7 +91,7 @@ public class GuestEmailVerificationService implements GuestEmailVerificationUseC
     PendingEmailVerification pending =
         store.find(guestId).orElseThrow(() -> new EmailVerificationException(Reason.INVALID_CODE));
     if (!usable(pending)) {
-      store.delete(guestId);
+      // The row stays: it keeps the time of the last code, so the wait for another one holds.
       throw new EmailVerificationException(Reason.EXPIRED);
     }
     if (!passwords.matches(code, pending.codeHash())) {

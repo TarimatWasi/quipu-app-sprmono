@@ -166,8 +166,24 @@ class GuestEmailVerificationServiceTest {
 
     assertThatThrownBy(() -> service.confirm(GUEST, code))
         .satisfies(e -> assertThat(reasonOf(e)).isEqualTo(Reason.EXPIRED));
-    assertThat(store.rows).isEmpty();
     verify(notices, never()).accountEmailChanged(anyString(), anyString());
+  }
+
+  /** Codex P2 on #160: running out of attempts must not open the way to another code at once. */
+  @Test
+  void request_afterTheAttemptsRunOut_stillWaitsForTheMinute() {
+    service.request(GUEST, NEW);
+    String code = sentCode();
+    for (int attempt = 0; attempt < 6; attempt++) {
+      assertThatThrownBy(() -> service.confirm(GUEST, wrong(code)))
+          .isInstanceOf(EmailVerificationException.class);
+    }
+
+    assertThatThrownBy(() -> service.request(GUEST, NEW))
+        .satisfies(e -> assertThat(reasonOf(e)).isEqualTo(Reason.COOLDOWN));
+    clock.advance(Duration.ofSeconds(60));
+    service.request(GUEST, "otra@example.com");
+    assertThat(store.row(GUEST).attempts()).isZero();
   }
 
   @Test
