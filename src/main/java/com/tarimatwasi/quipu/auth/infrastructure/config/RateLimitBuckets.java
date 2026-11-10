@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
@@ -72,7 +73,7 @@ final class RateLimitBuckets {
   /** Writes the 429 {@code RATE_LIMITED} answer. */
   static void reject(HttpServletResponse response, long retryAfterSeconds) throws IOException {
     response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-    response.setHeader("Retry-After", Long.toString(retryAfterSeconds));
+    response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.getWriter().write(BODY);
