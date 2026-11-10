@@ -60,14 +60,20 @@ public class SessionCookies {
    * replacing the CSRF cookie already written to the response.
    */
   public void writeSession(IssuedSession session, HttpServletResponse response) {
-    writeSession(session.accessToken(), response);
+    Duration accessMaxAge = session.accessMaxAge();
+    response.addHeader(
+        HttpHeaders.SET_COOKIE,
+        cookie(session.accessToken(), accessMaxAge == null ? properties.maxAge() : accessMaxAge)
+            .toString());
     String refreshToken = session.refreshToken();
     Duration maxAge = session.refreshMaxAge();
-    if (refreshToken != null && maxAge != null) {
-      response.addHeader(
-          HttpHeaders.SET_COOKIE,
-          cookie(REFRESH_NAME, refreshToken, maxAge, REFRESH_PATH).toString());
-    }
+    // A session without a refresh token (a temporary one) must not leave the browser the refresh
+    // token of the session it replaces: that one, maybe of another account, would renew it.
+    response.addHeader(
+        HttpHeaders.SET_COOKIE,
+        refreshToken != null && maxAge != null
+            ? cookie(REFRESH_NAME, refreshToken, maxAge, REFRESH_PATH).toString()
+            : cookie(REFRESH_NAME, "", Duration.ZERO, REFRESH_PATH).toString());
   }
 
   /** Appends the expired JWT and refresh cookies alongside the expired CSRF cookie. */

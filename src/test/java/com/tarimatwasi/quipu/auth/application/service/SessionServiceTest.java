@@ -242,6 +242,9 @@ class SessionServiceTest {
     IssuedSession temporary = service.openTemporary(USER.toString(), 9L, expiresAt);
     assertThat(temporary.refreshToken()).isNull();
     assertThat(temporary.refreshMaxAge()).isNull();
+    assertThat(temporary.accessMaxAge())
+        .as("its cookie lasts as its password")
+        .isEqualTo(Duration.ofMinutes(30));
     String sid = temporary.accessToken().substring(temporary.accessToken().lastIndexOf(':') + 1);
     clock.advance(Duration.ofMinutes(5));
     version = 1;

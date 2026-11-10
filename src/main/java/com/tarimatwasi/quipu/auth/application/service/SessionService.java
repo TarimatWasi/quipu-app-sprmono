@@ -105,7 +105,11 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
         true,
         expiresAt,
         now);
-    return new IssuedSession(tokens.issueTemporary(userId, sid, grantId, expiresAt), null, null);
+    return new IssuedSession(
+        tokens.issueTemporary(userId, sid, grantId, expiresAt),
+        null,
+        null,
+        Duration.between(now, expiresAt));
   }
 
   /**
