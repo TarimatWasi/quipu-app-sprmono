@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.infrastructure.config;
 
+import com.tarimatwasi.quipu.auth.application.service.SessionPolicy;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtProperties;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.SessionJwt;
 import java.time.Clock;
@@ -20,5 +21,11 @@ class SessionJwtConfig {
   @Bean
   JwtEncoder sessionJwtEncoder(JwtProperties properties) {
     return SessionJwt.encoder(SessionJwt.key(properties.secret()));
+  }
+
+  /** TAR-228: the lifetime of the sessions, checked when the application starts. */
+  @Bean
+  SessionPolicy sessionPolicy(RefreshProperties properties) {
+    return new SessionPolicy(properties.idle(), properties.absolute(), properties.reuseGrace());
   }
 }

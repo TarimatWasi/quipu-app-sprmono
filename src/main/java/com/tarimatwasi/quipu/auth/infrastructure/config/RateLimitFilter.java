@@ -24,7 +24,9 @@ final class RateLimitFilter extends OncePerRequestFilter {
           "/bff/auth/login",
           "/bff/auth/activate",
           "/bff/auth/forgot-password",
-          "/bff/auth/reset-password");
+          "/bff/auth/reset-password",
+          // TAR-228: a refresh token cannot be guessed, but its endpoint is public too.
+          "/bff/auth/refresh");
   private static final Pattern ADDRESS = Pattern.compile("[0-9a-fA-F:.]{1,45}");
 
   private final RateLimitBuckets buckets;

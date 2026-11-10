@@ -4,7 +4,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.AccountDisabledException;
 import com.tarimatwasi.quipu.auth.application.port.in.ActivateAccessUseCase;
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
-import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
@@ -27,7 +26,7 @@ public class AccessActivationService implements ActivateAccessUseCase {
   private final AccessGrantRepositoryPort grants;
   private final GuestAccessListener guests;
   private final PasswordEncoder passwordEncoder;
-  private final SessionTokenPort sessionTokens;
+  private final SessionService sessions;
   private final Clock clock;
 
   AccessActivationService(
@@ -35,13 +34,13 @@ public class AccessActivationService implements ActivateAccessUseCase {
       AccessGrantRepositoryPort grants,
       GuestAccessListener guests,
       PasswordEncoder passwordEncoder,
-      SessionTokenPort sessionTokens,
+      SessionService sessions,
       Clock clock) {
     this.users = users;
     this.grants = grants;
     this.guests = guests;
     this.passwordEncoder = passwordEncoder;
-    this.sessionTokens = sessionTokens;
+    this.sessions = sessions;
     this.clock = clock;
   }
 
@@ -74,6 +73,6 @@ public class AccessActivationService implements ActivateAccessUseCase {
     String passwordHash = passwordEncoder.encode(newPassword);
     users.changePassword(
         account.id(), passwordHash, clock.instant().truncatedTo(ChronoUnit.MICROS));
-    return new ActivationResult(guestId, sessionTokens.issue(account.id().toString()));
+    return new ActivationResult(guestId, sessions.open(account.id().toString()));
   }
 }

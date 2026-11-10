@@ -198,6 +198,7 @@ class SessionMaskingContractTest {
                 .claim("sv", 0L)
                 .subject(masker.session(sessionId).mask(IdKind.USER, adminId).toString())
                 .claim("sid", sessionId)
+                .claim("ss", true)
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(600))
                 .build());

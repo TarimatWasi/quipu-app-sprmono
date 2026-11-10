@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security;
 
+import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.shared.access.AccessSessions;
@@ -7,6 +8,7 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -39,10 +41,15 @@ public class AccountJwtAuthenticationConverter
 
   private final UserRepositoryPort users;
   private final IdMasker masker;
+  private final SessionStorePort sessions;
+  private final Clock clock;
 
-  public AccountJwtAuthenticationConverter(UserRepositoryPort users, IdMasker masker) {
+  public AccountJwtAuthenticationConverter(
+      UserRepositoryPort users, IdMasker masker, SessionStorePort sessions, Clock clock) {
     this.users = users;
     this.masker = masker;
+    this.sessions = sessions;
+    this.clock = clock;
   }
 
   @Override
@@ -55,6 +62,7 @@ public class AccountJwtAuthenticationConverter
       throw invalid("The token has no subject");
     }
     MaskSession session = sessionOf(jwt);
+    requireOpen(jwt);
     UserAccount account = accountOf(session, subject);
     Object version = jwt.getClaim(JwtTokenProvider.SECURITY_VERSION_CLAIM);
     if (!(version instanceof Long || version instanceof Integer)
@@ -73,6 +81,20 @@ public class AccountJwtAuthenticationConverter
       authorities.add(new SimpleGrantedAuthority(AccessSessions.TEMPORARY_AUTHORITY));
     }
     return new MaskedSessionAuthenticationToken(jwt, authorities, account.id().toString(), session);
+  }
+
+  /**
+   * TAR-228: only tokens of stored sessions (the ones issued before lack the mark), and only while
+   * their session is not closed (logout, reuse of a refresh token, a password changed elsewhere)
+   * nor past its absolute expiry.
+   */
+  private void requireOpen(Jwt jwt) {
+    String sessionId = jwt.getClaimAsString(AccessSessions.SESSION_ID_CLAIM);
+    if (!Boolean.TRUE.equals(jwt.getClaim(JwtTokenProvider.STORED_SESSION_CLAIM))
+        || sessionId == null
+        || sessions.isClosed(SessionStorePort.hash(sessionId), clock.instant())) {
+      throw invalid("The session is no longer valid");
+    }
   }
 
   /** The value is a credential of the session: no message repeats it. */

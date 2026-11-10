@@ -16,7 +16,7 @@ public interface ActivateAccessUseCase {
    * An activated access.
    *
    * @param guestId the guest the account belongs to
-   * @param sessionToken the signed session the caller puts in the cookie
+   * @param session the access and refresh tokens the caller puts in the cookies (TAR-228)
    */
-  record ActivationResult(Long guestId, String sessionToken) {}
+  record ActivationResult(Long guestId, IssuedSession session) {}
 }

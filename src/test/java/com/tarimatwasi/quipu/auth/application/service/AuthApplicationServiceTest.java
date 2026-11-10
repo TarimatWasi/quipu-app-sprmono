@@ -70,26 +70,11 @@ class AuthApplicationServiceTest {
         }
       };
 
-  private static final SessionTokenPort TOKENS = sessions(u -> "t");
-  private static final SessionTokenPort ECHO = sessions(u -> u);
+  private static final SessionTokenPort TOKENS = FakeSessions.tokens(u -> "t");
+  private static final SessionTokenPort ECHO = FakeSessions.tokens(u -> u);
 
-  private static SessionTokenPort sessions(java.util.function.UnaryOperator<String> issue) {
-    return new SessionTokenPort() {
-      @Override
-      public String issue(String userId) {
-        return issue.apply(userId);
-      }
-
-      @Override
-      public String renew(String userId, String sessionId) {
-        return "renewed:" + sessionId + ":" + issue.apply(userId);
-      }
-
-      @Override
-      public String issueTemporary(String userId, Long grantId, Instant expiresAt) {
-        return "temporary:" + grantId + ":" + expiresAt + ":" + issue.apply(userId);
-      }
-    };
+  private SessionService sessionsOver(SessionTokenPort tokens, UserRepositoryPort users) {
+    return FakeSessions.over(tokens, users, clock);
   }
 
   private InMemoryUserRepository repository;
@@ -100,7 +85,13 @@ class AuthApplicationServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new AuthApplicationService(
-            repository, encoder, ECHO, (type, number) -> 0L, grants, guests, clock);
+            repository,
+            encoder,
+            sessionsOver(ECHO, repository),
+            (type, number) -> 0L,
+            grants,
+            guests,
+            clock);
   }
 
   @Test
@@ -165,7 +156,13 @@ class AuthApplicationServiceTest {
     BCryptPasswordEncoder spied = spy(new BCryptPasswordEncoder());
     AuthApplicationService spiedService =
         new AuthApplicationService(
-            repository, spied, TOKENS, (type, number) -> 0L, grants, guests, clock);
+            repository,
+            spied,
+            sessionsOver(TOKENS, repository),
+            (type, number) -> 0L,
+            grants,
+            guests,
+            clock);
     verify(spied).encode(any());
 
     assertThatThrownBy(
@@ -211,7 +208,7 @@ class AuthApplicationServiceTest {
     ChangePasswordResult result = service.changePassword(change(user, null, "Nueva12345"));
 
     // TAR-227: the same session goes on with a new token.
-    assertThat(result.sessionToken()).isEqualTo("renewed:" + SESSION + ":" + user.id());
+    assertThat(result.session().accessToken()).isEqualTo("renewed:" + SESSION + ":" + user.id());
     UserAccount stored = repository.find(user.id());
     assertThat(encoder.matches("Nueva12345", stored.passwordHash())).isTrue();
     assertThat(stored.mustChangePassword()).isFalse();
@@ -466,7 +463,13 @@ class AuthApplicationServiceTest {
     UserRepositoryPort untouched = mock(UserRepositoryPort.class);
     var limited =
         new AuthApplicationService(
-            untouched, encoder, TOKENS, (type, number) -> 7L, grants, guests, clock);
+            untouched,
+            encoder,
+            sessionsOver(TOKENS, untouched),
+            (type, number) -> 7L,
+            grants,
+            guests,
+            clock);
 
     var thrown =
         catchThrowableOfType(
@@ -483,7 +486,7 @@ class AuthApplicationServiceTest {
         new AuthApplicationService(
             repository,
             encoder,
-            TOKENS,
+            sessionsOver(TOKENS, repository),
             (type, number) -> {
               asked.add(type + ":" + number);
               return 0L;
@@ -560,7 +563,13 @@ class AuthApplicationServiceTest {
     when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
     var racing =
         new AuthApplicationService(
-            stale, encoder, TOKENS, (type, number) -> 0L, grants, guests, clock);
+            stale,
+            encoder,
+            sessionsOver(TOKENS, stale),
+            (type, number) -> 0L,
+            grants,
+            guests,
+            clock);
 
     assertThatThrownBy(() -> racing.login(loginOf("Mala-clave-1")))
         .isInstanceOf(AccountLockedException.class);
@@ -573,7 +582,7 @@ class AuthApplicationServiceTest {
     when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
     var locking =
         new AuthApplicationService(
-            repo, encoder, TOKENS, (type, number) -> 0L, grants, guests, clock);
+            repo, encoder, sessionsOver(TOKENS, repo), (type, number) -> 0L, grants, guests, clock);
 
     assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -589,7 +598,13 @@ class AuthApplicationServiceTest {
     UserRepositoryPort spied = spy(repository);
     var locking =
         new AuthApplicationService(
-            spied, encoder, TOKENS, (type, number) -> 0L, grants, guests, clock);
+            spied,
+            encoder,
+            sessionsOver(TOKENS, spied),
+            (type, number) -> 0L,
+            grants,
+            guests,
+            clock);
 
     locking.changePassword(change(user, "Actual12345", "Nueva12345"));
 
@@ -653,7 +668,7 @@ class AuthApplicationServiceTest {
     assertThat(result.mustChangePassword()).isTrue();
     assertThat(result.guestId()).isEqualTo(GUEST);
     // Bound to its access and ending with it, not in 30 days.
-    assertThat(result.sessionToken())
+    assertThat(result.session().accessToken())
         .startsWith("temporary:" + GRANT + ":" + clock.instant().plus(Duration.ofMinutes(30)));
     // D-30: the access is consumed and the onboarding starts when the password is chosen.
     assertThat(startedOnboarding).isEmpty();

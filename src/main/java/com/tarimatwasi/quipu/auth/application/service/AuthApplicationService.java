@@ -14,7 +14,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.TooManyLoginAttemptsExcept
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort.LiveTemporaryPassword;
 import com.tarimatwasi.quipu.auth.application.port.out.LoginAttemptLimiterPort;
-import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -48,7 +47,7 @@ public class AuthApplicationService
 
   private final UserRepositoryPort userRepository;
   private final PasswordEncoder passwordEncoder;
-  private final SessionTokenPort sessionTokens;
+  private final SessionService sessions;
   private final LoginAttemptLimiterPort loginAttempts;
   private final AccessGrantRepositoryPort grants;
   private final GuestAccessListener guests;
@@ -60,14 +59,14 @@ public class AuthApplicationService
   public AuthApplicationService(
       UserRepositoryPort userRepository,
       PasswordEncoder passwordEncoder,
-      SessionTokenPort sessionTokens,
+      SessionService sessions,
       LoginAttemptLimiterPort loginAttempts,
       AccessGrantRepositoryPort grants,
       GuestAccessListener guests,
       Clock clock) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
-    this.sessionTokens = sessionTokens;
+    this.sessions = sessions;
     this.loginAttempts = loginAttempts;
     this.grants = grants;
     this.guests = guests;
@@ -146,9 +145,10 @@ public class AuthApplicationService
         displayNameOf(user),
         user.guestId(),
         temporary != null || user.mustChangePassword(),
+        // TAR-228: each login opens its own stored session (one per device).
         temporary == null
-            ? sessionTokens.issue(userId)
-            : sessionTokens.issueTemporary(userId, temporary.id(), temporary.expiresAt()));
+            ? sessions.open(userId)
+            : sessions.openTemporary(userId, temporary.id(), temporary.expiresAt()));
   }
 
   @Override
@@ -184,8 +184,10 @@ public class AuthApplicationService
       grants.revokeLive(guestId, now);
       guests.accessUsed(guestId);
     }
-    // TAR-227: the same session goes on, so the ids it has shown stay valid.
-    return new ChangePasswordResult(sessionTokens.renew(command.userId(), command.sessionId()));
+    // TAR-227: the same session goes on, so the ids it has shown stay valid. TAR-228: with a new
+    // refresh token, and the other sessions of the account closed.
+    return new ChangePasswordResult(
+        sessions.continueAfterPasswordChange(command.userId(), command.sessionId()));
   }
 
   @Override

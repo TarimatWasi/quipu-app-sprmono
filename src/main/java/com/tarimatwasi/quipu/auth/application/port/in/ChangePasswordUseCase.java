@@ -41,5 +41,5 @@ public interface ChangePasswordUseCase {
   }
 
   /** The fresh session of the account, which no longer must change its password. */
-  record ChangePasswordResult(String sessionToken) {}
+  record ChangePasswordResult(IssuedSession session) {}
 }

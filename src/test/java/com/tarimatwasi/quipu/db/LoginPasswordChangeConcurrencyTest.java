@@ -191,7 +191,8 @@ class LoginPasswordChangeConcurrencyTest {
               return call.callRealMethod();
             })
         .when(sessionTokens)
-        .issue(anyString());
+        // TAR-228: the login opens its stored session and signs its token with renew.
+        .renew(anyString(), anyString());
     CompletableFuture<String> login =
         CompletableFuture.supplyAsync(() -> loginWith(OLD_PASSWORD), pool);
     assertThat(issuing.await(20, TimeUnit.SECONDS)).isTrue();
@@ -215,7 +216,10 @@ class LoginPasswordChangeConcurrencyTest {
   }
 
   private String loginWith(String password) {
-    return logins.login(new LoginCommand(DocumentKind.DNI, document, password)).sessionToken();
+    return logins
+        .login(new LoginCommand(DocumentKind.DNI, document, password))
+        .session()
+        .accessToken();
   }
 
   /** What the security chain does with the cookie on every request. */

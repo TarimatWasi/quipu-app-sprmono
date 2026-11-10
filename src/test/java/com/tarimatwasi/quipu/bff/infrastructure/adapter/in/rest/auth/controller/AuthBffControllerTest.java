@@ -130,7 +130,8 @@ class AuthBffControllerTest {
     assertThat(setCookie)
         .startsWith("sessionToken=")
         .contains("; Path=/")
-        .contains("; Max-Age=2592000")
+        // TAR-228: the access token lasts 15 minutes; the refresh token renews it.
+        .contains("; Max-Age=900")
         .contains("; Secure")
         .contains("; HttpOnly")
         .contains("; SameSite=Lax")
@@ -733,6 +734,8 @@ class AuthBffControllerTest {
         JwtClaimsSet.builder()
             .subject(masker.session(sessionId).mask(IdKind.USER, Long.parseLong(userId)).toString())
             .claim(AccessSessions.SESSION_ID_CLAIM, sessionId)
+            // TAR-228: a token of a stored session; the mark these tests lack is another one.
+            .claim("ss", true)
             .claim(
                 "sv",
                 Objects.requireNonNull(
