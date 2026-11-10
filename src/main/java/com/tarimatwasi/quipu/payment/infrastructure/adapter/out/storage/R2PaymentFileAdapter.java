@@ -4,9 +4,12 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Clients;
+import com.tarimatwasi.quipu.shared.adapter.out.storage.R2FailureCause;
 import com.tarimatwasi.quipu.shared.adapter.out.storage.R2Properties;
 import java.time.Duration;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -24,6 +27,8 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
  */
 @Component
 public class R2PaymentFileAdapter implements PaymentFilePort {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(R2PaymentFileAdapter.class);
 
   private static final String KEY_PREFIX = "vouchers/";
 
@@ -52,6 +57,7 @@ public class R2PaymentFileAdapter implements PaymentFilePort {
                   .build(),
               RequestBody.fromBytes(content));
     } catch (SdkException e) {
+      LOGGER.warn("R2 put of a voucher failed: {}", R2FailureCause.of(e));
       throw new PaymentFileStorageException("The voucher could not be stored", e);
     }
     return key;
@@ -64,6 +70,7 @@ public class R2PaymentFileAdapter implements PaymentFilePort {
           .deleteObject(
               DeleteObjectRequest.builder().bucket(properties.bucketName()).key(key).build());
     } catch (SdkException e) {
+      LOGGER.warn("R2 delete of a voucher failed: {}", R2FailureCause.of(e));
       throw new PaymentFileStorageException("The voucher could not be removed", e);
     }
   }
@@ -89,19 +96,22 @@ public class R2PaymentFileAdapter implements PaymentFilePort {
           .url()
           .toString();
     } catch (SdkException e) {
+      LOGGER.warn("R2 presign of a voucher failed: {}", R2FailureCause.of(e));
       throw new PaymentFileStorageException("The voucher could not be signed", e);
     }
   }
 
   private S3Client client() {
-    return clients
-        .client()
-        .orElseThrow(() -> new PaymentFileStorageException("R2 is not configured"));
+    return clients.client().orElseThrow(this::notConfigured);
   }
 
   private S3Presigner presigner() {
-    return clients
-        .presigner()
-        .orElseThrow(() -> new PaymentFileStorageException("R2 is not configured"));
+    return clients.presigner().orElseThrow(this::notConfigured);
+  }
+
+  /** TAR-356: the 503 of an upload without R2 says only "storage"; the log says why. */
+  private PaymentFileStorageException notConfigured() {
+    LOGGER.warn("R2 is not configured: the voucher cannot be stored, removed or signed");
+    return new PaymentFileStorageException("R2 is not configured");
   }
 }

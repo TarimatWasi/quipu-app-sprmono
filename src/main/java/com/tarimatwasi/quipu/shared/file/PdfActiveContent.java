@@ -41,6 +41,8 @@ import org.apache.pdfbox.pdfparser.PDFObjectStreamParser;
 import org.apache.pdfbox.pdfparser.PDFParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Looks for the entries that make a PDF run something or carry something (see {@link
@@ -73,6 +75,8 @@ import org.jspecify.annotations.Nullable;
  * route (5 MB, 10 MB for a contract) before they read the bytes, so a larger file never gets here.
  */
 final class PdfActiveContent {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(PdfActiveContent.class);
 
   /** The most bytes the cross-reference and object streams of one file may inflate to. */
   static final long MAX_INFLATED = 8L * 1024 * 1024;
@@ -182,14 +186,24 @@ final class PdfActiveContent {
     }
     try {
       if (!INSPECTION.tryAcquire(WAIT_SECONDS, TimeUnit.SECONDS)) {
+        // TAR-356: the 503 of the upload says only "storage"; the log says which wait it was.
+        LOGGER.warn("PDF inspection busy: another file held it for over {} s", WAIT_SECONDS);
         throw new FileInspectionBusyException();
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      LOGGER.warn("PDF inspection interrupted while waiting for its turn");
       throw new FileInspectionBusyException();
     }
     try {
-      return parseAndInspect(content);
+      Boolean verdict = parseAndInspect(content);
+      if (verdict == null) {
+        LOGGER.warn(
+            "PDF inspection ran past its deadline of {} ms ({} bytes): no verdict",
+            deadlineMillis,
+            content.length);
+      }
+      return verdict;
     } finally {
       INSPECTION.release();
     }

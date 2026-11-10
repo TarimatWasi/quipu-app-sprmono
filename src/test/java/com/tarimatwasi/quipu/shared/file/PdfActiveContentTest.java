@@ -41,10 +41,14 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 /** TAR-39 (D-52): PDFBox reads every object of the file; what a viewer could run is refused. */
+@ExtendWith(OutputCaptureExtension.class)
 class PdfActiveContentTest {
 
   /** Whether the writer packs the dictionaries into compressed object streams. */
@@ -547,7 +551,7 @@ class PdfActiveContentTest {
   }
 
   @Test
-  void aBusyInspectionIsNoVerdictAndIsNotKept() throws Exception {
+  void aBusyInspectionIsNoVerdictAndIsNotKept(CapturedOutput output) throws Exception {
     byte[] waiting = TestPdfs.plain();
     PdfActiveContent.INSPECTION.acquire();
     try {
@@ -558,6 +562,8 @@ class PdfActiveContentTest {
     } finally {
       PdfActiveContent.INSPECTION.release();
     }
+    // TAR-356: the 503 says only "storage"; the log says the inspection was busy
+    assertThat(output).contains("PDF inspection busy");
     // nothing was kept for it: once free, the same file is inspected and accepted
     assertThat(PdfActiveContent.found(waiting)).isFalse();
     assertThat(PdfActiveContent.INSPECTION.availablePermits()).isEqualTo(1);
@@ -615,7 +621,7 @@ class PdfActiveContentTest {
   }
 
   @Test
-  void anInspectionPastItsDeadlineIsRefusedAndNotKept() {
+  void anInspectionPastItsDeadlineIsRefusedAndNotKept(CapturedOutput output) {
     // MEDIUM 2
     byte[] plain = TestPdfs.plain();
     long deadline = PdfActiveContent.deadlineMillis;
@@ -625,6 +631,8 @@ class PdfActiveContentTest {
       assertThatThrownBy(() -> PdfActiveContent.inspectAhead(plain))
           .isInstanceOf(FileInspectionBusyException.class);
       assertThat(PdfActiveContent.found(plain)).isTrue();
+      // TAR-356: and the log tells this wait from a busy inspection
+      assertThat(output).contains("PDF inspection ran past its deadline of 0 ms");
     } finally {
       PdfActiveContent.deadlineMillis = deadline;
     }
