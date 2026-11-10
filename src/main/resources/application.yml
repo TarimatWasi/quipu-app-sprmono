@@ -72,7 +72,14 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET}
-    expiration: 30d
+    # TAR-228: el access token dura 15 minutos; la sesión se renueva con el refresh token.
+    expiration: 15m
+  # TAR-228: refresh token con rotación. Vence a los 7 días sin uso y nunca pasa de 30 días desde el
+  # login; uno rotado hace menos de 30 s es una carrera de pestañas, no una reutilización.
+  refresh:
+    idle: 7d
+    absolute: 30d
+    reuse-grace: 30s
   # Clave que enmascara los ids que muestra el BFF (TAR-163). Siempre del entorno, sin valor por
   # defecto: cambiarla cambia todos los ids que ven los clientes.
   id-mask:

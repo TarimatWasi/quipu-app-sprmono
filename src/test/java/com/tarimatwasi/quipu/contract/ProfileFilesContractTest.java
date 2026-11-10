@@ -322,7 +322,8 @@ class ProfileFilesContractTest {
     var cookie = Binder.get(env).bind("app.session", SessionCookieProperties.class).get();
     var jwt = Binder.get(env).bind("app.jwt.expiration", Duration.class).get();
 
-    assertThat(jwt).isEqualTo(Duration.ofDays(30));
+    // TAR-228: the access token lasts 15 minutes; its cookie lasts as long as the token.
+    assertThat(jwt).isEqualTo(Duration.ofMinutes(15));
     assertThat(cookie.maxAge()).isEqualTo(jwt);
   }
 

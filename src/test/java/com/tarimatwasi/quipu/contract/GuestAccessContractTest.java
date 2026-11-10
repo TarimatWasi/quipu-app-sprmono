@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenPr
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
+import com.tarimatwasi.quipu.support.BrowserSessions;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SessionIds;
@@ -469,12 +470,11 @@ class GuestAccessContractTest {
     String used = tokenOf(read(created, "$.access.activationUrl"));
     Cookie session =
         activate(used, NEW_PASSWORD).andReturn().getResponse().getCookie("sessionToken");
-
-    session = changedTo(session, NEW_PASSWORD, used);
-
+    var changed = changePassword(session, NEW_PASSWORD, used).andReturn();
     String expired =
         tokenOf(read(generate(guestId, "LINK", admin()).andReturn(), "$.activationUrl"));
     clock().advance(Duration.ofMinutes(30));
+    session = BrowserSessions.renewed(mockMvc, changed.getResponse().getCookie("refreshToken"));
     session = changedTo(session, used, expired);
 
     String revoked =

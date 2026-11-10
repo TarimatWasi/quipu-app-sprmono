@@ -134,7 +134,7 @@ public class AuthBffController {
         loginUseCase.login(
             new LoginCommand(request.documentType(), request.documentNumber(), request.password()));
     sessionCookies.rotateCsrf(servletRequest, servletResponse);
-    sessionCookies.writeSession(result.sessionToken(), servletResponse);
+    sessionCookies.writeSession(result.session(), servletResponse);
     return ResponseEntity.ok()
         .body(
             session(
@@ -156,7 +156,7 @@ public class AuthBffController {
     ActivationResult result =
         activateAccessUseCase.activate(request.token(), request.newPassword());
     sessionCookies.rotateCsrf(servletRequest, servletResponse);
-    sessionCookies.writeSession(result.sessionToken(), servletResponse);
+    sessionCookies.writeSession(result.session(), servletResponse);
     return ResponseEntity.ok().body(session("GUEST", null, false, result.guestId()));
   }
 
@@ -229,17 +229,6 @@ public class AuthBffController {
   }
 
   /**
-   * TAR-300: logout expires the browser session and CSRF cookies. It does not revoke other sessions
-   * of the account. Needs a session and a valid CSRF token, as the contract says.
-   */
-  @PostMapping("/bff/auth/logout")
-  public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-    sessionCookies.clearCsrf(request, response);
-    sessionCookies.clearSession(response);
-    return ResponseEntity.noContent().build();
-  }
-
-  /**
    * RF-12: the change replaces the session cookie with one that no longer forces the change. It is
    * the same session (TAR-227): the ids it has shown stay valid.
    */
@@ -258,7 +247,7 @@ public class AuthBffController {
                 request.newPassword(),
                 temporaryGrantOf(authentication)));
     sessionCookies.rotateCsrf(servletRequest, servletResponse);
-    sessionCookies.writeSession(result.sessionToken(), servletResponse);
+    sessionCookies.writeSession(result.session(), servletResponse);
     return ResponseEntity.noContent().build();
   }
 

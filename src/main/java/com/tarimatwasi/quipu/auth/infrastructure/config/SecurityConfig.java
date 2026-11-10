@@ -38,6 +38,10 @@ class SecurityConfig {
     "/bff/auth/activate",
     "/bff/auth/forgot-password",
     "/bff/auth/reset-password",
+    // TAR-228: the refresh and the logout find their session by the refresh token, so they work
+    // with an expired access token; the CSRF pair is still required.
+    "/bff/auth/refresh",
+    "/bff/auth/logout",
     "/error"
   };
 

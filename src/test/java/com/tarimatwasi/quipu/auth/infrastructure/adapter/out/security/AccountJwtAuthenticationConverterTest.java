@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -14,6 +15,7 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
+import com.tarimatwasi.quipu.support.InMemorySessionStore;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.time.Duration;
@@ -68,8 +70,9 @@ class AccountJwtAuthenticationConverterTest {
   private final JwtDecoder decoder = SessionJwt.decoder(key, clock);
   private final JwtEncoder encoder = SessionJwt.encoder(key);
   private final JwtTokenProvider provider = providerFor(key, Duration.ofMinutes(60));
+  private final InMemorySessionStore sessionStore = new InMemorySessionStore();
   private final AccountJwtAuthenticationConverter converter =
-      new AccountJwtAuthenticationConverter(users, masker);
+      new AccountJwtAuthenticationConverter(users, masker, sessionStore, clock);
   private final Long id = TestIds.next();
 
   private JwtTokenProvider providerFor(SecretKey signingKey, Duration expiration) {
@@ -77,6 +80,7 @@ class AccountJwtAuthenticationConverterTest {
         new JwtProperties(SECRET, expiration),
         clock,
         SessionJwt.encoder(signingKey),
+        SessionJwt.decoder(signingKey, clock),
         masker,
         users);
   }
@@ -254,7 +258,9 @@ class AccountJwtAuthenticationConverterTest {
       sessions.add(sessionId);
     }
     sessions.add(
-        sessionOf(decoder.decode(provider.issueTemporary(id.toString(), 7L, NOW.plusSeconds(60)))));
+        sessionOf(
+            decoder.decode(
+                provider.issueTemporary(id.toString(), OTHER_SESSION, 7L, NOW.plusSeconds(60)))));
 
     assertThat(sessions).hasSize(51);
   }
@@ -391,6 +397,45 @@ class AccountJwtAuthenticationConverterTest {
     assertThat(decoder.decode(replacement).<Long>getClaim("sv")).isEqualTo(1L);
   }
 
+  /** TAR-228: a token issued before the sessions were stored lacks the mark and is refused. */
+  @Test
+  void aTokenWithoutTheMarkOfAStoredSessionIsRefused() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+
+    String unmarked =
+        encode(
+            Map.of(
+                "sub",
+                inSession.mask(IdKind.USER, id).toString(),
+                JwtTokenProvider.STORED_SESSION_CLAIM,
+                false),
+            NOW.plusSeconds(600));
+
+    assertThat(authenticate(unmarked)).isEmpty();
+    assertThat(authenticate(provider.renew(id.toString(), SESSION))).isPresent();
+  }
+
+  /**
+   * TAR-228: a closed session (logout, reuse) or one past its 30 days refuses its token at once.
+   */
+  @Test
+  void theTokenOfAClosedOrExpiredSessionIsRefusedBeforeItExpires() {
+    when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));
+    String token = provider.renew(id.toString(), SESSION);
+    Long session =
+        sessionStore.open(
+            id, SessionStorePort.hash(SESSION), 0L, false, NOW.plus(Duration.ofDays(30)), NOW);
+    assertThat(authenticate(token)).as("open").isPresent();
+
+    sessionStore.revoke(session, SessionStorePort.RevokedReason.LOGOUT, NOW);
+    assertThat(authenticate(token)).as("closed").isEmpty();
+
+    String other = provider.renew(id.toString(), OTHER_SESSION);
+    sessionStore.open(id, SessionStorePort.hash(OTHER_SESSION), 0L, false, NOW.plusSeconds(1), NOW);
+    clock.advance(Duration.ofSeconds(1));
+    assertThat(authenticate(other)).as("past its absolute expiry").isEmpty();
+  }
+
   /**
    * A token signed with the real key and the claims the test says, issued now and valid 10 minutes.
    */
@@ -419,7 +464,8 @@ class AccountJwtAuthenticationConverterTest {
         JwtClaimsSet.builder()
             .issuedAt(NOW)
             .claim(AccessSessions.SESSION_ID_CLAIM, SESSION)
-            .claim(JwtTokenProvider.SECURITY_VERSION_CLAIM, 0L);
+            .claim(JwtTokenProvider.SECURITY_VERSION_CLAIM, 0L)
+            .claim(JwtTokenProvider.STORED_SESSION_CLAIM, true);
     if (expiresAt != null) {
       builder.expiresAt(expiresAt);
     }

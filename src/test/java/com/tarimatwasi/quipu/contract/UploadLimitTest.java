@@ -146,11 +146,15 @@ class UploadLimitTest {
             HttpResponse.BodyHandlers.ofString());
     assertThat(login.statusCode()).isEqualTo(200);
     var loginCookies = login.headers().allValues("Set-Cookie");
-    assertThat(loginCookies).hasSize(2);
+    // TAR-228: the CSRF, the access token and the refresh token.
+    assertThat(loginCookies).hasSize(3);
     assertThat(loginCookies.stream().filter(value -> value.startsWith("XSRF-TOKEN=")).count())
         .isEqualTo(1);
     assertThat(loginCookies.stream().filter(value -> value.startsWith("sessionToken=")).findFirst())
         .hasValueSatisfying(value -> assertThat(value).contains("HttpOnly", "Secure", "Path=/"));
+    assertThat(loginCookies.stream().filter(value -> value.startsWith("refreshToken=")).findFirst())
+        .hasValueSatisfying(
+            value -> assertThat(value).contains("HttpOnly", "Secure", "Path=/bff/auth"));
     assertThat(loginCookies.toString()).doesNotContain("JSESSIONID");
   }
 
