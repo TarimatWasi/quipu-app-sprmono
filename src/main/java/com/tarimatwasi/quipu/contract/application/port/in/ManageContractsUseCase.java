@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /** RF-03, RF-09: load, list, read and finish the contracts of the guests. */
@@ -146,6 +147,15 @@ public interface ManageContractsUseCase {
    * @throws ContractNotFoundException if there is no contract with that id
    */
   ContractView get(Long id);
+
+  /**
+   * TAR-359 (A3.2): the contract of the guest, by the same rule as the guest's own screen H2
+   * (TAR-237): the one in force today, else the one that starts first, else the latest one. With
+   * the signed URL of its file (null if the storage could not sign it).
+   *
+   * @return empty if the guest never had a contract
+   */
+  Optional<ContractView> currentOfGuest(Long guestId);
 
   /**
    * Finishes the contract by hand, freeing the environment (RN-21). One that is already finished or

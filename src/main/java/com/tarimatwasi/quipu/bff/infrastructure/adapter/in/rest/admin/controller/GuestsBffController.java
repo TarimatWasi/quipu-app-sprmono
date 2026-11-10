@@ -2,9 +2,11 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controlle
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller.ContractsBffController.ContractResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.UnknownFieldException;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.PagedResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
+import com.tarimatwasi.quipu.contract.application.port.in.ManageContractsUseCase;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentLabel;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentNotFoundException;
@@ -77,6 +79,7 @@ public class GuestsBffController {
   private final ManageGuestsUseCase guests;
   private final GuestDocumentsUseCase documents;
   private final ManageEnvironmentsUseCase environments;
+  private final ManageContractsUseCase contracts;
   private final IdMasker ids;
   private final Clock clock;
 
@@ -84,11 +87,13 @@ public class GuestsBffController {
       ManageGuestsUseCase guests,
       GuestDocumentsUseCase documents,
       ManageEnvironmentsUseCase environments,
+      ManageContractsUseCase contracts,
       IdMasker ids,
       Clock clock) {
     this.guests = guests;
     this.documents = documents;
     this.environments = environments;
+    this.contracts = contracts;
     this.ids = ids;
     this.clock = clock;
   }
@@ -171,9 +176,15 @@ public class GuestsBffController {
       @Nullable BigDecimal agreedAmount,
       int documentCount,
       @JsonInclude(JsonInclude.Include.ALWAYS) @Nullable Instant accessExpiresAt,
+      @Nullable ContractResponse contract,
       String onboardingProgress,
       List<Object> paymentHistory) {
-    static GuestDetailResponse of(GuestDetailView detail, IdMasker ids) {
+    /**
+     * @param contract the contract of the guest by the rule of H2 (TAR-359); null, and so left out,
+     *     if the guest never had one
+     */
+    static GuestDetailResponse of(
+        GuestDetailView detail, @Nullable ContractResponse contract, IdMasker ids) {
       GuestSummaryView guest = detail.summary();
       return new GuestDetailResponse(
           ids.mask(IdKind.GUEST, guest.id()),
@@ -193,6 +204,7 @@ public class GuestsBffController {
           detail.agreedAmount(),
           detail.documentCount(),
           detail.accessExpiresAt(),
+          contract,
           detail.onboardingProgress().name(),
           // The payments arrive with RF-04 to RF-06; until then the history is empty.
           List.of());
@@ -260,7 +272,12 @@ public class GuestsBffController {
 
   @GetMapping("/bff/admin/guests/{id}")
   public GuestDetailResponse get(@PathVariable UUID id) {
-    return GuestDetailResponse.of(guests.get(ids.unmask(IdKind.GUEST, id)), ids);
+    Long guestId = ids.unmask(IdKind.GUEST, id);
+    // The guest first: an unknown one answers its 404 before any contract is read.
+    GuestDetailView detail = guests.get(guestId);
+    ContractResponse contract =
+        contracts.currentOfGuest(guestId).map(c -> ContractResponse.of(c, ids)).orElse(null);
+    return GuestDetailResponse.of(detail, contract, ids);
   }
 
   /** RN-17, RN-36: only the document changes here, while the guest is pending activation. */

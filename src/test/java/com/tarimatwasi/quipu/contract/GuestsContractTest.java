@@ -217,6 +217,50 @@ class GuestsContractTest {
         .andExpect(jsonPath("$.content[0].hasLoginAccess").value(true));
   }
 
+  /**
+   * TAR-359 (A3.2): the detail carries the contract of the guest by the rule of H2: the one in
+   * force today, else the latest one; a guest that never had one has no contract field.
+   */
+  @Test
+  void theDetailCarriesTheContractOfTheGuestByTheRuleOfH2() throws Exception {
+    var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"));
+    var inForce = insertGuest("11111111", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
+    var ended = insertGuest("22222222", "DNI", "CONTRACT", "INACTIVE", "Luis Mamani");
+    var without = insertGuest("33333333", "DNI", "TEMPORARY", "ACTIVE", "Eva Paz");
+    for (var id : new Long[] {inForce, ended, without}) {
+      jdbc.update("UPDATE guests SET phone = '999111222' WHERE id = ?", id);
+    }
+    var room = insertEnvironment("201", "ROOM");
+    var other = insertEnvironment("202", "ROOM");
+    // The one in force wins over an older one that already ended.
+    insertContract(inForce, other, today.minusDays(400), today.minusDays(40));
+    insertContract(inForce, room, today.minusDays(10), today.plusDays(300));
+    // All ended: the latest one.
+    insertContract(ended, room, today.minusDays(700), today.minusDays(400));
+    insertContract(ended, other, today.minusDays(300), today.minusDays(5));
+
+    mockMvc
+        .perform(get(URL + "/" + masked(inForce)).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.contract.status").value("ACTIVE"))
+        .andExpect(jsonPath("$.contract.environmentCode").value("201"))
+        .andExpect(jsonPath("$.contract.guestId").value(masked(inForce).toString()))
+        .andExpect(jsonPath("$.contract.endDate").value(today.plusDays(300).toString()));
+    mockMvc
+        .perform(get(URL + "/" + masked(ended)).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.contract.environmentCode").value("202"))
+        .andExpect(jsonPath("$.contract.endDate").value(today.minusDays(5).toString()))
+        .andExpect(jsonPath("$.contract.status").value("EXPIRED"));
+    mockMvc
+        .perform(get(URL + "/" + masked(without)).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andExpect(jsonPath("$.contract").doesNotExist());
+  }
+
   @Test
   void theDetailOfEveryStateAnswersTheContract() throws Exception {
     var pending = insertGuest("11111111", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);

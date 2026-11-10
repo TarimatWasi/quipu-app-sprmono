@@ -33,6 +33,7 @@ import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -204,6 +205,13 @@ public class ContractService implements ManageContractsUseCase {
   public ContractView get(Long id) {
     Contract contract = contracts.findById(id).orElseThrow(ContractNotFoundException::new);
     return views.view(contract);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<ContractView> currentOfGuest(Long guestId) {
+    return CurrentContract.of(contracts.findAllByGuest(guestId), ContractViews.today(clock))
+        .map(views::view);
   }
 
   @Override
