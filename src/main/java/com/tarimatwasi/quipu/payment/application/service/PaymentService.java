@@ -40,6 +40,7 @@ import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -82,6 +83,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   private final ProofRecorder recorder;
   private final AccountStatus accountStatus;
   private final Credits credits;
+  private final PaymentChangeRecorder changes;
 
   PaymentService(
       PaymentRepositoryPort payments,
@@ -89,7 +91,8 @@ public class PaymentService implements ManagePaymentsUseCase {
       PaymentContractPort contracts,
       PaymentDirectory directory,
       RefundRepositoryPort refunds,
-      Clock clock) {
+      Clock clock,
+      ChangeSignals signals) {
     this.payments = payments;
     this.files = files;
     this.guests = directory.guests();
@@ -98,6 +101,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     this.stays = directory.stays();
     this.reviewers = directory.reviewers();
     this.clock = clock;
+    this.changes = new PaymentChangeRecorder(signals, contracts, directory.stays());
     this.recorder = new ProofRecorder(files, payments);
     this.accountStatus = new AccountStatus(payments, contracts, clock);
     this.credits = new Credits(payments, contracts, stays, refunds, clock);
@@ -471,7 +475,7 @@ public class PaymentService implements ManagePaymentsUseCase {
         id,
         new PaymentReview(
             resolved.status(), resolved.rejectionReason(), now, resolution.reviewerId()));
-    return ProofRecorder.view(saved);
+    return changes.record(ProofRecorder.view(saved), ChangeSignals.Kind.FINANCIAL);
   }
 
   /**
@@ -561,8 +565,10 @@ public class PaymentService implements ManagePaymentsUseCase {
     if (!stored.payment().resolvable()) {
       throw new PaymentNotCorrectableException();
     }
-    return ProofRecorder.view(
-        recorder.correct(stored, proofs, types, ProofAuthor.ADMIN, false, clock.instant()));
+    return changes.record(
+        ProofRecorder.view(
+            recorder.correct(stored, proofs, types, ProofAuthor.ADMIN, false, clock.instant())),
+        ChangeSignals.Kind.PAYMENT);
   }
 
   // --- the payment registered by hand ---
@@ -593,26 +599,28 @@ public class PaymentService implements ManagePaymentsUseCase {
     Instant now = clock.instant();
     LocalDate receivedOn =
         direct.receivedOn() == null ? BusinessDay.today(clock) : direct.receivedOn();
-    return ProofRecorder.view(
-        recorder.insert(
-            direct.guestId(),
-            direct.proofs(),
-            types,
-            ProofAuthor.ADMIN,
-            receivedOn,
-            true,
-            proofs ->
-                new NewPayment(
-                    direct.guestId(),
-                    target.contractId(),
-                    target.stayId(),
-                    target.period(),
-                    PaymentStatus.APPROVED,
-                    ProofAuthor.ADMIN,
-                    proofs,
-                    now,
-                    now,
-                    direct.adminId())));
+    return changes.record(
+        ProofRecorder.view(
+            recorder.insert(
+                direct.guestId(),
+                direct.proofs(),
+                types,
+                ProofAuthor.ADMIN,
+                receivedOn,
+                true,
+                proofs ->
+                    new NewPayment(
+                        direct.guestId(),
+                        target.contractId(),
+                        target.stayId(),
+                        target.period(),
+                        PaymentStatus.APPROVED,
+                        ProofAuthor.ADMIN,
+                        proofs,
+                        now,
+                        now,
+                        direct.adminId()))),
+        ChangeSignals.Kind.FINANCIAL);
   }
 
   /**

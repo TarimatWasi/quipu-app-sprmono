@@ -58,7 +58,10 @@ class GuestAreaFilter extends OncePerRequestFilter {
           new NegatedRequestMatcher(
               new OrRequestMatcher(
                   PATHS.matcher("/bff/guest/onboarding"),
-                  PATHS.matcher("/bff/guest/onboarding/**"))));
+                  PATHS.matcher("/bff/guest/onboarding/**"),
+                  // TAR-371: both guest types share this stream; its identity is revalidated.
+                  PATHS.matcher(
+                      org.springframework.http.HttpMethod.GET, "/bff/guest/changes/stream"))));
 
   private static final RequestMatcher TEMPORARY_AREA = PATHS.matcher("/bff/temporary-guest/**");
 

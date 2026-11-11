@@ -47,6 +47,7 @@ final class FakeSessions {
         tokens,
         users,
         new SessionPolicy(Duration.ofDays(7), Duration.ofDays(30), Duration.ofSeconds(30)),
-        clock);
+        clock,
+        org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
   }
 }

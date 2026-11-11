@@ -114,7 +114,13 @@ class ContractServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new ContractService(contracts, files, environments, guests, debts, stays, clock);
+    service =
+        new ContractService(
+            contracts,
+            files,
+            new ContractDirectory(environments, guests, debts, stays),
+            clock,
+            org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
     // The environment exists and is active unless a test says otherwise.
     lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }

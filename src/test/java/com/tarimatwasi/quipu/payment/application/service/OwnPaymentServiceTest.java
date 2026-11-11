@@ -103,7 +103,22 @@ class OwnPaymentServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new OwnPaymentService(payments, files, guests, contracts, stays, refunds, clock);
+    service =
+        new OwnPaymentService(
+            payments,
+            files,
+            new PaymentDirectory(
+                guests,
+                org.mockito.Mockito.mock(
+                    com.tarimatwasi.quipu.payment.application.port.out.PaymentEnvironmentPort
+                        .class),
+                stays,
+                org.mockito.Mockito.mock(
+                    com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort.class)),
+            contracts,
+            refunds,
+            clock,
+            org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
   }
 
   private void guest(boolean contractType, Standing standing) {

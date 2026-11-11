@@ -87,7 +87,8 @@ abstract class PaymentServiceFixture {
             contracts,
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
-            clock);
+            clock,
+            org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
   }
 
   static Payment payment(PaymentStatus status, @Nullable YearMonth period, @Nullable Long stay) {

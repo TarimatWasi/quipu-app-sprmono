@@ -22,6 +22,7 @@ import com.tarimatwasi.quipu.payment.domain.GuestCredit.Source;
 import com.tarimatwasi.quipu.payment.domain.MonthlyBalance;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.Refund;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -60,23 +61,24 @@ public class RefundService implements ManageRefundsUseCase {
   private final PaymentEnvironmentPort environments;
   private final Clock clock;
   private final Credits credits;
+  private final ChangeSignals signals;
 
   RefundService(
       RefundRepositoryPort refunds,
       PaymentRepositoryPort payments,
-      PaymentGuestPort guests,
+      PaymentDirectory directory,
       PaymentContractPort contracts,
-      PaymentStayPort stays,
-      PaymentEnvironmentPort environments,
-      Clock clock) {
+      Clock clock,
+      ChangeSignals signals) {
     this.refunds = refunds;
     this.payments = payments;
-    this.guests = guests;
+    this.guests = directory.guests();
     this.contracts = contracts;
-    this.stays = stays;
-    this.environments = environments;
+    this.stays = directory.stays();
+    this.environments = directory.environments();
     this.clock = clock;
-    this.credits = new Credits(payments, contracts, stays, refunds, clock);
+    this.signals = signals;
+    this.credits = new Credits(payments, contracts, this.stays, refunds, clock);
   }
 
   @Override
@@ -110,6 +112,13 @@ public class RefundService implements ManageRefundsUseCase {
     }
     Refund refund =
         refunds.insert(guestId, first.paymentId(), amount, command.date(), method, note);
+    signals.changed(
+        new ChangeSignals.Change(
+            ChangeSignals.Kind.FINANCIAL,
+            guestId,
+            first.contractId() != null,
+            first.paymentId(),
+            null));
     return views(List.of(refund)).getFirst();
   }
 

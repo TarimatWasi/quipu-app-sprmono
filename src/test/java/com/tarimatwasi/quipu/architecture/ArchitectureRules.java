@@ -52,6 +52,31 @@ final class ArchitectureRules {
 
   private ArchitectureRules() {}
 
+  /** QP-SPRMONO-SSE-01: transactional producers never know the wire transport. */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_SSE_01 =
+      noClasses()
+          .that()
+          .resideInAnyPackage(
+              "..payment.application..", "..contract.application..", "..auth.application..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage("..bff..", "jakarta.servlet..");
+
+  /** QP-SPRMONO-SSE-03: heartbeat and in-memory delivery cannot query persistence. */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_SSE_03 =
+      noClasses()
+          .that()
+          .haveNameMatching(".*ChangeStreamRegistry(\\$.*)?")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage(
+              "org.springframework.jdbc..",
+              "jakarta.persistence..",
+              "java.sql..",
+              "..application.port.out..");
+
   // --- Arquitectura (ARQ) ---
 
   @ArchTest

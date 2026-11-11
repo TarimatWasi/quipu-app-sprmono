@@ -78,7 +78,8 @@ class AccountStatusTest {
             contracts,
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
-            clock);
+            clock,
+            org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
