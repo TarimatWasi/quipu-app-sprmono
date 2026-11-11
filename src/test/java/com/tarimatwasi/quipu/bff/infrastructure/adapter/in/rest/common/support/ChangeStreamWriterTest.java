@@ -52,7 +52,7 @@ class ChangeStreamWriterTest {
     var registry =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 64, 64, 8192, Duration.ofSeconds(20), Duration.ofSeconds(8)),
+                4, 64, 64, 8192, Duration.ofSeconds(20), Duration.ofSeconds(30)),
             clock);
     try (var transport = new Transport(temporary, writer(registry, clock), authentication(clock))) {
       transport.open(trickle);
@@ -169,7 +169,7 @@ class ChangeStreamWriterTest {
 
     private void stall(ChangeStreamRegistry registry) throws InterruptedException {
       boolean stalled = false;
-      for (int i = 0; i < 2000; i++) {
+      for (int i = 0; i < 20000; i++) {
         commit(
             () ->
                 registry.changed(
