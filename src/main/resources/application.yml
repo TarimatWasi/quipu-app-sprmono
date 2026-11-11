@@ -70,6 +70,14 @@ spring:
 # Sesión (TAR-62 PR3: pasa a @ConfigurationProperties con Duration de 30 días). El secreto viene
 # siempre del entorno: sin valor por defecto en ningún perfil.
 app:
+  # TAR-371, ADR-SSE-01: bounded single-instance registry, heartbeat without database access.
+  changes:
+    per-account: 4
+    total: 64
+    pending-keys: 64
+    frame-bytes: 8192
+    heartbeat: 20s
+    max-duration: 15m
   jwt:
     secret: ${JWT_SECRET}
     # TAR-228: el access token dura 15 minutos; la sesión se renueva con el refresh token.
@@ -165,3 +173,10 @@ logging:
   level:
     org.apache.pdfbox: OFF
     org.hibernate.orm.connections.pooling: WARN
+
+# TAR-371: finite NIO no-progress write timeout; not a total deadline for trickling readers.
+server:
+  tomcat:
+    connection-timeout: 20s
+  http2:
+    enabled: false

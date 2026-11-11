@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidVoucherFileException;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentState;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentView;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
@@ -20,6 +21,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.NoActiveContractExcepti
 import com.tarimatwasi.quipu.payment.application.port.in.NoActiveStayException;
 import com.tarimatwasi.quipu.payment.application.port.in.NoStayYetException;
 import com.tarimatwasi.quipu.payment.application.port.in.OtherGuestTypeException;
+import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.ChargeState;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodView;
@@ -30,6 +32,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsExc
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.ContractInfo;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentEnvironmentPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFileStorageException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
@@ -39,6 +42,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewPayment;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.NewProof;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
@@ -49,6 +53,7 @@ import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -69,6 +74,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -103,7 +109,19 @@ class OwnPaymentServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new OwnPaymentService(payments, files, guests, contracts, stays, refunds, clock);
+    service =
+        new OwnPaymentService(
+            payments,
+            files,
+            new PaymentDirectory(
+                guests,
+                Mockito.mock(PaymentEnvironmentPort.class),
+                stays,
+                Mockito.mock(PaymentReviewerPort.class)),
+            contracts,
+            refunds,
+            clock,
+            Mockito.mock(ChangeSignals.class));
   }
 
   private void guest(boolean contractType, Standing standing) {
@@ -143,25 +161,23 @@ class OwnPaymentServiceTest {
   }
 
   private static PeriodPayment forPeriod(String period, String amount, byte[] content) {
-    return new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment(
+    return new OwnPaymentsUseCase.PeriodPayment(
         GUEST,
         YearMonth.parse(period),
-        java.util.List.of(
-            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
-                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
-                    .VOUCHER,
+        List.of(
+            new ManagePaymentsUseCase.ProofUpload(
+                ManagePaymentsUseCase.ProofType.VOUCHER,
                 new BigDecimal(amount),
                 " Yape ",
                 new VoucherUpload("../yape.pdf", content))));
   }
 
   private static StayPayment forStay(String amount, byte[] content) {
-    return new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayPayment(
+    return new OwnPaymentsUseCase.StayPayment(
         GUEST,
-        java.util.List.of(
-            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
-                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
-                    .VOUCHER,
+        List.of(
+            new ManagePaymentsUseCase.ProofUpload(
+                ManagePaymentsUseCase.ProofType.VOUCHER,
                 new BigDecimal(amount),
                 null,
                 new VoucherUpload("v.pdf", content))));
@@ -288,14 +304,12 @@ class OwnPaymentServiceTest {
           .isEqualTo("proofs[0].amount");
     }
     PeriodPayment hidden =
-        new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.PeriodPayment(
+        new OwnPaymentsUseCase.PeriodPayment(
             GUEST,
             OCTOBER,
-            java.util.List.of(
-                new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                    .ProofUpload(
-                    com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                        .ProofType.VOUCHER,
+            List.of(
+                new ManagePaymentsUseCase.ProofUpload(
+                    ManagePaymentsUseCase.ProofType.VOUCHER,
                     BigDecimal.TEN,
                     "Yape\u202E",
                     new VoucherUpload("v.pdf", PDF))));

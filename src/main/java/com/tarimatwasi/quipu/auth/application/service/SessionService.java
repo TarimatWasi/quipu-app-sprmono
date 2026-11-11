@@ -11,6 +11,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort.StoredSe
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -61,18 +62,21 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
   private final UserRepositoryPort users;
   private final SessionPolicy policy;
   private final Clock clock;
+  private final ChangeSignals signals;
 
   public SessionService(
       SessionStorePort sessions,
       SessionTokenPort tokens,
       UserRepositoryPort users,
       SessionPolicy policy,
-      Clock clock) {
+      Clock clock,
+      ChangeSignals signals) {
     this.sessions = sessions;
     this.tokens = tokens;
     this.users = users;
     this.policy = policy;
     this.clock = clock;
+    this.signals = signals;
   }
 
   /** Opens a session of the account (login, activation). Joins the caller's transaction. */
@@ -131,6 +135,7 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
     sessions.revokeOthers(Long.parseLong(userId), sidHash, RevokedReason.PASSWORD_CHANGE, now);
     sessions.rotateRefreshTokens(session.id(), now);
     sessions.touch(session.id(), now);
+    signals.credentialsChanged(Long.parseLong(userId), version, sidHash);
     return issue(userId, sessionId, session.id(), now, absolute);
   }
 
@@ -154,12 +159,14 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
         return Optional.empty();
       }
       sessions.revoke(session.id(), RevokedReason.REUSE, now);
+      signals.revokeSession(session.userId(), session.sidHash());
       // The session id is ours and internal: neither the token nor the account reaches the log.
       LOGGER.warn("A rotated refresh token was used again: session {} closed", session.id());
       throw new NoActiveSessionException();
     }
     if (!isUsable(session, now)) {
       sessions.revoke(session.id(), RevokedReason.INVALIDATED, now);
+      signals.revokeSession(session.userId(), session.sidHash());
       throw new NoActiveSessionException();
     }
     sessions.rotateRefreshTokens(session.id(), now);
@@ -186,6 +193,7 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
         Optional.ofNullable(refreshToken).flatMap(this::parse).flatMap(this::sessionOf);
     if (byRefresh.isPresent()) {
       sessions.revoke(byRefresh.get().id(), RevokedReason.LOGOUT, now);
+      signals.revokeSession(byRefresh.get().userId(), byRefresh.get().sidHash());
       return;
     }
     String sid =
@@ -194,7 +202,11 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
             .orElseThrow(NoActiveSessionException::new);
     sessions
         .findBySidHashForUpdate(SessionStorePort.hash(sid))
-        .ifPresent(session -> sessions.revoke(session.id(), RevokedReason.LOGOUT, now));
+        .ifPresent(
+            session -> {
+              sessions.revoke(session.id(), RevokedReason.LOGOUT, now);
+              signals.revokeSession(session.userId(), session.sidHash());
+            });
   }
 
   private Optional<StoredSession> sessionOf(Parts parts) {

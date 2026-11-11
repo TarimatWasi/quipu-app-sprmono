@@ -35,6 +35,7 @@ import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupied
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
@@ -46,6 +47,7 @@ import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -60,6 +62,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -114,7 +117,13 @@ class ContractServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new ContractService(contracts, files, environments, guests, debts, stays, clock);
+    service =
+        new ContractService(
+            contracts,
+            files,
+            new ContractDirectory(environments, guests, debts, stays),
+            clock,
+            Mockito.mock(ChangeSignals.class));
     // The environment exists and is active unless a test says otherwise.
     lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }
@@ -135,8 +144,7 @@ class ContractServiceTest {
     return request(PDF, "contrato.pdf", null);
   }
 
-  private static final java.time.Instant TERMINATED_AT =
-      java.time.Instant.parse("2026-09-30T20:00:00Z");
+  private static final Instant TERMINATED_AT = Instant.parse("2026-09-30T20:00:00Z");
 
   private static Contract stored(boolean terminated, @Nullable String end) {
     return new Contract(
@@ -152,7 +160,7 @@ class ContractServiceTest {
         "contrato.pdf",
         PDF.length,
         terminated ? TERMINATED_AT : null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   private void freeEnvironmentAndActiveContractGuest() {
@@ -190,9 +198,7 @@ class ContractServiceTest {
 
   @Test
   void aMissingEnvironmentIsNotFoundBeforeAnythingElse() {
-    org.mockito.Mockito.doThrow(new EnvironmentNotFoundException())
-        .when(environments)
-        .lock(ENVIRONMENT_ID);
+    Mockito.doThrow(new EnvironmentNotFoundException()).when(environments).lock(ENVIRONMENT_ID);
 
     assertThatThrownBy(() -> service.create(request()))
         .isInstanceOf(EnvironmentNotFoundException.class);
@@ -294,7 +300,7 @@ class ContractServiceTest {
   @Test
   void theOccupancyIsLookedUpOnTheDayInLima() {
     // 2026-10-15 02:00 UTC is still the 14th in Lima
-    clock.advance(java.time.Duration.ofHours(12));
+    clock.advance(Duration.ofHours(12));
     when(guests.profileOf(GUEST_ID)).thenReturn(new GuestProfile(true, true));
     when(contracts.existsCrossing(eq(ENVIRONMENT_ID), any(), any())).thenReturn(true);
 
@@ -320,7 +326,7 @@ class ContractServiceTest {
     var failure = new IllegalStateException("insert failed");
     var cleanup = new ContractFileStorageException("down", R2Failures.clientFailure(KEY));
     when(contracts.insert(any())).thenThrow(failure);
-    org.mockito.Mockito.doThrow(cleanup).when(files).delete(KEY);
+    Mockito.doThrow(cleanup).when(files).delete(KEY);
 
     assertThatThrownBy(() -> service.create(request())).isSameAs(failure);
     verify(files).delete(KEY);

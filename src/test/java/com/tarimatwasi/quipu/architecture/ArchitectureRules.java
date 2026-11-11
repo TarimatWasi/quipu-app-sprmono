@@ -15,6 +15,9 @@ import com.tngtech.archunit.core.domain.properties.HasOwner;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.CompositeArchRule;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.Entity;
+import jakarta.persistence.MappedSuperclass;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -26,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.domain.AbstractAuditable;
 import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -51,6 +55,31 @@ final class ArchitectureRules {
       Set.of("auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment");
 
   private ArchitectureRules() {}
+
+  /** QP-SPRMONO-SSE-01: transactional producers never know the wire transport. */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_SSE_01 =
+      noClasses()
+          .that()
+          .resideInAnyPackage(
+              "..payment.application..", "..contract.application..", "..auth.application..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage("..bff..", "jakarta.servlet..");
+
+  /** QP-SPRMONO-SSE-03: heartbeat and in-memory delivery cannot query persistence. */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_SSE_03 =
+      noClasses()
+          .that()
+          .haveNameMatching(".*ChangeStreamRegistry(\\$.*)?")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage(
+              "org.springframework.jdbc..",
+              "jakarta.persistence..",
+              "java.sql..",
+              "..application.port.out..");
 
   // --- Arquitectura (ARQ) ---
 
@@ -137,7 +166,7 @@ final class ArchitectureRules {
   static final ArchRule BE_SPR_ARQ_09_ENTITIES =
       classes()
           .that()
-          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .areAnnotatedWith(Entity.class)
           .should()
           .haveSimpleNameEndingWith("JpaEntity");
 
@@ -271,7 +300,7 @@ final class ArchitectureRules {
           .resideInAPackage("..adapter.in.rest..")
           .should()
           .dependOnClassesThat()
-          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .areAnnotatedWith(Entity.class)
           .orShould()
           .dependOnClassesThat()
           .resideInAPackage("..domain..");
@@ -284,8 +313,7 @@ final class ArchitectureRules {
   static final ArchRule BE_SPR_APP_01 =
       classes()
           .that()
-          .implement(
-              com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("..port.in.."))
+          .implement(JavaClass.Predicates.resideInAPackage("..port.in.."))
           .should()
           .resideInAPackage("..application.service..");
 
@@ -306,11 +334,11 @@ final class ArchitectureRules {
   static final ArchRule BE_SPR_DAT_01 =
       classes()
           .that()
-          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .areAnnotatedWith(Entity.class)
           .or()
-          .areAnnotatedWith(jakarta.persistence.MappedSuperclass.class)
+          .areAnnotatedWith(MappedSuperclass.class)
           .or()
-          .areAnnotatedWith(jakarta.persistence.Embeddable.class)
+          .areAnnotatedWith(Embeddable.class)
           .should()
           .resideInAPackage("..adapter.out.persistence..");
 
@@ -415,9 +443,9 @@ final class ArchitectureRules {
   static final ArchRule QP_SPRMONO_DAT_01 =
       classes()
           .that()
-          .areAnnotatedWith(jakarta.persistence.Entity.class)
+          .areAnnotatedWith(Entity.class)
           .and()
           .doNotHaveFullyQualifiedName(ROOT + ".shared.adapter.out.persistence.AuditorJpaEntity")
           .should()
-          .beAssignableTo(org.springframework.data.jpa.domain.AbstractAuditable.class);
+          .beAssignableTo(AbstractAuditable.class);
 }

@@ -20,6 +20,7 @@ import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentInactive
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotContractException;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.FileKind;
@@ -57,23 +58,23 @@ public class ContractService implements ManageContractsUseCase {
   private final StayOccupancyQuery stays;
   private final Clock clock;
   private final ContractViews views;
+  private final ChangeSignals signals;
 
   ContractService(
       ContractRepositoryPort contracts,
       ContractFilePort files,
-      ContractEnvironmentPort environments,
-      ContractGuestPort guests,
-      GuestDebtQuery debts,
-      StayOccupancyQuery stays,
-      Clock clock) {
+      ContractDirectory directory,
+      Clock clock,
+      ChangeSignals signals) {
     this.contracts = contracts;
     this.files = files;
-    this.environments = environments;
-    this.guests = guests;
-    this.debts = debts;
-    this.stays = stays;
+    this.environments = directory.environments();
+    this.guests = directory.guests();
+    this.debts = directory.debts();
+    this.stays = directory.stays();
     this.clock = clock;
-    this.views = new ContractViews(files, guests, environments, clock);
+    this.signals = signals;
+    this.views = new ContractViews(files, this.guests, this.environments, clock);
   }
 
   @Override
@@ -143,6 +144,9 @@ public class ContractService implements ManageContractsUseCase {
                   contract.file().content().length));
       // Signing is inside the try: if it fails the transaction rolls back and the object goes too.
       view = views.view(saved);
+      signals.changed(
+          new ChangeSignals.Change(
+              ChangeSignals.Kind.CONTRACT, saved.guestId(), true, null, saved.environmentId()));
       return view;
     } finally {
       if (view == null) {
@@ -222,6 +226,13 @@ public class ContractService implements ManageContractsUseCase {
     Contract contract = contracts.findByIdForUpdate(id).orElseThrow(ContractNotFoundException::new);
     if (contract.occupies(ContractViews.today(clock))) {
       contracts.save(contract.terminate(clock.instant()));
+      signals.changed(
+          new ChangeSignals.Change(
+              ChangeSignals.Kind.CONTRACT,
+              contract.guestId(),
+              true,
+              null,
+              contract.environmentId()));
     }
   }
 

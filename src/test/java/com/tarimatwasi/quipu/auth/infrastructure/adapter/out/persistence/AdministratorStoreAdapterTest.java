@@ -246,7 +246,8 @@ class AdministratorStoreAdapterTest {
     insertUser(other, "otra@example.test", "22222222", "ADMIN", "ACTIVE");
     jdbc.update("UPDATE users SET last_modified_date = '2026-01-01T00:00:00Z' WHERE id = ?", other);
 
-    adapter.setAdministratorStatus(other, "INACTIVE", creatorId);
+    transaction.executeWithoutResult(
+        tx -> adapter.setAdministratorStatus(other, "INACTIVE", creatorId));
 
     Map<String, @Nullable Object> row =
         jdbc.queryForMap(

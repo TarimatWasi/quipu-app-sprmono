@@ -18,12 +18,6 @@ app:
     secrets: ${EDGE_SHARED_SECRETS}
   rate-limit:
     client-ip-header: CF-Connecting-IP # TAR-124: Render va detrás de Cloudflare; getRemoteAddr() es un borde que cambia
-  # TAR-365 (spike temporal): GET /bff/admin/spike/stream mide si un text/event-stream largo
-  # sobrevive a Vercel, Cloudflare y Render. Solo en dev; se retira con el PR de adopción o si la
-  # medición sale negativa.
-  spike:
-    sse:
-      enabled: true
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN} # origin exacto del frontend, https, sin "/" final
     # La reescritura de Vercel (/bff) conserva el Origin del host de Vercel (TAR-75). El dominio

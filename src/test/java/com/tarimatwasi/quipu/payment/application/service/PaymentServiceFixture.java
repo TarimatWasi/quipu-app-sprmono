@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.payment.application.service;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.VoucherUpload;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
@@ -13,6 +14,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.GuestProfile;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort.StoredPayment;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
@@ -23,6 +25,7 @@ import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
 import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -37,6 +40,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
@@ -74,7 +78,7 @@ abstract class PaymentServiceFixture {
   @Mock PaymentEnvironmentPort environments;
   @Mock PaymentStayPort stays;
   @Mock RefundRepositoryPort refunds;
-  @Mock com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort reviewers;
+  @Mock PaymentReviewerPort reviewers;
 
   PaymentService service;
 
@@ -87,7 +91,8 @@ abstract class PaymentServiceFixture {
             contracts,
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
-            clock);
+            clock,
+            Mockito.mock(ChangeSignals.class));
   }
 
   static Payment payment(PaymentStatus status, @Nullable YearMonth period, @Nullable Long stay) {
@@ -149,10 +154,9 @@ abstract class PaymentServiceFixture {
         YearMonth.parse(period),
         null,
         null,
-        java.util.List.of(
-            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
-                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
-                    .VOUCHER,
+        List.of(
+            new ManagePaymentsUseCase.ProofUpload(
+                ManagePaymentsUseCase.ProofType.VOUCHER,
                 new BigDecimal(amount),
                 "Efectivo",
                 new VoucherUpload("../../vaucher.pdf", content))));
@@ -165,10 +169,9 @@ abstract class PaymentServiceFixture {
         null,
         STAY,
         null,
-        java.util.List.of(
-            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
-                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
-                    .VOUCHER,
+        List.of(
+            new ManagePaymentsUseCase.ProofUpload(
+                ManagePaymentsUseCase.ProofType.VOUCHER,
                 new BigDecimal("150.50"),
                 null,
                 new VoucherUpload("v.pdf", content))));
