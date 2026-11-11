@@ -16,6 +16,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
 import java.io.IOException;
+import java.io.Serial;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -25,18 +27,23 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.catalina.LifecycleException;
 import org.apache.catalina.startup.Tomcat;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentMatchers;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
 /**
  * Real NIO sockets: a stalled/trickling reader must not block committed producers or leak slots.
@@ -73,10 +80,10 @@ class ChangeStreamWriterTest {
             .session(SessionIds.newSessionId());
     var auth = mock(StreamSessionUseCase.class);
     when(auth.authorize(
-            org.mockito.ArgumentMatchers.anyLong(),
-            org.mockito.ArgumentMatchers.anyString(),
-            org.mockito.ArgumentMatchers.anyLong(),
-            org.mockito.ArgumentMatchers.anyBoolean()))
+            ArgumentMatchers.anyLong(),
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.anyLong(),
+            ArgumentMatchers.anyBoolean()))
         .thenReturn(new StreamSessionUseCase.Identity(1L, null, true));
     return new ChangeStreamWriter(registry, auth, () -> Optional.of(mask), clock);
   }
@@ -102,8 +109,7 @@ class ChangeStreamWriterTest {
     private final AtomicBoolean writing = new AtomicBoolean();
     private final CountDownLatch stopReader = new CountDownLatch(1);
     private final Tomcat tomcat = new Tomcat();
-    private final java.util.concurrent.ExecutorService executor =
-        Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Socket socket = new Socket();
 
     private Transport(
@@ -120,7 +126,7 @@ class ChangeStreamWriterTest {
           context,
           "changes",
           new HttpServlet() {
-            @java.io.Serial private static final long serialVersionUID = 1L;
+            @Serial private static final long serialVersionUID = 1L;
 
             @Override
             protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -141,7 +147,7 @@ class ChangeStreamWriterTest {
       socket.setReceiveBufferSize(1024);
       socket.connect(
           new InetSocketAddress(
-              java.net.InetAddress.getLoopbackAddress(), tomcat.getConnector().getLocalPort()));
+              InetAddress.getLoopbackAddress(), tomcat.getConnector().getLocalPort()));
       socket.setSoTimeout(2000);
       socket
           .getOutputStream()
@@ -203,7 +209,7 @@ class ChangeStreamWriterTest {
     }
 
     @Override
-    public void close() throws IOException, org.apache.catalina.LifecycleException {
+    public void close() throws IOException, LifecycleException {
       stopReader.countDown();
       try {
         socket.close();
@@ -262,9 +268,9 @@ class ChangeStreamWriterTest {
     TransactionSynchronizationManager.setActualTransactionActive(true);
     try {
       action.run();
-      org.springframework.transaction.support.TransactionSynchronizationUtils.invokeAfterCompletion(
+      TransactionSynchronizationUtils.invokeAfterCompletion(
           TransactionSynchronizationManager.getSynchronizations(),
-          org.springframework.transaction.support.TransactionSynchronization.STATUS_COMMITTED);
+          TransactionSynchronization.STATUS_COMMITTED);
     } finally {
       TransactionSynchronizationManager.clear();
     }

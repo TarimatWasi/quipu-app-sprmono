@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
@@ -60,8 +61,7 @@ class GuestAreaFilter extends OncePerRequestFilter {
                   PATHS.matcher("/bff/guest/onboarding"),
                   PATHS.matcher("/bff/guest/onboarding/**"),
                   // TAR-371: both guest types share this stream; its identity is revalidated.
-                  PATHS.matcher(
-                      org.springframework.http.HttpMethod.GET, "/bff/guest/changes/stream"))));
+                  PATHS.matcher(HttpMethod.GET, "/bff/guest/changes/stream"))));
 
   private static final RequestMatcher TEMPORARY_AREA = PATHS.matcher("/bff/temporary-guest/**");
 

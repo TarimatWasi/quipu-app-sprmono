@@ -1,9 +1,11 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 
+import com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException;
 import com.tarimatwasi.quipu.auth.application.port.in.StreamSessionUseCase;
 import com.tarimatwasi.quipu.shared.access.AccessSessions;
 import com.tarimatwasi.quipu.shared.access.SessionFingerprint;
 import com.tarimatwasi.quipu.shared.masking.MaskSessionSource;
+import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +14,10 @@ import java.time.Duration;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
@@ -51,16 +56,15 @@ public class ChangeStreamWriter {
               administrator);
       String ready = listener.activate(identity.guestId());
       response.setStatus(HttpServletResponse.SC_OK);
-      response.setContentType("text/event-stream");
+      response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
       response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-      response.setHeader("Cache-Control", "no-store, no-transform");
+      response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store, no-transform");
       response.setHeader("X-Accel-Buffering", "no");
       reason = write(listener, ready, response.getOutputStream());
-    } catch (com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException
-        | org.springframework.security.oauth2.server.resource.InvalidBearerTokenException denied) {
+    } catch (NoActiveSessionException | InvalidBearerTokenException denied) {
       reason = "authorization-rejected";
       response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-      response.setContentType("application/json");
+      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       response.setCharacterEncoding(StandardCharsets.UTF_8.name());
       response
           .getWriter()
@@ -88,9 +92,7 @@ public class ChangeStreamWriter {
   }
 
   private static String write(
-      ChangeStreamRegistry.Subscription listener,
-      String ready,
-      jakarta.servlet.ServletOutputStream output) {
+      ChangeStreamRegistry.Subscription listener, String ready, ServletOutputStream output) {
     try {
       output.write(ready.getBytes(StandardCharsets.UTF_8));
       output.flush();

@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.model.Request;
 import com.atlassian.oai.validator.model.SimpleResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Splitter;
+import io.swagger.v3.core.util.Json;
 import io.swagger.v3.core.util.Yaml;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,10 +60,10 @@ public final class SseFrames {
     }
   }
 
-  private static OpenApiInteractionValidator validator(
-      com.fasterxml.jackson.databind.JsonNode specification, String ref) throws Exception {
+  private static OpenApiInteractionValidator validator(JsonNode specification, String ref)
+      throws Exception {
     var mapper = Yaml.mapper();
-    var json = io.swagger.v3.core.util.Json.mapper();
+    var json = Json.mapper();
     var eventSpec = specification.deepCopy();
     var paths = mapper.createObjectNode();
     paths
@@ -73,10 +76,10 @@ public final class SseFrames {
         .putObject("application/json")
         .putObject("schema")
         .put("$ref", ref);
-    ((com.fasterxml.jackson.databind.node.ObjectNode) eventSpec).set("paths", paths);
+    ((ObjectNode) eventSpec).set("paths", paths);
     var servers = mapper.createArrayNode();
     servers.addObject().put("url", "/");
-    ((com.fasterxml.jackson.databind.node.ObjectNode) eventSpec).set("servers", servers);
+    ((ObjectNode) eventSpec).set("servers", servers);
     return OpenApiInteractionValidator.createForInlineApiSpecification(
             json.writeValueAsString(eventSpec))
         .build();

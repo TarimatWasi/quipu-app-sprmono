@@ -13,23 +13,30 @@ import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeStreamRegistry;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SessionIds;
+import com.tarimatwasi.quipu.support.SseFrames;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(
@@ -46,7 +53,7 @@ class ChangesStreamContractTest {
   @Autowired JwtTokenProvider tokens;
   @Autowired IdMasker ids;
   @Autowired ChangeStreamRegistry streams;
-  @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+  @Autowired PlatformTransactionManager transactions;
   @MockitoSpyBean UserRepositoryPort users;
   @MockitoSpyBean SessionStorePort sessions;
   private final Long admin = TestIds.next();
@@ -89,21 +96,19 @@ class ChangesStreamContractTest {
     String body =
         mvc.perform(get("/bff/admin/changes/stream").cookie(cookie).accept("text/event-stream"))
             .andExpect(status().isOk())
-            .andExpect(header().string("Cache-Control", "no-store, no-transform"))
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store, no-transform"))
             .andExpect(header().string("X-Accel-Buffering", "no"))
             .andReturn()
             .getResponse()
-            .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+            .getContentAsString(StandardCharsets.UTF_8);
     assertThat(body)
         .startsWith("event: ready")
         .contains(": heartbeat")
         .endsWith("event: closing\ndata: {\"reason\":\"max-duration\"}\n\n");
     verify(users, times(2)).findById(admin);
     verify(sessions, times(2))
-        .isClosed(
-            org.mockito.ArgumentMatchers.anyString(),
-            org.mockito.ArgumentMatchers.any(Instant.class));
-    com.tarimatwasi.quipu.support.SseFrames.assertValid(body, "Admin");
+        .isClosed(ArgumentMatchers.anyString(), ArgumentMatchers.any(Instant.class));
+    SseFrames.assertValid(body, "Admin");
   }
 
   @Test
@@ -156,13 +161,13 @@ class ChangesStreamContractTest {
       four.activate(null);
       mvc.perform(get("/bff/admin/changes/stream").cookie(cookie).accept("text/event-stream"))
           .andExpect(status().isTooManyRequests())
-          .andExpect(header().string("Retry-After", "30"))
+          .andExpect(header().string(HttpHeaders.RETRY_AFTER, "30"))
           .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
     }
     mvc.perform(
             get("/bff/admin/changes/stream")
                 .cookie(cookie)
-                .header("Origin", "https://foreign.invalid"))
+                .header(HttpHeaders.ORIGIN, "https://foreign.invalid"))
         .andExpect(status().isForbidden());
   }
 
@@ -172,8 +177,7 @@ class ChangesStreamContractTest {
         streams.reserve(
             guestAccount, "test", 0, false, ids.session(sid), Instant.now().plusSeconds(60))) {
       listener.activate(guest);
-      var brokenSignal =
-          org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change.class);
+      var brokenSignal = Mockito.mock(ChangeSignals.Change.class);
       new TransactionTemplate(transactions)
           .executeWithoutResult(
               tx -> {

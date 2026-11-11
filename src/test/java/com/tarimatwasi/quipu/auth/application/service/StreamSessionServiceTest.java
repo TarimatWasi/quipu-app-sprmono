@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.support.MutableClock;
 import java.time.Instant;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class StreamSessionServiceTest {
@@ -23,11 +24,7 @@ class StreamSessionServiceTest {
   private final StreamSessionService service = new StreamSessionService(users, sessions, clock);
 
   private UserAccount account(
-      Role role,
-      @org.jspecify.annotations.Nullable Long guest,
-      boolean pending,
-      String status,
-      @org.jspecify.annotations.Nullable Instant locked) {
+      Role role, @Nullable Long guest, boolean pending, String status, @Nullable Instant locked) {
     return new UserAccount(
         1L,
         null,

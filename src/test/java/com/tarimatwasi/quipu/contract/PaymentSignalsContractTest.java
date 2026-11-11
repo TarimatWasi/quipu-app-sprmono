@@ -9,11 +9,15 @@ import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.C
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.support.SseFrames;
 import java.time.Clock;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(
@@ -21,7 +25,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class PaymentSignalsContractTest extends PaymentsContractSupport {
   @Autowired ChangeStreamRegistry streams;
   @Autowired Clock clock;
-  @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+  @Autowired PlatformTransactionManager transactions;
 
   private ChangeStreamRegistry.Subscription listen(boolean administrator) {
     var listener =
@@ -41,7 +45,7 @@ class PaymentSignalsContractTest extends PaymentsContractSupport {
         .perform(
             multipart("/bff/guest/payments")
                 .with(csrf())
-                .header("Origin", ORIGIN)
+                .header(HttpHeaders.ORIGIN, ORIGIN)
                 .cookie(guest())
                 .file(new MockMultipartFile("files", "proof.pdf", "application/pdf", PDF))
                 .file(proofs("900", "Yape"))
@@ -64,7 +68,7 @@ class PaymentSignalsContractTest extends PaymentsContractSupport {
       assertThat(guest.next()).contains("guest.home", "guest.payments");
       mockMvc
           .perform(
-              org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+              MockMvcRequestBuilders.post(
                       "/bff/admin/contracts/" + id(IdKind.CONTRACT, contract) + "/terminate")
                   .with(csrf())
                   .cookie(admin()))
@@ -73,8 +77,7 @@ class PaymentSignalsContractTest extends PaymentsContractSupport {
       assertThat(guest.next()).contains("guest.contract");
       mockMvc
           .perform(
-              org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
-                      "/bff/admin/refunds")
+              MockMvcRequestBuilders.post("/bff/admin/refunds")
                   .with(csrf())
                   .cookie(admin())
                   .contentType(MediaType.APPLICATION_JSON)
@@ -101,7 +104,7 @@ class PaymentSignalsContractTest extends PaymentsContractSupport {
       new TransactionTemplate(transactions)
           .executeWithoutResult(
               tx -> {
-                org.junit.jupiter.api.Assertions.assertDoesNotThrow(this::upload);
+                Assertions.assertDoesNotThrow(this::upload);
                 tx.setRollbackOnly();
               });
       assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isZero();
@@ -117,7 +120,7 @@ class PaymentSignalsContractTest extends PaymentsContractSupport {
       mockMvc
           .perform(
               builder(PDF)
-                  .header("Origin", ORIGIN)
+                  .header(HttpHeaders.ORIGIN, ORIGIN)
                   .cookie(admin())
                   .param("guestId", id(IdKind.GUEST, contractGuest))
                   .param("period", "2026-10")

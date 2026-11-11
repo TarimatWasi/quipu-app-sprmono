@@ -11,12 +11,20 @@ import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.SessionIds;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
 class ChangeStreamRegistryTest {
   private final MutableClock clock = new MutableClock(Instant.parse("2026-11-10T12:00:00Z"));
@@ -46,11 +54,9 @@ class ChangeStreamRegistryTest {
     try {
       action.run();
       if (commit) {
-        org.springframework.transaction.support.TransactionSynchronizationUtils
-            .invokeAfterCompletion(
-                TransactionSynchronizationManager.getSynchronizations(),
-                org.springframework.transaction.support.TransactionSynchronization
-                    .STATUS_COMMITTED);
+        TransactionSynchronizationUtils.invokeAfterCompletion(
+            TransactionSynchronizationManager.getSynchronizations(),
+            TransactionSynchronization.STATUS_COMMITTED);
       }
     } finally {
       TransactionSynchronizationManager.clear();
@@ -144,9 +150,7 @@ class ChangeStreamRegistryTest {
         streams.reserve(1L, "sid", 0, true, mask, clock.instant().plusSeconds(60))) {
       transaction(() -> streams.revokeSession(1L, "sid"), true);
       assertThatThrownBy(() -> listener.activate(null))
-          .isInstanceOf(
-              org.springframework.security.oauth2.server.resource.InvalidBearerTokenException
-                  .class);
+          .isInstanceOf(InvalidBearerTokenException.class);
     }
   }
 
@@ -223,16 +227,15 @@ class ChangeStreamRegistryTest {
       transaction(() -> limited.changed(new Change(Kind.FINANCIAL, 5L, true, 7L, 8L)), true);
       String frame = listener.next();
       assertThat(frame).contains("\"invalidate\":\"ALL\"");
-      assertThat(frame.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
-          .isLessThanOrEqualTo(256);
+      assertThat(frame.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(256);
     }
   }
 
   @Test
   void changed_concurrentTransactions_preservesEveryCommittedVersion() throws Exception {
     try (var listener = subscribe(2L, 5L, false);
-        var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-      var pending = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+        var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var pending = new ArrayList<Future<?>>();
       for (int i = 0; i < 100; i++) {
         pending.add(
             executor.submit(
@@ -241,7 +244,7 @@ class ChangeStreamRegistryTest {
                         () -> streams.changed(new Change(Kind.PAYMENT, 5L, true, 7L, 8L)), true)));
       }
       for (var future : pending) {
-        future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        future.get(5, TimeUnit.SECONDS);
       }
       assertThat(listener.next()).contains("\"version\":100", "guest.payments");
       assertThat(listener.next()).isEqualTo(": heartbeat\n\n");

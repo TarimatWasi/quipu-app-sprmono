@@ -2,12 +2,14 @@ package com.tarimatwasi.quipu.auth.application.service;
 
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.InMemorySessionStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
+import org.mockito.Mockito;
 
 /** TAR-228: fake session tokens that name what they carry, and real sessions stored in memory. */
 final class FakeSessions {
@@ -48,6 +50,6 @@ final class FakeSessions {
         users,
         new SessionPolicy(Duration.ofDays(7), Duration.ofDays(30), Duration.ofSeconds(30)),
         clock,
-        org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
+        Mockito.mock(ChangeSignals.class));
   }
 }

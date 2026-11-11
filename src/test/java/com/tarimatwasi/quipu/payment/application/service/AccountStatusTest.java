@@ -21,11 +21,13 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort.GuestProfile;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
+import com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -65,7 +68,7 @@ class AccountStatusTest {
   @Mock PaymentEnvironmentPort environments;
   @Mock PaymentStayPort stays;
   @Mock RefundRepositoryPort refunds;
-  @Mock com.tarimatwasi.quipu.payment.application.port.out.PaymentReviewerPort reviewers;
+  @Mock PaymentReviewerPort reviewers;
 
   private PaymentService service;
 
@@ -79,7 +82,7 @@ class AccountStatusTest {
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
             clock,
-            org.mockito.Mockito.mock(com.tarimatwasi.quipu.shared.changes.ChangeSignals.class));
+            Mockito.mock(ChangeSignals.class));
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
@@ -107,7 +110,7 @@ class AccountStatusTest {
         null,
         Instant.parse("2026-09-03T15:00:00Z"),
         ADMIN,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test

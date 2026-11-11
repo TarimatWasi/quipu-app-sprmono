@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import jakarta.annotation.PreDestroy;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -13,7 +14,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -252,8 +255,7 @@ public class ChangeStreamRegistry implements ChangeSignals {
     public String activate(@Nullable Long guest) {
       synchronized (ChangeStreamRegistry.this) {
         if (reason != null || !clock.instant().isBefore(deadline)) {
-          throw new org.springframework.security.oauth2.server.resource.InvalidBearerTokenException(
-              "The stream session is no longer valid");
+          throw new InvalidBearerTokenException("The stream session is no longer valid");
         }
         guestId = guest;
         active = true;
@@ -345,7 +347,7 @@ public class ChangeStreamRegistry implements ChangeSignals {
           if (nanos <= 0) {
             return ": heartbeat\n\n";
           }
-          java.util.concurrent.TimeUnit.NANOSECONDS.timedWait(ChangeStreamRegistry.this, nanos);
+          TimeUnit.NANOSECONDS.timedWait(ChangeStreamRegistry.this, nanos);
         }
       }
     }
@@ -358,8 +360,7 @@ public class ChangeStreamRegistry implements ChangeSignals {
                   + String.join(",", keys.stream().map(k -> "\"" + k.render(mask) + "\"").toList())
                   + "]";
       String changed = changed(invalidate);
-      if (changed.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
-          > properties.frameBytes()) {
+      if (changed.getBytes(StandardCharsets.UTF_8).length > properties.frameBytes()) {
         changed = changed("\"ALL\"");
       }
       keys.clear();
