@@ -597,8 +597,8 @@ class GuestServiceTest {
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.INACTIVE);
     assertThat(saved.getValue().statusBeforeInactive()).isEqualTo(GuestStatus.ONBOARDING);
     verify(accounts).setActive(ID, false);
-    verify(changes).changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
+    verify(changes)
+        .changed(new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
   }
 
   @Test
@@ -661,8 +661,8 @@ class GuestServiceTest {
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.ONBOARDING);
     assertThat(saved.getValue().statusBeforeInactive()).isNull();
     verify(accounts).setActive(ID, true);
-    verify(changes).changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
+    verify(changes)
+        .changed(new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
     assertThat(view.status()).isEqualTo(GuestState.ONBOARDING);
     assertThat(view.hasLoginAccess()).isTrue();
   }

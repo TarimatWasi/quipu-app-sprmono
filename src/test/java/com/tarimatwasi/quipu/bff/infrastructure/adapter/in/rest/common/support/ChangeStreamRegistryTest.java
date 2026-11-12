@@ -110,10 +110,7 @@ class ChangeStreamRegistryTest {
         var other = subscribe(3L, 9L, false)) {
       transaction(() -> streams.changed(new Change(Kind.GUEST, 5L, false, null, null)), true);
       assertThat(admin.next())
-          .contains(
-              "admin.dashboard",
-              "admin.guests",
-              "admin.guest:" + mask.mask(IdKind.GUEST, 5L))
+          .contains("admin.dashboard", "admin.guests", "admin.guest:" + mask.mask(IdKind.GUEST, 5L))
           .doesNotContain("admin.payments.queue");
       assertThat(guest.next()).isEqualTo(": heartbeat\n\n");
       assertThat(other.next()).isEqualTo(": heartbeat\n\n");

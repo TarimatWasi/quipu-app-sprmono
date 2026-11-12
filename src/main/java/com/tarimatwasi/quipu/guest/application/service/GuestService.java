@@ -403,11 +403,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   private void changed(Guest guest) {
     changes.changed(
         new ChangeSignals.Change(
-            ChangeSignals.Kind.GUEST,
-            guest.id(),
-            guest.type() == GuestType.CONTRACT,
-            null,
-            null));
+            ChangeSignals.Kind.GUEST, guest.id(), guest.type() == GuestType.CONTRACT, null, null));
   }
 
   static Guest withStatus(
