@@ -7,6 +7,8 @@
   <suppress checks="MissingJavadoc(Type|Method)" files="^(?!.*[\\/]port[\\/]in[\\/]).*$"/>
   <!-- BE-SPR-TST-09: los metodos de prueba usan method_scenario_result -->
   <suppress checks="MethodName" files=".*[\\/]src[\\/]test[\\/].*"/>
+  <!-- GuestService needs one extra signal port to publish status invalidations transactionally. -->
+  <suppress checks="ParameterNumber" files=".*[\\/]guest[\\/]application[\\/]service[\\/]GuestService\.java"/>
   <!-- BE-SPR-EST-02: las reglas de ArchUnit son constantes con el ID de la regla (BE_SPR_ARQ_01) -->
   <suppress checks="(ConstantName|MemberName)" files=".*[\\/]architecture[\\/].*"/>
 </suppressions>

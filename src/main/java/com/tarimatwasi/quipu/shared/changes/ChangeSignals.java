@@ -10,7 +10,8 @@ public interface ChangeSignals {
   enum Kind {
     PAYMENT,
     FINANCIAL,
-    CONTRACT
+    CONTRACT,
+    GUEST
   }
 
   /** Internal references only; ids are masked separately for every receiving session. */

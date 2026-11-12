@@ -296,7 +296,9 @@ public class ChangeStreamRegistry implements ChangeSignals {
         key("admin.dashboard");
         key("admin.guest", IdKind.GUEST, change.guestId());
         key("admin.environment", IdKind.ENVIRONMENT, change.environmentId());
-        if (change.kind() == Kind.CONTRACT) {
+        if (change.kind() == Kind.GUEST) {
+          key("admin.guests");
+        } else if (change.kind() == Kind.CONTRACT) {
           key("admin.contracts");
           key("admin.guests");
           key("admin.environments");
@@ -310,7 +312,7 @@ public class ChangeStreamRegistry implements ChangeSignals {
             key("admin.refunds");
           }
         }
-      } else {
+      } else if (change.kind() != Kind.GUEST) {
         if (change.contractType()) {
           key("guest.home");
           key("guest.payments");

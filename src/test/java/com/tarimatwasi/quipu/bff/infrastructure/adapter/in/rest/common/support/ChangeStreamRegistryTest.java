@@ -104,6 +104,20 @@ class ChangeStreamRegistryTest {
   }
 
   @Test
+  void changed_guestStatusInvalidatesAdminGuestResourcesOnly() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false);
+        var other = subscribe(3L, 9L, false)) {
+      transaction(() -> streams.changed(new Change(Kind.GUEST, 5L, false, null, null)), true);
+      assertThat(admin.next())
+          .contains("admin.dashboard", "admin.guests", "admin.guest:" + mask.mask(IdKind.GUEST, 5L))
+          .doesNotContain("admin.payments.queue");
+      assertThat(guest.next()).isEqualTo(": heartbeat\n\n");
+      assertThat(other.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  @Test
   void changed_multipleSessions_usesReceivingMask() throws Exception {
     var second = ids.session(SessionIds.newSessionId());
     try (var first = subscribe(2L, 5L, false);
