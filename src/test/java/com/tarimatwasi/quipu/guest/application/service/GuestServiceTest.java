@@ -32,6 +32,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
@@ -70,9 +71,11 @@ class GuestServiceTest {
   @Mock ContractOccupancyQuery contracts;
   @Mock GuestDebtQuery debts;
   @Mock OnboardingRepositoryPort onboarding;
+  @Mock ChangeSignals changes;
 
   private GuestService service() {
-    return new GuestService(repository, accounts, stays, contracts, debts, onboarding, CLOCK);
+    return new GuestService(
+        repository, accounts, stays, contracts, debts, onboarding, CLOCK, changes);
   }
 
   private static Guest guest(GuestStatus status) {
@@ -594,6 +597,8 @@ class GuestServiceTest {
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.INACTIVE);
     assertThat(saved.getValue().statusBeforeInactive()).isEqualTo(GuestStatus.ONBOARDING);
     verify(accounts).setActive(ID, false);
+    verify(changes).changed(
+        new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
   }
 
   @Test
@@ -656,6 +661,8 @@ class GuestServiceTest {
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.ONBOARDING);
     assertThat(saved.getValue().statusBeforeInactive()).isNull();
     verify(accounts).setActive(ID, true);
+    verify(changes).changed(
+        new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
     assertThat(view.status()).isEqualTo(GuestState.ONBOARDING);
     assertThat(view.hasLoginAccess()).isTrue();
   }

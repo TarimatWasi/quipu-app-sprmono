@@ -20,6 +20,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
@@ -66,6 +67,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   private final GuestDebtQuery debts;
   private final OnboardingRepositoryPort onboarding;
   private final Clock clock;
+  private final ChangeSignals changes;
 
   GuestService(
       GuestRepositoryPort guests,
@@ -74,7 +76,8 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
       ContractOccupancyQuery contracts,
       GuestDebtQuery debts,
       OnboardingRepositoryPort onboarding,
-      Clock clock) {
+      Clock clock,
+      ChangeSignals changes) {
     this.onboarding = onboarding;
     this.stays = stays;
     this.contracts = contracts;
@@ -82,6 +85,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     this.clock = clock;
     this.guests = guests;
     this.accounts = accounts;
+    this.changes = changes;
   }
 
   @Override
@@ -366,6 +370,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     // Lock order: guest, account, accesses. An access handed before stops working.
     accounts.setActive(id, false);
     accounts.revokeAccess(id);
+    changed(guest);
   }
 
   /** The debt is read under the lock of the guest, as the contracts and direct payments do. */
@@ -391,7 +396,18 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     // deactivation is not handed back, so a guest that had not chosen its password yet cannot log
     // in until the administrator issues a new access.
     accounts.setActive(id, true);
+    changed(saved);
     return summary(saved, stateOf(saved));
+  }
+
+  private void changed(Guest guest) {
+    changes.changed(
+        new ChangeSignals.Change(
+            ChangeSignals.Kind.GUEST,
+            guest.id(),
+            guest.type() == GuestType.CONTRACT,
+            null,
+            null));
   }
 
   static Guest withStatus(
