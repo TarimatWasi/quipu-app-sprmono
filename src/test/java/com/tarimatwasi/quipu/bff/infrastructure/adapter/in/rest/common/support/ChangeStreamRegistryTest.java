@@ -100,15 +100,8 @@ class ChangeStreamRegistryTest {
             streams.changed(new Change(Kind.STAY, 5L, false, null, 8L));
           },
           true);
-      assertThat(admin.next())
-          .contains(
-              "admin.environments",
-              "admin.finance",
-              "admin.dashboard",
-              "admin.environment:" + mask.mask(IdKind.ENVIRONMENT, 7L),
-              "admin.environment:" + mask.mask(IdKind.ENVIRONMENT, 8L))
-          .doesNotContain("admin.payments.queue");
-      assertThat(guest.next()).contains("guest.stay").doesNotContain("guest.profile");
+      assertThat(admin.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(guest.next()).contains("\"invalidate\":\"ALL\"");
       assertThat(other.next()).isEqualTo(": heartbeat\n\n");
     }
   }

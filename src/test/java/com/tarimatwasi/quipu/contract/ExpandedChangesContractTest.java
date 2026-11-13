@@ -3,7 +3,9 @@ package com.tarimatwasi.quipu.contract;
 import static com.tarimatwasi.quipu.support.BrowserCsrf.csrf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
@@ -123,6 +125,33 @@ class ExpandedChangesContractTest extends PaymentsContractSupport {
   }
 
   @Test
+  void cancelledBeforeStartContractOwner_stillReceivesEnvironmentLabelInvalidation()
+      throws Exception {
+    jdbc.update(
+        "UPDATE contracts SET start_date='2026-12-01', status='TERMINATED',"
+            + " terminated_at='2026-10-01T12:00:00Z' WHERE id=?",
+        contract);
+    Long environment =
+        jdbc.queryForObject(
+            "SELECT environment_id FROM contracts WHERE id=?", Long.class, contract);
+    try (var admin = adminStream();
+        var own = guestStream(contractGuest);
+        var other = guestStream(temporaryGuest)) {
+      mockMvc
+          .perform(
+              patch("/bff/admin/environments/" + id(IdKind.ENVIRONMENT, environment))
+                  .with(csrf())
+                  .cookie(admin())
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"version\":0,\"code\":\"Cancelled-376\"}"))
+          .andExpect(status().isOk());
+      assertThat(admin.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(own.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(other.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  @Test
   void expenseLifecycle_invalidatesOnlyAdministrativeFinance() throws Exception {
     try (var admin = adminStream();
         var own = guestStream(contractGuest)) {
@@ -181,6 +210,13 @@ class ExpandedChangesContractTest extends PaymentsContractSupport {
 
   @Test
   void stayEdit_invalidatesDerivedOccupancyDashboardAndFinance() throws Exception {
+    Long payment =
+        insertPayment(temporaryGuest, null, stay, null, "PENDING", "2026-10-14T12:00:00Z");
+    String paymentUrl = "/bff/admin/payments/" + id(IdKind.PAYMENT, payment);
+    mockMvc
+        .perform(get(paymentUrl).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.expectedAmount").value(150));
     try (var admin = adminStream();
         var own = guestStream(temporaryGuest);
         var other = guestStream(contractGuest)) {
@@ -197,10 +233,14 @@ class ExpandedChangesContractTest extends PaymentsContractSupport {
                   .content("{\"version\":0,\"agreedAmount\":180}"))
           .andExpect(status().isOk());
       String frame = admin.next();
-      assertThat(frame)
-          .contains("admin.guests", "admin.environments", "admin.dashboard", "admin.finance");
+      assertThat(frame).contains("\"invalidate\":\"ALL\"");
       SseFrames.assertValid(frame, "Admin");
-      assertThat(own.next()).contains("guest.stay");
+      assertThat(own.next()).contains("\"invalidate\":\"ALL\"");
+      mockMvc
+          .perform(get(paymentUrl).cookie(admin()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.expectedAmount").value(180))
+          .andExpect(jsonPath("$.amountDue").value(180));
       assertThat(other.next()).isEqualTo(": heartbeat\n\n");
     }
   }

@@ -331,17 +331,16 @@ public class ChangeStreamRegistry implements ChangeSignals {
       }
     }
 
-    /** TAR-376: resource-specific signals do not invalidate unrelated payment screens. */
+    /** TAR-376: route resources, including broad refreshes for historical derived details. */
     private boolean expanded(Change change) {
       switch (change.kind()) {
-        case DIRECTORY -> {
-          // Names/codes occur in arbitrary historical payment/contract details. Their ids are
-          // intentionally not enumerated: refresh the recipient's authorized visible resources.
+        case DIRECTORY, STAY -> {
+          // Labels and stay terms also appear in historical payment/contract details.
+          // Their ids are not enumerated here: refresh this recipient's visible resources.
           all = true;
           keys.clear();
         }
         case GUEST_RECORD, PROFILE, DOCUMENT -> profileChanged(change);
-        case STAY -> stayChanged(change);
         case ENVIRONMENT -> {
           if (administrator) {
             key("admin.environments");
@@ -374,19 +373,6 @@ public class ChangeStreamRegistry implements ChangeSignals {
         }
       } else {
         key("guest.profile");
-      }
-    }
-
-    private void stayChanged(Change change) {
-      if (administrator) {
-        key("admin.guest", IdKind.GUEST, change.guestId());
-        key("admin.guests");
-        key("admin.environments");
-        key("admin.environment", IdKind.ENVIRONMENT, change.environmentId());
-        key("admin.dashboard");
-        key("admin.finance");
-      } else {
-        key("guest.stay");
       }
     }
 

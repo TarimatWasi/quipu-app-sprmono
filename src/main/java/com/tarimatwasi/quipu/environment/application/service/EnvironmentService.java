@@ -22,7 +22,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -145,10 +144,7 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   private void labelsChanged(Environment current, Environment updated) {
     if (!current.code().equals(updated.code()) || current.type() != updated.type()) {
-      Set<Long> recipients = new HashSet<>();
-      for (Occupancy occupied : occupancy.occupanciesOf(List.of(updated.id()))) {
-        recipients.add(occupied.guestId());
-      }
+      Set<Long> recipients = occupancy.labelReadersOf(updated.id());
       changes.changed(
           new ChangeSignals.Change(
               ChangeSignals.Kind.DIRECTORY, null, false, null, updated.id(), recipients));

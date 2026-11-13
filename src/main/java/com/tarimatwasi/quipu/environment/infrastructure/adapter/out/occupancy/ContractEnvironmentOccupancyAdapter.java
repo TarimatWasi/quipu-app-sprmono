@@ -8,8 +8,10 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
@@ -53,5 +55,14 @@ public class ContractEnvironmentOccupancyAdapter implements EnvironmentOccupancy
     List<Occupancy> all = new ArrayList<>(contracts.occupanciesOf(environmentIds));
     all.addAll(stays.occupanciesOf(environmentIds));
     return all;
+  }
+
+  @Override
+  public Set<Long> labelReadersOf(Long environmentId) {
+    Set<Long> readers = new HashSet<>(contracts.guestsOfEnvironment(environmentId));
+    for (Occupancy stay : stays.occupanciesOf(List.of(environmentId))) {
+      readers.add(stay.guestId());
+    }
+    return readers;
   }
 }
