@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
       - env:
           BASE_REF: ${{ github.base_ref }}
-          # Reinicio único de migraciones (TAR-233): solo con la etiqueta migration-reset en el PR se
+          # Reinicio único de migraciones (TAR-233, TAR-377): solo con la etiqueta migration-reset en el PR se
           # permite modificar, renombrar o borrar migraciones existentes. Sin ella, la regla no cambia.
           MIGRATION_RESET: ${{ contains(github.event.pull_request.labels.*.name, 'migration-reset') }}
         run: |
