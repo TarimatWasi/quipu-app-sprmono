@@ -42,7 +42,7 @@
     <awssdk.version>2.57.8</awssdk.version>
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
     <download-maven-plugin.version>2.1.0</download-maven-plugin.version>
-    <bucket4j.version>8.21.0</bucket4j.version>
+    <bucket4j.version>8.22.0</bucket4j.version>
     <pdfbox.version>3.0.8</pdfbox.version>
 
     <!-- Contrato del BFF (TAR-376): commit inmutable del PR 77 de quipu-lib-contracts y sha256
