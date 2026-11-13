@@ -10,6 +10,7 @@ import com.tarimatwasi.quipu.fine.application.port.out.FineGuestMissingException
 import com.tarimatwasi.quipu.fine.application.port.out.FineGuestPort;
 import com.tarimatwasi.quipu.fine.application.port.out.FineRepositoryPort;
 import com.tarimatwasi.quipu.fine.domain.Fine;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.time.YearMonth;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -24,10 +25,12 @@ public class FineService implements ManageFinesUseCase {
   /** The limit of the contract, in characters (code points) and not in UTF-16 units. */
   private static final int MAX_DESCRIPTION = 500;
 
+  private final ChangeSignals changes;
   private final FineRepositoryPort fines;
   private final FineGuestPort guests;
 
-  FineService(FineRepositoryPort fines, FineGuestPort guests) {
+  FineService(FineRepositoryPort fines, FineGuestPort guests, ChangeSignals changes) {
+    this.changes = changes;
     this.fines = fines;
     this.guests = guests;
   }
@@ -47,7 +50,9 @@ public class FineService implements ManageFinesUseCase {
       throw new FineGuestNotFoundException();
     }
     try {
-      return view(fines.insert(guestId, command.amount(), command.month(), description));
+      Fine saved = fines.insert(guestId, command.amount(), command.month(), description);
+      changed(guestId);
+      return view(saved);
     } catch (FineGuestMissingException gone) {
       throw new FineGuestNotFoundException();
     }
@@ -56,9 +61,11 @@ public class FineService implements ManageFinesUseCase {
   @Override
   @Transactional
   public void delete(Long id) {
+    Fine fine = fines.findById(id).orElseThrow(FineNotFoundException::new);
     if (!fines.delete(id)) {
       throw new FineNotFoundException();
     }
+    changed(fine.guestId());
   }
 
   @Override
@@ -74,6 +81,10 @@ public class FineService implements ManageFinesUseCase {
     requireValid(month);
     FineRepositoryPort.Total total = fines.totalOfMonth(month);
     return new MonthTotal(total.amount(), total.count());
+  }
+
+  private void changed(Long guestId) {
+    changes.changed(new ChangeSignals.Change(ChangeSignals.Kind.FINE, guestId, false, null, null));
   }
 
   private static void requireValid(YearMonth month) {

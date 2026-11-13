@@ -8,6 +8,7 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,9 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GuestSessionService implements GuestSessionUseCase, GuestAccessListener {
 
+  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
 
-  GuestSessionService(GuestRepositoryPort guests) {
+  GuestSessionService(GuestRepositoryPort guests, ChangeSignals changes) {
+    this.changes = changes;
     this.guests = guests;
   }
 
@@ -53,7 +56,12 @@ public class GuestSessionService implements GuestSessionUseCase, GuestAccessList
         .findByIdForUpdate(guestId)
         .filter(guest -> guest.status() == GuestStatus.PENDING_ACTIVATION)
         .ifPresent(
-            guest -> guests.save(GuestService.withStatus(guest, GuestStatus.ONBOARDING, null)));
+            guest -> {
+              guests.save(GuestService.withStatus(guest, GuestStatus.ONBOARDING, null));
+              changes.changed(
+                  new ChangeSignals.Change(
+                      ChangeSignals.Kind.GUEST_RECORD, guestId, false, null, null));
+            });
   }
 
   /** RN-33 order after the password: personal data, documents, consent. */

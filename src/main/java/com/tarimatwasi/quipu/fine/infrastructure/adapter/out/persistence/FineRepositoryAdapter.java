@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.fine.domain.Fine;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Optional;
 import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.Nullable;
 import org.postgresql.util.PSQLException;
@@ -39,6 +40,11 @@ public class FineRepositoryAdapter implements FineRepositoryPort {
       }
       throw e;
     }
+  }
+
+  @Override
+  public Optional<Fine> findById(Long id) {
+    return jpaRepository.findById(id).map(FineJpaEntity::toDomain);
   }
 
   @Override

@@ -343,6 +343,8 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         // Under the lock of the guest: its account logs in with the corrected document.
         accounts.changeAccountDocument(id, saved.documentType().name(), saved.documentNumber());
       }
+      changes.changed(
+          new ChangeSignals.Change(ChangeSignals.Kind.DIRECTORY, id, false, null, null));
       return summary(saved, stateOf(saved));
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);

@@ -18,6 +18,7 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import java.util.Objects;
 import java.util.Set;
@@ -38,6 +39,7 @@ public class OwnProfileService implements OwnProfileUseCase {
 
   private static final AccountState NO_ACCOUNT = new AccountState(false, false);
 
+  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
   private final OnboardingRepositoryPort records;
@@ -47,7 +49,9 @@ public class OwnProfileService implements OwnProfileUseCase {
       GuestRepositoryPort guests,
       GuestAccountPort accounts,
       OnboardingRepositoryPort records,
-      GuestDocumentUploader uploader) {
+      GuestDocumentUploader uploader,
+      ChangeSignals changes) {
+    this.changes = changes;
     this.guests = guests;
     this.accounts = accounts;
     this.records = records;
@@ -90,6 +94,15 @@ public class OwnProfileService implements OwnProfileUseCase {
     Guest guest =
         allowed(guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new), area);
     Guest saved = guests.save(changed(guest, change));
+    changes.changed(
+        new ChangeSignals.Change(
+            !Objects.equals(guest.fullName(), saved.fullName())
+                ? ChangeSignals.Kind.DIRECTORY
+                : ChangeSignals.Kind.PROFILE,
+            guestId,
+            false,
+            null,
+            null));
     AccountState account =
         accounts.stateOf(Set.of(saved.id())).getOrDefault(saved.id(), NO_ACCOUNT);
     return GuestService.summary(saved, account);

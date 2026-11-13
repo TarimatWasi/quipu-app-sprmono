@@ -15,7 +15,6 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
-import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.shared.file.FileKind;
@@ -29,7 +28,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -241,10 +239,11 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
             FileNames.sanitized(upload.originalName(), DEFAULT_NAME),
             kind.contentType(),
             upload.content().length);
-    record(Kind.REPLACE, old, replacement.id(), why, actorId, clock.instant());
-    actions.removeDocument(old);
-    // The old object is pending in the same transaction as the swap, so a crash cannot lose it.
-    actions.addPurge(old.storageKey());
+    try {
+      purger.replaced(old, replacement.id(), why, actorId);
+    } catch (GuestDocumentActionExistsException e) {
+      throw new GuestDocumentNotFoundException();
+    }
     return new Swap(
         new GuestDocumentView(
             replacement.id(),
@@ -292,21 +291,6 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
     return actions
         .findDocumentForUpdate(guestId, documentId)
         .orElseThrow(GuestDocumentNotFoundException::new);
-  }
-
-  /** Another action that got the document first is, for this one, a document that is gone. */
-  private void record(
-      Kind kind,
-      GuestDocument document,
-      @Nullable Long replacement,
-      Why why,
-      Long actorId,
-      Instant performedAt) {
-    try {
-      actions.addAction(kind, document, replacement, why, actorId, performedAt);
-    } catch (GuestDocumentActionExistsException e) {
-      throw new GuestDocumentNotFoundException();
-    }
   }
 
   private GuestDocumentView view(GuestDocument document, Instant expiresAt) {

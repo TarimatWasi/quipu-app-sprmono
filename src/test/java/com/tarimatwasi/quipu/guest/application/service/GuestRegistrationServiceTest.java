@@ -28,19 +28,21 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 /** TAR-229: the account email of a guest, at the registration and set by the administrator. */
 class GuestRegistrationServiceTest {
+  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = 42L;
 
   private final GuestRepositoryPort guests = mock(GuestRepositoryPort.class);
   private final GuestAccountPort accounts = mock(GuestAccountPort.class);
   private final GuestRegistrationService service =
-      new GuestRegistrationService(new GuestAccessIssuer(guests, accounts), accounts);
+      new GuestRegistrationService(new GuestAccessIssuer(guests, accounts, changes), accounts);
 
   private static Guest guest(GuestStatus status) {
     return new Guest(

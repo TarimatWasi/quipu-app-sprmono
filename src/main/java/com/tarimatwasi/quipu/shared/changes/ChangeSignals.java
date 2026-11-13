@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.shared.changes;
 
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -11,16 +12,38 @@ public interface ChangeSignals {
     PAYMENT,
     FINANCIAL,
     CONTRACT,
-    GUEST
+    GUEST,
+    GUEST_RECORD,
+    PROFILE,
+    DOCUMENT,
+    STAY,
+    ENVIRONMENT,
+    EXPENSE,
+    FINE,
+    DIRECTORY
   }
 
   /** Internal references only; ids are masked separately for every receiving session. */
   record Change(
       Kind kind,
-      Long guestId,
+      @Nullable Long guestId,
       boolean contractType,
       @Nullable Long paymentId,
-      @Nullable Long environmentId) {}
+      @Nullable Long environmentId,
+      Set<Long> relatedGuests) {
+    public Change {
+      relatedGuests = Set.copyOf(relatedGuests);
+    }
+
+    public Change(
+        Kind kind,
+        @Nullable Long guestId,
+        boolean contractType,
+        @Nullable Long paymentId,
+        @Nullable Long environmentId) {
+      this(kind, guestId, contractType, paymentId, environmentId, Set.of());
+    }
+  }
 
   /** Register a resource change in the current transaction; rollback publishes nothing. */
   void changed(Change change);

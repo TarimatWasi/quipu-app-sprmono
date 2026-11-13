@@ -26,6 +26,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.R2Failures;
@@ -45,6 +46,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 /** TAR-137: what the contract tests cannot force, such as a failed insert after the upload. */
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class OnboardingServiceTest {
+  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Instant NOW = Instant.parse("2026-10-14T15:00:00Z");
@@ -60,7 +62,13 @@ class OnboardingServiceTest {
 
   private OnboardingService service() {
     return new OnboardingService(
-        guests, accounts, records, new GuestDocumentUploader(records, files), consents, CLOCK);
+        guests,
+        accounts,
+        records,
+        new GuestDocumentUploader(records, files, changes),
+        consents,
+        CLOCK,
+        changes);
   }
 
   private static Guest onboarding(@Nullable Instant personalData, @Nullable Instant documents) {

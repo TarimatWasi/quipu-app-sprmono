@@ -32,6 +32,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -47,6 +48,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /** CU-20, CU-23, RN-17: the guest edits its own data; what is absent keeps its value. */
 @ExtendWith(MockitoExtension.class)
 class OwnProfileServiceTest {
+  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Instant DONE = Instant.parse("2026-10-01T15:00:00Z");
@@ -60,7 +62,7 @@ class OwnProfileServiceTest {
 
   private OwnProfileService service() {
     return new OwnProfileService(
-        guests, accounts, records, new GuestDocumentUploader(records, files));
+        guests, accounts, records, new GuestDocumentUploader(records, files, changes), changes);
   }
 
   private static GuestDocument document(long id) {

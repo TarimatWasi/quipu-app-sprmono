@@ -69,6 +69,93 @@ class ChangeStreamRegistryTest {
     TransactionSynchronizationManager.clear();
   }
 
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.EnumSource(
+      value = Kind.class,
+      names = {"GUEST_RECORD", "PROFILE", "DOCUMENT"})
+  void profileChange_isPostCommitAndPrivate(Kind kind) throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false);
+        var other = subscribe(3L, 9L, false)) {
+      transaction(() -> streams.changed(new Change(kind, 5L, false, null, null)), false);
+      assertThat(admin.next()).isEqualTo(": heartbeat\n\n");
+      assertThat(guest.next()).isEqualTo(": heartbeat\n\n");
+      transaction(() -> streams.changed(new Change(kind, 5L, false, null, null)), true);
+      assertThat(admin.next())
+          .contains("admin.guest:" + mask.mask(IdKind.GUEST, 5L))
+          .doesNotContain("admin.payments.queue", "guest.profile");
+      assertThat(guest.next()).contains("guest.profile").doesNotContain("admin.");
+      assertThat(other.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  @Test
+  void stayMove_invalidatesBothEnvironmentsAndOnlyItsGuest() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false);
+        var other = subscribe(3L, 9L, false)) {
+      transaction(
+          () -> {
+            streams.changed(new Change(Kind.STAY, 5L, false, null, 7L));
+            streams.changed(new Change(Kind.STAY, 5L, false, null, 8L));
+          },
+          true);
+      assertThat(admin.next())
+          .contains(
+              "admin.environments",
+              "admin.finance",
+              "admin.dashboard",
+              "admin.environment:" + mask.mask(IdKind.ENVIRONMENT, 7L),
+              "admin.environment:" + mask.mask(IdKind.ENVIRONMENT, 8L))
+          .doesNotContain("admin.payments.queue");
+      assertThat(guest.next()).contains("guest.stay").doesNotContain("guest.profile");
+      assertThat(other.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.EnumSource(
+      value = Kind.class,
+      names = {"ENVIRONMENT", "EXPENSE", "FINE"})
+  void administrativeChange_neverSignalsGuests(Kind kind) throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false)) {
+      Long owner = kind == Kind.FINE ? 5L : null;
+      transaction(() -> streams.changed(new Change(kind, owner, false, null, 7L)), false);
+      assertThat(admin.next()).isEqualTo(": heartbeat\n\n");
+      transaction(() -> streams.changed(new Change(kind, owner, false, null, 7L)), true);
+      String frame = admin.next();
+      assertThat(frame)
+          .contains(kind == Kind.ENVIRONMENT ? "admin.environments" : "admin.finance")
+          .doesNotContain("guest.", "admin.payments.queue", "admin.dashboard");
+      assertThat(guest.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  @Test
+  void directoryChange_coalescesRelatedRecipientsWithoutLeakingIds() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false);
+        var other = subscribe(3L, 9L, false)) {
+      transaction(
+          () ->
+              streams.changed(
+                  new Change(Kind.DIRECTORY, null, false, null, 7L, java.util.Set.of(5L))),
+          false);
+      assertThat(admin.next()).isEqualTo(": heartbeat\n\n");
+      transaction(
+          () ->
+              streams.changed(
+                  new Change(Kind.DIRECTORY, null, false, null, 7L, java.util.Set.of(5L))),
+          true);
+      assertThat(admin.next())
+          .contains("\"invalidate\":\"ALL\"")
+          .doesNotContain("admin.environment");
+      assertThat(guest.next()).contains("\"invalidate\":\"ALL\"").doesNotContain("admin.");
+      assertThat(other.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
   @Test
   void changed_outsideTransaction_rejects() {
     assertThatThrownBy(() -> streams.changed(new Change(Kind.PAYMENT, 1L, true, 2L, 3L)))

@@ -30,7 +30,6 @@ import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Channel;
-import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
@@ -350,9 +349,7 @@ class GuestDocumentsServiceTest {
     order.verify(guests).findByIdForUpdate(GUEST);
     order.verify(actions).findDocumentForUpdate(GUEST, DOCUMENT);
     order.verify(records).addDocument(GUEST, NEW_KEY, "nuevo.pdf", "application/pdf", PDF.length);
-    order.verify(actions).addAction(Kind.REPLACE, OLD, 71L, WHY, ACTOR, NOW);
-    order.verify(actions).removeDocument(OLD);
-    order.verify(actions).addPurge(OLD_KEY);
+    order.verify(purger).replaced(OLD, 71L, WHY, ACTOR);
     order.verify(transactions).commit(any());
     // after the commit: its own old object at once, then what earlier actions left pending
     order.verify(purger).purgeObjectNow(OLD_KEY);
