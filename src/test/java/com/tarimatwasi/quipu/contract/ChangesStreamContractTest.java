@@ -178,6 +178,7 @@ class ChangesStreamContractTest {
             guestAccount, "test", 0, false, ids.session(sid), Instant.now().plusSeconds(60))) {
       listener.activate(guest);
       var brokenSignal = Mockito.mock(ChangeSignals.Change.class);
+      Mockito.when(brokenSignal.guestId()).thenReturn(guest);
       new TransactionTemplate(transactions)
           .executeWithoutResult(
               tx -> {

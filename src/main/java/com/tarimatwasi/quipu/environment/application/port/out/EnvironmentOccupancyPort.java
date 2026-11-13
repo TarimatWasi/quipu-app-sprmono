@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** Who occupies the environments: the contracts and the stays (RN-20, TAR-237). */
 public interface EnvironmentOccupancyPort {
@@ -19,4 +20,7 @@ public interface EnvironmentOccupancyPort {
 
   /** Every contract and stay of those environments, as the range each one occupies (A2). */
   List<Occupancy> occupanciesOf(Collection<Long> environmentIds);
+
+  /** Historical label readers, even if a cancelled contract never occupied the environment. */
+  Set<Long> labelReadersOf(Long environmentId);
 }

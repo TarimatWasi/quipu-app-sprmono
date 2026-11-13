@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase.E
 import com.tarimatwasi.quipu.expense.application.port.out.ExpenseRepositoryPort;
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -32,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ExpenseServiceTest {
+  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final YearMonth SEPTEMBER = YearMonth.of(2026, 9);
@@ -44,7 +46,7 @@ class ExpenseServiceTest {
   @Mock ExpenseRepositoryPort repository;
 
   private ExpenseService service() {
-    return new ExpenseService(repository);
+    return new ExpenseService(repository, changes);
   }
 
   private static ExpenseCommand command(BigDecimal amount, @Nullable String description) {

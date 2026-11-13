@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import java.time.Clock;
 import java.util.List;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('GUEST')") // BE-SPR-SEC-02: guest use case, besides the URL rule
 public class OnboardingService implements OnboardingUseCase {
 
+  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
   private final OnboardingRepositoryPort records;
@@ -44,7 +46,9 @@ public class OnboardingService implements OnboardingUseCase {
       OnboardingRepositoryPort records,
       GuestDocumentUploader uploader,
       ConsentTexts consents,
-      Clock clock) {
+      Clock clock,
+      ChangeSignals changes) {
+    this.changes = changes;
     this.guests = guests;
     this.accounts = accounts;
     this.records = records;
@@ -77,7 +81,12 @@ public class OnboardingService implements OnboardingUseCase {
             // The documents step answers the personal data step: it is offered again.
             null,
             emergencyContact(data.emergencyContact()));
-    return view(guests.save(changed));
+    Guest saved = saved(changed);
+    if (!Objects.equals(guest.fullName(), saved.fullName())) {
+      changes.changed(
+          new ChangeSignals.Change(ChangeSignals.Kind.DIRECTORY, guestId, false, null, null));
+    }
+    return view(saved);
   }
 
   @Override
@@ -102,7 +111,7 @@ public class OnboardingService implements OnboardingUseCase {
       return view(guest);
     }
     return view(
-        guests.save(
+        saved(
             new Guest(
                 guest.id(),
                 guest.documentType(),
@@ -146,7 +155,14 @@ public class OnboardingService implements OnboardingUseCase {
       // The text of the version changed after it was accepted: the record cannot prove this one.
       throw new OnboardingConflictException(Reason.ALREADY_COMPLETED);
     }
-    return view(guests.save(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
+    return view(saved(GuestService.withStatus(guest, GuestStatus.ACTIVE, null)));
+  }
+
+  private Guest saved(Guest guest) {
+    Guest saved = guests.save(guest);
+    changes.changed(
+        new ChangeSignals.Change(ChangeSignals.Kind.GUEST_RECORD, guest.id(), false, null, null));
+    return saved;
   }
 
   /** The guest of the session, locked, if it is still onboarding. */

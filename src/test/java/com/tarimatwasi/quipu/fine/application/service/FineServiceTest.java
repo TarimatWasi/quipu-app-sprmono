@@ -18,6 +18,7 @@ import com.tarimatwasi.quipu.fine.application.port.out.FineGuestMissingException
 import com.tarimatwasi.quipu.fine.application.port.out.FineGuestPort;
 import com.tarimatwasi.quipu.fine.application.port.out.FineRepositoryPort;
 import com.tarimatwasi.quipu.fine.domain.Fine;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.YearMonth;
@@ -30,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class FineServiceTest {
+  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final Long GUEST = TestIds.next();
@@ -42,7 +44,7 @@ class FineServiceTest {
   @Mock FineGuestPort guests;
 
   private FineService service() {
-    return new FineService(repository, guests);
+    return new FineService(repository, guests, changes);
   }
 
   private static FineCommand command(BigDecimal amount, @Nullable String description) {
@@ -142,6 +144,7 @@ class FineServiceTest {
 
   @Test
   void deletesAFine() {
+    when(repository.findById(ID)).thenReturn(java.util.Optional.of(NOISE));
     when(repository.delete(ID)).thenReturn(true);
 
     service().delete(ID);
@@ -151,7 +154,7 @@ class FineServiceTest {
 
   @Test
   void deletingAMissingFineIsNotFound() {
-    when(repository.delete(ID)).thenReturn(false);
+    when(repository.findById(ID)).thenReturn(java.util.Optional.empty());
 
     assertThatThrownBy(() -> service().delete(ID)).isInstanceOf(FineNotFoundException.class);
   }

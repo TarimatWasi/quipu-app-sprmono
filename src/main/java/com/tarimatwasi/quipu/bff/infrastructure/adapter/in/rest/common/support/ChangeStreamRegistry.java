@@ -151,7 +151,9 @@ public class ChangeStreamRegistry implements ChangeSignals {
           for (var subscription : subscriptions) {
             if (subscription.active
                 && subscription.reason == null
-                && (subscription.administrator || change.guestId().equals(subscription.guestId))) {
+                && (subscription.administrator
+                    || (change.guestId() != null && change.guestId().equals(subscription.guestId))
+                    || change.relatedGuests().contains(subscription.guestId))) {
               subscription.add(change);
             }
           }
@@ -292,6 +294,9 @@ public class ChangeStreamRegistry implements ChangeSignals {
 
     private void add(Change change) {
       pendingVersion = state.version;
+      if (expanded(change)) {
+        return;
+      }
       if (administrator) {
         key("admin.dashboard");
         key("admin.guest", IdKind.GUEST, change.guestId());
@@ -323,6 +328,51 @@ public class ChangeStreamRegistry implements ChangeSignals {
           key("guest.stay");
         }
         key("guest.payment", IdKind.PAYMENT, change.paymentId());
+      }
+    }
+
+    /** TAR-376: route resources, including broad refreshes for historical derived details. */
+    private boolean expanded(Change change) {
+      switch (change.kind()) {
+        case DIRECTORY, STAY -> {
+          // Labels and stay terms also appear in historical payment/contract details.
+          // Their ids are not enumerated here: refresh this recipient's visible resources.
+          all = true;
+          keys.clear();
+        }
+        case GUEST_RECORD, PROFILE, DOCUMENT -> profileChanged(change);
+        case ENVIRONMENT -> {
+          if (administrator) {
+            key("admin.environments");
+            key("admin.environment", IdKind.ENVIRONMENT, change.environmentId());
+          }
+        }
+        case EXPENSE, FINE -> {
+          if (administrator) {
+            key("admin.finance");
+            if (change.kind() == Kind.FINE) {
+              key("admin.guest", IdKind.GUEST, change.guestId());
+            }
+          }
+        }
+        case PAYMENT, FINANCIAL, CONTRACT, GUEST -> {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    private void profileChanged(Change change) {
+      if (administrator) {
+        key("admin.guest", IdKind.GUEST, change.guestId());
+        if (change.kind() != Kind.DOCUMENT) {
+          key("admin.guests");
+        }
+        if (change.kind() == Kind.GUEST_RECORD) {
+          key("admin.dashboard");
+        }
+      } else {
+        key("guest.profile");
       }
     }
 

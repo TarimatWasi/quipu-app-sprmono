@@ -13,6 +13,7 @@ import com.tarimatwasi.quipu.environment.application.port.out.EnvironmentReposit
 import com.tarimatwasi.quipu.environment.domain.Environment;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -24,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -48,12 +50,17 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
   /** An environment that no contract or stay ever occupied. */
   private static final EnvironmentOccupancies NOTHING = new EnvironmentOccupancies(List.of());
 
+  private final ChangeSignals changes;
   private final EnvironmentRepositoryPort environments;
   private final EnvironmentOccupancyPort occupancy;
   private final Clock clock;
 
   EnvironmentService(
-      EnvironmentRepositoryPort environments, EnvironmentOccupancyPort occupancy, Clock clock) {
+      EnvironmentRepositoryPort environments,
+      EnvironmentOccupancyPort occupancy,
+      Clock clock,
+      ChangeSignals changes) {
+    this.changes = changes;
     this.environments = environments;
     this.occupancy = occupancy;
     this.clock = clock;
@@ -64,9 +71,9 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
   public EnvironmentView create(CreateCommand command) {
     String code = visibleCode(command.code());
     try {
-      return views(
-              List.of(environments.insert(code, EnvironmentType.valueOf(command.type().name()))))
-          .getFirst();
+      Environment saved = environments.insert(code, EnvironmentType.valueOf(command.type().name()));
+      changed(saved.id());
+      return views(List.of(saved)).getFirst();
     } catch (EnvironmentCodeAlreadyExistsException e) {
       throw new EnvironmentCodeTakenException(e);
     }
@@ -90,6 +97,8 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
           environments
               .update(id, code, optionalType(command.type()))
               .orElseThrow(EnvironmentNotFoundException::new);
+      changed(id);
+      labelsChanged(current, updated);
       return views(List.of(updated)).getFirst();
     } catch (EnvironmentCodeAlreadyExistsException e) {
       throw new EnvironmentCodeTakenException(e);
@@ -130,6 +139,21 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
     if (!environments.updateStatus(id, status, clock.instant())) {
       throw new EnvironmentNotFoundException();
     }
+    changed(id);
+  }
+
+  private void labelsChanged(Environment current, Environment updated) {
+    if (!current.code().equals(updated.code()) || current.type() != updated.type()) {
+      Set<Long> recipients = occupancy.labelReadersOf(updated.id());
+      changes.changed(
+          new ChangeSignals.Change(
+              ChangeSignals.Kind.DIRECTORY, null, false, null, updated.id(), recipients));
+    }
+  }
+
+  private void changed(Long id) {
+    changes.changed(
+        new ChangeSignals.Change(ChangeSignals.Kind.ENVIRONMENT, null, false, null, id));
   }
 
   @Override

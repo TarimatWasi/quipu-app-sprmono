@@ -18,6 +18,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -35,10 +36,12 @@ class GuestAccessIssuer {
   record Issued(
       @Nullable GuestSummaryView guest, @Nullable IssuedAccess access, @Nullable String email) {}
 
+  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
 
-  GuestAccessIssuer(GuestRepositoryPort guests, GuestAccountPort accounts) {
+  GuestAccessIssuer(GuestRepositoryPort guests, GuestAccountPort accounts, ChangeSignals changes) {
+    this.changes = changes;
     this.guests = guests;
     this.accounts = accounts;
   }
@@ -78,6 +81,7 @@ class GuestAccessIssuer {
       throw new GuestAccountEmailTakenException(e);
     }
     IssuedAccess access = accounts.issueAccess(created.id(), command.accessMode());
+    changed(created.id());
     return new Issued(GuestService.summary(created, stateOf(created)), access, email);
   }
 
@@ -94,8 +98,9 @@ class GuestAccessIssuer {
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
     }
-    return new Issued(
-        null, accounts.issueAccess(guestId, mode), accounts.accountEmail(guestId).orElse(null));
+    IssuedAccess access = accounts.issueAccess(guestId, mode);
+    changed(guestId);
+    return new Issued(null, access, accounts.accountEmail(guestId).orElse(null));
   }
 
   /**
@@ -121,6 +126,11 @@ class GuestAccessIssuer {
       case UNCHANGED -> Optional.empty();
       case CHANGED -> Optional.ofNullable(change.previousEmail());
     };
+  }
+
+  private void changed(Long guestId) {
+    changes.changed(
+        new ChangeSignals.Change(ChangeSignals.Kind.GUEST_RECORD, guestId, false, null, null));
   }
 
   private AccountState stateOf(Guest guest) {

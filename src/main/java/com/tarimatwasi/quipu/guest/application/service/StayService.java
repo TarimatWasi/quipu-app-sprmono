@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -50,6 +51,7 @@ public class StayService implements ManageStaysUseCase {
   /** The id that no stay has, for a stay that is not stored yet. */
   private static final Long NO_STAY = -1L;
 
+  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final StayRepositoryPort stays;
   private final StayEnvironmentPort environments;
@@ -59,7 +61,9 @@ public class StayService implements ManageStaysUseCase {
       GuestRepositoryPort guests,
       StayRepositoryPort stays,
       StayEnvironmentPort environments,
-      ContractOccupancyQuery contracts) {
+      ContractOccupancyQuery contracts,
+      ChangeSignals changes) {
+    this.changes = changes;
     this.guests = guests;
     this.stays = stays;
     this.environments = environments;
@@ -136,9 +140,11 @@ public class StayService implements ManageStaysUseCase {
     }
     rejectOverlap(guestId, NO_STAY, stay.startDate(), stay.endDate());
     rejectTaken(environmentActive, stay.environmentId(), stay.startDate(), stay.endDate(), NO_STAY);
-    return view(
+    Stay saved =
         stays.insert(
-            guestId, stay.environmentId(), stay.startDate(), stay.endDate(), stay.agreedAmount()));
+            guestId, stay.environmentId(), stay.startDate(), stay.endDate(), stay.agreedAmount());
+    changed(saved);
+    return view(saved);
   }
 
   @Override
@@ -179,8 +185,13 @@ public class StayService implements ManageStaysUseCase {
     if (target != null && moves) {
       rejectTaken(target.equals(environmentId) && environmentActive, target, start, end, stayId);
     }
-    return view(
-        stays.update(new Stay(stayId, guestId, start, end, amount, target, current.version())));
+    Stay saved =
+        stays.update(new Stay(stayId, guestId, start, end, amount, target, current.version()));
+    changed(saved);
+    if (!Objects.equals(current.environmentId(), saved.environmentId())) {
+      changed(current);
+    }
+    return view(saved);
   }
 
   /**
@@ -230,6 +241,12 @@ public class StayService implements ManageStaysUseCase {
    * The guest row stays locked until the commit, so two simultaneous writes of the stays of one
    * guest are checked for overlap one after the other.
    */
+  private void changed(Stay stay) {
+    changes.changed(
+        new ChangeSignals.Change(
+            ChangeSignals.Kind.STAY, stay.guestId(), false, null, stay.environmentId()));
+  }
+
   private Guest lockedGuest(Long guestId) {
     return guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new);
   }

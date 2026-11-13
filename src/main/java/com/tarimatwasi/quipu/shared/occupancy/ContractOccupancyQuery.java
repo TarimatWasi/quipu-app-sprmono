@@ -35,6 +35,11 @@ public interface ContractOccupancyQuery {
   /** TAR-237 (A2): every contract of those environments, as the range it occupies. */
   List<Occupancy> occupanciesOf(Collection<Long> environmentIds);
 
+  /**
+   * All historical owners, including contracts cancelled before their start, for visible labels.
+   */
+  Set<Long> guestsOfEnvironment(Long environmentId);
+
   /** The id of a contract of the guest in force today, if it has one (RN-12). */
   Optional<Long> guestContractInForce(Long guestId);
 

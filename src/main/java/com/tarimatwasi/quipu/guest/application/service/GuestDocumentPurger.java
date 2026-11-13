@@ -7,8 +7,10 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
+import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
+import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,6 +61,7 @@ public class GuestDocumentPurger {
    */
   static final Duration IN_COURSE = Duration.ofMinutes(1);
 
+  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestDocumentActionRepositoryPort records;
   private final GuestDocumentFilePort files;
@@ -70,7 +73,9 @@ public class GuestDocumentPurger {
       GuestDocumentActionRepositoryPort records,
       GuestDocumentFilePort files,
       PlatformTransactionManager transactions,
-      Clock clock) {
+      Clock clock,
+      ChangeSignals changes) {
+    this.changes = changes;
     this.guests = guests;
     this.records = records;
     this.files = files;
@@ -102,6 +107,7 @@ public class GuestDocumentPurger {
                           .orElseGet(
                               () -> {
                                 records.addPendingDeletion(asked);
+                                changed(asked.guestId());
                                 return asked;
                               }))));
     } catch (GuestDocumentDeletionPendingException raced) {
@@ -148,10 +154,24 @@ public class GuestDocumentPurger {
                         deletion.actorId(),
                         deletion.requestedOn());
                     records.removeDocument(row);
+                    changed(deletion.guestId());
                   });
               records.removePendingDeletion(deletion.documentId());
               return document.isPresent();
             }));
+  }
+
+  /** Atomically records a replacement and the old object to purge, in the caller's transaction. */
+  void replaced(GuestDocument old, Long replacement, GuestDocumentAction.Why why, Long actorId) {
+    records.addAction(Kind.REPLACE, old, replacement, why, actorId, clock.instant());
+    records.removeDocument(old);
+    records.addPurge(old.storageKey());
+    changed(old.guestId());
+  }
+
+  private void changed(Long guestId) {
+    changes.changed(
+        new ChangeSignals.Change(ChangeSignals.Kind.DOCUMENT, guestId, false, null, null));
   }
 
   /**

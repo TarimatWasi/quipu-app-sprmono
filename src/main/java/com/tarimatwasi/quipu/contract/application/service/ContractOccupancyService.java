@@ -81,6 +81,14 @@ public class ContractOccupancyService implements ContractOccupancyQuery {
 
   @Override
   @Transactional(readOnly = true)
+  public Set<Long> guestsOfEnvironment(Long environmentId) {
+    return contracts.findAllByEnvironments(List.of(environmentId)).stream()
+        .map(Contract::guestId)
+        .collect(Collectors.toSet());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<Occupancy> occupanciesOfGuests(Collection<Long> guestIds) {
     return occupancies(contracts.findAllByGuests(guestIds));
   }
