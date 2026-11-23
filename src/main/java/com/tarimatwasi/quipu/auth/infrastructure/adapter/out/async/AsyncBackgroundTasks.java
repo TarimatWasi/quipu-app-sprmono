@@ -72,8 +72,13 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
     }
   }
 
+  /**
+   * Also after a stop: Spring stops and starts again a context it pauses (the test context cache
+   * does), and a stop that stayed in force would drop every later task, silently.
+   */
   @Override
   public void start() {
+    stopping.set(false);
     running.set(true);
   }
 

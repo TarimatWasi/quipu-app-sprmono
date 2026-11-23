@@ -112,6 +112,21 @@ class AsyncBackgroundTasksTest {
   }
 
   @Test
+  void startAfterAStop_acceptsTasksAgain() throws Exception {
+    try (var tasks = new AsyncBackgroundTasks()) {
+      tasks.start();
+      tasks.stop();
+      tasks.start();
+      var ran = new CountDownLatch(1);
+
+      tasks.run(ran::countDown);
+
+      assertThat(ran.await(5, TimeUnit.SECONDS)).as("a restarted executor runs tasks").isTrue();
+      assertThat(tasks.isRunning()).isTrue();
+    }
+  }
+
+  @Test
   void stopsAfterTheWebServerGracefulShutdown() {
     try (var tasks = new AsyncBackgroundTasks()) {
       // Higher phases stop first; the web server drains at DEFAULT_PHASE - 1024.
