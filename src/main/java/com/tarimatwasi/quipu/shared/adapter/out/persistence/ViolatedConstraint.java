@@ -9,7 +9,7 @@ import org.postgresql.util.ServerErrorMessage;
  * TAR-207: the constraint a write broke, read from the name the server reports, so the language of
  * its messages does not matter (a Spanish server words them differently, and the driver leaves the
  * detail out: logServerErrorDetail). Hibernate's own name is only a fallback: it parses it out of
- * the English wording. The only reader of that name (QP-SPRMONO-DAT-05): three modules had a copy,
+ * the English wording. The only reader of that name (QP-SPRMONO-DAT-06): three modules had a copy,
  * and one read the message.
  */
 public final class ViolatedConstraint {

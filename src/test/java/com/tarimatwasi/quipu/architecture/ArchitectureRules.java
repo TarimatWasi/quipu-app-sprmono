@@ -386,12 +386,12 @@ final class ArchitectureRules {
   @ArchTest static final ArchRule BE_SPR_DAT_07 = ArchitectureConditions.toOneRelationsAreLazy();
 
   /**
-   * QP-SPRMONO-DAT-02: SQL by hand goes through JdbcClient, with named parameters; positional
+   * QP-SPRMONO-DAT-03: SQL by hand goes through JdbcClient, with named parameters; positional
    * arguments built in a list beside a dynamic query were the way a parameter ended up in the wrong
    * place. JdbcTemplate stays only behind JdbcClient (and in tests, which prepare data with it).
    */
   @ArchTest
-  static final ArchRule QP_SPRMONO_DAT_02 =
+  static final ArchRule QP_SPRMONO_DAT_03 =
       noClasses()
           .should()
           .dependOnClassesThat()
@@ -402,12 +402,12 @@ final class ArchitectureRules {
           .because("JdbcClient is the API of Spring for SQL by hand");
 
   /**
-   * QP-SPRMONO-DAT-03: the stream of a JdbcClient query holds its connection open until it is
+   * QP-SPRMONO-DAT-04: the stream of a JdbcClient query holds its connection open until it is
    * closed, unlike the list JdbcTemplate returned; a {@code .query(mapper).stream()} chained like
    * one leaked a connection of the pool on every notice to the administrators. Read a list.
    */
   @ArchTest
-  static final ArchRule QP_SPRMONO_DAT_03 =
+  static final ArchRule QP_SPRMONO_DAT_04 =
       noClasses()
           .should()
           .callMethodWhere(
@@ -506,12 +506,12 @@ final class ArchitectureRules {
   static final ArchRule QP_SPRMONO_API_03 = ArchitectureConditions.newApiVersionsCoexistWithV1();
 
   /**
-   * QP-SPRMONO-DAT-04: the detail of a guest (ManageGuestsUseCase.get) is the one of its screen,
+   * QP-SPRMONO-DAT-05: the detail of a guest (ManageGuestsUseCase.get) is the one of its screen,
    * about eight reads; another module asks for summaries in one read. The payment queue called it
    * once per guest of a page of up to 100 payments.
    */
   @ArchTest
-  static final ArchRule QP_SPRMONO_DAT_04 =
+  static final ArchRule QP_SPRMONO_DAT_05 =
       noClasses()
           .that()
           .resideOutsideOfPackages(ROOT + ".guest..", ROOT + ".bff..")
@@ -525,12 +525,12 @@ final class ArchitectureRules {
           .because("another module reads the summaries of its guests together (summariesOf)");
 
   /**
-   * QP-SPRMONO-DAT-05: the constraint a write broke is read only by ViolatedConstraint, by the name
+   * QP-SPRMONO-DAT-06: the constraint a write broke is read only by ViolatedConstraint, by the name
    * the server reports. Three modules had their own copy of it and the payments read the message of
    * the server, whose wording changes with its language.
    */
   @ArchTest
-  static final ArchRule QP_SPRMONO_DAT_05 =
+  static final ArchRule QP_SPRMONO_DAT_06 =
       noClasses()
           .that()
           .doNotHaveFullyQualifiedName(ROOT + ".shared.adapter.out.persistence.ViolatedConstraint")
