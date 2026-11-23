@@ -49,6 +49,12 @@ class PublishEventDeclarationsTest {
     public Outcome maybe(Long id, boolean happen) {
       return new Outcome(id, 2L, happen);
     }
+
+    @PublishEvent(
+        type = Paid.class,
+        id = "'due:' + #id",
+        args = {"#id", "2L"})
+    public void stable(Long id) {}
   }
 
   static class Broken {
@@ -152,5 +158,21 @@ class PublishEventDeclarationsTest {
             declarations.build(
                 maybe, new Valid(), new Object[] {5L, false}, new Outcome(5L, 2L, false), metadata))
         .isEmpty();
+  }
+
+  @Test
+  void id_isTheSameForTheSameFactAndDiffersForAnother() throws Exception {
+    Method stable = Valid.class.getMethod("stable", Long.class);
+    var first = new EventMetadata(UUID.randomUUID(), Instant.EPOCH, null);
+    var second = new EventMetadata(UUID.randomUUID(), Instant.EPOCH, null);
+
+    var once = declarations.build(stable, new Valid(), new Object[] {5L}, null, first);
+    var again = declarations.build(stable, new Valid(), new Object[] {5L}, null, second);
+    var other = declarations.build(stable, new Valid(), new Object[] {6L}, null, first);
+
+    assertThat(once.getFirst().metadata().eventId())
+        .isEqualTo(again.getFirst().metadata().eventId())
+        .isNotEqualTo(other.getFirst().metadata().eventId())
+        .isNotEqualTo(first.eventId());
   }
 }

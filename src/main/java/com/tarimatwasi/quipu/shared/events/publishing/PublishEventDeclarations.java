@@ -6,11 +6,13 @@ import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,7 +55,8 @@ public class PublishEventDeclarations implements BeanPostProcessor {
       Constructor<? extends DomainEvent> constructor,
       List<Class<?>> componentTypes,
       List<Expression> expressions,
-      @Nullable Expression when) {}
+      @Nullable Expression when,
+      @Nullable Expression id) {}
 
   @Override
   public Object postProcessAfterInitialization(Object bean, String beanName) {
@@ -94,7 +97,7 @@ public class PublishEventDeclarations implements BeanPostProcessor {
         continue;
       }
       @Nullable Object[] values = new Object[declaration.componentTypes().size()];
-      values[0] = metadata;
+      values[0] = identified(declaration, evaluation, metadata);
       for (int i = 1; i < values.length; i++) {
         values[i] =
             declaration
@@ -181,26 +184,56 @@ public class PublishEventDeclarations implements BeanPostProcessor {
       checkVariables(where, source, variables, errors);
       checkType(where, event, source, component, variables, errors);
     }
-    Expression when = condition(where, declaration.when(), variables, errors);
+    Expression when = optional(where, "when", declaration.when(), variables, errors);
+    if (when != null) {
+      checkCondition(where, declaration.when(), variables, errors);
+    }
+    Expression id = optional(where, "id", declaration.id(), variables, errors);
     if (errors.size() > before) {
       return null;
     }
-    return compiled(where, declaration.type(), components, expressions, when, errors);
+    Compiled result = compiled(where, declaration.type(), components, expressions, when, errors);
+    return result == null
+        ? null
+        : new Compiled(
+            result.type(),
+            result.constructor(),
+            result.componentTypes(),
+            result.expressions(),
+            when,
+            id);
   }
 
-  /** The parsed {@code when}, or null when it is empty or broken (then with its error). */
-  private @Nullable Expression condition(
-      String where, String source, Map<String, Class<?>> variables, List<String> errors) {
+  /** The metadata of the event: its id is name-based on the declared key, if there is one. */
+  private static EventMetadata identified(
+      Compiled declaration, MethodBasedEvaluationContext evaluation, EventMetadata metadata) {
+    Expression id = declaration.id();
+    if (id == null) {
+      return metadata;
+    }
+    String key = declaration.type().getName() + ":" + id.getValue(evaluation, String.class);
+    return new EventMetadata(
+        UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)),
+        metadata.occurredAt(),
+        metadata.actorUserId());
+  }
+
+  /** An optional attribute parsed, or null when it is empty or broken (then with its error). */
+  private @Nullable Expression optional(
+      String where,
+      String attribute,
+      String source,
+      Map<String, Class<?>> variables,
+      List<String> errors) {
     if (source.isBlank()) {
       return null;
     }
     try {
-      Expression when = parser.parseExpression(source);
+      Expression parsed = parser.parseExpression(source);
       checkVariables(where, source, variables, errors);
-      checkCondition(where, source, variables, errors);
-      return when;
+      return parsed;
     } catch (ParseException e) {
-      errors.add(where + ": cannot parse when '" + source + "'");
+      errors.add(where + ": cannot parse " + attribute + " '" + source + "'");
       return null;
     }
   }
@@ -219,7 +252,7 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     try {
       Constructor<? extends DomainEvent> constructor = type.getDeclaredConstructor(types);
       ReflectionUtils.makeAccessible(constructor);
-      return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when);
+      return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when, null);
     } catch (NoSuchMethodException e) {
       errors.add(where + ": " + type.getSimpleName() + " has no canonical constructor");
       return null;

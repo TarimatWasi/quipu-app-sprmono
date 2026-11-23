@@ -40,4 +40,12 @@ public @interface PublishEvent {
    * never its consequences, which belong to the listeners.
    */
   String when() default "";
+
+  /**
+   * A stable key for a fact that may be stated again (a sweep over time, a retried request): SpEL
+   * whose text, with the event type, becomes the event id (name-based UUID). Every consumer is
+   * idempotent by event id, so the same fact is audited and notified once. Empty means a random id
+   * per occurrence.
+   */
+  String id() default "";
 }
