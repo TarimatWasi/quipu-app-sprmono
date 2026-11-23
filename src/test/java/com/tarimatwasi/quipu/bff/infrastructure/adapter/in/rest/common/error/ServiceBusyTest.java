@@ -43,6 +43,17 @@ class ServiceBusyTest {
     assertThat(ServiceBusy.causedBy(null)).isFalse();
   }
 
+  /** A chain of causes that loops ends at its depth limit, never in an endless search. */
+  @Test
+  void aChainOfCausesThatLoopsIsNotBusy() {
+    var first = new IllegalStateException("first");
+    var second = new IllegalStateException("second");
+    first.initCause(second);
+    second.initCause(first);
+
+    assertThat(ServiceBusy.causedBy(first)).isFalse();
+  }
+
   @Test
   void theAnswerIsA503ThatCanBeRepeatedInTheShapeOfTheBff() throws Exception {
     MockHttpServletResponse response = new MockHttpServletResponse();

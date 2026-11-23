@@ -73,6 +73,19 @@ class PublishEventDeclarationsTest {
     }
   }
 
+  /** A record of nothing: not even its metadata. */
+  record Empty() implements DomainEvent {
+    @Override
+    public EventMetadata metadata() {
+      return new EventMetadata(UUID.randomUUID(), Instant.EPOCH, null);
+    }
+
+    @Override
+    public String subject() {
+      return "other/0";
+    }
+  }
+
   record MetadataLast(Long id, EventMetadata metadata) implements DomainEvent {
     @Override
     public String subject() {
@@ -112,6 +125,11 @@ class PublishEventDeclarationsTest {
         type = NotARecord.class,
         args = {})
     public void notARecord(Long id) {}
+
+    @PublishEvent(
+        type = Empty.class,
+        args = {})
+    public void empty(Long id) {}
 
     @PublishEvent(
         type = MetadataLast.class,
@@ -195,6 +213,8 @@ class PublishEventDeclarationsTest {
             "Broken.conditionNotBoolean: when '#result.id()' is Long, not boolean")
         .hasMessageContaining(
             "Broken.notARecord: NotARecord must be a record whose first component is EventMetadata")
+        .hasMessageContaining(
+            "Broken.empty: Empty must be a record whose first component is EventMetadata")
         .hasMessageContaining(
             "Broken.metadataLast: MetadataLast must be a record whose first component is"
                 + " EventMetadata")

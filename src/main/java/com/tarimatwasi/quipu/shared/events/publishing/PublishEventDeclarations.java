@@ -288,7 +288,8 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     Matcher accessor = ACCESSOR.matcher(chain.group(2));
     while (accessor.find()) {
       Method next = ReflectionUtils.findMethod(type, accessor.group(1));
-      if (next == null || next.getParameterCount() != 0) {
+      // findMethod(type, name) finds only a method without parameters: an accessor.
+      if (next == null) {
         errors.add(where + ": " + type.getSimpleName() + " has no " + accessor.group(1) + "()");
         return null;
       }

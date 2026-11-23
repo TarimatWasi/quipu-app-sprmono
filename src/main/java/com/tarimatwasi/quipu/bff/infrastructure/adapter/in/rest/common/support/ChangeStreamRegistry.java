@@ -338,21 +338,28 @@ public class ChangeStreamRegistry implements ChangeSignals {
       }
     }
 
-    /** TAR-376: route resources, including broad refreshes for historical derived details. */
+    /**
+     * TAR-376: route resources, including broad refreshes for historical derived details. True when
+     * the change is routed here; false for the payment-like kinds, which {@link #add} routes.
+     */
     private boolean expanded(Change change) {
-      switch (change.kind()) {
+      return switch (change.kind()) {
         case DIRECTORY, STAY -> {
           // Labels and stay terms also appear in historical payment/contract details.
           // Their ids are not enumerated here: refresh this recipient's visible resources.
-          all = true;
-          keys.clear();
+          everything();
+          yield true;
         }
-        case GUEST_RECORD, PROFILE, DOCUMENT -> profileChanged(change);
+        case GUEST_RECORD, PROFILE, DOCUMENT -> {
+          profileChanged(change);
+          yield true;
+        }
         case ENVIRONMENT -> {
           if (administrator) {
             key("admin.environments");
             key("admin.environment", IdKind.ENVIRONMENT, change.environmentId());
           }
+          yield true;
         }
         case EXPENSE, FINE -> {
           if (administrator) {
@@ -361,28 +368,31 @@ public class ChangeStreamRegistry implements ChangeSignals {
               key("admin.guest", IdKind.GUEST, change.guestId());
             }
           }
+          yield true;
         }
         case DAY -> {
           // A new day of Lima changes what the date derives (dues, arrears, terms): all reload.
-          all = true;
-          keys.clear();
+          everything();
+          yield true;
         }
         case NOTIFICATION -> {
           // A null guest is the shared bell of the administrators; a guest only gets its own.
-          if (!properties.notificationKeys()) {
-            return true;
+          if (properties.notificationKeys()) {
+            if (!administrator) {
+              key("guest.notifications");
+            } else if (change.guestId() == null) {
+              key("admin.notifications");
+            }
           }
-          if (!administrator) {
-            key("guest.notifications");
-          } else if (change.guestId() == null) {
-            key("admin.notifications");
-          }
+          yield true;
         }
-        case PAYMENT, FINANCIAL, CONTRACT, GUEST -> {
-          return false;
-        }
-      }
-      return true;
+        case PAYMENT, FINANCIAL, CONTRACT, GUEST -> false;
+      };
+    }
+
+    private void everything() {
+      all = true;
+      keys.clear();
     }
 
     private void profileChanged(Change change) {

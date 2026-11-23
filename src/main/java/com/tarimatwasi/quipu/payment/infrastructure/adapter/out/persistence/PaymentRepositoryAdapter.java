@@ -50,8 +50,10 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
   private static final Set<PaymentStatus> LIVE =
       EnumSet.of(PaymentStatus.PENDING, PaymentStatus.APPROVED, PaymentStatus.REJECTED);
 
-  /** The name of the unique indexes of the live payments. */
-  private static final String LIVE_INDEX_PREFIX = "uq_payments_live";
+  /** The unique indexes of the live payments: of a period of a contract, and of a stay. */
+  private static final String LIVE_PERIOD_INDEX = "uq_payments_live_period";
+
+  private static final String LIVE_STAY_INDEX = "uq_payments_live_stay";
 
   /** How many ids a single read binds at most. */
   private static final int STAY_SLICE = 1000;
@@ -118,8 +120,7 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   /** Which of the two unique indexes of the live payments refused the row. */
   private static boolean isLiveIndexViolation(DataIntegrityViolationException e) {
-    String constraint = ViolatedConstraint.nameOf(e);
-    return constraint != null && constraint.startsWith(LIVE_INDEX_PREFIX);
+    return ViolatedConstraint.is(e, LIVE_PERIOD_INDEX) || ViolatedConstraint.is(e, LIVE_STAY_INDEX);
   }
 
   /**
