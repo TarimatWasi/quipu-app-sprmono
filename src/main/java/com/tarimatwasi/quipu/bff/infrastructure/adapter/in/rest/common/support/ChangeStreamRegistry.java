@@ -1,6 +1,5 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import jakarta.annotation.PreDestroy;

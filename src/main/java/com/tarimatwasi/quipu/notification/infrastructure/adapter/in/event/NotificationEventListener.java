@@ -3,6 +3,8 @@ package com.tarimatwasi.quipu.notification.infrastructure.adapter.in.event;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDocumentUploaded;
+import com.tarimatwasi.quipu.guest.domain.event.OnboardingCompleted;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Kind;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.NewNotification;
@@ -110,6 +112,28 @@ public class NotificationEventListener {
         Target.REFUND,
         refund.refundId(),
         Map.of("amount", refund.amount().toPlainString()));
+  }
+
+  @ApplicationModuleListener
+  public void on(OnboardingCompleted onboarding) {
+    raise(
+        onboarding,
+        Kind.ONBOARDING_COMPLETED,
+        onboarding.guestId(),
+        Target.GUEST,
+        onboarding.guestId(),
+        Map.of());
+  }
+
+  @ApplicationModuleListener
+  public void on(GuestDocumentUploaded document) {
+    raise(
+        document,
+        Kind.GUEST_DOCUMENT_UPLOADED,
+        document.guestId(),
+        Target.DOCUMENT,
+        document.documentId(),
+        Map.of());
   }
 
   /** The amount and, for a period of a contract, its month. */

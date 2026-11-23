@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDocumentUploaded;
 import com.tarimatwasi.quipu.guest.domain.event.ProfileUpdated;
 import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.file.FileKind;
@@ -75,6 +76,9 @@ public class OwnProfileService implements OwnProfileUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = GuestDocumentUploaded.class,
+      args = {"#guestId", "#result.id()"})
   public DocumentView uploadDocument(Long guestId, GuestKind area, DocumentUpload upload) {
     // RF-15: the file is checked before the row of the guest is locked.
     FileKind kind = GuestDocumentUploader.kindOf(upload);

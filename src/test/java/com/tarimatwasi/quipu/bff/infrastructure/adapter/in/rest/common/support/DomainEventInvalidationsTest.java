@@ -6,13 +6,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tarimatwasi.quipu.auth.application.port.in.SessionFingerprintUseCase;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Change;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
 import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
 import com.tarimatwasi.quipu.shared.events.EventMetadata;
 import java.math.BigDecimal;

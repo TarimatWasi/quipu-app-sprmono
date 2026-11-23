@@ -1,10 +1,12 @@
-package com.tarimatwasi.quipu.shared.changes;
+package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * TAR-371/372: transactional invalidations; delivery is best-effort, never a business event bus.
+ * TAR-371/372: the transaction buffer of the live streams, best-effort, never a business event bus.
+ * Only {@link DomainEventInvalidations} feeds it, from the domain events: no module signals a
+ * change by hand any more (it lived in shared until every producer stated its facts as events).
  */
 public interface ChangeSignals {
   /** The resource groups affected by the confirmed operation. */

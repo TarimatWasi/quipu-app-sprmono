@@ -10,7 +10,6 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.FileNames;
 import org.slf4j.Logger;
@@ -33,13 +32,10 @@ class GuestDocumentUploader {
   /** The name of a document whose browser name is unusable. */
   private static final String DEFAULT_NAME = "documento";
 
-  private final ChangeSignals changes;
   private final OnboardingRepositoryPort records;
   private final GuestDocumentFilePort files;
 
-  GuestDocumentUploader(
-      OnboardingRepositoryPort records, GuestDocumentFilePort files, ChangeSignals changes) {
-    this.changes = changes;
+  GuestDocumentUploader(OnboardingRepositoryPort records, GuestDocumentFilePort files) {
     this.records = records;
     this.files = files;
   }
@@ -82,8 +78,6 @@ class GuestDocumentUploader {
         discard(guestId, key);
       }
     }
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.DOCUMENT, guestId, false, null, null));
     return view(saved);
   }
 

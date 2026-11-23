@@ -14,7 +14,11 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.guest.domain.event.DocumentsStepFinished;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDocumentUploaded;
+import com.tarimatwasi.quipu.guest.domain.event.OnboardingCompleted;
+import com.tarimatwasi.quipu.guest.domain.event.PersonalDataSaved;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import java.time.Clock;
 import java.util.List;
@@ -32,7 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('GUEST')") // BE-SPR-SEC-02: guest use case, besides the URL rule
 public class OnboardingService implements OnboardingUseCase {
 
-  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
   private final OnboardingRepositoryPort records;
@@ -46,9 +49,7 @@ public class OnboardingService implements OnboardingUseCase {
       OnboardingRepositoryPort records,
       GuestDocumentUploader uploader,
       ConsentTexts consents,
-      Clock clock,
-      ChangeSignals changes) {
-    this.changes = changes;
+      Clock clock) {
     this.guests = guests;
     this.accounts = accounts;
     this.records = records;
@@ -65,7 +66,10 @@ public class OnboardingService implements OnboardingUseCase {
 
   @Override
   @Transactional
-  public OnboardingView savePersonalData(Long guestId, PersonalDataInput data) {
+  @PublishEvent(
+      type = PersonalDataSaved.class,
+      args = {"#guestId", "#result.renamed()"})
+  public PersonalDataOutcome savePersonalData(Long guestId, PersonalDataInput data) {
     Guest guest = onboarding(guestId);
     Guest changed =
         new Guest(
@@ -82,15 +86,15 @@ public class OnboardingService implements OnboardingUseCase {
             null,
             emergencyContact(data.emergencyContact()));
     Guest saved = saved(changed);
-    if (!Objects.equals(guest.fullName(), saved.fullName())) {
-      changes.changed(
-          new ChangeSignals.Change(ChangeSignals.Kind.DIRECTORY, guestId, false, null, null));
-    }
-    return view(saved);
+    return new PersonalDataOutcome(
+        view(saved), !Objects.equals(guest.fullName(), saved.fullName()));
   }
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = GuestDocumentUploaded.class,
+      args = {"#guestId", "#result.id()"})
   public DocumentView uploadDocument(Long guestId, DocumentUpload upload) {
     FileKind kind = GuestDocumentUploader.kindOf(upload);
     Guest guest = onboarding(guestId);
@@ -102,6 +106,9 @@ public class OnboardingService implements OnboardingUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = DocumentsStepFinished.class,
+      args = {"#guestId"})
   public OnboardingView finishDocuments(Long guestId) {
     Guest guest = onboarding(guestId);
     if (guest.personalDataCompletedAt() == null) {
@@ -128,6 +135,10 @@ public class OnboardingService implements OnboardingUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = OnboardingCompleted.class,
+      id = "#guestId",
+      args = {"#guestId"})
   public OnboardingView acceptConsent(Long guestId, boolean accepted, String version) {
     if (!accepted) {
       throw new InvalidOnboardingInputException(
@@ -159,10 +170,7 @@ public class OnboardingService implements OnboardingUseCase {
   }
 
   private Guest saved(Guest guest) {
-    Guest saved = guests.save(guest);
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.GUEST_RECORD, guest.id(), false, null, null));
-    return saved;
+    return guests.save(guest);
   }
 
   /** The guest of the session, locked, if it is still onboarding. */

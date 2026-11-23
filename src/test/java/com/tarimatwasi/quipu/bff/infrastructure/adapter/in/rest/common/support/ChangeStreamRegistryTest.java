@@ -3,8 +3,8 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Kind;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Change;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
