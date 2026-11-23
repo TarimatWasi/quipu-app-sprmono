@@ -153,6 +153,12 @@ public interface ManageGuestsUseCase {
   Map<Long, GuestRef> refsOf(Collection<Long> ids, LocalDate from, LocalDate to);
 
   /**
+   * The summaries of the guests of those ids that exist, whatever their state, read together: the
+   * rows of another module name their guests with it, never with a {@link #get} per guest.
+   */
+  Map<Long, GuestSummaryView> summariesOf(Collection<Long> ids);
+
+  /**
    * Lists one page of the guests of the filter, ordered by document type and number and read by
    * last index (BE-SPR-WEB-08); {@code type == null} returns both kinds.
    *

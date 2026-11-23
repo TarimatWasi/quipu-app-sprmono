@@ -9,6 +9,7 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
 
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -498,6 +499,25 @@ final class ArchitectureRules {
 
   @ArchTest
   static final ArchRule QP_SPRMONO_API_03 = ArchitectureConditions.newApiVersionsCoexistWithV1();
+
+  /**
+   * QP-SPRMONO-DAT-04: the detail of a guest (ManageGuestsUseCase.get) is the one of its screen,
+   * about eight reads; another module asks for summaries in one read. The payment queue called it
+   * once per guest of a page of up to 100 payments.
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_04 =
+      noClasses()
+          .that()
+          .resideOutsideOfPackages(ROOT + ".guest..", ROOT + ".bff..")
+          .should()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("get"))
+                  .and(
+                      JavaCall.Predicates.target(
+                          HasOwner.Predicates.With.owner(
+                              JavaClass.Predicates.assignableTo(ManageGuestsUseCase.class)))))
+          .because("another module reads the summaries of its guests together (summariesOf)");
 
   @ArchTest
   static final ArchRule QP_SPRMONO_DAT_01 =

@@ -215,6 +215,20 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
 
   @Override
   @Transactional(readOnly = true)
+  public Map<Long, GuestSummaryView> summariesOf(Collection<Long> ids) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+    Map<Long, AccountState> states = accounts.stateOf(ids);
+    Map<Long, GuestSummaryView> summaries = new HashMap<>();
+    for (Guest guest : guests.findAllByIds(ids)) {
+      summaries.put(guest.id(), summary(guest, states.getOrDefault(guest.id(), NO_ACCOUNT)));
+    }
+    return summaries;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public NotActivatedView notActivated() {
     List<Guest> pending = guests.findAllMatching(List.of(GuestStatus.PENDING_ACTIVATION), null);
     if (pending.isEmpty()) {

@@ -286,12 +286,17 @@ public class PaymentService implements ManagePaymentsUseCase {
 
   private List<PayablePeriodView> payablePeriodsOfContracts(Long guestId, LocalDate today) {
     List<PayablePeriodView> payable = new ArrayList<>();
-    for (ContractInfo contract : contracts.contractsOf(guestId)) {
+    List<ContractInfo> owned = contracts.contractsOf(guestId);
+    Map<Long, List<Payment>> paid =
+        payments.findAllByContracts(owned.stream().map(ContractInfo::id).toList()).stream()
+            .collect(
+                Collectors.groupingBy(payment -> Objects.requireNonNull(payment.contractId())));
+    for (ContractInfo contract : owned) {
       CreditLedger ledger =
           CreditLedger.of(
               contract.terms(),
               contract.monthlyAmount(),
-              payments.findAllByContract(contract.id()),
+              paid.getOrDefault(contract.id(), List.of()),
               today);
       for (CreditLedger.Line line : ledger.lines()) {
         PayableState state = payableState(line.status().state(), line.status().paymentId());
@@ -322,9 +327,12 @@ public class PaymentService implements ManagePaymentsUseCase {
         stays.staysOfGuest(guestId).stream()
             .sorted(Comparator.comparing(StayTerms::startDate).thenComparing(StayTerms::id))
             .toList();
+    Map<Long, List<Payment>> paid =
+        payments.findAllByStays(ofGuest.stream().map(StayTerms::id).toList()).stream()
+            .collect(Collectors.groupingBy(payment -> Objects.requireNonNull(payment.stayId())));
     for (StayTerms stay : ofGuest) {
       StayPayments.StayStatus status =
-          StayPayments.status(stay.endDate(), payments.findAllByStay(stay.id()), today);
+          StayPayments.status(stay.endDate(), paid.getOrDefault(stay.id(), List.of()), today);
       PayableState state = payableState(status.state(), status.paymentId());
       if (state != null) {
         payable.add(

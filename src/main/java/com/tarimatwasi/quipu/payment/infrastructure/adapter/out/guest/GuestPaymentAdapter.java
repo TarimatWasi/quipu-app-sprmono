@@ -14,6 +14,7 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /** The payment module asks the guest module, through its exposed port, about its guests. */
@@ -52,7 +53,14 @@ public class GuestPaymentAdapter implements PaymentGuestPort {
 
   @Override
   public GuestProfile profileOf(Long guestId) {
-    GuestSummaryView guest = guests.get(guestId).summary();
+    GuestSummaryView guest = guests.summariesOf(Set.of(guestId)).get(guestId);
+    if (guest == null) {
+      throw new GuestNotFoundException();
+    }
+    return profile(guest);
+  }
+
+  private static GuestProfile profile(GuestSummaryView guest) {
     return new GuestProfile(
         guest.id(),
         guest.name(),
@@ -79,18 +87,11 @@ public class GuestPaymentAdapter implements PaymentGuestPort {
                 first.accessExpiresAt()));
   }
 
-  // ponytail: one call to the guest module per distinct guest of the page (at most 100); a batch
-  // read in the guest module if a queue page ever needs more.
+  /** One read for the whole page; a guest that is gone is left out, the caller decides. */
   @Override
   public Map<Long, GuestProfile> profilesOf(Collection<Long> guestIds) {
     Map<Long, GuestProfile> profiles = new HashMap<>();
-    for (Long id : guestIds) {
-      try {
-        profiles.put(id, profileOf(id));
-      } catch (GuestNotFoundException gone) {
-        // left out: the caller decides what a payment without a guest means
-      }
-    }
+    guests.summariesOf(guestIds).forEach((id, guest) -> profiles.put(id, profile(guest)));
     return profiles;
   }
 }
