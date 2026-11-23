@@ -8,21 +8,19 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Tak
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort.NewAdministrator;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort.StoredAdministrator;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.support.LockWaits;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.LockSupport;
-import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -297,10 +295,13 @@ class AdministratorStoreAdapterTest {
                 transaction.executeWithoutResult(
                     status -> {
                       adapter.lockAdministrators();
-                      int holder = backendPid();
+                      int holder = LockWaits.backendPid(jdbc);
                       locked.countDown();
                       boolean seen =
-                          waitUntil(() -> secondDone.getCount() == 0 || someoneWaitsOn(holder));
+                          LockWaits.until(
+                              () ->
+                                  secondDone.getCount() == 0
+                                      || LockWaits.someoneWaitsOn(jdbc, holder));
                       secondWaited.set(seen && secondDone.getCount() != 0);
                     }),
             pool);
@@ -320,32 +321,5 @@ class AdministratorStoreAdapterTest {
     second.get(20, TimeUnit.SECONDS);
 
     assertThat(secondWaited).as("the second transaction waited for the first").isTrue();
-  }
-
-  private int backendPid() {
-    return Objects.requireNonNull(jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
-  }
-
-  /** Someone waits on an advisory lock that the given backend holds. */
-  private boolean someoneWaitsOn(int holder) {
-    Integer waiting =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM pg_stat_activity a"
-                + " WHERE a.wait_event_type = 'Lock' AND a.wait_event = 'advisory'"
-                + " AND a.datname = current_database() AND ? = ANY (pg_blocking_pids(a.pid))",
-            Integer.class,
-            holder);
-    return waiting != null && waiting > 0;
-  }
-
-  private static boolean waitUntil(BooleanSupplier condition) {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-    while (System.nanoTime() < deadline && !Thread.currentThread().isInterrupted()) {
-      if (condition.getAsBoolean()) {
-        return true;
-      }
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-    }
-    return false;
   }
 }

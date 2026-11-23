@@ -19,6 +19,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayable
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.support.LockWaits;
 import com.tarimatwasi.quipu.support.PaymentRows;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -235,7 +236,9 @@ class PaymentConcurrencyTest {
 
     var approval = start(new CyclicBarrier(1), () -> approveNow(id));
     long deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
-    while (!approval.isDone() && waitingForALock() == 0 && System.nanoTime() < deadline) {
+    while (!approval.isDone()
+        && LockWaits.waitingForALock(jdbc) == 0
+        && System.nanoTime() < deadline) {
       LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
     }
     assertThat(approval.isDone()).as("the approval waits for the contract").isFalse();
@@ -245,15 +248,6 @@ class PaymentConcurrencyTest {
     assertThat(approval.join()).containsInstanceOf(PaymentPeriodNotPayableException.class);
     assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
         .isEqualTo("PENDING");
-  }
-
-  private int waitingForALock() {
-    Integer waiting =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM pg_stat_activity"
-                + " WHERE wait_event_type = 'Lock' AND datname = current_database()",
-            Integer.class);
-    return waiting == null ? 0 : waiting;
   }
 
   private static void awaitLatch(CountDownLatch latch) {

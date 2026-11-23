@@ -14,11 +14,11 @@ import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
 import com.tarimatwasi.quipu.shared.hashing.Sha256;
+import com.tarimatwasi.quipu.support.LockWaits;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -26,8 +26,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
-import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -140,10 +138,11 @@ class LoginPasswordChangeConcurrencyTest {
                 transaction.executeWithoutResult(
                     status -> {
                       change.run();
-                      int holder = backendPid();
+                      int holder = LockWaits.backendPid(jdbc);
                       changedNotCommitted.countDown();
                       boolean seen =
-                          waitUntil(() -> loginDone.getCount() == 0 || someoneWaitsOn(holder));
+                          LockWaits.until(
+                              () -> loginDone.getCount() == 0 || blocksOnTheAccounts(holder));
                       loginWaited.set(seen && loginDone.getCount() != 0);
                     }),
             pool);
@@ -180,9 +179,9 @@ class LoginPasswordChangeConcurrencyTest {
     doAnswer(
             call -> {
               if (first.getAndSet(false)) {
-                holder.set(backendPid());
+                holder.set(LockWaits.backendPid(jdbc));
                 issuing.countDown();
-                if (!waitUntil(() -> someoneWaitsOn(holder.get()))) {
+                if (!LockWaits.until(() -> blocksOnTheAccounts(holder.get()))) {
                   throw new IllegalStateException("The change never waited for the login");
                 }
               }
@@ -230,45 +229,12 @@ class LoginPasswordChangeConcurrencyTest {
     }
   }
 
-  /** The PostgreSQL backend of the transaction of the calling thread. */
-  private int backendPid() {
-    return Objects.requireNonNull(jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
-  }
-
-  /**
-   * Someone is blocked by the given backend while that backend holds a lock on the table of the
-   * accounts.
-   */
-  private boolean someoneWaitsOn(int holder) {
-    // PostgreSQL caches pg_stat_activity within a transaction. Each poll needs a fresh snapshot
-    // or it can keep seeing no waiter even after the other transaction has reached the lock.
-    jdbc.execute("SELECT pg_stat_clear_snapshot()");
-    Integer waiting =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM pg_stat_activity a"
-                + " WHERE a.wait_event_type = 'Lock' AND a.datname = current_database()"
-                + " AND ? = ANY (pg_blocking_pids(a.pid))"
-                + " AND EXISTS (SELECT 1 FROM pg_locks l"
-                + " WHERE l.pid = ? AND l.relation = 'users'::regclass AND l.granted)",
-            Integer.class,
-            holder,
-            holder);
-    return waiting != null && waiting > 0;
-  }
-
-  /** Gives up when the deadline passes or the pool is shut down after a failed test. */
-  private static boolean waitUntil(BooleanSupplier condition) {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-    while (System.nanoTime() < deadline && !Thread.currentThread().isInterrupted()) {
-      if (condition.getAsBoolean()) {
-        return true;
-      }
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-    }
-    return false;
-  }
-
   private static String sha256(String code) {
     return Sha256.hex(code);
+  }
+
+  /** Someone waits for the given backend while it holds a lock on the table of the accounts. */
+  private boolean blocksOnTheAccounts(int holder) {
+    return LockWaits.someoneWaitsOn(jdbc, holder) && LockWaits.holdsALockOn(jdbc, holder, "users");
   }
 }
