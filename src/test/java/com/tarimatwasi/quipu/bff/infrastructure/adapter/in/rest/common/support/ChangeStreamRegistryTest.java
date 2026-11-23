@@ -238,6 +238,19 @@ class ChangeStreamRegistryTest {
   }
 
   @Test
+  void activate_lifetimeEndedWhileOpening_closesWithItsReasonInsteadOfRejecting() throws Exception {
+    try (var listener =
+        streams.reserve(1L, "sid", 0, true, mask, clock.instant().plusSeconds(60))) {
+      clock.advance(Duration.ofSeconds(61));
+
+      assertThat(listener.activate(null)).startsWith("event: ready");
+      assertThat(listener.next())
+          .isEqualTo("event: closing\ndata: {\"reason\":\"access-token-expired\"}\n\n");
+      assertThat(listener.finished()).isTrue();
+    }
+  }
+
+  @Test
   void activate_concurrentRevocation_rejects() {
     try (var listener =
         streams.reserve(1L, "sid", 0, true, mask, clock.instant().plusSeconds(60))) {

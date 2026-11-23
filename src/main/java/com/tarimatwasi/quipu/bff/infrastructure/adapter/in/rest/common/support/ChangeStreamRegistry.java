@@ -253,14 +253,21 @@ public class ChangeStreamRegistry implements ChangeSignals {
       this.deadlineReason = deadlineReason;
     }
 
-    /** Activate only after the second authorization; revocation during that read cannot be lost. */
+    /**
+     * Activate only after the second authorization; revocation during that read cannot be lost. A
+     * lifetime that ended meanwhile (access token or maximum duration) is no rejection: the stream
+     * opens and closes at once with its reason, so the client renews instead of logging out.
+     */
     public String activate(@Nullable Long guest) {
       synchronized (ChangeStreamRegistry.this) {
-        if (reason != null || !clock.instant().isBefore(deadline)) {
+        if (reason != null) {
           throw new InvalidBearerTokenException("The stream session is no longer valid");
         }
         guestId = guest;
         active = true;
+        if (!clock.instant().isBefore(deadline)) {
+          end(deadlineReason);
+        }
         return frame(
             "ready", "{\"epoch\":\"" + state.epoch + "\",\"version\":" + state.version + "}");
       }
