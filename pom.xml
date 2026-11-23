@@ -45,12 +45,12 @@
     <bucket4j.version>8.21.0</bucket4j.version>
     <pdfbox.version>3.0.8</pdfbox.version>
 
-    <!-- Contrato del BFF (TAR-376): commit inmutable del PR 77 de quipu-lib-contracts y sha256
-         de su openapi/bff.yaml publicado (LF). Sustituir por tag cuando se publique la versión.
+    <!-- Contrato del BFF: tag de quipu-lib-contracts y sha256 de su openapi/bff.yaml publicado (LF).
+         v0.27.0: campana de notificaciones y semántica temporal del SSE (PR #79).
          Para subir de versión se cambian los dos juntos: el hash se obtiene con
          `curl -sL <url del tag> | sha256sum` y el build rechaza un spec con otro hash. -->
-    <contract.version>f2f99ed9b7671eb346ce85aa2d3cd636b5e98003</contract.version>
-    <contract.sha256>2614f8505eed54a499daa8f565d61c932912c51653d4404549a94eb5d98324d9</contract.sha256>
+    <contract.version>v0.27.0</contract.version>
+    <contract.sha256>8da9fde29d10e264a7bee74bff0eeb9038dda8337ae2eed769dade4f6ec84ff4</contract.sha256>
   </properties>
 
   <dependencyManagement>

@@ -8,9 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeStreamRegistry;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -22,7 +19,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /**
@@ -59,21 +55,11 @@ class NotificationsContractTest extends PaymentsContractSupport {
         .andExpect(status().isCreated());
   }
 
-  /**
-   * The answer against the contract once the pinned one has the bell (v0.27.0 or -Dcontract.dir);
-   * with an older pinned contract only the assertions of each test apply.
-   */
-  private static ResultMatcher bellContract() throws IOException {
-    return Files.readString(Path.of(ContractSpec.PATH)).contains("/guest/notifications:")
-        ? satisfiesTheContract()
-        : result -> {};
-  }
-
   private String guestBell(String query) throws Exception {
     return mockMvc
         .perform(MockMvcRequestBuilders.get(GUEST_BELL + query).cookie(guest()))
         .andExpect(status().isOk())
-        .andExpect(bellContract())
+        .andExpect(satisfiesTheContract())
         .andReturn()
         .getResponse()
         .getContentAsString();
@@ -147,7 +133,7 @@ class NotificationsContractTest extends PaymentsContractSupport {
     mockMvc
         .perform(MockMvcRequestBuilders.get(ADMIN_BELL).cookie(admin()))
         .andExpect(status().isOk())
-        .andExpect(bellContract())
+        .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.content").isEmpty())
         .andExpect(jsonPath("$.unreadCount").value(0));
   }

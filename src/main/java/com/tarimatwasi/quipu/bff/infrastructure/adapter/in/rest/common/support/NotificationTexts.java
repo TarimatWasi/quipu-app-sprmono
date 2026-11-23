@@ -6,8 +6,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The Spanish text of a notification, written when it is read from the facts it keeps: nothing
@@ -25,72 +30,86 @@ public final class NotificationTexts {
 
   private NotificationTexts() {}
 
+  /** Title and body with the facts to fill, by name between braces. */
+  private record Template(String title, String body) {}
+
+  private static final Pattern FACT = Pattern.compile("\\{(\\w+)\\}");
+
+  /** Every kind has its text: a kind without one stops the application when it loads. */
+  private static final Map<Kind, Template> TEMPLATES = templates();
+
+  private static Map<Kind, Template> templates() {
+    Map<Kind, Template> all = new EnumMap<>(Kind.class);
+    all.put(
+        Kind.FINE_APPLIED,
+        new Template(
+            "Nueva multa", "Se registró una multa de {amount} correspondiente a {month}."));
+    all.put(
+        Kind.CONTRACT_SIGNED,
+        new Template(
+            "Contrato registrado",
+            "Tu contrato empieza el {startDate}, con una renta mensual de {monthlyAmount}."));
+    all.put(
+        Kind.CONTRACT_TERMINATED,
+        new Template("Contrato finalizado", "La administración finalizó tu contrato."));
+    all.put(
+        Kind.PAYMENT_PROOF_SUBMITTED,
+        new Template(
+            "Comprobante por revisar", "Un huésped envió un pago de {amount}{of} para revisar."));
+    all.put(
+        Kind.ONBOARDING_COMPLETED,
+        new Template("Registro completado", "Un huésped terminó su registro."));
+    all.put(
+        Kind.GUEST_DOCUMENT_UPLOADED,
+        new Template("Documento nuevo", "Un huésped subió un documento."));
+    all.put(
+        Kind.CONTRACT_EXPIRING,
+        new Template("Contrato por vencer", "Un contrato termina el {endDate}."));
+    all.put(
+        Kind.PAYMENT_OVERDUE,
+        new Template("Pago vencido", "Un pago de {amount}{of} está vencido desde el {dueDate}."));
+    all.put(
+        Kind.PAYMENT_APPROVED,
+        new Template("Pago aprobado", "Tu pago de {amount}{of} fue aprobado."));
+    all.put(
+        Kind.PAYMENT_REJECTED,
+        new Template(
+            "Pago observado",
+            "Tu pago de {amount}{of} fue observado. Revisa el motivo y envíalo de nuevo."));
+    all.put(
+        Kind.REFUND_CREATED,
+        new Template(
+            "Devolución registrada", "Se registró una devolución de {amount} a tu favor."));
+    all.put(
+        Kind.PAYMENT_DUE,
+        new Template("Pago pendiente", "Tu pago de {amount}{of} vence el {dueDate}."));
+    for (Kind kind : Kind.values()) {
+      if (!all.containsKey(kind)) {
+        throw new IllegalStateException("The notification " + kind + " has no text");
+      }
+    }
+    return Collections.unmodifiableMap(all);
+  }
+
   /** The text of a kind of notification with its facts. */
   public static Text of(Kind kind, Map<String, String> facts) {
-    return switch (kind) {
-      case FINE_APPLIED ->
-          new Text(
-              "Nueva multa",
-              "Se registró una multa de "
-                  + soles(facts, "amount")
-                  + " correspondiente a "
-                  + month(facts, "month")
-                  + ".");
-      case CONTRACT_SIGNED ->
-          new Text(
-              "Contrato registrado",
-              "Tu contrato empieza el "
-                  + day(facts, "startDate")
-                  + ", con una renta mensual de "
-                  + soles(facts, "monthlyAmount")
-                  + ".");
-      case CONTRACT_TERMINATED ->
-          new Text("Contrato finalizado", "La administración finalizó tu contrato.");
-      case PAYMENT_PROOF_SUBMITTED ->
-          new Text(
-              "Comprobante por revisar",
-              "Un huésped envió un pago de "
-                  + soles(facts, "amount")
-                  + of(facts)
-                  + " para revisar.");
-      case ONBOARDING_COMPLETED ->
-          new Text("Registro completado", "Un huésped terminó su registro.");
-      case GUEST_DOCUMENT_UPLOADED -> new Text("Documento nuevo", "Un huésped subió un documento.");
-      case CONTRACT_EXPIRING ->
-          new Text("Contrato por vencer", "Un contrato termina el " + day(facts, "endDate") + ".");
-      case PAYMENT_OVERDUE ->
-          new Text(
-              "Pago vencido",
-              "Un pago de "
-                  + soles(facts, "amount")
-                  + of(facts)
-                  + " está vencido desde el "
-                  + day(facts, "dueDate")
-                  + ".");
-      case PAYMENT_APPROVED ->
-          new Text(
-              "Pago aprobado",
-              "Tu pago de " + soles(facts, "amount") + of(facts) + " fue aprobado.");
-      case PAYMENT_REJECTED ->
-          new Text(
-              "Pago observado",
-              "Tu pago de "
-                  + soles(facts, "amount")
-                  + of(facts)
-                  + " fue observado. Revisa el motivo y envíalo de nuevo.");
-      case REFUND_CREATED ->
-          new Text(
-              "Devolución registrada",
-              "Se registró una devolución de " + soles(facts, "amount") + " a tu favor.");
-      case PAYMENT_DUE ->
-          new Text(
-              "Pago pendiente",
-              "Tu pago de "
-                  + soles(facts, "amount")
-                  + of(facts)
-                  + " vence el "
-                  + day(facts, "dueDate")
-                  + ".");
+    Template template = Objects.requireNonNull(TEMPLATES.get(kind));
+    Matcher fact = FACT.matcher(template.body());
+    StringBuilder body = new StringBuilder();
+    while (fact.find()) {
+      fact.appendReplacement(body, Matcher.quoteReplacement(value(fact.group(1), facts)));
+    }
+    fact.appendTail(body);
+    return new Text(template.title(), body.toString());
+  }
+
+  /** A fact as the text shows it: amounts in soles, months and days in Spanish. */
+  private static String value(String name, Map<String, String> facts) {
+    return switch (name) {
+      case "amount", "monthlyAmount" -> soles(facts, name);
+      case "month" -> month(facts, name);
+      case "of" -> of(facts);
+      default -> day(facts, name);
     };
   }
 
