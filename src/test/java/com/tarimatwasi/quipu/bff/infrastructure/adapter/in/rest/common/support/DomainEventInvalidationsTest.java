@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
+import com.tarimatwasi.quipu.guest.domain.event.PersonalDataSaved;
 import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
 import com.tarimatwasi.quipu.shared.events.EventMetadata;
@@ -34,6 +35,15 @@ class DomainEventInvalidationsTest {
     public String subject() {
       return "other/1";
     }
+  }
+
+  /** A new name shows in the history too (DIRECTORY); other personal data only in the record. */
+  @Test
+  void personalData_isADirectoryChangeOnlyWhenTheNameChanged() {
+    assertThat(DomainEventInvalidations.changesOf(new PersonalDataSaved(META, 9L, true)))
+        .containsExactly(new Change(Kind.DIRECTORY, 9L, false, null, null));
+    assertThat(DomainEventInvalidations.changesOf(new PersonalDataSaved(META, 9L, false)))
+        .containsExactly(new Change(Kind.GUEST_RECORD, 9L, false, null, null));
   }
 
   @Test

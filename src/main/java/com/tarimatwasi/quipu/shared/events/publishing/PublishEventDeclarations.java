@@ -18,6 +18,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.expression.MethodBasedEvaluationContext;
 import org.springframework.core.DefaultParameterNameDiscoverer;
@@ -46,8 +47,17 @@ public class PublishEventDeclarations implements BeanPostProcessor {
   private static final Set<String> BUILT_IN = Set.of("result", "root", "this");
 
   private final ExpressionParser parser = new SpelExpressionParser();
-  private final ParameterNameDiscoverer names = new DefaultParameterNameDiscoverer();
+  private final ParameterNameDiscoverer names;
   private final Map<Method, List<Compiled>> compiled = new ConcurrentHashMap<>();
+
+  public PublishEventDeclarations() {
+    this(new DefaultParameterNameDiscoverer());
+  }
+
+  /** With the discoverer of the parameter names, which a class compiled without them lacks. */
+  PublishEventDeclarations(ParameterNameDiscoverer names) {
+    this.names = names;
+  }
 
   /** One declaration ready to build its event. */
   record Compiled(
@@ -192,7 +202,7 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     if (errors.size() > before) {
       return null;
     }
-    return compiled(where, declaration.type(), components, expressions, when, id, errors);
+    return compiled(declaration.type(), components, expressions, when, id);
   }
 
   /** The metadata of the event: its id is name-based on the declared key, if there is one. */
@@ -229,26 +239,20 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     }
   }
 
-  private static @Nullable Compiled compiled(
-      String where,
+  /** A record always has its canonical constructor: the one built from its components. */
+  private static Compiled compiled(
       Class<? extends DomainEvent> type,
       RecordComponent[] components,
       List<Expression> expressions,
       @Nullable Expression when,
-      @Nullable Expression id,
-      List<String> errors) {
+      @Nullable Expression id) {
     Class<?>[] types = new Class<?>[components.length];
     for (int i = 0; i < components.length; i++) {
       types[i] = components[i].getType();
     }
-    try {
-      Constructor<? extends DomainEvent> constructor = type.getDeclaredConstructor(types);
-      ReflectionUtils.makeAccessible(constructor);
-      return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when, id);
-    } catch (NoSuchMethodException e) {
-      errors.add(where + ": " + type.getSimpleName() + " has no canonical constructor");
-      return null;
-    }
+    Constructor<? extends DomainEvent> constructor = BeanUtils.getResolvableConstructor(type);
+    ReflectionUtils.makeAccessible(constructor);
+    return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when, id);
   }
 
   private static void checkVariables(

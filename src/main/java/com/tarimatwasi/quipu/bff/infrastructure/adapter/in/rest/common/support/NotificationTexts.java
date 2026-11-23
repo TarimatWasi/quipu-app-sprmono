@@ -43,12 +43,17 @@ public final class NotificationTexts {
     Map<Kind, Template> all = new EnumMap<>(Kind.class);
     forGuests(all);
     forAdministrators(all);
+    requireEveryKind(all);
+    return Collections.unmodifiableMap(all);
+  }
+
+  /** A kind without a text fails at startup, not when its first notification is read. */
+  static void requireEveryKind(Map<Kind, ?> texts) {
     for (Kind kind : Kind.values()) {
-      if (!all.containsKey(kind)) {
+      if (!texts.containsKey(kind)) {
         throw new IllegalStateException("The notification " + kind + " has no text");
       }
     }
-    return Collections.unmodifiableMap(all);
   }
 
   /** What the bell tells a guest about its own charges and contract. */

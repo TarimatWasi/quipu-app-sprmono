@@ -50,8 +50,9 @@ public class DayStartTrigger {
       return;
     }
     LocalDate today = LocalDate.now(clock);
-    LocalDate last = started.get();
-    if (today.equals(last) || !started.compareAndSet(last, today)) {
+    // In one atomic step: only the thread that moves the day forward finds a different one.
+    LocalDate last = started.getAndSet(today);
+    if (today.equals(last)) {
       return;
     }
     try {

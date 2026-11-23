@@ -47,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -266,6 +267,18 @@ class AdministratorServiceTest {
   @Test
   void anEmailTheProviderRefusesLeavesTheAccountCreatedWithEmailSentFalse() {
     when(mail.sendAccessLinkNow(anyString(), anyString(), any())).thenReturn(false);
+
+    AdministratorCreated created = service.create(command(PASSWORD));
+
+    assertThat(created.emailSent()).isFalse();
+    assertThat(users.findById(created.id())).isPresent();
+  }
+
+  /** The account is already committed: a failure of the database meanwhile only means no link. */
+  @Test
+  void aDatabaseFailureWhileSendingTheLinkLeavesTheAccountCreatedWithEmailSentFalse() {
+    when(mail.sendAccessLinkNow(anyString(), anyString(), any()))
+        .thenThrow(new DataAccessResourceFailureException("down"));
 
     AdministratorCreated created = service.create(command(PASSWORD));
 

@@ -78,6 +78,24 @@ class NotificationJdbcAdapterTest {
     assertThat(adapter.unreadCount(admins)).isEqualTo(1);
   }
 
+  /** A notification of the administrators may be about no guest at all. */
+  @Test
+  void aNotificationOfTheAdministratorsMayNameNoGuest() {
+    adapter.insert(
+        Notification.raised(
+            UUID.randomUUID(),
+            NotificationType.ONBOARDING_COMPLETED,
+            null,
+            TargetKind.GUEST,
+            TestIds.next(),
+            Map.of(),
+            T0));
+
+    assertThat(adapter.find(admins, false, PageQuery.first()).content())
+        .singleElement()
+        .satisfies(notification -> assertThat(notification.guestId()).isNull());
+  }
+
   @Test
   void pagesWalkTheInboxNewestFirstWithoutGapsOrRepeats() {
     List<Long> inserted = new ArrayList<>();

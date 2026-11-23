@@ -44,6 +44,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTransactions;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -311,6 +312,43 @@ class ContractServiceTest {
     when(contracts.insert(any())).thenThrow(failure);
 
     assertThatThrownBy(() -> service.create(request())).isSameAs(failure);
+    verify(files).delete(KEY);
+  }
+
+  /**
+   * The commit of the row was sent and its answer lost: the row may exist, so its file stays and
+   * the guest is logged to trace it, never the key (a removal there lost the file of committed
+   * rows).
+   */
+  @Test
+  void anUnknownOutcomeOfTheCommitKeepsTheFile(CapturedOutput output) {
+    freeEnvironmentAndActiveContractGuest();
+    when(files.store(PDF)).thenReturn(KEY);
+    when(contracts.insert(any())).thenReturn(stored(false, null));
+    when(files.signedUrl(KEY)).thenReturn(URL);
+
+    TestTransactions.endingWith(TestTransactions.UNKNOWN, () -> service.create(request()));
+
+    verify(files, never()).delete(any());
+    assertThat(output)
+        .contains("unknown outcome")
+        .contains(GUEST_ID.toString())
+        .doesNotContain(KEY);
+  }
+
+  /** In a transaction a failure leaves the removal to the rollback, which then removes it once. */
+  @Test
+  void inATransactionTheRollbackRemovesTheFile() {
+    freeEnvironmentAndActiveContractGuest();
+    when(files.store(PDF)).thenReturn(KEY);
+    var failure = new IllegalStateException("insert failed");
+    when(contracts.insert(any())).thenThrow(failure);
+
+    assertThatThrownBy(
+            () ->
+                TestTransactions.endingWith(
+                    TestTransactions.ROLLED_BACK, () -> service.create(request())))
+        .isSameAs(failure);
     verify(files).delete(KEY);
   }
 

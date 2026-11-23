@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Kind;
 import java.util.Map;
@@ -30,6 +31,22 @@ class NotificationTextsTest {
         .isEqualTo(
             "El acceso de un huésped venció el 13 de octubre de 2026 sin usarse: entrega"
                 + " uno nuevo.");
+  }
+
+  /** The period is named for a contract; a stay has none. */
+  @Test
+  void theProofOfAStayNamesNoPeriod() {
+    assertThat(
+            NotificationTexts.of(Kind.PAYMENT_PROOF_SUBMITTED, Map.of("amount", "150"), null)
+                .body())
+        .isEqualTo("Un huésped envió un pago de S/ 150.00 para revisar.");
+  }
+
+  @Test
+  void aKindWithoutATextIsRefused() {
+    assertThatThrownBy(() -> NotificationTexts.requireEveryKind(Map.of()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("has no text");
   }
 
   /** No template is left with a fact it cannot fill. */

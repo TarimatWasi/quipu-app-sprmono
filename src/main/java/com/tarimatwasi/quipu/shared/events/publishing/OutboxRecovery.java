@@ -42,9 +42,11 @@ public class OutboxRecovery {
   @TransactionalEventListener
   public void afterCommit(DomainEvent event) {
     Instant now = clock.instant();
-    Instant due = next.get();
-    // One thread wins the round; the others go on at once.
-    if (now.isBefore(due) || !next.compareAndSet(due, now.plus(EVERY))) {
+    // In one atomic step: a round that is due moves the next one forward, so exactly one thread
+    // finds it due (the one that moved it); the others, and any before the time, go on at once.
+    Instant due =
+        next.getAndAccumulate(now, (at, when) -> when.isBefore(at) ? at : when.plus(EVERY));
+    if (now.isBefore(due)) {
       return;
     }
     try {

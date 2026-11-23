@@ -88,8 +88,8 @@ class NotificationsContractTest extends PaymentsContractSupport {
         .doesNotContain("Ruido");
   }
 
-  @Test
-  void paymentCycle_notifiesTheAdministratorsThenTheGuest() throws Exception {
+  /** A guest sends a proof: the bell of the administrators gets its notification. */
+  private String proofReachesTheAdministrators() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.multipart("/bff/guest/payments")
@@ -111,6 +111,22 @@ class NotificationsContractTest extends PaymentsContractSupport {
                         .getResponse()
                         .getContentAsString(),
                 body -> JsonPath.<List<?>>read(body, "$.content").size() == 1);
+    return adminBell;
+  }
+
+  private String adminBell(String query) throws Exception {
+    return mockMvc
+        .perform(MockMvcRequestBuilders.get(ADMIN_BELL + query).cookie(admin()))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andReturn()
+        .getResponse()
+        .getContentAsString();
+  }
+
+  @Test
+  void paymentCycle_notifiesTheAdministratorsThenTheGuest() throws Exception {
+    String adminBell = proofReachesTheAdministrators();
     assertThat(JsonPath.<String>read(adminBell, "$.content[0].type"))
         .isEqualTo("PAYMENT_PROOF_SUBMITTED");
     assertThat(JsonPath.<String>read(adminBell, "$.content[0].body"))
@@ -168,6 +184,43 @@ class NotificationsContractTest extends PaymentsContractSupport {
         .andExpect(status().isNoContent());
 
     assertThat(JsonPath.<Integer>read(guestBell(""), "$.unreadCount")).isZero();
+  }
+
+  @Test
+  void anAdministratorReadsItsBellOneByOneOrAllAtOnce() throws Exception {
+    String id = JsonPath.read(proofReachesTheAdministrators(), "$.content[0].id");
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post(ADMIN_BELL + "/" + id + "/read")
+                .with(csrf())
+                .cookie(admin()))
+        .andExpect(status().isNoContent());
+    assertThat(JsonPath.<Integer>read(adminBell(""), "$.unreadCount")).isZero();
+    assertThat(JsonPath.<List<?>>read(adminBell("?unread=true"), "$.content")).isEmpty();
+
+    mockMvc
+        .perform(MockMvcRequestBuilders.post(ADMIN_BELL + "/read-all").with(csrf()).cookie(admin()))
+        .andExpect(status().isNoContent());
+    assertThat(JsonPath.<Object>read(adminBell(""), "$.content[0].readAt")).isNotNull();
+  }
+
+  /** A real id of the bell of a guest is, for an administrator, a notification it does not have. */
+  @Test
+  void theNotificationOfAGuest_isNotFoundForAnAdministrator() throws Exception {
+    fine();
+    awaitGuestNotification();
+    Long guestNotification = jdbc.queryForObject("SELECT id FROM notifications", Long.class);
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post(
+                    ADMIN_BELL + "/" + id(IdKind.NOTIFICATION, guestNotification) + "/read")
+                .with(csrf())
+                .cookie(admin()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value("La notificación no existe"));
   }
 
   @Test

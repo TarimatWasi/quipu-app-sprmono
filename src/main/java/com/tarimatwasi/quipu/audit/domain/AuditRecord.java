@@ -57,12 +57,9 @@ public record AuditRecord(
         event);
   }
 
+  /** QP-EVT-02 keeps every event in {@code <ROOT><module>.domain.event}. */
   private static String moduleOf(Class<?> type) {
     String name = type.getPackageName();
-    if (!name.startsWith(ROOT)) {
-      throw new IllegalArgumentException(type.getName() + " is not an event of Quipu");
-    }
-    int end = name.indexOf('.', ROOT.length());
-    return end < 0 ? name.substring(ROOT.length()) : name.substring(ROOT.length(), end);
+    return name.substring(ROOT.length(), name.indexOf('.', ROOT.length()));
   }
 }

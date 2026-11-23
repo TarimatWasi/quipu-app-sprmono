@@ -148,6 +148,60 @@ class ChangeStreamRegistryTest {
     }
   }
 
+  /** A new day of Lima changes what every screen derives from the date: everybody reloads. */
+  @Test
+  void dayChange_reloadsEveryRecipient() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false);
+        var other = subscribe(3L, 9L, false)) {
+      transaction(() -> streams.changed(new Change(Kind.DAY, null, false, null, null)), true);
+      assertThat(admin.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(guest.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(other.next()).contains("\"invalidate\":\"ALL\"");
+    }
+  }
+
+  /** A new name shows in the history of the guests that shared a resource with it too. */
+  @Test
+  void directoryChange_reachesItsGuestAndTheRelatedOnesOnly() throws Exception {
+    try (var guest = subscribe(2L, 5L, false);
+        var related = subscribe(3L, 9L, false);
+        var unrelated = subscribe(4L, 11L, false)) {
+      transaction(
+          () -> streams.changed(new Change(Kind.DIRECTORY, 5L, false, null, null, Set.of(9L))),
+          true);
+      assertThat(guest.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(related.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(unrelated.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  /** The bell of the administrators is shared; a guest hears only of its own. */
+  @Test
+  void notificationChange_namesOnlyTheBellOfItsReaders() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false)) {
+      transaction(
+          () -> streams.changed(new Change(Kind.NOTIFICATION, null, false, null, null)), true);
+      assertThat(admin.next()).contains("admin.notifications").doesNotContain("guest.");
+      assertThat(guest.next()).isEqualTo(": heartbeat\n\n");
+
+      transaction(
+          () -> streams.changed(new Change(Kind.NOTIFICATION, 5L, false, null, null)), true);
+      assertThat(guest.next()).contains("guest.notifications").doesNotContain("admin.");
+      assertThat(admin.next()).doesNotContain("admin.notifications");
+    }
+  }
+
+  /** An environment is the business of the administrators, even if a guest is named. */
+  @Test
+  void environmentChange_namesNothingForItsGuest() throws Exception {
+    try (var guest = subscribe(2L, 5L, false)) {
+      transaction(() -> streams.changed(new Change(Kind.ENVIRONMENT, 5L, false, null, 7L)), true);
+      assertThat(guest.next()).doesNotContain("admin.", "environment");
+    }
+  }
+
   @Test
   void changed_outsideTransaction_rejects() {
     assertThatThrownBy(() -> streams.changed(new Change(Kind.PAYMENT, 1L, true, 2L, 3L)))

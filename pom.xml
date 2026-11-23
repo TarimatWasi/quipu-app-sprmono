@@ -382,6 +382,29 @@
             </goals>
             <configuration>
               <rules>
+                <!-- QP-SPRMONO-CI-01: piso del total, en el nivel alcanzado al cubrir todo lo que
+                     cambió la rama de la plataforma de eventos; solo sube. Lo que cambia cada PR
+                     lo exige completo .github/scripts/DiffCoverage.java en CI. -->
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>INSTRUCTION</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.96</minimum>
+                    </limit>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.96</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.87</minimum>
+                    </limit>
+                  </limits>
+                </rule>
                 <rule>
                   <element>PACKAGE</element>
                   <includes>

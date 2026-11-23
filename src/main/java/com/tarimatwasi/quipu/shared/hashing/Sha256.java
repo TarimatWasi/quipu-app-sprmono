@@ -16,10 +16,15 @@ public final class Sha256 {
 
   /** The raw digest of the bytes. */
   public static byte[] digest(byte[] content) {
+    return digest(content, "SHA-256");
+  }
+
+  /** Every Java platform provides SHA-256 (MessageDigest); another algorithm may be missing. */
+  static byte[] digest(byte[] content, String algorithm) {
     try {
-      return MessageDigest.getInstance("SHA-256").digest(content);
+      return MessageDigest.getInstance(algorithm).digest(content);
     } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("Every Java platform provides SHA-256", e);
+      throw new IllegalStateException("No " + algorithm + " digest on this platform", e);
     }
   }
 

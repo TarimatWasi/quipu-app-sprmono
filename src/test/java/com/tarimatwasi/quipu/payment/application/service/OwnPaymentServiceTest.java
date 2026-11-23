@@ -28,6 +28,7 @@ import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.Peri
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.StayStatusView;
 import com.tarimatwasi.quipu.payment.application.port.in.PaymentAlreadyExistsForPeriodException;
+import com.tarimatwasi.quipu.payment.application.port.in.PaymentFileUnavailableException;
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.LivePaymentExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
@@ -59,6 +60,7 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.R2Failures;
 import com.tarimatwasi.quipu.support.TestIds;
+import com.tarimatwasi.quipu.support.TestTransactions;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -407,6 +409,40 @@ class OwnPaymentServiceTest {
     assertThat(output)
         .contains("guest " + GUEST + " stays in the bucket", "SdkClientException")
         .doesNotContain(KEY, R2Failures.HOST);
+  }
+
+  /** The commit was sent and its answer lost: the payment may exist, so its voucher stays. */
+  @Test
+  void uploadForPeriod_anUnknownOutcomeOfTheCommitKeepsTheVoucher(CapturedOutput output) {
+    openContract();
+    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    storedAs(PaymentStatus.PENDING);
+
+    TestTransactions.endingWith(
+        TestTransactions.UNKNOWN, () -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF)));
+
+    verify(files, never()).delete(any());
+    assertThat(output)
+        .contains("A voucher of guest " + GUEST + " stays in the bucket")
+        .doesNotContain(KEY);
+  }
+
+  /** Nothing reached the bucket yet: an unknown outcome has nothing to keep or to tell. */
+  @Test
+  void uploadForPeriod_anUnknownOutcomeBeforeAnyFileTellsNothing(CapturedOutput output) {
+    openContract();
+    when(payments.findLiveByPeriod(CONTRACT, OCTOBER)).thenReturn(Optional.empty());
+    when(files.store(PDF, VoucherType.PDF))
+        .thenThrow(new PaymentFileStorageException("down", R2Failures.clientFailure(KEY)));
+
+    assertThatThrownBy(
+            () ->
+                TestTransactions.endingWith(
+                    TestTransactions.UNKNOWN,
+                    () -> service.uploadForPeriod(forPeriod("2026-10", "800", PDF))))
+        .isInstanceOf(PaymentFileUnavailableException.class);
+    verify(files, never()).delete(any());
+    assertThat(output).doesNotContain("stays in the bucket");
   }
 
   @Test

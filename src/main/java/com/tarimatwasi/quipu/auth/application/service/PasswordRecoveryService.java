@@ -101,9 +101,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     UserAccount account = pending.account();
     boolean activation =
         account.role() == Role.ADMIN && userRepository.findName(account.id()).isEmpty();
-    if (activation && (name == null || name.isBlank())) {
-      throw new AdministratorNameRequiredException();
-    }
+    String chosenName = activation ? nameToActivate(name) : null;
     // Checked after the code and before consuming it: a weak password can be corrected.
     PasswordPolicy.require(newPassword);
     PasswordPolicy.requireNotTheCredential(newPassword, code);
@@ -111,12 +109,19 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     PasswordPolicy.requireNotALiveAccess(grants, account.guestId(), newPassword, now);
     String newHash = passwordEncoder.encode(newPassword);
-    facts.resetPassword(
-        account.id(), newHash, now, activation && name != null ? name.strip() : null);
+    facts.resetPassword(account.id(), newHash, now, chosenName);
     Long guestId = pending.account().guestId();
     if (guestId != null) {
       // A new password ends any access the administrator handed before.
       grants.revokeLive(guestId, now);
     }
+  }
+
+  /** The name an administrator writes when it activates its account; it cannot be left out. */
+  private static String nameToActivate(@Nullable String name) {
+    if (name == null || name.isBlank()) {
+      throw new AdministratorNameRequiredException();
+    }
+    return name.strip();
   }
 }

@@ -38,6 +38,7 @@ class ServiceBusyTest {
                     "x", new SQLException("lock timeout", "55P03"))))
         .isFalse();
     assertThat(ServiceBusy.causedBy(new DataAccessResourceFailureException("down"))).isFalse();
+    assertThat(ServiceBusy.causedBy(new SQLException("other", "23505"))).isFalse();
     assertThat(ServiceBusy.causedBy(new IllegalStateException())).isFalse();
     assertThat(ServiceBusy.causedBy(null)).isFalse();
   }
