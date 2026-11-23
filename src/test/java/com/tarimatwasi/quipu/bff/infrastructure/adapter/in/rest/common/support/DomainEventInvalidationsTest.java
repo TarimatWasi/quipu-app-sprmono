@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tarimatwasi.quipu.auth.application.port.in.SessionFingerprintUseCase;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
 import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
@@ -26,7 +27,7 @@ class DomainEventInvalidationsTest {
   private final ChangeStreamRegistry streams = mock(ChangeStreamRegistry.class);
   private final SessionFingerprintUseCase sessions = mock(SessionFingerprintUseCase.class);
   private final DomainEventInvalidations invalidations =
-      new DomainEventInvalidations(streams, sessions);
+      new DomainEventInvalidations(streams, sessions, mock(ManageEnvironmentsUseCase.class));
 
   record Unrelated(EventMetadata metadata) implements DomainEvent {
     @Override

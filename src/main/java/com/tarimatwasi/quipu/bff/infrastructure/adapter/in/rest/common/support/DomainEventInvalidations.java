@@ -7,11 +7,19 @@ import com.tarimatwasi.quipu.auth.domain.event.CredentialsChanged;
 import com.tarimatwasi.quipu.auth.domain.event.SessionRevoked;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentCreated;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentDeactivated;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentReactivated;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentRelabeled;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentUpdated;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseCreated;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseUpdated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
 import com.tarimatwasi.quipu.fine.domain.event.FineDeleted;
+import com.tarimatwasi.quipu.guest.domain.event.StayCreated;
+import com.tarimatwasi.quipu.guest.domain.event.StayUpdated;
 import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
 import com.tarimatwasi.quipu.payment.domain.event.PaymentCorrected;
 import com.tarimatwasi.quipu.payment.domain.event.PaymentRegistered;
@@ -38,11 +46,15 @@ import org.springframework.stereotype.Component;
 public class DomainEventInvalidations {
   private final ChangeStreamRegistry streams;
   private final SessionFingerprintUseCase sessions;
+  private final ManageEnvironmentsUseCase environments;
 
   public DomainEventInvalidations(
-      ChangeStreamRegistry streams, SessionFingerprintUseCase sessions) {
+      ChangeStreamRegistry streams,
+      SessionFingerprintUseCase sessions,
+      ManageEnvironmentsUseCase environments) {
     this.streams = streams;
     this.sessions = sessions;
+    this.environments = environments;
   }
 
   /** Security facts close streams; the others invalidate resources. */
@@ -62,6 +74,16 @@ public class DomainEventInvalidations {
                   : sessions.fingerprintOf(e.keptSessionId()).orElse(null));
       case AccountLocked e -> streams.accountLocked(e.userId());
       case AccountsDeactivated e -> e.userIds().forEach(streams::accountLocked);
+      // Labels also appear in historical payment and contract details: their readers refresh.
+      case EnvironmentRelabeled e ->
+          streams.changed(
+              new Change(
+                  Kind.DIRECTORY,
+                  null,
+                  false,
+                  null,
+                  e.environmentId(),
+                  environments.labelReadersOf(e.environmentId())));
       default -> changesOf(event).forEach(streams::changed);
     }
   }
@@ -103,6 +125,14 @@ public class DomainEventInvalidations {
                   Kind.FINANCIAL, e.guestId(), e.contractId(), e.paymentId(), e.environmentId()));
       case RefundCreated e ->
           List.of(new Change(Kind.FINANCIAL, e.guestId(), e.contract(), e.paymentId(), null));
+      case StayCreated e ->
+          List.of(new Change(Kind.STAY, e.guestId(), false, null, e.environmentId()));
+      case StayUpdated e ->
+          List.of(new Change(Kind.STAY, e.guestId(), false, null, e.environmentId()));
+      case EnvironmentCreated e -> List.of(environment(e.environmentId()));
+      case EnvironmentUpdated e -> List.of(environment(e.environmentId()));
+      case EnvironmentDeactivated e -> List.of(environment(e.environmentId()));
+      case EnvironmentReactivated e -> List.of(environment(e.environmentId()));
       default -> List.of();
     };
   }
@@ -114,6 +144,10 @@ public class DomainEventInvalidations {
       Long paymentId,
       @Nullable Long environmentId) {
     return new Change(kind, guestId, contractId != null, paymentId, environmentId);
+  }
+
+  private static Change environment(Long environmentId) {
+    return new Change(Kind.ENVIRONMENT, null, false, null, environmentId);
   }
 
   private static Change contract(Long guestId, Long environmentId) {

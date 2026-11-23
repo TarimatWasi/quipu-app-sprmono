@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.environment.application.port.in.InvalidEnvironmentC
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.CreateCommand;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentKind;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentState;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentUpdate;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentView;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.UpdateCommand;
@@ -25,7 +26,6 @@ import com.tarimatwasi.quipu.environment.application.port.out.EnvironmentReposit
 import com.tarimatwasi.quipu.environment.domain.Environment;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -40,12 +40,10 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class EnvironmentServiceTest {
-  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final Instant CREATED = Instant.parse("2026-10-01T15:00:00Z");
@@ -69,7 +67,7 @@ class EnvironmentServiceTest {
   @Mock EnvironmentOccupancyPort occupancy;
 
   private EnvironmentService service() {
-    return new EnvironmentService(repository, occupancy, CLOCK, changes);
+    return new EnvironmentService(repository, occupancy, CLOCK);
   }
 
   @Test
@@ -177,7 +175,8 @@ class EnvironmentServiceTest {
 
     var updated = service().update(ID, new UpdateCommand(0L, " 202 ", null));
 
-    assertThat(updated).isEqualTo(VIEW_201);
+    // The store answered the same label: the update states no relabel.
+    assertThat(updated).isEqualTo(new EnvironmentUpdate(VIEW_201, false));
   }
 
   @Test

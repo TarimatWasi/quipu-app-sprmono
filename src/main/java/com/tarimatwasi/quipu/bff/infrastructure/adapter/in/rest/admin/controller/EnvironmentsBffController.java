@@ -138,9 +138,11 @@ public class EnvironmentsBffController {
   public EnvironmentResponse update(
       @PathVariable UUID id, @Valid @RequestBody UpdateEnvironmentRequest request) {
     return single(
-        environments.update(
-            ids.unmask(IdKind.ENVIRONMENT, id),
-            new UpdateCommand(request.version(), request.code(), request.type())));
+        environments
+            .update(
+                ids.unmask(IdKind.ENVIRONMENT, id),
+                new UpdateCommand(request.version(), request.code(), request.type()))
+            .view());
   }
 
   /** RF-13: the environment leaves the operational listings but keeps its history (RN-12). */

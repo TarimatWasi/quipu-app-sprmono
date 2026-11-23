@@ -16,7 +16,9 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.guest.domain.event.StayCreated;
+import com.tarimatwasi.quipu.guest.domain.event.StayUpdated;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -51,7 +53,6 @@ public class StayService implements ManageStaysUseCase {
   /** The id that no stay has, for a stay that is not stored yet. */
   private static final Long NO_STAY = -1L;
 
-  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final StayRepositoryPort stays;
   private final StayEnvironmentPort environments;
@@ -61,9 +62,7 @@ public class StayService implements ManageStaysUseCase {
       GuestRepositoryPort guests,
       StayRepositoryPort stays,
       StayEnvironmentPort environments,
-      ContractOccupancyQuery contracts,
-      ChangeSignals changes) {
-    this.changes = changes;
+      ContractOccupancyQuery contracts) {
     this.guests = guests;
     this.stays = stays;
     this.environments = environments;
@@ -127,6 +126,16 @@ public class StayService implements ManageStaysUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = StayCreated.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.environmentId()",
+        "#result.startDate()",
+        "#result.endDate()",
+        "#result.agreedAmount()"
+      })
   public StayView create(Long guestId, NewStay stay) {
     validate(stay.startDate(), stay.endDate(), stay.agreedAmount());
     // TAR-237: the global lock order is environment, guest, contract, payment.
@@ -143,12 +152,21 @@ public class StayService implements ManageStaysUseCase {
     Stay saved =
         stays.insert(
             guestId, stay.environmentId(), stay.startDate(), stay.endDate(), stay.agreedAmount());
-    changed(saved);
     return view(saved);
   }
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = StayUpdated.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.environmentId()",
+        "#result.startDate()",
+        "#result.endDate()",
+        "#result.agreedAmount()"
+      })
   public StayView update(Long guestId, Long stayId, StayChange change) {
     if (change.environmentId() == null
         && change.startDate() == null
@@ -187,10 +205,6 @@ public class StayService implements ManageStaysUseCase {
     }
     Stay saved =
         stays.update(new Stay(stayId, guestId, start, end, amount, target, current.version()));
-    changed(saved);
-    if (!Objects.equals(current.environmentId(), saved.environmentId())) {
-      changed(current);
-    }
     return view(saved);
   }
 
@@ -235,16 +249,6 @@ public class StayService implements ManageStaysUseCase {
                         stay.endDate()))
             .toList();
     return Occupancy.firstCrossing(others, start, end);
-  }
-
-  /**
-   * The guest row stays locked until the commit, so two simultaneous writes of the stays of one
-   * guest are checked for overlap one after the other.
-   */
-  private void changed(Stay stay) {
-    changes.changed(
-        new ChangeSignals.Change(
-            ChangeSignals.Kind.STAY, stay.guestId(), false, null, stay.environmentId()));
   }
 
   private Guest lockedGuest(Long guestId) {
