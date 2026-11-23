@@ -384,6 +384,24 @@ class AccountJwtAuthenticationConverterTest {
     }
   }
 
+  /**
+   * A token that does not say when it was issued is not one of ours. The decoder of Spring fills a
+   * missing issue time from the expiry, so this guards a Jwt that reaches the converter otherwise.
+   */
+  @Test
+  void aTokenWithoutItsIssueTimeIsRefused() {
+    Jwt withoutIssueTime =
+        Jwt.withTokenValue("t")
+            .header("alg", "HS256")
+            .subject(inSession.mask(IdKind.USER, id).toString())
+            .claim(AccessSessions.SESSION_ID_CLAIM, SESSION)
+            .expiresAt(NOW.plusSeconds(600))
+            .build();
+
+    assertThatThrownBy(() -> converter.convert(withoutIssueTime))
+        .isInstanceOf(InvalidBearerTokenException.class);
+  }
+
   @Test
   void aVersionChangeRevokesTokensEvenWhenTheClockHasNotAdvanced() {
     when(users.findById(id)).thenReturn(Optional.of(account(Role.ADMIN, "ACTIVE", false, null)));

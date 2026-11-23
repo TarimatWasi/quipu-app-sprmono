@@ -61,14 +61,16 @@ public class AccountJwtAuthenticationConverter
     if (subject == null) {
       throw invalid("The token has no subject");
     }
-    MaskSession session = sessionOf(jwt);
-    requireOpen(jwt);
+    String sessionId = sessionIdOf(jwt);
+    MaskSession session = maskOf(sessionId);
+    requireOpen(jwt, sessionId);
     UserAccount account = accountOf(session, subject);
     Object version = jwt.getClaim(JwtTokenProvider.SECURITY_VERSION_CLAIM);
-    if (!(version instanceof Long || version instanceof Integer)
-        || ((Number) version).longValue() < 0
+    // A JSON number of the token is read as a Long: anything else is not a version.
+    if (!(version instanceof Long number)
+        || number < 0
         || account.isDisabled()
-        || ((Number) version).longValue() != account.securityVersion()) {
+        || number != account.securityVersion()) {
       throw invalid("The session is no longer valid");
     }
     List<GrantedAuthority> authorities = new ArrayList<>();
@@ -88,21 +90,22 @@ public class AccountJwtAuthenticationConverter
    * their session is not closed (logout, reuse of a refresh token, a password changed elsewhere)
    * nor past its absolute expiry.
    */
-  private void requireOpen(Jwt jwt) {
-    String sessionId = jwt.getClaimAsString(AccessSessions.SESSION_ID_CLAIM);
+  private void requireOpen(Jwt jwt, String sessionId) {
     if (!Boolean.TRUE.equals(jwt.getClaim(JwtTokenProvider.STORED_SESSION_CLAIM))
-        || sessionId == null
         || sessions.isClosed(SessionStorePort.hash(sessionId), clock.instant())) {
       throw invalid("The session is no longer valid");
     }
   }
 
   /** The value is a credential of the session: no message repeats it. */
-  private MaskSession sessionOf(Jwt jwt) {
-    Object claim = jwt.getClaim(AccessSessions.SESSION_ID_CLAIM);
-    if (!(claim instanceof String sessionId)) {
+  private static String sessionIdOf(Jwt jwt) {
+    if (!(jwt.getClaim(AccessSessions.SESSION_ID_CLAIM) instanceof String sessionId)) {
       throw invalid("The session is no longer valid");
     }
+    return sessionId;
+  }
+
+  private MaskSession maskOf(String sessionId) {
     try {
       return masker.session(sessionId);
     } catch (IllegalArgumentException notASession) {

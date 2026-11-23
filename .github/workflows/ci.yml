@@ -32,7 +32,9 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: java .github/scripts/DiffCoverage.java target/site/jacoco/jacoco.xml "origin/$BASE_REF"
+        run: >-
+          java src/test/java/com/tarimatwasi/quipu/support/DiffCoverage.java
+          target/site/jacoco/jacoco.xml "origin/$BASE_REF"
       # El reporte de cada corrida queda como artefacto: la cobertura de cada cambio, registrada.
       - name: Reporte de cobertura
         if: always()

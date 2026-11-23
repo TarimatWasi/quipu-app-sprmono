@@ -548,9 +548,8 @@ class OwnPaymentServiceTest {
             List.of(
                 contract(OLD_CONTRACT, "2026-07-01", "2026-08-31", null),
                 contract(CONTRACT, "2026-09-01", null, null)));
-    when(payments.findAllByContract(OLD_CONTRACT)).thenReturn(List.of());
     Long rejected = TestIds.next();
-    when(payments.findAllByContract(CONTRACT))
+    when(payments.findAllByContracts(List.of(OLD_CONTRACT, CONTRACT)))
         .thenReturn(
             List.of(
                 payment(PAYMENT, PaymentStatus.APPROVED, YearMonth.of(2026, 9), null),

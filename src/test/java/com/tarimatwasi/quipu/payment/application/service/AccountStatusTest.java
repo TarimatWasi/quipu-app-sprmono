@@ -114,7 +114,7 @@ class AccountStatusTest {
   void anInactiveGuestWithAContractHasEveryChargedPeriodClassified() {
     when(guests.profileOf(GUEST)).thenReturn(guest(true, false));
     when(contracts.contractsOf(GUEST)).thenReturn(List.of(contractFromSeptember()));
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(approved(SEPTEMBER)));
+    when(payments.findAllByContracts(List.of(CONTRACT))).thenReturn(List.of(approved(SEPTEMBER)));
 
     List<PeriodView> periods = service.accountStatus(GUEST);
 
@@ -135,7 +135,7 @@ class AccountStatusTest {
     when(contracts.contractsOf(GUEST)).thenReturn(List.of());
 
     assertThat(service.accountStatus(GUEST)).isEmpty();
-    verify(payments, never()).findAllByContract(any());
+    verify(payments, never()).findAllByContracts(any());
   }
 
   @Test
@@ -150,7 +150,7 @@ class AccountStatusTest {
   @Test
   void anEnvironmentHasThePeriodsOfItsCurrentContractOnly() {
     when(contracts.currentContractsOf(ENVIRONMENT)).thenReturn(List.of(contractFromSeptember()));
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(approved(SEPTEMBER)));
+    when(payments.findAllByContracts(List.of(CONTRACT))).thenReturn(List.of(approved(SEPTEMBER)));
 
     List<PeriodView> periods = service.environmentAccountStatus(ENVIRONMENT);
 
@@ -169,7 +169,7 @@ class AccountStatusTest {
     when(contracts.currentContractsOf(ENVIRONMENT)).thenReturn(List.of());
 
     assertThat(service.environmentAccountStatus(ENVIRONMENT)).isEmpty();
-    verify(payments, never()).findAllByContract(any());
+    verify(payments, never()).findAllByContracts(any());
   }
 
   @Test
