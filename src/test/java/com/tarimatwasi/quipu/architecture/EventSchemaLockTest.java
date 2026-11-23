@@ -60,7 +60,8 @@ class EventSchemaLockTest {
     listeners.stream().sorted().forEach(current::add);
 
     if (Boolean.getBoolean("events.lock.update")) {
-      Files.write(LOCK, current, StandardCharsets.UTF_8);
+      // LF on every platform, as .gitattributes keeps it.
+      Files.writeString(LOCK, String.join("\n", current) + "\n", StandardCharsets.UTF_8);
     }
     List<String> locked = Files.readAllLines(LOCK, StandardCharsets.UTF_8);
     assertVersionsRaised(locked, events);
