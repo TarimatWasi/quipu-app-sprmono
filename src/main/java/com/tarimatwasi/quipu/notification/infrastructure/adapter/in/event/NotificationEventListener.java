@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.notification.infrastructure.adapter.in.event;
 
+import com.tarimatwasi.quipu.contract.domain.event.ContractExpiring;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
@@ -9,16 +10,20 @@ import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationU
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Kind;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.NewNotification;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Target;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentDue;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentOverdue;
 import com.tarimatwasi.quipu.payment.domain.event.PaymentResolved;
 import com.tarimatwasi.quipu.payment.domain.event.PaymentResubmitted;
 import com.tarimatwasi.quipu.payment.domain.event.PaymentSubmitted;
 import com.tarimatwasi.quipu.payment.domain.event.RefundCreated;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
+import com.tarimatwasi.quipu.shared.events.delivery.DurableListener;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
-import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -33,7 +38,7 @@ public class NotificationEventListener {
     this.notifications = notifications;
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(FineApplied fine) {
     raise(
         fine,
@@ -44,7 +49,7 @@ public class NotificationEventListener {
         Map.of("amount", fine.amount().toPlainString(), "month", fine.month().toString()));
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(ContractSigned contract) {
     raise(
         contract,
@@ -59,7 +64,7 @@ public class NotificationEventListener {
             contract.monthlyAmount().toPlainString()));
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(ContractTerminated contract) {
     raise(
         contract,
@@ -70,7 +75,7 @@ public class NotificationEventListener {
         Map.of());
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(PaymentSubmitted payment) {
     raise(
         payment,
@@ -81,7 +86,7 @@ public class NotificationEventListener {
         paid(payment.amount(), payment.period()));
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(PaymentResubmitted payment) {
     raise(
         payment,
@@ -92,7 +97,7 @@ public class NotificationEventListener {
         paid(payment.amount(), payment.period()));
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(PaymentResolved payment) {
     raise(
         payment,
@@ -103,7 +108,7 @@ public class NotificationEventListener {
         paid(payment.amount(), payment.period()));
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(RefundCreated refund) {
     raise(
         refund,
@@ -114,7 +119,7 @@ public class NotificationEventListener {
         Map.of("amount", refund.amount().toPlainString()));
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(OnboardingCompleted onboarding) {
     raise(
         onboarding,
@@ -125,7 +130,7 @@ public class NotificationEventListener {
         Map.of());
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(GuestDocumentUploaded document) {
     raise(
         document,
@@ -134,6 +139,46 @@ public class NotificationEventListener {
         Target.DOCUMENT,
         document.documentId(),
         Map.of());
+  }
+
+  @DurableListener
+  public void on(PaymentDue due) {
+    raise(
+        due,
+        Kind.PAYMENT_DUE,
+        due.guestId(),
+        due.contractId() != null ? Target.CONTRACT : Target.GUEST,
+        due.contractId() != null ? due.contractId() : due.guestId(),
+        dated(paid(due.amount(), due.period()), due.dueDate()));
+  }
+
+  @DurableListener
+  public void on(PaymentOverdue overdue) {
+    raise(
+        overdue,
+        Kind.PAYMENT_OVERDUE,
+        overdue.guestId(),
+        Target.GUEST,
+        overdue.guestId(),
+        dated(paid(overdue.amount(), overdue.period()), overdue.dueDate()));
+  }
+
+  @DurableListener
+  public void on(ContractExpiring contract) {
+    raise(
+        contract,
+        Kind.CONTRACT_EXPIRING,
+        contract.guestId(),
+        Target.CONTRACT,
+        contract.contractId(),
+        Map.of("endDate", contract.endDate().toString()));
+  }
+
+  /** The facts with the due date of the charge. */
+  private static Map<String, String> dated(Map<String, String> facts, LocalDate dueDate) {
+    Map<String, String> all = new HashMap<>(facts);
+    all.put("dueDate", dueDate.toString());
+    return all;
   }
 
   /** The amount and, for a period of a contract, its month. */

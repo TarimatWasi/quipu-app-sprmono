@@ -9,7 +9,6 @@ import com.tarimatwasi.quipu.payment.application.port.in.ManageRefundsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.ManageRefundsUseCase.PendingCreditView;
 import com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase.ChargeState;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
-import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.ContractInfo;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort.GuestContract;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentEnvironmentPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentGuestPort;
@@ -20,19 +19,17 @@ import com.tarimatwasi.quipu.payment.application.port.out.PaymentRepositoryPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.ChargedStay;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort.StayRef;
+import com.tarimatwasi.quipu.payment.application.service.ChargeBook.Charge;
 import com.tarimatwasi.quipu.payment.domain.BusinessDay;
-import com.tarimatwasi.quipu.payment.domain.CreditLedger;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
 import com.tarimatwasi.quipu.payment.domain.PaymentsOverview;
 import com.tarimatwasi.quipu.payment.domain.PeriodState;
-import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -40,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -66,6 +62,7 @@ public class AdminDashboardService implements AdminDashboardUseCase {
   private final ManagePaymentsUseCase queue;
   private final ManageRefundsUseCase refunds;
   private final Clock clock;
+  private final ChargeBook book;
 
   AdminDashboardService(
       PaymentRepositoryPort payments,
@@ -82,22 +79,8 @@ public class AdminDashboardService implements AdminDashboardUseCase {
     this.queue = queue;
     this.refunds = refunds;
     this.clock = clock;
+    this.book = new ChargeBook(payments);
   }
-
-  /** A charge before the guest and the environment are named. */
-  private record Charge(
-      Long guestId,
-      boolean contractType,
-      @Nullable Long environmentId,
-      @Nullable Long contractId,
-      @Nullable Long stayId,
-      @Nullable YearMonth period,
-      @Nullable LocalDate stayStartDate,
-      @Nullable LocalDate stayEndDate,
-      BigDecimal amount,
-      LocalDate dueDate,
-      PeriodState state,
-      @Nullable Long paymentId) {}
 
   /** Everything the home shows, before the guests and the environments are named. */
   private record Read(
@@ -151,9 +134,9 @@ public class AdminDashboardService implements AdminDashboardUseCase {
     List<Charge> ofToday = new ArrayList<>();
     List<Charge> overdue = new ArrayList<>();
     List<GuestContract> allContracts = contracts.allContracts();
-    readContracts(allContracts, today, ofToday, overdue);
+    book.readContracts(allContracts, today, ofToday, overdue);
     List<ChargedStay> allStays = stays.allStays();
-    readStays(allStays, today, ofToday, overdue);
+    book.readStays(allStays, today, ofToday, overdue);
     overdue.sort(Comparator.comparing(Charge::dueDate).thenComparing(Charge::guestId));
     List<Payment> rejected = payments.findByStatus(PaymentStatus.REJECTED);
     Payment oldestRejected =
@@ -197,85 +180,6 @@ public class AdminDashboardService implements AdminDashboardUseCase {
       total = total.add(amount);
     }
     return total;
-  }
-
-  /** The period of the current month of each active contract, and every overdue period. */
-  private void readContracts(
-      List<GuestContract> all, LocalDate today, List<Charge> ofToday, List<Charge> overdue) {
-    if (all.isEmpty()) {
-      return;
-    }
-    Map<Long, List<Payment>> byContract =
-        payments.findAllByContracts(all.stream().map(c -> c.contract().id()).toList()).stream()
-            .collect(Collectors.groupingBy(p -> Objects.requireNonNull(p.contractId())));
-    YearMonth month = YearMonth.from(today);
-    for (GuestContract owned : all) {
-      ContractInfo contract = owned.contract();
-      CreditLedger ledger =
-          CreditLedger.of(
-              contract.terms(),
-              contract.monthlyAmount(),
-              byContract.getOrDefault(contract.id(), List.of()),
-              today);
-      for (CreditLedger.Line line : ledger.lines()) {
-        Charge charge =
-            new Charge(
-                owned.guestId(),
-                true,
-                contract.environmentId(),
-                contract.id(),
-                null,
-                line.period(),
-                null,
-                null,
-                line.amountDue(),
-                line.status().dueDate(),
-                line.status().state(),
-                line.status().paymentId());
-        if (line.period().equals(month) && contract.terms().activeOn(today)) {
-          ofToday.add(charge);
-        }
-        if (line.status().state() == PeriodState.OVERDUE) {
-          overdue.add(charge);
-        }
-      }
-    }
-  }
-
-  /** The stay in force today of each guest, and every overdue stay. */
-  private void readStays(
-      List<ChargedStay> all, LocalDate today, List<Charge> ofToday, List<Charge> overdue) {
-    if (all.isEmpty()) {
-      return;
-    }
-    Map<Long, List<Payment>> byStay =
-        payments.findAllByStays(all.stream().map(s -> s.stay().id()).toList()).stream()
-            .collect(Collectors.groupingBy(p -> Objects.requireNonNull(p.stayId())));
-    for (ChargedStay owned : all) {
-      StayRef stay = owned.stay();
-      StayPayments.StayStatus status =
-          StayPayments.status(stay.endDate(), byStay.getOrDefault(stay.id(), List.of()), today);
-      Charge charge =
-          new Charge(
-              owned.guestId(),
-              false,
-              stay.environmentId(),
-              null,
-              stay.id(),
-              null,
-              stay.startDate(),
-              stay.endDate(),
-              stay.agreedAmount(),
-              stay.endDate(),
-              status.state(),
-              status.paymentId());
-      if (!stay.startDate().isAfter(today) && !stay.endDate().isBefore(today)) {
-        ofToday.add(charge);
-      }
-      if (status.state() == PeriodState.OVERDUE) {
-        overdue.add(charge);
-      }
-    }
   }
 
   /** RN-07: the active contracts that end within the days ahead, the one ending first first. */

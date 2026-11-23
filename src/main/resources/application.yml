@@ -60,14 +60,14 @@ spring:
       shutdown:
         await-termination: true
         await-termination-period: 8s
-  # Eventos de dominio (outbox de Spring Modulith). Solo los @ApplicationModuleListener (durables:
+  # Eventos de dominio (outbox de Spring Modulith). Solo los @DurableListener (durables, en su propio ejecutor:
   # auditoría) dejan fila en event_publication; las invalidaciones en vivo (@TransactionalEventListener
   # en memoria) no. La tabla la crea Flyway (V2). Una publicación completada se borra: el hecho ya
   # quedó en audit_event. Las pendientes (listener caído o rechazado por el ejecutor) se republican
   # al arrancar; los listeners son idempotentes por id de evento.
   modulith:
     events:
-      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
+      registry-trigger-annotation: com.tarimatwasi.quipu.shared.events.delivery.DurableListener
       completion-mode: delete
       republish-outstanding-events-on-restart: true
       jdbc:
@@ -83,6 +83,9 @@ spring:
 # Sesión (TAR-62 PR3: pasa a @ConfigurationProperties con Duration de 30 días). El secreto viene
 # siempre del entorno: sin valor por defecto en ningún perfil.
 app:
+  # El día hábil de Lima como hecho de dominio: lo inicia el tráfico (sin tarea programada).
+  calendar:
+    traffic-trigger: true
   # TAR-371, ADR-SSE-01: bounded single-instance registry, heartbeat without database access.
   changes:
     per-account: 4

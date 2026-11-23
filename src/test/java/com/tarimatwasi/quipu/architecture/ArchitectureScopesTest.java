@@ -64,6 +64,7 @@ class ArchitectureScopesTest {
             "audit",
             "auth",
             "bff",
+            "calendar",
             "contract",
             "environment",
             "expense",

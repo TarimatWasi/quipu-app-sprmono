@@ -21,6 +21,7 @@ class ModulithTest {
             "audit",
             "auth",
             "bff",
+            "calendar",
             "contract",
             "environment",
             "expense",

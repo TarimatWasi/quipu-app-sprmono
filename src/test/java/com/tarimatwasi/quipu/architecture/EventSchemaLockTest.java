@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.architecture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
+import com.tarimatwasi.quipu.shared.events.delivery.DurableListener;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -20,7 +21,6 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
-import org.springframework.modulith.events.ApplicationModuleListener;
 
 /**
  * QP-EVT-05: the outbox stores each event by class name and each durable delivery by listener
@@ -50,7 +50,7 @@ class EventSchemaLockTest {
     List<String> listeners = new ArrayList<>();
     for (JavaClass type : classes) {
       for (JavaMethod method : type.getMethods()) {
-        if (method.isAnnotatedWith(ApplicationModuleListener.class)) {
+        if (method.isAnnotatedWith(DurableListener.class)) {
           listeners.add("listener " + method.getFullName());
         }
       }

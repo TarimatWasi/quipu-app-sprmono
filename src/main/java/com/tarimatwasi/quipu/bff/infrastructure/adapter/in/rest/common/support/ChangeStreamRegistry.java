@@ -151,6 +151,7 @@ public class ChangeStreamRegistry implements ChangeSignals {
             if (subscription.active
                 && subscription.reason == null
                 && (subscription.administrator
+                    || change.kind() == Kind.DAY
                     || (change.guestId() != null && change.guestId().equals(subscription.guestId))
                     || change.relatedGuests().contains(subscription.guestId))) {
               subscription.add(change);
@@ -353,6 +354,11 @@ public class ChangeStreamRegistry implements ChangeSignals {
               key("admin.guest", IdKind.GUEST, change.guestId());
             }
           }
+        }
+        case DAY -> {
+          // A new day of Lima changes what the date derives (dues, arrears, terms): all reload.
+          all = true;
+          keys.clear();
         }
         case NOTIFICATION -> {
           // A null guest is the shared bell of the administrators; a guest only gets its own.

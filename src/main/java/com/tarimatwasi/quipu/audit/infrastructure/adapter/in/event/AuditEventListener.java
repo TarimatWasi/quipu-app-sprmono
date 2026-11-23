@@ -2,7 +2,7 @@ package com.tarimatwasi.quipu.audit.infrastructure.adapter.in.event;
 
 import com.tarimatwasi.quipu.audit.application.port.in.RecordAuditUseCase;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
-import org.springframework.modulith.events.ApplicationModuleListener;
+import com.tarimatwasi.quipu.shared.events.delivery.DurableListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,7 +17,7 @@ public class AuditEventListener {
     this.audit = audit;
   }
 
-  @ApplicationModuleListener
+  @DurableListener
   public void on(DomainEvent event) {
     audit.record(event);
   }

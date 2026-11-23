@@ -106,6 +106,17 @@ final class EventRules {
           .should()
           .callMethodWhere(JavaCall.Predicates.target(HasName.Predicates.name("publishEvent")));
 
+  /** QP-EVT-06: only the work a domain event starts acts as the system, never a request. */
+  @ArchTest
+  static final ArchRule QP_EVT_06 =
+      noClasses()
+          .that()
+          .resideOutsideOfPackages(
+              "..adapter.in.event..", ArchitectureRules.ROOT + ".shared.access")
+          .should()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName(ArchitectureRules.ROOT + ".shared.access.SystemActor");
+
   private static ArchCondition<JavaClass> beRecordsOfFacts() {
     return new ArchCondition<>("be records of facts after their EventMetadata") {
       @Override

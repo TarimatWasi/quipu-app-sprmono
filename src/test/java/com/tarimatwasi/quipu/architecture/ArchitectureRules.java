@@ -57,6 +57,7 @@ final class ArchitectureRules {
           "audit",
           "auth",
           "bff",
+          "calendar",
           "contract",
           "environment",
           "expense",
@@ -412,7 +413,8 @@ final class ArchitectureRules {
                   .or()
                   .areAnnotatedWith(Async.class)
                   .should()
-                  .resideInAPackage("..adapter.out..")
+                  // QP-EVT: DurableListener, the delivery of domain events, names its own executor.
+                  .resideInAnyPackage("..adapter.out..", ROOT + ".shared.events.delivery")
                   .because("@EnableAsync and a class-level @Async belong to the output adapters")
                   .allowEmptyShould(true))
           .and(

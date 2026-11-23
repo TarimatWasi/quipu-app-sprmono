@@ -56,8 +56,17 @@ public final class NotificationTexts {
       case ONBOARDING_COMPLETED ->
           new Text("Registro completado", "Un huésped terminó su registro.");
       case GUEST_DOCUMENT_UPLOADED -> new Text("Documento nuevo", "Un huésped subió un documento.");
-      case CONTRACT_EXPIRING -> new Text("Contrato por vencer", "Un contrato vence pronto.");
-      case PAYMENT_OVERDUE -> new Text("Pago vencido", "Un huésped tiene un pago vencido.");
+      case CONTRACT_EXPIRING ->
+          new Text("Contrato por vencer", "Un contrato termina el " + day(facts, "endDate") + ".");
+      case PAYMENT_OVERDUE ->
+          new Text(
+              "Pago vencido",
+              "Un pago de "
+                  + soles(facts, "amount")
+                  + of(facts)
+                  + " está vencido desde el "
+                  + day(facts, "dueDate")
+                  + ".");
       case PAYMENT_APPROVED ->
           new Text(
               "Pago aprobado",
@@ -73,7 +82,15 @@ public final class NotificationTexts {
           new Text(
               "Devolución registrada",
               "Se registró una devolución de " + soles(facts, "amount") + " a tu favor.");
-      case PAYMENT_DUE -> new Text("Pago por vencer", "Tienes un pago por vencer.");
+      case PAYMENT_DUE ->
+          new Text(
+              "Pago pendiente",
+              "Tu pago de "
+                  + soles(facts, "amount")
+                  + of(facts)
+                  + " vence el "
+                  + day(facts, "dueDate")
+                  + ".");
     };
   }
 

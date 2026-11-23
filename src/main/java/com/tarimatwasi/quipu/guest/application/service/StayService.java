@@ -105,6 +105,8 @@ public class StayService implements ManageStaysUseCase {
   }
 
   @Override
+  // The sweep of the business day reads every stay as the system (SystemActor).
+  @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM')")
   @Transactional(readOnly = true)
   public List<StayView> all() {
     return stays.findEvery().stream().map(StayService::view).toList();

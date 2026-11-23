@@ -23,7 +23,8 @@ public interface ChangeSignals {
     EXPENSE,
     FINE,
     DIRECTORY,
-    NOTIFICATION
+    NOTIFICATION,
+    DAY
   }
 
   /** Internal references only; ids are masked separately for every receiving session. */

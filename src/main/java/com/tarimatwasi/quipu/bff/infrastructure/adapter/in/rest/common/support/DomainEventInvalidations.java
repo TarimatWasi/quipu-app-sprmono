@@ -8,6 +8,7 @@ import com.tarimatwasi.quipu.auth.domain.event.GuestAccountEmailChanged;
 import com.tarimatwasi.quipu.auth.domain.event.SessionRevoked;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Change;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Kind;
+import com.tarimatwasi.quipu.calendar.domain.event.BusinessDayStarted;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
@@ -105,6 +106,9 @@ public class DomainEventInvalidations {
 
   /** The resource groups a fact touches; empty for facts no open screen shows. */
   static List<Change> changesOf(DomainEvent event) {
+    if (event instanceof BusinessDayStarted) {
+      return List.of(new Change(Kind.DAY, null, false, null, null));
+    }
     List<Change> found = finance(event);
     if (found.isEmpty()) {
       found = occupancy(event);

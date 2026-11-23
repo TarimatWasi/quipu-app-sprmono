@@ -1,6 +1,9 @@
 # Valores solo para pruebas (no son secretos): el secreto JWT nunca tiene valor por defecto en
 # src/main/resources, así que las pruebas lo fijan aquí.
 app:
+  # Las pruebas inician sus días ellas mismas: el tráfico no barre vencimientos en otros tests.
+  calendar:
+    traffic-trigger: false
   jwt:
     secret: test-secret-test-secret-test-secret-test-secret
   # Las pruebas de integración hacen muchas peticiones desde la misma dirección.
