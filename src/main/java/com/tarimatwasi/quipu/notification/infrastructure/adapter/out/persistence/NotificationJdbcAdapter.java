@@ -15,14 +15,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -35,11 +35,11 @@ import tools.jackson.databind.json.JsonMapper;
 public class NotificationJdbcAdapter implements NotificationRepositoryPort {
   private static final TypeReference<Map<String, String>> FACTS = new TypeReference<>() {};
 
-  private final JdbcTemplate jdbc;
+  private final JdbcClient jdbc;
   private final JsonMapper json;
   private final IdMasker masker;
 
-  public NotificationJdbcAdapter(JdbcTemplate jdbc, JsonMapper json, IdMasker masker) {
+  public NotificationJdbcAdapter(JdbcClient jdbc, JsonMapper json, IdMasker masker) {
     this.jdbc = jdbc;
     this.json = json;
     this.masker = masker;
@@ -47,51 +47,51 @@ public class NotificationJdbcAdapter implements NotificationRepositoryPort {
 
   @Override
   public Optional<Long> insert(Notification notification) {
-    List<@Nullable Long> id =
-        jdbc.queryForList(
+    return jdbc.sql(
             """
             INSERT INTO notifications (event_id, type, audience, guest_id, target_kind, target_id,
                                        facts, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?)
+            VALUES (:eventId, :type, :audience, :guestId, :targetKind, :targetId,
+                    CAST(:facts AS jsonb), :createdAt)
             ON CONFLICT (event_id, type) DO NOTHING
             RETURNING id
-            """,
-            Long.class,
-            notification.eventId(),
-            notification.type().name(),
-            notification.audience().name(),
-            notification.guestId(),
-            notification.targetKind().name(),
-            notification.targetId(),
-            json.writeValueAsString(notification.facts()),
-            Timestamp.from(notification.createdAt()));
-    return id.stream().filter(Objects::nonNull).findFirst();
+            """)
+        .param("eventId", notification.eventId())
+        .param("type", notification.type().name())
+        .param("audience", notification.audience().name())
+        .param("guestId", notification.guestId())
+        .param("targetKind", notification.targetKind().name())
+        .param("targetId", notification.targetId())
+        .param("facts", json.writeValueAsString(notification.facts()))
+        .param("createdAt", Timestamp.from(notification.createdAt()))
+        .query(Long.class)
+        .optional();
   }
 
   @Override
   public CursorPage<Notification> find(Inbox inbox, boolean unreadOnly, PageQuery page) {
-    List<Object> arguments = new ArrayList<>();
+    Map<String, @Nullable Object> params = inboxParams(inbox);
     StringBuilder sql =
         new StringBuilder(
             """
             SELECT n.*, r.read_at FROM notifications n
-            LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = ?
+            LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = :userId
             """);
-    arguments.add(inbox.userId());
-    sql.append(inboxFilter(inbox, arguments));
+    sql.append(inboxFilter(inbox));
     if (unreadOnly) {
       sql.append(" AND r.read_at IS NULL");
     }
     if (page.after() != null) {
       Key after = keyOf(inbox, page.after());
-      sql.append(" AND (n.created_at, n.id) < (?, ?)");
-      arguments.add(Timestamp.from(after.createdAt()));
-      arguments.add(after.id());
+      sql.append(" AND (n.created_at, n.id) < (:afterCreatedAt, :afterId)");
+      params.put("afterCreatedAt", Timestamp.from(after.createdAt()));
+      params.put("afterId", after.id());
     }
-    sql.append(" ORDER BY n.created_at DESC, n.id DESC LIMIT ?");
+    sql.append(" ORDER BY n.created_at DESC, n.id DESC LIMIT :limit");
     // One more than the limit: the extra row only says that there is a next page.
-    arguments.add(page.limit() + 1);
-    List<Notification> rows = jdbc.query(sql.toString(), this::notification, arguments.toArray());
+    params.put("limit", page.limit() + 1);
+    List<Notification> rows =
+        jdbc.sql(sql.toString()).params(params).query(this::notification).list();
     return CursorPage.of(
         rows,
         page.limit(),
@@ -100,88 +100,91 @@ public class NotificationJdbcAdapter implements NotificationRepositoryPort {
 
   @Override
   public long unreadCount(Inbox inbox) {
-    List<Object> arguments = new ArrayList<>();
-    arguments.add(inbox.userId());
-    Long count =
-        jdbc.queryForObject(
+    return jdbc.sql(
             """
             SELECT count(*) FROM notifications n
-            LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = ?
+            LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = :userId
             """
-                + inboxFilter(inbox, arguments)
-                + " AND r.read_at IS NULL",
-            Long.class,
-            arguments.toArray());
-    return count == null ? 0 : count;
+                + inboxFilter(inbox)
+                + " AND r.read_at IS NULL")
+        .params(inboxParams(inbox))
+        .query(Long.class)
+        .single();
   }
 
   @Override
   public boolean markRead(Inbox inbox, Long id, Instant at) {
-    List<Object> arguments = new ArrayList<>(List.of(inbox.userId(), Timestamp.from(at)));
-    String filter = inboxFilter(inbox, arguments);
-    arguments.add(id);
-    jdbc.update(
-        "INSERT INTO notification_reads (notification_id, user_id, read_at)"
-            + " SELECT n.id, ?, ? FROM notifications n"
-            + filter
-            + " AND n.id = ? ON CONFLICT (notification_id, user_id) DO NOTHING",
-        arguments.toArray());
-    List<Object> exists = new ArrayList<>();
-    String inInbox = inboxFilter(inbox, exists);
-    exists.add(id);
-    Integer found =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM notifications n" + inInbox + " AND n.id = ?",
-            Integer.class,
-            exists.toArray());
-    return found != null && found > 0;
+    Map<String, @Nullable Object> params = inboxParams(inbox);
+    params.put("readAt", Timestamp.from(at));
+    params.put("id", id);
+    jdbc.sql(
+            "INSERT INTO notification_reads (notification_id, user_id, read_at)"
+                + " SELECT n.id, :userId, :readAt FROM notifications n"
+                + inboxFilter(inbox)
+                + " AND n.id = :id ON CONFLICT (notification_id, user_id) DO NOTHING")
+        .params(params)
+        .update();
+    return jdbc.sql("SELECT count(*) FROM notifications n" + inboxFilter(inbox) + " AND n.id = :id")
+            .params(params)
+            .query(Integer.class)
+            .single()
+        > 0;
   }
 
   @Override
   public void markAllRead(Inbox inbox, Instant at) {
-    List<Object> arguments = new ArrayList<>(List.of(inbox.userId(), Timestamp.from(at)));
-    jdbc.update(
-        "INSERT INTO notification_reads (notification_id, user_id, read_at)"
-            + " SELECT n.id, ?, ? FROM notifications n"
-            + inboxFilter(inbox, arguments)
-            + " ON CONFLICT (notification_id, user_id) DO NOTHING",
-        arguments.toArray());
+    Map<String, @Nullable Object> params = inboxParams(inbox);
+    params.put("readAt", Timestamp.from(at));
+    jdbc.sql(
+            "INSERT INTO notification_reads (notification_id, user_id, read_at)"
+                + " SELECT n.id, :userId, :readAt FROM notifications n"
+                + inboxFilter(inbox)
+                + " ON CONFLICT (notification_id, user_id) DO NOTHING")
+        .params(params)
+        .update();
   }
 
   @Override
   public int deleteCreatedBefore(Instant cutoff, int max) {
-    return jdbc.update(
-        "DELETE FROM notifications WHERE id IN"
-            + " (SELECT id FROM notifications WHERE created_at < ? ORDER BY created_at LIMIT ?)",
-        Timestamp.from(cutoff),
-        max);
+    return jdbc.sql(
+            "DELETE FROM notifications WHERE id IN (SELECT id FROM notifications"
+                + " WHERE created_at < :cutoff ORDER BY created_at LIMIT :max)")
+        .param("cutoff", Timestamp.from(cutoff))
+        .param("max", max)
+        .update();
   }
 
-  /** WHERE clause of the inbox over alias n; appends its arguments. */
-  private static String inboxFilter(Inbox inbox, List<Object> arguments) {
-    arguments.add(inbox.audience().name());
+  /** WHERE clause of the inbox over alias n, with the parameters of {@link #inboxParams}. */
+  private static String inboxFilter(Inbox inbox) {
+    return inbox.audience() == Audience.GUEST
+        ? " WHERE n.audience = :audience AND n.guest_id = :guestId"
+        : " WHERE n.audience = :audience";
+  }
+
+  /** The reader and the inbox, as named parameters; the callers add their own to the map. */
+  private static Map<String, @Nullable Object> inboxParams(Inbox inbox) {
+    Map<String, @Nullable Object> params = new HashMap<>();
+    params.put("userId", inbox.userId());
+    params.put("audience", inbox.audience().name());
     if (inbox.audience() == Audience.GUEST) {
-      arguments.add(Objects.requireNonNull(inbox.guestId()));
-      return " WHERE n.audience = ? AND n.guest_id = ?";
+      params.put("guestId", Objects.requireNonNull(inbox.guestId()));
     }
-    return " WHERE n.audience = ?";
+    return params;
   }
 
   private record Key(Instant createdAt, Long id) {}
 
   /** The sort key of the item the cursor stands after, read again from its row in this inbox. */
   private Key keyOf(Inbox inbox, String cursor) {
-    long id = MaskedCursor.idOf(masker, IdKind.NOTIFICATION, cursor);
-    List<Object> arguments = new ArrayList<>();
-    String filter = inboxFilter(inbox, arguments);
-    arguments.add(id);
-    return jdbc
-        .query(
-            "SELECT n.created_at, n.id FROM notifications n" + filter + " AND n.id = ?",
-            (row, n) -> new Key(row.getTimestamp("created_at").toInstant(), row.getLong("id")),
-            arguments.toArray())
-        .stream()
-        .findFirst()
+    Map<String, @Nullable Object> params = inboxParams(inbox);
+    params.put("id", MaskedCursor.idOf(masker, IdKind.NOTIFICATION, cursor));
+    return jdbc.sql(
+            "SELECT n.created_at, n.id FROM notifications n"
+                + inboxFilter(inbox)
+                + " AND n.id = :id")
+        .params(params)
+        .query((row, n) -> new Key(row.getTimestamp("created_at").toInstant(), row.getLong("id")))
+        .optional()
         .orElseThrow(InvalidCursorException::new);
   }
 

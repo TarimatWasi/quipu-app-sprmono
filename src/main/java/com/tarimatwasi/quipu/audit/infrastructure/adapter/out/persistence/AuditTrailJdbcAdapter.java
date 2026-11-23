@@ -3,7 +3,7 @@ package com.tarimatwasi.quipu.audit.infrastructure.adapter.out.persistence;
 import com.tarimatwasi.quipu.audit.application.port.out.AuditTrailPort;
 import com.tarimatwasi.quipu.audit.domain.AuditRecord;
 import java.sql.Timestamp;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -15,14 +15,15 @@ public class AuditTrailJdbcAdapter implements AuditTrailPort {
       """
       INSERT INTO audit_event (id, spec_version, source, type, subject, occurred_at,
                                actor_user_id, guest_id, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
+      VALUES (:id, :specVersion, :source, :type, :subject, :occurredAt, :actorUserId, :guestId,
+              CAST(:data AS jsonb))
       ON CONFLICT (id) DO NOTHING
       """;
 
-  private final JdbcTemplate jdbc;
+  private final JdbcClient jdbc;
   private final JsonMapper json;
 
-  public AuditTrailJdbcAdapter(JdbcTemplate jdbc, JsonMapper json) {
+  public AuditTrailJdbcAdapter(JdbcClient jdbc, JsonMapper json) {
     this.jdbc = jdbc;
     this.json = json;
   }
@@ -31,17 +32,17 @@ public class AuditTrailJdbcAdapter implements AuditTrailPort {
   public boolean append(AuditRecord entry) {
     ObjectNode data = json.valueToTree(entry.event());
     data.remove("metadata");
-    return jdbc.update(
-            INSERT,
-            entry.id(),
-            AuditRecord.SPEC_VERSION,
-            entry.source(),
-            entry.type(),
-            entry.subject(),
-            Timestamp.from(entry.time()),
-            entry.actorUserId(),
-            entry.guestId(),
-            json.writeValueAsString(data))
+    return jdbc.sql(INSERT)
+            .param("id", entry.id())
+            .param("specVersion", AuditRecord.SPEC_VERSION)
+            .param("source", entry.source())
+            .param("type", entry.type())
+            .param("subject", entry.subject())
+            .param("occurredAt", Timestamp.from(entry.time()))
+            .param("actorUserId", entry.actorUserId())
+            .param("guestId", entry.guestId())
+            .param("data", json.writeValueAsString(data))
+            .update()
         == 1;
   }
 }

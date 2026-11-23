@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -37,13 +37,20 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
   /** users_email_key and the case-insensitive index uq_users_email_lower. */
   static final Set<String> EMAIL_CONSTRAINTS = Set.of("users_email_key", "uq_users_email_lower");
 
+  /**
+   * The ADMIN accounts that can still log in, the same rule as UserAccount.isDisabled() and the
+   * initial ADMIN: only INACTIVE is out. RF-22 (decision of 2026-11-03) counts the places the same.
+   */
+  private static final String COUNT_ACTIVE =
+      "SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE'";
+
   /** What a {@link StoredAdministrator} is read from. */
   private static final String COLUMNS =
       "id, document_type, document_number, email, status, created_date, name";
 
-  private final JdbcTemplate jdbc;
+  private final JdbcClient jdbc;
 
-  public AdministratorStoreAdapter(JdbcTemplate jdbc) {
+  public AdministratorStoreAdapter(JdbcClient jdbc) {
     this.jdbc = jdbc;
   }
 
@@ -53,34 +60,33 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
       throw new IllegalStateException("The lock of the administrators needs a transaction");
     }
-    jdbc.queryForList("SELECT pg_advisory_xact_lock(?)", ADMINISTRATORS_LOCK);
+    jdbc.sql("SELECT pg_advisory_xact_lock(:key)")
+        .param("key", ADMINISTRATORS_LOCK)
+        .query()
+        .listOfRows();
   }
 
   @Override
   public int countAdministrators() {
     // RF-22 (decision of 2026-11-03): an INACTIVE administrator does not take a place.
-    Integer admins =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE'",
-            Integer.class);
-    return admins == null ? 0 : admins;
+    return jdbc.sql(COUNT_ACTIVE).query(Integer.class).single();
   }
 
   @Override
   public Long insert(NewAdministrator administrator) {
     try {
-      return Objects.requireNonNull(
-          jdbc.queryForObject(
+      return jdbc.sql(
               "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
                   + " must_change_password, status, created_by_id)"
-                  + " VALUES (nextval('users_seq'), ?, ?, ?, ?, 'ADMIN', TRUE, 'ACTIVE', ?)"
-                  + " RETURNING id",
-              Long.class,
-              administrator.email(),
-              administrator.documentType().name(),
-              administrator.documentNumber(),
-              administrator.passwordHash(),
-              administrator.createdBy()));
+                  + " VALUES (nextval('users_seq'), :email, :documentType, :documentNumber,"
+                  + " :passwordHash, 'ADMIN', TRUE, 'ACTIVE', :createdBy) RETURNING id")
+          .param("email", administrator.email())
+          .param("documentType", administrator.documentType().name())
+          .param("documentNumber", administrator.documentNumber())
+          .param("passwordHash", administrator.passwordHash())
+          .param("createdBy", administrator.createdBy())
+          .query(Long.class)
+          .single();
     } catch (DuplicateKeyException e) {
       // By the name of the rule, never by the message: the language of the server does not matter.
       String constraint = ConstraintName.of(e);
@@ -99,9 +105,10 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
     // same rule as UserAccount.isDisabled(): an INACTIVE ADMIN cannot log in. There are a handful
     // of administrators at most, so the excluded ones are left out here.
     return jdbc
-        .query(
-            "SELECT id, email FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE' ORDER BY id",
-            (row, n) -> new Admin(row.getLong("id"), row.getString("email")))
+        .sql(
+            "SELECT id, email FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE' ORDER BY id")
+        .query((row, n) -> new Admin(row.getLong("id"), row.getString("email")))
+        .list()
         .stream()
         .filter(admin -> !excluded.contains(admin.id()))
         .map(Admin::email)
@@ -111,9 +118,10 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
   @Override
   public List<StoredAdministrator> listAdministrators() {
     // At most the maximum of administrators (5 by default): no page is needed.
-    return jdbc.query(
-        "SELECT " + COLUMNS + " FROM users WHERE role = 'ADMIN' ORDER BY created_date, id",
-        AdministratorStoreAdapter::administrator);
+    return jdbc.sql(
+            "SELECT " + COLUMNS + " FROM users WHERE role = 'ADMIN' ORDER BY created_date, id")
+        .query(AdministratorStoreAdapter::administrator)
+        .list();
   }
 
   /**
@@ -127,13 +135,11 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
       throw new IllegalStateException("The lock of an administrator needs a transaction");
     }
-    return jdbc
-        .query(
-            "SELECT " + COLUMNS + " FROM users WHERE id = ? AND role = 'ADMIN' FOR NO KEY UPDATE",
-            AdministratorStoreAdapter::administrator,
-            id)
-        .stream()
-        .findFirst();
+    return jdbc.sql(
+            "SELECT " + COLUMNS + " FROM users WHERE id = :id AND role = 'ADMIN' FOR NO KEY UPDATE")
+        .param("id", id)
+        .query(AdministratorStoreAdapter::administrator)
+        .optional();
   }
 
   /** FOR KEY SHARE, the lock that the foreign key last_modified_by_id takes on the row. */
@@ -142,33 +148,30 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
       throw new IllegalStateException("Holding a row needs a transaction");
     }
-    jdbc.queryForList("SELECT id FROM users WHERE id = ? FOR KEY SHARE", id);
+    jdbc.sql("SELECT id FROM users WHERE id = :id FOR KEY SHARE")
+        .param("id", id)
+        .query()
+        .listOfRows();
   }
 
   @Override
   public int countActiveAdministrators() {
-    // The same rule as UserAccount.isDisabled() and the initial ADMIN: only INACTIVE is out.
-    Integer active =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND status <> 'INACTIVE'",
-            Integer.class);
-    return active == null ? 0 : active;
+    return jdbc.sql(COUNT_ACTIVE).query(Integer.class).single();
   }
 
   @Override
   public void setAdministratorStatus(Long id, String status, Long modifiedBy) {
     // The audit columns, as the JPA auditing fills them: when and who changed the row.
     int updated =
-        jdbc.update(
-            "UPDATE users SET security_version = security_version +"
-                + " CASE WHEN status <> ? AND ? = 'INACTIVE' THEN 1 ELSE 0 END,"
-                + " status = ?, last_modified_date = now(), last_modified_by_id = ?"
-                + " WHERE id = ? AND role = 'ADMIN'",
-            status,
-            status,
-            status,
-            modifiedBy,
-            id);
+        jdbc.sql(
+                "UPDATE users SET security_version = security_version +"
+                    + " CASE WHEN status <> :status AND :status = 'INACTIVE' THEN 1 ELSE 0 END,"
+                    + " status = :status, last_modified_date = now(),"
+                    + " last_modified_by_id = :modifiedBy WHERE id = :id AND role = 'ADMIN'")
+            .param("status", status)
+            .param("modifiedBy", modifiedBy)
+            .param("id", id)
+            .update();
     if (updated != 1) {
       throw new IllegalStateException("No administrator with id " + id);
     }

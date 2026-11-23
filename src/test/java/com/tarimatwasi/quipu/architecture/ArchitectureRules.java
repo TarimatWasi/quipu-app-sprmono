@@ -12,6 +12,7 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.properties.HasName;
 import com.tngtech.archunit.core.domain.properties.HasOwner;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -32,6 +33,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.domain.AbstractAuditable;
 import org.springframework.data.repository.Repository;
+import org.springframework.jdbc.core.JdbcOperations;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcOperations;
+import org.springframework.jdbc.core.simple.JdbcClient.MappedQuerySpec;
+import org.springframework.jdbc.core.simple.JdbcClient.ResultQuerySpec;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -373,6 +378,40 @@ final class ArchitectureRules {
           .resideInAPackage("..adapter.out.persistence..");
 
   @ArchTest static final ArchRule BE_SPR_DAT_07 = ArchitectureConditions.toOneRelationsAreLazy();
+
+  /**
+   * QP-SPRMONO-DAT-02: SQL by hand goes through JdbcClient, with named parameters; positional
+   * arguments built in a list beside a dynamic query were the way a parameter ended up in the wrong
+   * place. JdbcTemplate stays only behind JdbcClient (and in tests, which prepare data with it).
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_02 =
+      noClasses()
+          .should()
+          .dependOnClassesThat()
+          .areAssignableTo(JdbcOperations.class)
+          .orShould()
+          .dependOnClassesThat()
+          .areAssignableTo(NamedParameterJdbcOperations.class)
+          .because("JdbcClient is the API of Spring for SQL by hand");
+
+  /**
+   * QP-SPRMONO-DAT-03: the stream of a JdbcClient query holds its connection open until it is
+   * closed, unlike the list JdbcTemplate returned; a {@code .query(mapper).stream()} chained like
+   * one leaked a connection of the pool on every notice to the administrators. Read a list.
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_03 =
+      noClasses()
+          .should()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("stream"))
+                  .and(
+                      JavaCall.Predicates.target(
+                          HasOwner.Predicates.With.owner(
+                              JavaClass.Predicates.assignableTo(MappedQuerySpec.class)
+                                  .or(JavaClass.Predicates.assignableTo(ResultQuerySpec.class))))))
+          .because("an unclosed stream keeps the connection out of the pool");
 
   // --- Seguridad, observabilidad y concurrencia ---
 

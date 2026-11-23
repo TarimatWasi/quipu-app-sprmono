@@ -15,16 +15,16 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
 public class UserRepositoryAdapter implements UserRepositoryPort {
 
   private final UserJpaRepository jpaRepository;
-  private final JdbcTemplate jdbc;
+  private final JdbcClient jdbc;
 
-  public UserRepositoryAdapter(UserJpaRepository jpaRepository, JdbcTemplate jdbc) {
+  public UserRepositoryAdapter(UserJpaRepository jpaRepository, JdbcClient jdbc) {
     this.jpaRepository = jpaRepository;
     this.jdbc = jdbc;
   }
@@ -111,16 +111,17 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
       String documentNumber,
       @Nullable String email,
       String unusablePasswordHash) {
-    return jdbc.update(
-        "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
-            + " guest_id, must_change_password, status)"
-            + " VALUES (nextval('users_seq'), ?, ?, ?, ?, 'GUEST', ?, TRUE, 'ACTIVE')"
-            + " ON CONFLICT DO NOTHING",
-        email,
-        documentType.name(),
-        documentNumber,
-        unusablePasswordHash,
-        guestId);
+    return jdbc.sql(
+            "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+                + " guest_id, must_change_password, status)"
+                + " VALUES (nextval('users_seq'), :email, :documentType, :documentNumber,"
+                + " :passwordHash, 'GUEST', :guestId, TRUE, 'ACTIVE') ON CONFLICT DO NOTHING")
+        .param("email", email)
+        .param("documentType", documentType.name())
+        .param("documentNumber", documentNumber)
+        .param("passwordHash", unusablePasswordHash)
+        .param("guestId", guestId)
+        .update();
   }
 
   @Override

@@ -25,3 +25,9 @@ app:
     admin-requests-per-minute: 600
     # y varias ediciones seguidas del perfil propio (TAR-222): el máximo que acepta la validación.
     profile-updates-per-minute: 60
+spring:
+  datasource:
+    hikari:
+      # Una conexión que una prueba retiene más de 10 s deja en el log la pila de quien la tomó: las
+      # pruebas comparten el pool de un contexto, y una fuga se nota recién en otra prueba.
+      leak-detection-threshold: 10000
