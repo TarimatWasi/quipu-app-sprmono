@@ -40,6 +40,18 @@ public final class NotificationTexts {
 
   private static Map<Kind, Template> templates() {
     Map<Kind, Template> all = new EnumMap<>(Kind.class);
+    forGuests(all);
+    forAdministrators(all);
+    for (Kind kind : Kind.values()) {
+      if (!all.containsKey(kind)) {
+        throw new IllegalStateException("The notification " + kind + " has no text");
+      }
+    }
+    return Collections.unmodifiableMap(all);
+  }
+
+  /** What the bell tells a guest about its own charges and contract. */
+  private static void forGuests(Map<Kind, Template> all) {
     all.put(
         Kind.FINE_APPLIED,
         new Template(
@@ -52,6 +64,25 @@ public final class NotificationTexts {
     all.put(
         Kind.CONTRACT_TERMINATED,
         new Template("Contrato finalizado", "La administración finalizó tu contrato."));
+    all.put(
+        Kind.PAYMENT_APPROVED,
+        new Template("Pago aprobado", "Tu pago de {amount}{of} fue aprobado."));
+    all.put(
+        Kind.PAYMENT_REJECTED,
+        new Template(
+            "Pago observado",
+            "Tu pago de {amount}{of} fue observado. Revisa el motivo y envíalo de nuevo."));
+    all.put(
+        Kind.REFUND_CREATED,
+        new Template(
+            "Devolución registrada", "Se registró una devolución de {amount} a tu favor."));
+    all.put(
+        Kind.PAYMENT_DUE,
+        new Template("Pago pendiente", "Tu pago de {amount}{of} vence el {dueDate}."));
+  }
+
+  /** What the bell tells the administrators; no guest is named. */
+  private static void forAdministrators(Map<Kind, Template> all) {
     all.put(
         Kind.PAYMENT_PROOF_SUBMITTED,
         new Template(
@@ -69,33 +100,12 @@ public final class NotificationTexts {
         Kind.PAYMENT_OVERDUE,
         new Template("Pago vencido", "Un pago de {amount}{of} está vencido desde el {dueDate}."));
     all.put(
-        Kind.PAYMENT_APPROVED,
-        new Template("Pago aprobado", "Tu pago de {amount}{of} fue aprobado."));
-    all.put(
-        Kind.PAYMENT_REJECTED,
-        new Template(
-            "Pago observado",
-            "Tu pago de {amount}{of} fue observado. Revisa el motivo y envíalo de nuevo."));
-    all.put(
-        Kind.REFUND_CREATED,
-        new Template(
-            "Devolución registrada", "Se registró una devolución de {amount} a tu favor."));
-    all.put(
         Kind.STAY_ENDING,
         new Template("Estadía por terminar", "Una estadía termina el {endDate}."));
     all.put(
         Kind.ACCESS_EXPIRED,
         new Template(
             "Acceso vencido", "Un acceso venció el {expiredOn} sin usarse: entrega uno nuevo."));
-    all.put(
-        Kind.PAYMENT_DUE,
-        new Template("Pago pendiente", "Tu pago de {amount}{of} vence el {dueDate}."));
-    for (Kind kind : Kind.values()) {
-      if (!all.containsKey(kind)) {
-        throw new IllegalStateException("The notification " + kind + " has no text");
-      }
-    }
-    return Collections.unmodifiableMap(all);
   }
 
   /** The text of a kind of notification with its facts. */
