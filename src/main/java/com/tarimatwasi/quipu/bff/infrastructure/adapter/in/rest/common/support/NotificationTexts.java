@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Spanish text of a notification, written when it is read from the facts it keeps: nothing
@@ -81,48 +82,64 @@ public final class NotificationTexts {
         new Template("Pago pendiente", "Tu pago de {amount}{of} vence el {dueDate}."));
   }
 
-  /** What the bell tells the administrators; no guest is named. */
+  /**
+   * What the bell tells the administrators. The guest is named when the bell is read ({Guest} at
+   * the start of a sentence, {guest} inside one), so the stored notification keeps no name.
+   */
   private static void forAdministrators(Map<Kind, Template> all) {
     all.put(
         Kind.PAYMENT_PROOF_SUBMITTED,
         new Template(
-            "Comprobante por revisar", "Un huésped envió un pago de {amount}{of} para revisar."));
+            "Comprobante por revisar", "{Guest} envió un pago de {amount}{of} para revisar."));
     all.put(
         Kind.ONBOARDING_COMPLETED,
-        new Template("Registro completado", "Un huésped terminó su registro."));
+        new Template("Registro completado", "{Guest} terminó su registro."));
     all.put(
         Kind.GUEST_DOCUMENT_UPLOADED,
-        new Template("Documento nuevo", "Un huésped subió un documento."));
+        new Template("Documento nuevo", "{Guest} subió un documento."));
     all.put(
         Kind.CONTRACT_EXPIRING,
-        new Template("Contrato por vencer", "Un contrato termina el {endDate}."));
+        new Template("Contrato por vencer", "El contrato de {guest} termina el {endDate}."));
     all.put(
         Kind.PAYMENT_OVERDUE,
-        new Template("Pago vencido", "Un pago de {amount}{of} está vencido desde el {dueDate}."));
+        new Template(
+            "Pago vencido", "El pago de {amount}{of} de {guest} está vencido desde el {dueDate}."));
     all.put(
         Kind.STAY_ENDING,
-        new Template("Estadía por terminar", "Una estadía termina el {endDate}."));
+        new Template("Estadía por terminar", "La estadía de {guest} termina el {endDate}."));
     all.put(
         Kind.ACCESS_EXPIRED,
         new Template(
-            "Acceso vencido", "Un acceso venció el {expiredOn} sin usarse: entrega uno nuevo."));
+            "Acceso vencido",
+            "El acceso de {guest} venció el {expiredOn} sin usarse: entrega uno nuevo."));
   }
 
   /** The text of a kind of notification with its facts. */
   public static Text of(Kind kind, Map<String, String> facts) {
+    return of(kind, facts, null);
+  }
+
+  /**
+   * The text of a kind of notification with its facts and the current name of its guest; without a
+   * name (none given yet, or the guest is gone) it says "un huésped".
+   */
+  public static Text of(Kind kind, Map<String, String> facts, @Nullable String guestName) {
     Template template = Objects.requireNonNull(TEMPLATES.get(kind));
     Matcher fact = FACT.matcher(template.body());
     StringBuilder body = new StringBuilder();
     while (fact.find()) {
-      fact.appendReplacement(body, Matcher.quoteReplacement(value(fact.group(1), facts)));
+      fact.appendReplacement(
+          body, Matcher.quoteReplacement(value(fact.group(1), facts, guestName)));
     }
     fact.appendTail(body);
     return new Text(template.title(), body.toString());
   }
 
   /** A fact as the text shows it: amounts in soles, months and days in Spanish. */
-  private static String value(String name, Map<String, String> facts) {
+  private static String value(String name, Map<String, String> facts, @Nullable String guestName) {
     return switch (name) {
+      case "Guest" -> guestName == null ? "Un huésped" : guestName;
+      case "guest" -> guestName == null ? "un huésped" : guestName;
       case "amount", "monthlyAmount" -> soles(facts, name);
       case "month" -> month(facts, name);
       case "of" -> of(facts);

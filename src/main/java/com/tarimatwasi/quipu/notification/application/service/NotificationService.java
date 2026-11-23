@@ -104,6 +104,7 @@ public class NotificationService implements RaiseNotificationUseCase, ReadNotifi
         Kind.valueOf(notification.type().name()),
         Target.valueOf(notification.targetKind().name()),
         notification.targetId(),
+        notification.guestId(),
         notification.facts(),
         notification.createdAt(),
         notification.readAt());

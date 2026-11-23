@@ -114,7 +114,7 @@ class NotificationsContractTest extends PaymentsContractSupport {
     assertThat(JsonPath.<String>read(adminBell, "$.content[0].type"))
         .isEqualTo("PAYMENT_PROOF_SUBMITTED");
     assertThat(JsonPath.<String>read(adminBell, "$.content[0].body"))
-        .isEqualTo("Un huésped envió un pago de S/ 900.00 de octubre de 2026 para revisar.");
+        .isEqualTo("Ana Quispe envió un pago de S/ 900.00 de octubre de 2026 para revisar.");
 
     Long payment = jdbc.queryForObject("SELECT id FROM payments", Long.class);
     resolve(payment, approval(payment)).andExpect(status().isOk());

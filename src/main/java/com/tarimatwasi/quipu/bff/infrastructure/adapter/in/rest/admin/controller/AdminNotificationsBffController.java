@@ -3,11 +3,18 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controlle
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.NotificationResponses;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.NotificationResponses.PagedNotificationsResponse;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNamesUseCase;
 import com.tarimatwasi.quipu.notification.application.port.in.ReadNotificationsUseCase;
+import com.tarimatwasi.quipu.notification.application.port.in.ReadNotificationsUseCase.NotificationPage;
+import com.tarimatwasi.quipu.notification.application.port.in.ReadNotificationsUseCase.NotificationView;
 import com.tarimatwasi.quipu.notification.application.port.in.ReadNotificationsUseCase.Reader;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -24,10 +31,13 @@ public class AdminNotificationsBffController {
   private static final String URL = "/bff/admin/notifications";
 
   private final ReadNotificationsUseCase notifications;
+  private final GuestNamesUseCase names;
   private final IdMasker ids;
 
-  public AdminNotificationsBffController(ReadNotificationsUseCase notifications, IdMasker ids) {
+  public AdminNotificationsBffController(
+      ReadNotificationsUseCase notifications, GuestNamesUseCase names, IdMasker ids) {
     this.notifications = notifications;
+    this.names = names;
     this.ids = ids;
   }
 
@@ -37,8 +47,19 @@ public class AdminNotificationsBffController {
       @RequestParam(name = "limit", defaultValue = "20") int limit,
       @RequestParam(name = "after", required = false) @Nullable String after,
       @RequestParam(name = "unread", defaultValue = "false") boolean unread) {
-    return NotificationResponses.of(
-        notifications.list(reader(authentication), unread, PageParams.query(after, limit)), ids);
+    NotificationPage page =
+        notifications.list(reader(authentication), unread, PageParams.query(after, limit));
+    return NotificationResponses.of(page, ids, namesOf(page));
+  }
+
+  /** The current names of the guests of the page, in one read; nothing is stored with them. */
+  private Map<Long, String> namesOf(NotificationPage page) {
+    Set<Long> guests =
+        page.page().content().stream()
+            .map(NotificationView::guestId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    return guests.isEmpty() ? Map.of() : names.namesOf(guests);
   }
 
   @PostMapping(URL + "/{id}/read")

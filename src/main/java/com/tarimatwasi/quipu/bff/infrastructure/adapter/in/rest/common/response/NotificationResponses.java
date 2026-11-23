@@ -8,6 +8,7 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
@@ -35,14 +36,22 @@ public final class NotificationResponses {
 
   /** The page of the use case as the contract shows it. */
   public static PagedNotificationsResponse of(NotificationPage page, IdMasker ids) {
+    return of(page, ids, Map.of());
+  }
+
+  /** The page with the current names of its guests, by id; a guest without one is "un huésped". */
+  public static PagedNotificationsResponse of(
+      NotificationPage page, IdMasker ids, Map<Long, String> guestNames) {
     PagedResponse<NotificationResponse> mapped =
-        PagedResponse.of(page.page(), view -> notification(view, ids));
+        PagedResponse.of(page.page(), view -> notification(view, ids, guestNames));
     return new PagedNotificationsResponse(
         mapped.content(), mapped.nextCursor(), page.unreadCount());
   }
 
-  private static NotificationResponse notification(NotificationView view, IdMasker ids) {
-    NotificationTexts.Text text = NotificationTexts.of(view.kind(), view.facts());
+  private static NotificationResponse notification(
+      NotificationView view, IdMasker ids, Map<Long, String> guestNames) {
+    String guestName = view.guestId() == null ? null : guestNames.get(view.guestId());
+    NotificationTexts.Text text = NotificationTexts.of(view.kind(), view.facts(), guestName);
     return new NotificationResponse(
         ids.mask(IdKind.NOTIFICATION, view.id()),
         view.kind().name(),

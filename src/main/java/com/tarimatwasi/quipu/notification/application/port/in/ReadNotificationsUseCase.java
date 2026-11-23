@@ -25,12 +25,17 @@ public interface ReadNotificationsUseCase {
     }
   }
 
-  /** One notification as its reader sees it. */
+  /**
+   * One notification as its reader sees it.
+   *
+   * @param guestId the guest it is about (or for); null when none
+   */
   record NotificationView(
       Long id,
       Kind kind,
       Target target,
       Long targetId,
+      @Nullable Long guestId,
       Map<String, String> facts,
       Instant createdAt,
       @Nullable Instant readAt) {}
