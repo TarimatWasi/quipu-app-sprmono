@@ -18,6 +18,7 @@ class ModulithTest {
         .isEmpty();
     assertThat(modules.stream().map(m -> m.getIdentifier().toString()))
         .containsExactlyInAnyOrder(
+            "audit",
             "auth",
             "bff",
             "contract",

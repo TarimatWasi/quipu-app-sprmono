@@ -9,6 +9,7 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
 
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.properties.HasOwner;
@@ -52,7 +53,8 @@ final class ArchitectureRules {
 
   /** Modules in hexagonal packages (TAR-226): the business ones (batch 1) and bff (batch 2). */
   static final Set<String> HEXAGONAL_MODULES =
-      Set.of("auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment");
+      Set.of(
+          "audit", "auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment");
 
   private ArchitectureRules() {}
 
@@ -126,9 +128,12 @@ final class ArchitectureRules {
       classes()
           .that()
           .resideInAPackage("..domain..")
+          .and()
+          .doNotHaveSimpleName("package-info") // @NamedInterface is module metadata, not code
           .should()
           .onlyDependOnClassesThat()
-          .resideInAnyPackage("java..", "org.jspecify..", "..domain..");
+          // QP-EVT-01: the event kernel is plain Java; a domain states its facts with it.
+          .resideInAnyPackage("java..", "org.jspecify..", "..domain..", ROOT + ".shared.events");
 
   @ArchTest
   static final ArchRule BE_SPR_ARQ_09_CONTROLLERS =
@@ -302,8 +307,13 @@ final class ArchitectureRules {
           .dependOnClassesThat()
           .areAnnotatedWith(Entity.class)
           .orShould()
-          .dependOnClassesThat()
-          .resideInAPackage("..domain..");
+          .dependOnClassesThat(
+              // The published facts (domain.event, a named interface) are not the domain model:
+              // the live invalidations of the bff listen to them.
+              JavaClass.Predicates.resideInAPackage("..domain..")
+                  .and(
+                      DescribedPredicate.not(
+                          JavaClass.Predicates.resideInAPackage("..domain.event.."))));
 
   @ArchTest static final ArchRule BE_SPR_WEB_03 = ArchitectureConditions.requestBodyIsValidated();
 

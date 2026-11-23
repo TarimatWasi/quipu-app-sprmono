@@ -128,6 +128,13 @@
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-core</artifactId>
     </dependency>
+    <!-- Outbox de eventos de dominio (registro de publicaciones JDBC): la fila se escribe en la
+         transacción del caso de uso y los listeners durables (auditoría) la consumen después del
+         commit, con reintento. Spike del 2026-11-22: atomicidad, reintento e idempotencia. -->
+    <dependency>
+      <groupId>org.springframework.modulith</groupId>
+      <artifactId>spring-modulith-starter-jdbc</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
@@ -185,6 +192,12 @@
     <dependency>
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Espera acotada de efectos asíncronos (entrega del outbox) en las pruebas; versión del BOM de Boot. -->
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

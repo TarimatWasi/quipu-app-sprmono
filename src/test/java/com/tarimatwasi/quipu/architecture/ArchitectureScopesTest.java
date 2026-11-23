@@ -61,7 +61,15 @@ class ArchitectureScopesTest {
     // TAR_226_HEXAGONAL_PACKAGES selects its modules by name: each one must exist.
     assertThat(ArchitectureRules.HEXAGONAL_MODULES)
         .containsExactlyInAnyOrder(
-            "auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment")
+            "audit",
+            "auth",
+            "bff",
+            "contract",
+            "environment",
+            "expense",
+            "fine",
+            "guest",
+            "payment")
         .allSatisfy(
             m ->
                 assertThat(

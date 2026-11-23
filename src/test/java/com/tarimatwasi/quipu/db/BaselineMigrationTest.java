@@ -3,7 +3,9 @@ package com.tarimatwasi.quipu.db;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
@@ -45,17 +47,31 @@ class BaselineMigrationTest {
     jdbc.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
   }
 
+  /**
+   * The history starts at the V1 baseline and every later version follows it without gaps (the
+   * baseline says the next evolutions start at V2); no migration seeds rows.
+   */
   @Test
-  void onlyV1IsAppliedAndItCreatesNoBusinessDataOrAccounts() {
-    assertThat(
-            jdbc.queryForList(
-                "SELECT version FROM "
-                    + SCHEMA
-                    + ".flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
-                String.class))
-        .containsExactly("1");
+  void historyStartsAtTheV1BaselineAndNoMigrationSeedsData() {
+    List<String> versions =
+        jdbc.queryForList(
+            "SELECT version FROM "
+                + SCHEMA
+                + ".flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
+            String.class);
+    assertThat(versions)
+        .containsExactlyElementsOf(
+            IntStream.rangeClosed(1, versions.size()).mapToObj(String::valueOf).toList());
     for (String table :
-        new String[] {"users", "guests", "payments", "sessions", "refresh_tokens"}) {
+        new String[] {
+          "users",
+          "guests",
+          "payments",
+          "sessions",
+          "refresh_tokens",
+          "audit_event",
+          "event_publication"
+        }) {
       assertThat(jdbc.queryForObject("SELECT count(*) FROM " + SCHEMA + "." + table, Long.class))
           .as("no rows seeded in %s", table)
           .isZero();

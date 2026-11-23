@@ -60,6 +60,19 @@ spring:
       shutdown:
         await-termination: true
         await-termination-period: 8s
+  # Eventos de dominio (outbox de Spring Modulith). Solo los @ApplicationModuleListener (durables:
+  # auditoría) dejan fila en event_publication; las invalidaciones en vivo (@TransactionalEventListener
+  # en memoria) no. La tabla la crea Flyway (V2). Una publicación completada se borra: el hecho ya
+  # quedó en audit_event. Las pendientes (listener caído o rechazado por el ejecutor) se republican
+  # al arrancar; los listeners son idempotentes por id de evento.
+  modulith:
+    events:
+      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+      jdbc:
+        schema-initialization:
+          enabled: false
   web:
     error:
       include-message: never

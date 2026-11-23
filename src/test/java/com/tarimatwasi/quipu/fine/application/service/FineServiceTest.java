@@ -18,7 +18,6 @@ import com.tarimatwasi.quipu.fine.application.port.out.FineGuestMissingException
 import com.tarimatwasi.quipu.fine.application.port.out.FineGuestPort;
 import com.tarimatwasi.quipu.fine.application.port.out.FineRepositoryPort;
 import com.tarimatwasi.quipu.fine.domain.Fine;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.YearMonth;
@@ -28,12 +27,10 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class FineServiceTest {
-  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final Long GUEST = TestIds.next();
@@ -46,7 +43,7 @@ class FineServiceTest {
   @Mock FineGuestPort guests;
 
   private FineService service() {
-    return new FineService(repository, guests, changes);
+    return new FineService(repository, guests);
   }
 
   private static FineCommand command(BigDecimal amount, @Nullable String description) {

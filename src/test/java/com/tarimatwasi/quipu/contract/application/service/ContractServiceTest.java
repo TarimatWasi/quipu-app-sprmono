@@ -35,7 +35,6 @@ import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupied
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotContractException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
@@ -119,11 +118,7 @@ class ContractServiceTest {
   void setUp() {
     service =
         new ContractService(
-            contracts,
-            files,
-            new ContractDirectory(environments, guests, debts, stays),
-            clock,
-            Mockito.mock(ChangeSignals.class));
+            contracts, files, new ContractDirectory(environments, guests, debts, stays), clock);
     // The environment exists and is active unless a test says otherwise.
     lenient().when(environments.lock(ENVIRONMENT_ID)).thenReturn(true);
   }

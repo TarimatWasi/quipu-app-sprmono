@@ -13,13 +13,15 @@ public final class TestTables {
 
   /**
    * Removes every row of users (with their sessions, TAR-228), guests, stays, contracts, payments
-   * (with their proofs and reviews), environments, expenses and fines.
+   * (with their proofs and reviews), environments, expenses, fines, the audit trail and the outbox
+   * of domain events.
    */
   public static void clear(JdbcTemplate jdbc) {
     jdbc.execute(
         "TRUNCATE TABLE guest_document_actions, guest_document_deletions, guest_document_purges,"
             + " guest_documents, guest_consents, guest_email_verifications, access_grants, refresh_tokens,"
             + " sessions, users,"
-            + " guests, environments, expenses, fines, stays, contracts, refunds, payment_reviews, payment_proofs, payments");
+            + " guests, environments, expenses, fines, stays, contracts, refunds, payment_reviews, payment_proofs, payments,"
+            + " audit_event, event_publication");
   }
 }

@@ -16,13 +16,15 @@ import com.tarimatwasi.quipu.contract.application.port.out.ContractRepositoryPor
 import com.tarimatwasi.quipu.contract.domain.Contract;
 import com.tarimatwasi.quipu.contract.domain.Contract.Violation;
 import com.tarimatwasi.quipu.contract.domain.ContractStatus;
+import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
+import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentInactiveException;
 import com.tarimatwasi.quipu.environment.application.port.in.EnvironmentOccupiedException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotActiveException;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotContractException;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
@@ -58,14 +60,12 @@ public class ContractService implements ManageContractsUseCase {
   private final StayOccupancyQuery stays;
   private final Clock clock;
   private final ContractViews views;
-  private final ChangeSignals signals;
 
   ContractService(
       ContractRepositoryPort contracts,
       ContractFilePort files,
       ContractDirectory directory,
-      Clock clock,
-      ChangeSignals signals) {
+      Clock clock) {
     this.contracts = contracts;
     this.files = files;
     this.environments = directory.environments();
@@ -73,12 +73,20 @@ public class ContractService implements ManageContractsUseCase {
     this.debts = directory.debts();
     this.stays = directory.stays();
     this.clock = clock;
-    this.signals = signals;
     this.views = new ContractViews(files, this.guests, this.environments, clock);
   }
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = ContractSigned.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.environmentId()",
+        "#result.startDate()",
+        "#result.monthlyAmount()"
+      })
   public ContractView create(NewContract contract) {
     validate(contract);
     // Both rows stay locked until the commit, in the global order environment, guest, contract,
@@ -144,9 +152,6 @@ public class ContractService implements ManageContractsUseCase {
                   contract.file().content().length));
       // Signing is inside the try: if it fails the transaction rolls back and the object goes too.
       view = views.view(saved);
-      signals.changed(
-          new ChangeSignals.Change(
-              ChangeSignals.Kind.CONTRACT, saved.guestId(), true, null, saved.environmentId()));
       return view;
     } finally {
       if (view == null) {
@@ -220,20 +225,19 @@ public class ContractService implements ManageContractsUseCase {
 
   @Override
   @Transactional
-  public void terminate(Long id) {
+  @PublishEvent(
+      type = ContractTerminated.class,
+      when = "#result.happened()",
+      args = {"#result.contractId()", "#result.guestId()", "#result.environmentId()"})
+  public Termination terminate(Long id) {
     // The row stays locked until the commit: a second request for the same contract waits, then
     // sees it terminated and answers the same 204 instead of a version conflict.
     Contract contract = contracts.findByIdForUpdate(id).orElseThrow(ContractNotFoundException::new);
-    if (contract.occupies(ContractViews.today(clock))) {
+    boolean happened = contract.occupies(ContractViews.today(clock));
+    if (happened) {
       contracts.save(contract.terminate(clock.instant()));
-      signals.changed(
-          new ChangeSignals.Change(
-              ChangeSignals.Kind.CONTRACT,
-              contract.guestId(),
-              true,
-              null,
-              contract.environmentId()));
     }
+    return new Termination(contract.id(), contract.guestId(), contract.environmentId(), happened);
   }
 
   private static void validate(NewContract contract) {
