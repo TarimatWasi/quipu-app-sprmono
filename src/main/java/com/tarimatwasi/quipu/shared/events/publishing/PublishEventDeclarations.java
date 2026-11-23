@@ -192,16 +192,7 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     if (errors.size() > before) {
       return null;
     }
-    Compiled result = compiled(where, declaration.type(), components, expressions, when, errors);
-    return result == null
-        ? null
-        : new Compiled(
-            result.type(),
-            result.constructor(),
-            result.componentTypes(),
-            result.expressions(),
-            when,
-            id);
+    return compiled(where, declaration.type(), components, expressions, when, id, errors);
   }
 
   /** The metadata of the event: its id is name-based on the declared key, if there is one. */
@@ -244,6 +235,7 @@ public class PublishEventDeclarations implements BeanPostProcessor {
       RecordComponent[] components,
       List<Expression> expressions,
       @Nullable Expression when,
+      @Nullable Expression id,
       List<String> errors) {
     Class<?>[] types = new Class<?>[components.length];
     for (int i = 0; i < components.length; i++) {
@@ -252,7 +244,7 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     try {
       Constructor<? extends DomainEvent> constructor = type.getDeclaredConstructor(types);
       ReflectionUtils.makeAccessible(constructor);
-      return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when, null);
+      return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when, id);
     } catch (NoSuchMethodException e) {
       errors.add(where + ": " + type.getSimpleName() + " has no canonical constructor");
       return null;

@@ -145,13 +145,15 @@ public class RefundsBffController {
   public ResponseEntity<RefundResponse> create(@Valid @RequestBody RefundRequest request) {
     RefundResponse created =
         RefundResponse.of(
-            refunds.create(
-                new RefundCommand(
-                    guestOf(request.guestId()),
-                    request.amount(),
-                    request.date(),
-                    request.method(),
-                    request.note())),
+            refunds
+                .create(
+                    new RefundCommand(
+                        guestOf(request.guestId()),
+                        request.amount(),
+                        request.date(),
+                        request.method(),
+                        request.note()))
+                .view(),
             ids);
     return ResponseEntity.created(URI.create(URL + "/" + created.id())).body(created);
   }

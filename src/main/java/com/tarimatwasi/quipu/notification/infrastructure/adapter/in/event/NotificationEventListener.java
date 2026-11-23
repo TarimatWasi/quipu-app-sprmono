@@ -7,7 +7,13 @@ import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationU
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Kind;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.NewNotification;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Target;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentResolved;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentResubmitted;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentSubmitted;
+import com.tarimatwasi.quipu.payment.domain.event.RefundCreated;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
+import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.modulith.events.ApplicationModuleListener;
@@ -60,6 +66,57 @@ public class NotificationEventListener {
         Target.CONTRACT,
         contract.contractId(),
         Map.of());
+  }
+
+  @ApplicationModuleListener
+  public void on(PaymentSubmitted payment) {
+    raise(
+        payment,
+        Kind.PAYMENT_PROOF_SUBMITTED,
+        payment.guestId(),
+        Target.PAYMENT,
+        payment.paymentId(),
+        paid(payment.amount(), payment.period()));
+  }
+
+  @ApplicationModuleListener
+  public void on(PaymentResubmitted payment) {
+    raise(
+        payment,
+        Kind.PAYMENT_PROOF_SUBMITTED,
+        payment.guestId(),
+        Target.PAYMENT,
+        payment.paymentId(),
+        paid(payment.amount(), payment.period()));
+  }
+
+  @ApplicationModuleListener
+  public void on(PaymentResolved payment) {
+    raise(
+        payment,
+        payment.approved() ? Kind.PAYMENT_APPROVED : Kind.PAYMENT_REJECTED,
+        payment.guestId(),
+        Target.PAYMENT,
+        payment.paymentId(),
+        paid(payment.amount(), payment.period()));
+  }
+
+  @ApplicationModuleListener
+  public void on(RefundCreated refund) {
+    raise(
+        refund,
+        Kind.REFUND_CREATED,
+        refund.guestId(),
+        Target.REFUND,
+        refund.refundId(),
+        Map.of("amount", refund.amount().toPlainString()));
+  }
+
+  /** The amount and, for a period of a contract, its month. */
+  private static Map<String, String> paid(BigDecimal amount, @Nullable YearMonth period) {
+    return period == null
+        ? Map.of("amount", amount.toPlainString())
+        : Map.of("amount", amount.toPlainString(), "month", period.toString());
   }
 
   private void raise(

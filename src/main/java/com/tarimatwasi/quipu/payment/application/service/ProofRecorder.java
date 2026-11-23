@@ -461,7 +461,8 @@ final class ProofRecorder {
         vouchers < proofs.size(),
         payment.reviewedAt(),
         payment.submittedAt(),
-        stored.createdAt());
+        stored.createdAt(),
+        null);
   }
 
   static PaymentState state(PaymentStatus status) {

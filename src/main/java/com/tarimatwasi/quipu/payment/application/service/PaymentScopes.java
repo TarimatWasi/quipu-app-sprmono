@@ -3,24 +3,23 @@ package com.tarimatwasi.quipu.payment.application.service;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.PaymentView;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentContractPort;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentStayPort;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
-/** Resolves the functional scope while the business transaction is still open (TAR-372). */
-final class PaymentChangeRecorder {
-  private final ChangeSignals signals;
+/**
+ * Resolves, while the business transaction is still open, where the guest lives for what a payment
+ * pays: a fact its events carry, so no listener queries after the commit (TAR-372).
+ */
+final class PaymentScopes {
   private final PaymentContractPort contracts;
   private final PaymentStayPort stays;
 
-  PaymentChangeRecorder(
-      ChangeSignals signals, PaymentContractPort contracts, PaymentStayPort stays) {
-    this.signals = signals;
+  PaymentScopes(PaymentContractPort contracts, PaymentStayPort stays) {
     this.contracts = contracts;
     this.stays = stays;
   }
 
-  PaymentView record(PaymentView payment, ChangeSignals.Kind kind) {
+  /** For an administrator: the batch ports of the administration. */
+  PaymentView scoped(PaymentView payment) {
     Long contractId = payment.contractId();
     Long stayId = payment.stayId();
     Long environmentId = null;
@@ -32,12 +31,11 @@ final class PaymentChangeRecorder {
         environmentId = stay.environmentId();
       }
     }
-    record(kind, payment.guestId(), contractId != null, payment.id(), environmentId);
-    return payment;
+    return payment.inEnvironment(environmentId);
   }
 
-  /** Resolve a guest's scope through its own authorized queries, never the admin batch ports. */
-  PaymentView recordOwn(PaymentView payment, ChangeSignals.Kind kind) {
+  /** For the guest itself: its own authorized queries, never the admin batch ports. */
+  PaymentView ownScoped(PaymentView payment) {
     Long environmentId = null;
     if (payment.contractId() != null) {
       for (var contract : contracts.contractsOf(payment.guestId())) {
@@ -54,17 +52,6 @@ final class PaymentChangeRecorder {
         }
       }
     }
-    record(kind, payment.guestId(), payment.contractId() != null, payment.id(), environmentId);
-    return payment;
-  }
-
-  void record(
-      ChangeSignals.Kind kind,
-      Long guestId,
-      boolean contractType,
-      @Nullable Long paymentId,
-      @Nullable Long environmentId) {
-    signals.changed(
-        new ChangeSignals.Change(kind, guestId, contractType, paymentId, environmentId));
+    return payment.inEnvironment(environmentId);
   }
 }

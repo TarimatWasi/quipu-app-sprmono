@@ -53,7 +53,6 @@ import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -120,8 +119,7 @@ class OwnPaymentServiceTest {
                 Mockito.mock(PaymentReviewerPort.class)),
             contracts,
             refunds,
-            clock,
-            Mockito.mock(ChangeSignals.class));
+            clock);
   }
 
   private void guest(boolean contractType, Standing standing) {

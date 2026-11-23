@@ -8,10 +8,17 @@ import com.tarimatwasi.quipu.expense.domain.event.ExpenseUpdated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
 import com.tarimatwasi.quipu.fine.domain.event.FineDeleted;
 import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentCorrected;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentRegistered;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentResolved;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentResubmitted;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentSubmitted;
+import com.tarimatwasi.quipu.payment.domain.event.RefundCreated;
 import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change;
 import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -53,8 +60,36 @@ public class DomainEventInvalidations {
                   false,
                   null,
                   null));
+      case PaymentSubmitted e ->
+          List.of(
+              payment(Kind.PAYMENT, e.guestId(), e.contractId(), e.paymentId(), e.environmentId()));
+      case PaymentResubmitted e ->
+          List.of(
+              payment(Kind.PAYMENT, e.guestId(), e.contractId(), e.paymentId(), e.environmentId()));
+      case PaymentCorrected e ->
+          List.of(
+              payment(Kind.PAYMENT, e.guestId(), e.contractId(), e.paymentId(), e.environmentId()));
+      case PaymentResolved e ->
+          List.of(
+              payment(
+                  Kind.FINANCIAL, e.guestId(), e.contractId(), e.paymentId(), e.environmentId()));
+      case PaymentRegistered e ->
+          List.of(
+              payment(
+                  Kind.FINANCIAL, e.guestId(), e.contractId(), e.paymentId(), e.environmentId()));
+      case RefundCreated e ->
+          List.of(new Change(Kind.FINANCIAL, e.guestId(), e.contract(), e.paymentId(), null));
       default -> List.of();
     };
+  }
+
+  private static Change payment(
+      Kind kind,
+      Long guestId,
+      @Nullable Long contractId,
+      Long paymentId,
+      @Nullable Long environmentId) {
+    return new Change(kind, guestId, contractId != null, paymentId, environmentId);
   }
 
   private static Change contract(Long guestId, Long environmentId) {

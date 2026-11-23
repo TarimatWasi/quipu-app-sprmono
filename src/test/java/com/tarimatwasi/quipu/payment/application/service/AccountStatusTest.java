@@ -27,7 +27,6 @@ import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
@@ -40,7 +39,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -81,8 +79,7 @@ class AccountStatusTest {
             contracts,
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
-            clock,
-            Mockito.mock(ChangeSignals.class));
+            clock);
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {

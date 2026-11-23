@@ -47,15 +47,32 @@ public final class NotificationTexts {
       case CONTRACT_TERMINATED ->
           new Text("Contrato finalizado", "La administración finalizó tu contrato.");
       case PAYMENT_PROOF_SUBMITTED ->
-          new Text("Comprobante por revisar", "Un huésped envió un comprobante de pago.");
+          new Text(
+              "Comprobante por revisar",
+              "Un huésped envió un pago de "
+                  + soles(facts, "amount")
+                  + of(facts)
+                  + " para revisar.");
       case ONBOARDING_COMPLETED ->
           new Text("Registro completado", "Un huésped terminó su registro.");
       case GUEST_DOCUMENT_UPLOADED -> new Text("Documento nuevo", "Un huésped subió un documento.");
       case CONTRACT_EXPIRING -> new Text("Contrato por vencer", "Un contrato vence pronto.");
       case PAYMENT_OVERDUE -> new Text("Pago vencido", "Un huésped tiene un pago vencido.");
-      case PAYMENT_APPROVED -> new Text("Pago aprobado", "Tu pago fue aprobado.");
-      case PAYMENT_REJECTED -> new Text("Pago observado", "Tu pago fue observado.");
-      case REFUND_CREATED -> new Text("Devolución registrada", "Se registró una devolución.");
+      case PAYMENT_APPROVED ->
+          new Text(
+              "Pago aprobado",
+              "Tu pago de " + soles(facts, "amount") + of(facts) + " fue aprobado.");
+      case PAYMENT_REJECTED ->
+          new Text(
+              "Pago observado",
+              "Tu pago de "
+                  + soles(facts, "amount")
+                  + of(facts)
+                  + " fue observado. Revisa el motivo y envíalo de nuevo.");
+      case REFUND_CREATED ->
+          new Text(
+              "Devolución registrada",
+              "Se registró una devolución de " + soles(facts, "amount") + " a tu favor.");
       case PAYMENT_DUE -> new Text("Pago por vencer", "Tienes un pago por vencer.");
     };
   }
@@ -65,6 +82,11 @@ public final class NotificationTexts {
         + new BigDecimal(facts.getOrDefault(name, "0"))
             .setScale(2, RoundingMode.HALF_UP)
             .toPlainString();
+  }
+
+  /** " de octubre de 2026" for a period of a contract; nothing for a stay. */
+  private static String of(Map<String, String> facts) {
+    return facts.containsKey("month") ? " de " + month(facts, "month") : "";
   }
 
   private static String month(Map<String, String> facts, String name) {
