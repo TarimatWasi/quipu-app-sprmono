@@ -69,6 +69,7 @@ class ArchitectureScopesTest {
             "expense",
             "fine",
             "guest",
+            "notification",
             "payment")
         .allSatisfy(
             m ->

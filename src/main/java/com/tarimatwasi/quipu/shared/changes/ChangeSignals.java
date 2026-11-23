@@ -20,7 +20,8 @@ public interface ChangeSignals {
     ENVIRONMENT,
     EXPENSE,
     FINE,
-    DIRECTORY
+    DIRECTORY,
+    NOTIFICATION
   }
 
   /** Internal references only; ids are masked separately for every receiving session. */

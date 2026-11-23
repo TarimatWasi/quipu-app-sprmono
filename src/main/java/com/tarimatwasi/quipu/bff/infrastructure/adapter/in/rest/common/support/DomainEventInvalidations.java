@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseUpdated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
 import com.tarimatwasi.quipu.fine.domain.event.FineDeleted;
+import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
 import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change;
 import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
@@ -46,6 +47,14 @@ public class DomainEventInvalidations {
       case ExpenseDeleted e -> List.of(administrative(Kind.EXPENSE));
       case FineApplied e -> List.of(new Change(Kind.FINE, e.guestId(), false, null, null));
       case FineDeleted e -> List.of(new Change(Kind.FINE, e.guestId(), false, null, null));
+      case NotificationRaised e ->
+          List.of(
+              new Change(
+                  Kind.NOTIFICATION,
+                  e.forAdministrators() ? null : e.guestId(),
+                  false,
+                  null,
+                  null));
       default -> List.of();
     };
   }

@@ -59,7 +59,7 @@ class ChangeStreamWriterTest {
     var registry =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 64, 64, 8192, Duration.ofSeconds(20), Duration.ofSeconds(30)),
+                4, 64, 64, 8192, Duration.ofSeconds(20), Duration.ofSeconds(30), true),
             clock);
     try (var transport = new Transport(temporary, writer(registry, clock), authentication(clock))) {
       transport.open(trickle);

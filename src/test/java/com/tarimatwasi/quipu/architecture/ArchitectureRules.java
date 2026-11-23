@@ -54,7 +54,16 @@ final class ArchitectureRules {
   /** Modules in hexagonal packages (TAR-226): the business ones (batch 1) and bff (batch 2). */
   static final Set<String> HEXAGONAL_MODULES =
       Set.of(
-          "audit", "auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment");
+          "audit",
+          "auth",
+          "bff",
+          "contract",
+          "environment",
+          "expense",
+          "fine",
+          "guest",
+          "notification",
+          "payment");
 
   private ArchitectureRules() {}
 

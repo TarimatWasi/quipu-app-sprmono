@@ -365,6 +365,17 @@ public class ChangeStreamRegistry implements ChangeSignals {
             }
           }
         }
+        case NOTIFICATION -> {
+          // A null guest is the shared bell of the administrators; a guest only gets its own.
+          if (!properties.notificationKeys()) {
+            return true;
+          }
+          if (!administrator) {
+            key("guest.notifications");
+          } else if (change.guestId() == null) {
+            key("admin.notifications");
+          }
+        }
         case PAYMENT, FINANCIAL, CONTRACT, GUEST -> {
           return false;
         }

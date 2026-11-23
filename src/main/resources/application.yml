@@ -91,6 +91,9 @@ app:
     frame-bytes: 8192
     heartbeat: 20s
     max-duration: 15m
+    # Claves de campana (contrato v0.27.0): se encienden cuando el front que las entiende está
+    # desplegado y el contrato fijado las admite.
+    notification-keys: false
   jwt:
     secret: ${JWT_SECRET}
     # TAR-228: el access token dura 15 minutos; la sesión se renueva con el refresh token.

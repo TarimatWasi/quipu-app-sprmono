@@ -40,7 +40,7 @@ class ChangeStreamRegistryTest {
   private ChangeStreamRegistry registry(int perAccount, int keys) {
     return new ChangeStreamRegistry(
         new ChangeStreamProperties(
-            perAccount, 64, keys, 8192, Duration.ofMillis(1), Duration.ofMinutes(15)),
+            perAccount, 64, keys, 8192, Duration.ofMillis(1), Duration.ofMinutes(15), true),
         clock);
   }
 
@@ -294,7 +294,7 @@ class ChangeStreamRegistryTest {
     var limited =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 2, 64, 8192, Duration.ofMillis(1), Duration.ofMinutes(15)),
+                4, 2, 64, 8192, Duration.ofMillis(1), Duration.ofMinutes(15), true),
             clock);
     try (var first = limited.reserve(1L, "one", 0, true, mask, clock.instant().plusSeconds(60));
         var second = limited.reserve(2L, "two", 0, true, mask, clock.instant().plusSeconds(60))) {
@@ -312,7 +312,7 @@ class ChangeStreamRegistryTest {
     var limited =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 64, 64, 256, Duration.ofMillis(1), Duration.ofMinutes(15)),
+                4, 64, 64, 256, Duration.ofMillis(1), Duration.ofMinutes(15), true),
             clock);
     try (var listener =
         limited.reserve(1L, "one", 0, true, mask, clock.instant().plusSeconds(60))) {

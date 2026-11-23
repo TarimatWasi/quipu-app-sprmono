@@ -26,6 +26,7 @@ class ModulithTest {
             "expense",
             "fine",
             "guest",
+            "notification",
             "payment",
             "shared");
   }

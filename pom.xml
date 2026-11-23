@@ -403,4 +403,58 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Contrato local (contract-first sin publicar): mvn -Dcontract.dir=<carpeta con bff.yaml> ...
+         omite la descarga fijada por contract.version y copia ese bff.yaml a target/contract. Solo
+         para desarrollo: sin hash, y CI nunca lo activa. -->
+    <profile>
+      <id>local-contract</id>
+      <activation>
+        <property>
+          <name>contract.dir</name>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>io.github.download-maven-plugin</groupId>
+            <artifactId>download-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>download-bff-contract</id>
+                <configuration>
+                  <skip>true</skip>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>copy-local-bff-contract</id>
+                <phase>generate-test-resources</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.directory}/contract</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${contract.dir}</directory>
+                      <includes>
+                        <include>bff.yaml</include>
+                      </includes>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

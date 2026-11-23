@@ -711,6 +711,7 @@ public class BffExceptionHandler {
           throw new IllegalStateException("A payment proof id is never part of a BFF path");
       // A refund is only listed (TAR-240); it is not edited nor deleted, so no path carries it.
       case REFUND -> throw new IllegalStateException("A refund id is never part of a BFF path");
+      case NOTIFICATION -> BffNotificationExceptionHandler.notificationNotFound();
     };
   }
 
