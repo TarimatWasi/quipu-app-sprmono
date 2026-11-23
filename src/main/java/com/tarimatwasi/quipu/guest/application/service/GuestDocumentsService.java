@@ -21,6 +21,7 @@ import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.shared.transaction.AfterTransaction;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,8 +36,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -348,16 +347,6 @@ public class GuestDocumentsService implements GuestDocumentsUseCase {
    * happened, so the object is only left pending: the purger removes it unless a row uses it.
    */
   private void afterRollback(String key, Long documentId) {
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCompletion(int status) {
-            if (status == STATUS_ROLLED_BACK) {
-              discard(key, documentId);
-            } else if (status == STATUS_UNKNOWN) {
-              pend(key, documentId);
-            }
-          }
-        });
+    AfterTransaction.unlessCommitted(() -> discard(key, documentId), () -> pend(key, documentId));
   }
 }

@@ -36,6 +36,7 @@ import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.file.FileNames;
+import com.tarimatwasi.quipu.shared.transaction.AfterTransaction;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,8 +51,6 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * What the administrator and the guest share about the proofs of a payment (RN-22, TAR-239): their
@@ -380,42 +379,35 @@ final class ProofRecorder {
   }
 
   /**
-   * Inside a transaction the objects stored so far are removed whenever it does not commit: an
-   * insert failed, or something after it did, or the commit itself failed. Returns true if they
-   * will be; with no transaction the caller removes them.
+   * Inside a transaction the objects stored so far are removed whenever it rolls back: an insert
+   * failed, or something after it did. Returns true if they will be; with no transaction the caller
+   * removes them. An unknown outcome keeps them (AfterTransaction).
    */
   private boolean removeUnlessCommitted(Long guestId, List<String> stored) {
-    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-      return false;
-    }
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCompletion(int status) {
-            if (status != STATUS_COMMITTED) {
-              stored.forEach(key -> discard(guestId, key));
-            }
+    return AfterTransaction.unlessCommitted(
+        () -> stored.forEach(key -> discard(guestId, key)),
+        () -> {
+          if (!stored.isEmpty()) {
+            kept(guestId);
           }
         });
-    return true;
+  }
+
+  /**
+   * The commit of the row may have happened: its object stays, and the internal id of the guest
+   * traces it (TAR-216) without the storage key (TAR-205).
+   */
+  private static void kept(Long guestId) {
+    LOGGER.warn(
+        "A voucher of guest {} stays in the bucket: the commit of its row had an unknown outcome",
+        guestId);
   }
 
   /** The files a correction replaced or removed leave the bucket only once it commits. */
   private void removeOnceCommitted(Long guestId, List<String> keys) {
-    if (keys.isEmpty()) {
-      return;
+    if (!keys.isEmpty()) {
+      AfterTransaction.onceCommitted(() -> keys.forEach(key -> discard(guestId, key)));
     }
-    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-      keys.forEach(key -> discard(guestId, key));
-      return;
-    }
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCommit() {
-            keys.forEach(key -> discard(guestId, key));
-          }
-        });
   }
 
   /**

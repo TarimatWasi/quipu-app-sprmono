@@ -30,6 +30,7 @@ import com.tarimatwasi.quipu.shared.file.FileNames;
 import com.tarimatwasi.quipu.shared.occupancy.StayOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
+import com.tarimatwasi.quipu.shared.transaction.AfterTransaction;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -127,14 +128,19 @@ public class ContractService implements ManageContractsUseCase {
     return store(contract);
   }
 
-  /** The object goes to the bucket first; if the row then fails, the object is removed. */
+  /**
+   * The object goes to the bucket first; it is removed if the transaction rolls back, whatever
+   * failed (the row, the signing, the publication of the fact or the commit). An unknown outcome
+   * keeps it, since the contract may exist (AfterTransaction).
+   */
   private ContractView store(NewContract contract) {
     // ponytail: the upload runs inside the transaction that holds the lock of the environment, so a
     // slow bucket delays other contracts on that same environment (one per upload, at most 10 MB);
-    // upload before opening the transaction if that ever hurts. A failure of the commit itself
-    // leaves
-    // the object orphan: it is rare and only the bucket listing finds it.
+    // upload before opening the transaction if that ever hurts.
     String key = storeFile(contract.file().content());
+    Long guestId = contract.guestId();
+    boolean removedIfRolledBack =
+        AfterTransaction.unlessCommitted(() -> discard(guestId, key), () -> kept(guestId));
     ContractView view = null;
     try {
       Contract saved =
@@ -154,10 +160,20 @@ public class ContractService implements ManageContractsUseCase {
       view = views.view(saved);
       return view;
     } finally {
-      if (view == null) {
-        discard(contract.guestId(), key);
+      if (view == null && !removedIfRolledBack) {
+        discard(guestId, key);
       }
     }
+  }
+
+  /**
+   * The commit of the row may have happened: its object stays, and the internal id of the guest
+   * traces it (TAR-216) without the storage key (TAR-205).
+   */
+  private static void kept(Long guestId) {
+    LOGGER.warn(
+        "A contract file of guest {} stays in the bucket: the commit of its row had an unknown outcome",
+        guestId);
   }
 
   private String storeFile(byte[] content) {

@@ -106,6 +106,22 @@ final class EventRules {
           .should()
           .callMethodWhere(JavaCall.Predicates.target(HasName.Predicates.name("publishEvent")));
 
+  /**
+   * QP-TX-01: work that depends on how a transaction ends goes through AfterTransaction, which
+   * never removes an object when the outcome is unknown (a removal on "not committed" lost the file
+   * of a row that had committed). The live invalidations keep their own buffer per transaction.
+   */
+  @ArchTest
+  static final ArchRule QP_TX_01 =
+      noClasses()
+          .that()
+          .resideOutsideOfPackage(ArchitectureRules.ROOT + ".shared.transaction")
+          .and()
+          .doNotHaveSimpleName("ChangeStreamRegistry")
+          .should()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("registerSynchronization")));
+
   /** QP-EVT-06: only the work a domain event starts acts as the system, never a request. */
   @ArchTest
   static final ArchRule QP_EVT_06 =
