@@ -625,14 +625,19 @@ class AuthBffControllerTest {
     // The application layer owns the transaction; the row lock needs one.
     var tx = new TransactionTemplate(transactionManager);
     for (int i = 0; i < 5; i++) {
-      Boolean alreadyLocked = tx.execute(s -> users.registerFailedLogin(id, start, 5, fifteen));
+      Boolean alreadyLocked =
+          tx.execute(s -> users.registerFailedLogin(id, start, 5, fifteen).alreadyLocked());
       assertThat(alreadyLocked).isFalse();
     }
     var lockedUntil = jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class);
 
     boolean alreadyLocked =
         Boolean.TRUE.equals(
-            tx.execute(s -> users.registerFailedLogin(id, start.plusSeconds(60), 5, fifteen)));
+            tx.execute(
+                s ->
+                    users
+                        .registerFailedLogin(id, start.plusSeconds(60), 5, fifteen)
+                        .alreadyLocked()));
 
     assertThat(alreadyLocked).isTrue();
     assertThat(jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class))

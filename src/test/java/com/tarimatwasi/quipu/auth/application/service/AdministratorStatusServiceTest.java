@@ -79,8 +79,9 @@ class AdministratorStatusServiceTest {
 
   private AdministratorStatusService serviceWithLimit(int max) {
     return new AdministratorStatusService(
-        new AdministratorReauthentication(users, encoder, clock),
-        new AdministratorStatusChanger(users, store, () -> max),
+        new AdministratorReauthentication(users, encoder, clock, TestSecurityFacts.over(users)),
+        new AdministratorStatusChanger(
+            users, store, () -> max, TestSecurityFacts.over(users, store)),
         store,
         notices);
   }

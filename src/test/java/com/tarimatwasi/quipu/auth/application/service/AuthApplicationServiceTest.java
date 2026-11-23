@@ -32,6 +32,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort.LiveTemporaryPassword;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort.FailedLogin;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
@@ -86,7 +87,7 @@ class AuthApplicationServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new AuthApplicationService(
-            repository,
+            new AccountAccess(repository, TestSecurityFacts.over(repository)),
             encoder,
             sessionsOver(ECHO, repository),
             (type, number) -> 0L,
@@ -157,7 +158,7 @@ class AuthApplicationServiceTest {
     BCryptPasswordEncoder spied = spy(new BCryptPasswordEncoder());
     AuthApplicationService spiedService =
         new AuthApplicationService(
-            repository,
+            new AccountAccess(repository, TestSecurityFacts.over(repository)),
             spied,
             sessionsOver(TOKENS, repository),
             (type, number) -> 0L,
@@ -464,7 +465,7 @@ class AuthApplicationServiceTest {
     UserRepositoryPort untouched = mock(UserRepositoryPort.class);
     var limited =
         new AuthApplicationService(
-            untouched,
+            new AccountAccess(untouched, TestSecurityFacts.over(untouched)),
             encoder,
             sessionsOver(TOKENS, untouched),
             (type, number) -> 7L,
@@ -485,7 +486,7 @@ class AuthApplicationServiceTest {
     var asked = new ArrayList<String>();
     var counting =
         new AuthApplicationService(
-            repository,
+            new AccountAccess(repository, TestSecurityFacts.over(repository)),
             encoder,
             sessionsOver(TOKENS, repository),
             (type, number) -> {
@@ -561,10 +562,11 @@ class AuthApplicationServiceTest {
     UserRepositoryPort stale = mock(UserRepositoryPort.class);
     when(stale.findByDocumentForUpdate(DocumentType.DNI, "11111111"))
         .thenReturn(Optional.of(unlocked));
-    when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any())).thenReturn(true);
+    when(stale.registerFailedLogin(eq(unlocked.id()), any(), anyInt(), any()))
+        .thenReturn(new FailedLogin(true, true));
     var racing =
         new AuthApplicationService(
-            stale,
+            new AccountAccess(stale, TestSecurityFacts.over(stale)),
             encoder,
             sessionsOver(TOKENS, stale),
             (type, number) -> 0L,
@@ -583,7 +585,13 @@ class AuthApplicationServiceTest {
     when(repo.findByDocumentForUpdate(DocumentType.DNI, "11111111")).thenReturn(Optional.empty());
     var locking =
         new AuthApplicationService(
-            repo, encoder, sessionsOver(TOKENS, repo), (type, number) -> 0L, grants, guests, clock);
+            new AccountAccess(repo, TestSecurityFacts.over(repo)),
+            encoder,
+            sessionsOver(TOKENS, repo),
+            (type, number) -> 0L,
+            grants,
+            guests,
+            clock);
 
     assertThatThrownBy(() -> locking.login(loginOf("Correcta-123")))
         .isInstanceOf(InvalidCredentialsException.class);
@@ -599,7 +607,7 @@ class AuthApplicationServiceTest {
     UserRepositoryPort spied = spy(repository);
     var locking =
         new AuthApplicationService(
-            spied,
+            new AccountAccess(spied, TestSecurityFacts.over(spied)),
             encoder,
             sessionsOver(TOKENS, spied),
             (type, number) -> 0L,

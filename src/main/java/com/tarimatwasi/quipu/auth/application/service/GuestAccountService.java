@@ -21,8 +21,14 @@ public class GuestAccountService implements GuestAccountUseCase {
   private final UserRepositoryPort users;
   private final AccessGrantRepositoryPort grants;
   private final Clock clock;
+  private final SecurityFacts facts;
 
-  GuestAccountService(UserRepositoryPort users, AccessGrantRepositoryPort grants, Clock clock) {
+  GuestAccountService(
+      UserRepositoryPort users,
+      AccessGrantRepositoryPort grants,
+      Clock clock,
+      SecurityFacts facts) {
+    this.facts = facts;
     this.users = users;
     this.grants = grants;
     this.clock = clock;
@@ -61,7 +67,7 @@ public class GuestAccountService implements GuestAccountUseCase {
   @Override
   @Transactional
   public void setActive(Long guestId, boolean active) {
-    users.setGuestAccountStatus(guestId, active ? "ACTIVE" : "INACTIVE");
+    facts.setGuestAccountActive(guestId, active);
   }
 
   @Override

@@ -88,6 +88,9 @@ public interface SessionStorePort {
    */
   boolean isClosed(String sidHash, Instant now);
 
+  /** The SHA-256 of the sid of a session, as the live streams know it; empty if unknown. */
+  Optional<String> sidHashOf(Long sessionId);
+
   /** The SHA-256, in hexadecimal, under which a sid or the secret of a refresh token is stored. */
   static String hash(String secret) {
     return Sha256.hex(secret);

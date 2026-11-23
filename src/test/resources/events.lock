@@ -1,3 +1,7 @@
+event com.tarimatwasi.quipu.auth.domain.event.AccountLocked v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, userId:java.lang.Long)
+event com.tarimatwasi.quipu.auth.domain.event.AccountsDeactivated v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, userIds:java.util.List<java.lang.Long>)
+event com.tarimatwasi.quipu.auth.domain.event.CredentialsChanged v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, userId:java.lang.Long, securityVersion:long, keptSessionId:java.lang.Long)
+event com.tarimatwasi.quipu.auth.domain.event.SessionRevoked v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, sessionId:java.lang.Long, userId:java.lang.Long, cause:com.tarimatwasi.quipu.auth.domain.event.SessionEnd)
 event com.tarimatwasi.quipu.contract.domain.event.ContractSigned v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, contractId:java.lang.Long, guestId:java.lang.Long, environmentId:java.lang.Long, startDate:java.time.LocalDate, monthlyAmount:java.math.BigDecimal)
 event com.tarimatwasi.quipu.contract.domain.event.ContractTerminated v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, contractId:java.lang.Long, guestId:java.lang.Long, environmentId:java.lang.Long)
 event com.tarimatwasi.quipu.expense.domain.event.ExpenseCreated v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, expenseId:java.lang.Long, amount:java.math.BigDecimal, month:java.time.YearMonth)

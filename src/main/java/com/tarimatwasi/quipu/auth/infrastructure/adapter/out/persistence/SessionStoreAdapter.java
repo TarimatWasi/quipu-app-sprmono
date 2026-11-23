@@ -115,4 +115,9 @@ class SessionStoreAdapter implements SessionStorePort {
         session.lastUsedAt(),
         session.revokedAt());
   }
+
+  @Override
+  public Optional<String> sidHashOf(Long sessionId) {
+    return sessions.findById(sessionId).map(SessionJpaEntity::sidHash);
+  }
 }

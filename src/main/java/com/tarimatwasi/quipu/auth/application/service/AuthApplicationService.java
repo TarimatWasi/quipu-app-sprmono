@@ -46,6 +46,7 @@ public class AuthApplicationService
   static final Duration LOCK_DURATION = Duration.ofMinutes(15);
 
   private final UserRepositoryPort userRepository;
+  private final SecurityFacts facts;
   private final PasswordEncoder passwordEncoder;
   private final SessionService sessions;
   private final LoginAttemptLimiterPort loginAttempts;
@@ -57,14 +58,15 @@ public class AuthApplicationService
   private final String dummyPasswordHash;
 
   public AuthApplicationService(
-      UserRepositoryPort userRepository,
+      AccountAccess accounts,
       PasswordEncoder passwordEncoder,
       SessionService sessions,
       LoginAttemptLimiterPort loginAttempts,
       AccessGrantRepositoryPort grants,
       GuestAccessListener guests,
       Clock clock) {
-    this.userRepository = userRepository;
+    this.userRepository = accounts.users();
+    this.facts = accounts.facts();
     this.passwordEncoder = passwordEncoder;
     this.sessions = sessions;
     this.loginAttempts = loginAttempts;
@@ -115,7 +117,7 @@ public class AuthApplicationService
     if (!passwordMatches && temporary == null) {
       // Defensive: the row is already locked, but the repository still answers if it was locked.
       boolean alreadyLocked =
-          userRepository.registerFailedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION);
+          facts.failedLogin(user.id(), now, MAX_FAILED_LOGINS, LOCK_DURATION).alreadyLocked();
       // The row was read under its lock, so this can only be a stale reading; the longest a lock
       // can still last is the full duration, which is what the client is told.
       throw alreadyLocked

@@ -34,6 +34,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
   private final BackgroundTaskPort background;
   private final AccessGrantRepositoryPort grants;
   private final Clock clock;
+  private final SecurityFacts facts;
 
   PasswordRecoveryService(
       ResetCodeIssuer issuer,
@@ -42,7 +43,9 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
       PasswordResetMailPort mail,
       BackgroundTaskPort background,
       AccessGrantRepositoryPort grants,
-      Clock clock) {
+      Clock clock,
+      SecurityFacts facts) {
+    this.facts = facts;
     this.issuer = issuer;
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
@@ -121,11 +124,8 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     PasswordPolicy.requireNotALiveAccess(grants, account.guestId(), newPassword, now);
     String newHash = passwordEncoder.encode(newPassword);
-    if (activation && name != null) {
-      userRepository.resetPasswordAndName(account.id(), newHash, now, name.strip());
-    } else {
-      userRepository.resetPassword(account.id(), newHash, now);
-    }
+    facts.resetPassword(
+        account.id(), newHash, now, activation && name != null ? name.strip() : null);
     Long guestId = pending.account().guestId();
     if (guestId != null) {
       // A new password ends any access the administrator handed before.

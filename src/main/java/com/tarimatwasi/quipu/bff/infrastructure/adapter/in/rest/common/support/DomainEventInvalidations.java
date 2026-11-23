@@ -1,5 +1,10 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 
+import com.tarimatwasi.quipu.auth.application.port.in.SessionFingerprintUseCase;
+import com.tarimatwasi.quipu.auth.domain.event.AccountLocked;
+import com.tarimatwasi.quipu.auth.domain.event.AccountsDeactivated;
+import com.tarimatwasi.quipu.auth.domain.event.CredentialsChanged;
+import com.tarimatwasi.quipu.auth.domain.event.SessionRevoked;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseCreated;
@@ -32,14 +37,33 @@ import org.springframework.stereotype.Component;
 @Component
 public class DomainEventInvalidations {
   private final ChangeStreamRegistry streams;
+  private final SessionFingerprintUseCase sessions;
 
-  public DomainEventInvalidations(ChangeStreamRegistry streams) {
+  public DomainEventInvalidations(
+      ChangeStreamRegistry streams, SessionFingerprintUseCase sessions) {
     this.streams = streams;
+    this.sessions = sessions;
   }
 
+  /** Security facts close streams; the others invalidate resources. */
   @EventListener
   public void on(DomainEvent event) {
-    changesOf(event).forEach(streams::changed);
+    switch (event) {
+      case SessionRevoked e ->
+          sessions
+              .fingerprintOf(e.sessionId())
+              .ifPresent(fingerprint -> streams.revokeSession(e.userId(), fingerprint));
+      case CredentialsChanged e ->
+          streams.credentialsChanged(
+              e.userId(),
+              e.securityVersion(),
+              e.keptSessionId() == null
+                  ? null
+                  : sessions.fingerprintOf(e.keptSessionId()).orElse(null));
+      case AccountLocked e -> streams.accountLocked(e.userId());
+      case AccountsDeactivated e -> e.userIds().forEach(streams::accountLocked);
+      default -> changesOf(event).forEach(streams::changed);
+    }
   }
 
   /** The resource groups a fact touches; empty for facts no open screen shows. */

@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.auth.application.service.SecurityFacts;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeStreamRegistry;
 import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
@@ -54,6 +55,7 @@ class ChangesStreamContractTest {
   @Autowired IdMasker ids;
   @Autowired ChangeStreamRegistry streams;
   @Autowired PlatformTransactionManager transactions;
+  @Autowired SecurityFacts security;
   @MockitoSpyBean UserRepositoryPort users;
   @MockitoSpyBean SessionStorePort sessions;
   private final Long admin = TestIds.next();
@@ -199,7 +201,8 @@ class ChangesStreamContractTest {
             admin, "test-sid", 0, true, ids.session(sid), Instant.now().plusSeconds(60))) {
       listener.activate(null);
       new TransactionTemplate(transactions)
-          .executeWithoutResult(tx -> users.resetPassword(admin, "new-hash", Instant.now()));
+          .executeWithoutResult(
+              tx -> security.resetPassword(admin, "new-hash", Instant.now(), null));
       assertThat(listener.next()).contains("session-revoked");
     }
     try (var listener =
@@ -207,7 +210,7 @@ class ChangesStreamContractTest {
             guestAccount, "test-sid", 0, false, ids.session(sid), Instant.now().plusSeconds(60))) {
       listener.activate(guest);
       new TransactionTemplate(transactions)
-          .executeWithoutResult(tx -> users.setGuestAccountStatus(guest, "INACTIVE"));
+          .executeWithoutResult(tx -> security.setGuestAccountActive(guest, false));
       assertThat(listener.next()).contains("session-revoked");
     }
   }

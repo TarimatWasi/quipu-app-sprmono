@@ -171,4 +171,10 @@ public final class InMemorySessionStore implements SessionStorePort {
                 row.sidHash.equals(sidHash)
                     && (row.revokedAt != null || !now.isBefore(row.absoluteExpiresAt)));
   }
+
+  @Override
+  public Optional<String> sidHashOf(Long sessionId) {
+    Row row = sessions.get(sessionId);
+    return row == null ? Optional.empty() : Optional.of(row.sidHash);
+  }
 }

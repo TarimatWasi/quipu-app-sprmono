@@ -60,7 +60,8 @@ class PasswordRecoveryServiceTest {
             mail,
             Runnable::run,
             grants,
-            clock);
+            clock,
+            TestSecurityFacts.over(repository));
   }
 
   private UserAccount savedUser(String status) {
@@ -229,7 +230,8 @@ class PasswordRecoveryServiceTest {
             spiedMail,
             queued::add,
             grants,
-            clock);
+            clock,
+            TestSecurityFacts.over(users));
 
     deferred.requestReset(EMAIL);
     deferred.requestReset("nobody@example.test");

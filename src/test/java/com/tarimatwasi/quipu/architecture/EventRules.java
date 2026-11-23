@@ -78,7 +78,10 @@ final class EventRules {
           .resideInAPackage("..domain.event..")
           .andShould(beRecordsOfFacts());
 
-  /** QP-EVT-03: only transactional use cases publish, so the event joins their transaction. */
+  /**
+   * QP-EVT-03: only public, transactional use-case methods publish: the proxy intercepts only
+   * those, and the event joins their transaction.
+   */
   @ArchTest
   static final ArchRule QP_EVT_03 =
       methods()
@@ -89,6 +92,8 @@ final class EventRules {
           .should()
           .beDeclaredInClassesThat()
           .resideInAPackage("..application.service..")
+          .andShould()
+          .bePublic()
           .andShould(beTransactional())
           .allowEmptyShould(true);
 

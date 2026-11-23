@@ -4,7 +4,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -43,11 +42,9 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
       "id, document_type, document_number, email, status, created_date, name";
 
   private final JdbcTemplate jdbc;
-  private final ChangeSignals signals;
 
-  public AdministratorStoreAdapter(JdbcTemplate jdbc, ChangeSignals signals) {
+  public AdministratorStoreAdapter(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
-    this.signals = signals;
   }
 
   @Override
@@ -174,11 +171,6 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
             id);
     if (updated != 1) {
       throw new IllegalStateException("No administrator with id " + id);
-    }
-    if ("INACTIVE".equals(status)) {
-      Long version =
-          jdbc.queryForObject("SELECT security_version FROM users WHERE id = ?", Long.class, id);
-      signals.credentialsChanged(id, Objects.requireNonNull(version), null);
     }
   }
 

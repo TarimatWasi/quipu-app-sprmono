@@ -77,7 +77,9 @@ class AdministratorServiceTest {
   private AdministratorService serviceWithLimit(int max) {
     return new AdministratorService(
         new AdministratorRegistrar(
-            new AdministratorReauthentication(users, encoder, clock), store, () -> max),
+            new AdministratorReauthentication(users, encoder, clock, TestSecurityFacts.over(users)),
+            store,
+            () -> max),
         new ResetCodeIssuer(users, clock),
         mail,
         notices,
