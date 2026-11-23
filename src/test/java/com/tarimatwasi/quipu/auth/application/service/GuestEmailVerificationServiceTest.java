@@ -19,7 +19,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.GuestEmailVerificationSto
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.MutableClock;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,11 +30,9 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class GuestEmailVerificationServiceTest {
-  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Long ACCOUNT = 70L;
@@ -54,7 +51,7 @@ class GuestEmailVerificationServiceTest {
           users,
           store,
           mail,
-          new GuestAccountEmailChanger(users, notices, changes),
+          new GuestAccountEmailChanger(users, notices),
           new BCryptPasswordEncoder(4),
           clock);
 

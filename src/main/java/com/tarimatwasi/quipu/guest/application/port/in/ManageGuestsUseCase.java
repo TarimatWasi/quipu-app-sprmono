@@ -191,7 +191,7 @@ public interface ManageGuestsUseCase {
    * @throws GuestNotFoundException if there is no guest with that id
    * @throws GuestHasActiveContractException if the guest has a contract in force
    */
-  void deactivate(Long id);
+  boolean deactivate(Long id);
 
   /**
    * RF-13, RN-12, CU-28: the guest comes back to the state it had when it was deactivated and its
@@ -201,5 +201,8 @@ public interface ManageGuestsUseCase {
    * @throws com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException if the guest owes
    *     periods (RN-25, RN-35)
    */
-  GuestSummaryView reactivate(Long id);
+  GuestReactivation reactivate(Long id);
+
+  /** The outcome of {@link #reactivate}: {@code happened} is false for a guest not inactive. */
+  record GuestReactivation(GuestSummaryView view, boolean happened) {}
 }

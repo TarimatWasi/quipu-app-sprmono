@@ -497,6 +497,6 @@ public class GuestsBffController {
   /** RF-13, CU-28: back to the state it had (NonInactiveGuestSummary); debt blocks it. */
   @PostMapping("/bff/admin/guests/{id}/reactivate")
   public GuestSummaryResponse reactivate(@PathVariable UUID id) {
-    return GuestSummaryResponse.of(guests.reactivate(ids.unmask(IdKind.GUEST, id)), ids);
+    return GuestSummaryResponse.of(guests.reactivate(ids.unmask(IdKind.GUEST, id)).view(), ids);
   }
 }

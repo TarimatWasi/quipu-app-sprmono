@@ -8,7 +8,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.GuestAccountEmailNoticePo
 import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,13 +23,10 @@ class GuestAccountEmailChanger {
 
   private static final Logger LOG = LoggerFactory.getLogger(GuestAccountEmailChanger.class);
 
-  private final ChangeSignals changes;
   private final UserRepositoryPort users;
   private final GuestAccountEmailNoticePort notices;
 
-  GuestAccountEmailChanger(
-      UserRepositoryPort users, GuestAccountEmailNoticePort notices, ChangeSignals changes) {
-    this.changes = changes;
+  GuestAccountEmailChanger(UserRepositoryPort users, GuestAccountEmailNoticePort notices) {
     this.users = users;
     this.notices = notices;
   }
@@ -55,8 +51,6 @@ class GuestAccountEmailChanger {
     } catch (AccountTakenException e) {
       throw new AccountEmailTakenException(e);
     }
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.PROFILE, guestId, false, null, null));
     return new AccountEmailChange(EmailChangeOutcome.CHANGED, previous);
   }
 

@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.SessionFingerprintUseCase;
 import com.tarimatwasi.quipu.auth.domain.event.AccountLocked;
 import com.tarimatwasi.quipu.auth.domain.event.AccountsDeactivated;
 import com.tarimatwasi.quipu.auth.domain.event.CredentialsChanged;
+import com.tarimatwasi.quipu.auth.domain.event.GuestAccountEmailChanged;
 import com.tarimatwasi.quipu.auth.domain.event.SessionRevoked;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
@@ -18,6 +19,11 @@ import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
 import com.tarimatwasi.quipu.expense.domain.event.ExpenseUpdated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
 import com.tarimatwasi.quipu.fine.domain.event.FineDeleted;
+import com.tarimatwasi.quipu.guest.domain.event.GuestAccessUsed;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDeactivated;
+import com.tarimatwasi.quipu.guest.domain.event.GuestIdentityCorrected;
+import com.tarimatwasi.quipu.guest.domain.event.GuestReactivated;
+import com.tarimatwasi.quipu.guest.domain.event.ProfileUpdated;
 import com.tarimatwasi.quipu.guest.domain.event.StayCreated;
 import com.tarimatwasi.quipu.guest.domain.event.StayUpdated;
 import com.tarimatwasi.quipu.notification.domain.event.NotificationRaised;
@@ -133,6 +139,13 @@ public class DomainEventInvalidations {
       case EnvironmentUpdated e -> List.of(environment(e.environmentId()));
       case EnvironmentDeactivated e -> List.of(environment(e.environmentId()));
       case EnvironmentReactivated e -> List.of(environment(e.environmentId()));
+      case GuestAccountEmailChanged e -> List.of(guest(Kind.PROFILE, e.guestId()));
+      case GuestIdentityCorrected e -> List.of(guest(Kind.DIRECTORY, e.guestId()));
+      case GuestDeactivated e -> List.of(guest(Kind.GUEST, e.guestId()));
+      case GuestReactivated e -> List.of(guest(Kind.GUEST, e.guestId()));
+      case GuestAccessUsed e -> List.of(guest(Kind.GUEST_RECORD, e.guestId()));
+      case ProfileUpdated e ->
+          List.of(guest(e.renamed() ? Kind.DIRECTORY : Kind.PROFILE, e.guestId()));
       default -> List.of();
     };
   }
@@ -144,6 +157,10 @@ public class DomainEventInvalidations {
       Long paymentId,
       @Nullable Long environmentId) {
     return new Change(kind, guestId, contractId != null, paymentId, environmentId);
+  }
+
+  private static Change guest(Kind kind, Long guestId) {
+    return new Change(kind, guestId, false, null, null);
   }
 
   private static Change environment(Long environmentId) {

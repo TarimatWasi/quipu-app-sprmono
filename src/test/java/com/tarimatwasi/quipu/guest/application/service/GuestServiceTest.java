@@ -32,7 +32,6 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
@@ -71,11 +70,9 @@ class GuestServiceTest {
   @Mock ContractOccupancyQuery contracts;
   @Mock GuestDebtQuery debts;
   @Mock OnboardingRepositoryPort onboarding;
-  @Mock ChangeSignals changes;
 
   private GuestService service() {
-    return new GuestService(
-        repository, accounts, stays, contracts, debts, onboarding, CLOCK, changes);
+    return new GuestService(repository, accounts, stays, contracts, debts, onboarding, CLOCK);
   }
 
   private static Guest guest(GuestStatus status) {
@@ -590,15 +587,13 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ONBOARDING)));
     when(contracts.guestContractInForce(ID)).thenReturn(Optional.empty());
 
-    service().deactivate(ID);
+    assertThat(service().deactivate(ID)).as("the deactivation states its fact").isTrue();
 
     ArgumentCaptor<Guest> saved = ArgumentCaptor.forClass(Guest.class);
     verify(repository).save(saved.capture());
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.INACTIVE);
     assertThat(saved.getValue().statusBeforeInactive()).isEqualTo(GuestStatus.ONBOARDING);
     verify(accounts).setActive(ID, false);
-    verify(changes)
-        .changed(new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
   }
 
   @Test
@@ -654,15 +649,13 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     accountIs(true, true);
 
-    GuestSummaryView view = service().reactivate(ID);
+    GuestSummaryView view = service().reactivate(ID).view();
 
     ArgumentCaptor<Guest> saved = ArgumentCaptor.forClass(Guest.class);
     verify(repository).save(saved.capture());
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.ONBOARDING);
     assertThat(saved.getValue().statusBeforeInactive()).isNull();
     verify(accounts).setActive(ID, true);
-    verify(changes)
-        .changed(new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
     assertThat(view.status()).isEqualTo(GuestState.ONBOARDING);
     assertThat(view.hasLoginAccess()).isTrue();
   }
@@ -676,7 +669,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     noAccount();
 
-    assertThat(service().reactivate(ID).status()).isEqualTo(GuestState.PENDING_ACTIVATION);
+    assertThat(service().reactivate(ID).view().status()).isEqualTo(GuestState.PENDING_ACTIVATION);
   }
 
   @Test
@@ -698,7 +691,7 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
     accountIs(true, true);
 
-    GuestSummaryView view = service().reactivate(ID);
+    GuestSummaryView view = service().reactivate(ID).view();
 
     assertThat(view.status()).isEqualTo(GuestState.ACTIVE);
     verify(repository, never()).save(any());

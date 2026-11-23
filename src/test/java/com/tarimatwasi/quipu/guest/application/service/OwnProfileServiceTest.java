@@ -63,7 +63,7 @@ class OwnProfileServiceTest {
 
   private OwnProfileService service() {
     return new OwnProfileService(
-        guests, accounts, records, new GuestDocumentUploader(records, files, changes), changes);
+        guests, accounts, records, new GuestDocumentUploader(records, files, changes));
   }
 
   private static GuestDocument document(long id) {
@@ -232,7 +232,9 @@ class OwnProfileServiceTest {
     savedAsIs();
 
     GuestSummaryView view =
-        service().update(GUEST, GuestKind.CONTRACT, new ProfileChange(null, "977000111", null));
+        service()
+            .update(GUEST, GuestKind.CONTRACT, new ProfileChange(null, "977000111", null))
+            .view();
 
     Guest after = saved();
     assertThat(after.phone()).isEqualTo("977000111");

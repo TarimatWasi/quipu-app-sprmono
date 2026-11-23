@@ -67,8 +67,8 @@ class AuthApplicationServiceTest {
         }
 
         @Override
-        public void accessUsed(Long guestId) {
-          startedOnboarding.add(guestId);
+        public boolean accessUsed(Long guestId) {
+          return startedOnboarding.add(guestId);
         }
       };
 

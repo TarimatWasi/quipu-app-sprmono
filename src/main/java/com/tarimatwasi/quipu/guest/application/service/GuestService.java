@@ -20,9 +20,12 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDeactivated;
+import com.tarimatwasi.quipu.guest.domain.event.GuestIdentityCorrected;
+import com.tarimatwasi.quipu.guest.domain.event.GuestReactivated;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -67,7 +70,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
   private final GuestDebtQuery debts;
   private final OnboardingRepositoryPort onboarding;
   private final Clock clock;
-  private final ChangeSignals changes;
 
   GuestService(
       GuestRepositoryPort guests,
@@ -76,8 +78,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
       ContractOccupancyQuery contracts,
       GuestDebtQuery debts,
       OnboardingRepositoryPort onboarding,
-      Clock clock,
-      ChangeSignals changes) {
+      Clock clock) {
     this.onboarding = onboarding;
     this.stays = stays;
     this.contracts = contracts;
@@ -85,7 +86,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     this.clock = clock;
     this.guests = guests;
     this.accounts = accounts;
-    this.changes = changes;
   }
 
   @Override
@@ -326,6 +326,9 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = GuestIdentityCorrected.class,
+      args = {"#id"})
   public GuestSummaryView update(Long id, UpdateCommand command) {
     if (command.documentType() == null && command.documentNumber() == null) {
       throw new EmptyGuestUpdateException();
@@ -343,8 +346,6 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
         // Under the lock of the guest: its account logs in with the corrected document.
         accounts.changeAccountDocument(id, saved.documentType().name(), saved.documentNumber());
       }
-      changes.changed(
-          new ChangeSignals.Change(ChangeSignals.Kind.DIRECTORY, id, false, null, null));
       return summary(saved, stateOf(saved));
     } catch (GuestDocumentAlreadyExistsException e) {
       throw new GuestDocumentTakenException(e);
@@ -357,10 +358,14 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
    */
   @Override
   @Transactional
-  public void deactivate(Long id) {
+  @PublishEvent(
+      type = GuestDeactivated.class,
+      when = "#result",
+      args = {"#id"})
+  public boolean deactivate(Long id) {
     Guest guest = guests.findByIdForUpdate(id).orElseThrow(GuestNotFoundException::new);
     if (guest.status() == GuestStatus.INACTIVE) {
-      return;
+      return false;
     }
     contracts
         .guestContractInForce(id)
@@ -372,16 +377,20 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     // Lock order: guest, account, accesses. An access handed before stops working.
     accounts.setActive(id, false);
     accounts.revokeAccess(id);
-    changed(guest);
+    return true;
   }
 
   /** The debt is read under the lock of the guest, as the contracts and direct payments do. */
   @Override
   @Transactional
-  public GuestSummaryView reactivate(Long id) {
+  @PublishEvent(
+      type = GuestReactivated.class,
+      when = "#result.happened()",
+      args = {"#id"})
+  public GuestReactivation reactivate(Long id) {
     Guest guest = guests.findByIdForUpdate(id).orElseThrow(GuestNotFoundException::new);
     if (guest.status() != GuestStatus.INACTIVE) {
-      return summary(guest, stateOf(guest));
+      return new GuestReactivation(summary(guest, stateOf(guest)), false);
     }
     List<YearMonth> owed = debts.owedPeriods(id);
     if (!owed.isEmpty()) {
@@ -398,14 +407,7 @@ public class GuestService implements ManageGuestsUseCase, LockGuestUseCase {
     // deactivation is not handed back, so a guest that had not chosen its password yet cannot log
     // in until the administrator issues a new access.
     accounts.setActive(id, true);
-    changed(saved);
-    return summary(saved, stateOf(saved));
-  }
-
-  private void changed(Guest guest) {
-    changes.changed(
-        new ChangeSignals.Change(
-            ChangeSignals.Kind.GUEST, guest.id(), guest.type() == GuestType.CONTRACT, null, null));
+    return new GuestReactivation(summary(saved, stateOf(saved)), true);
   }
 
   static Guest withStatus(
