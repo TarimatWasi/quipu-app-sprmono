@@ -109,10 +109,21 @@ class SecurityTrailContractTest {
 
   @Test
   void recoveryRequest_isAuditedWithoutItsCode() {
-    recovery.requestReset("trail@example.test");
-    recovery.requestReset("nobody@example.test");
-
-    Map<String, @Nullable Object> entry = awaitOne(RESET_ISSUED);
+    // The request runs on the shared background executor, which drops work at its limit (other
+    // tests of this context may have filled it): it is asked again on every poll, as a person
+    // would, and a request inside the keep window issues nothing new.
+    Map<String, @Nullable Object> entry =
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(20))
+            .pollInterval(Duration.ofMillis(500))
+            .until(
+                () -> {
+                  recovery.requestReset("trail@example.test");
+                  recovery.requestReset("nobody@example.test");
+                  return trail(RESET_ISSUED);
+                },
+                rows -> !rows.isEmpty())
+            .getFirst();
     awaitOutboxDrained();
     assertThat(trail(RESET_ISSUED)).hasSize(1);
     assertThat(entry).containsEntry("subject", "user/" + adminId);
