@@ -38,16 +38,15 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
 
   PasswordRecoveryService(
       ResetCodeIssuer issuer,
-      UserRepositoryPort userRepository,
+      AccountAccess accounts,
       PasswordEncoder passwordEncoder,
       PasswordResetMailPort mail,
       BackgroundTaskPort background,
       AccessGrantRepositoryPort grants,
-      Clock clock,
-      SecurityFacts facts) {
-    this.facts = facts;
+      Clock clock) {
+    this.facts = accounts.facts();
     this.issuer = issuer;
-    this.userRepository = userRepository;
+    this.userRepository = accounts.users();
     this.passwordEncoder = passwordEncoder;
     this.mail = mail;
     this.background = background;

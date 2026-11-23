@@ -55,13 +55,12 @@ class PasswordRecoveryServiceTest {
     service =
         new PasswordRecoveryService(
             new ResetCodeIssuer(repository, clock),
-            repository,
+            new AccountAccess(repository, TestSecurityFacts.over(repository)),
             encoder,
             mail,
             Runnable::run,
             grants,
-            clock,
-            TestSecurityFacts.over(repository));
+            clock);
   }
 
   private UserAccount savedUser(String status) {
@@ -225,13 +224,12 @@ class PasswordRecoveryServiceTest {
     var deferred =
         new PasswordRecoveryService(
             new ResetCodeIssuer(users, clock),
-            users,
+            new AccountAccess(users, TestSecurityFacts.over(users)),
             spiedEncoder,
             spiedMail,
             queued::add,
             grants,
-            clock,
-            TestSecurityFacts.over(users));
+            clock);
 
     deferred.requestReset(EMAIL);
     deferred.requestReset("nobody@example.test");
