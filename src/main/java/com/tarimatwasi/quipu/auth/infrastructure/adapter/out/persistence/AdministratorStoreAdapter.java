@@ -1,7 +1,5 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.persistence;
 
-import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
-import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import java.sql.ResultSet;
@@ -81,11 +79,7 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
           .query(Long.class)
           .single();
     } catch (DuplicateKeyException e) {
-      Taken taken = AccountConstraints.taken(e);
-      if (taken == null) {
-        throw e;
-      }
-      throw new AccountTakenException(taken, e);
+      throw AccountConstraints.translated(e);
     }
   }
 

@@ -87,10 +87,7 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     try {
       jpaRepository.updateEmailById(id, email);
     } catch (DataIntegrityViolationException e) {
-      if (AccountConstraints.taken(e) == Taken.EMAIL) {
-        throw new AccountTakenException(Taken.EMAIL, e);
-      }
-      throw e;
+      throw AccountConstraints.translated(e);
     }
   }
 
