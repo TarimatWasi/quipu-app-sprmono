@@ -88,6 +88,12 @@ public interface SessionStorePort {
    */
   boolean isClosed(String sidHash, Instant now);
 
+  /**
+   * Deletes, with their refresh tokens, at most {@code max} sessions whose absolute expiry is
+   * before {@code cutoff}, the oldest first; returns how many.
+   */
+  int deleteExpiredBefore(Instant cutoff, int max);
+
   /** The SHA-256 of the sid of a session, as the live streams know it; empty if unknown. */
   Optional<String> sidHashOf(Long sessionId);
 

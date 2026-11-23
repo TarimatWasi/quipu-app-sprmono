@@ -49,6 +49,7 @@ event com.tarimatwasi.quipu.payment.domain.event.PaymentResubmitted v1 (metadata
 event com.tarimatwasi.quipu.payment.domain.event.PaymentSubmitted v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, paymentId:java.lang.Long, guestId:java.lang.Long, contractId:java.lang.Long, stayId:java.lang.Long, environmentId:java.lang.Long, period:java.time.YearMonth, amount:java.math.BigDecimal)
 event com.tarimatwasi.quipu.payment.domain.event.RefundCreated v1 (metadata:com.tarimatwasi.quipu.shared.events.EventMetadata, refundId:java.lang.Long, guestId:java.lang.Long, paymentId:java.lang.Long, contract:boolean, amount:java.math.BigDecimal)
 listener com.tarimatwasi.quipu.audit.infrastructure.adapter.in.event.AuditEventListener.on(com.tarimatwasi.quipu.shared.events.DomainEvent)
+listener com.tarimatwasi.quipu.auth.infrastructure.adapter.in.event.SessionDayListener.on(com.tarimatwasi.quipu.calendar.domain.event.BusinessDayStarted)
 listener com.tarimatwasi.quipu.contract.infrastructure.adapter.in.event.ContractDayListener.on(com.tarimatwasi.quipu.calendar.domain.event.BusinessDayStarted)
 listener com.tarimatwasi.quipu.guest.infrastructure.adapter.in.event.GuestDayListener.on(com.tarimatwasi.quipu.calendar.domain.event.BusinessDayStarted)
 listener com.tarimatwasi.quipu.notification.infrastructure.adapter.in.event.NotificationEventListener.on(com.tarimatwasi.quipu.contract.domain.event.ContractExpiring)
