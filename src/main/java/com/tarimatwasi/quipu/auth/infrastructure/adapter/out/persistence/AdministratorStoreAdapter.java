@@ -4,7 +4,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
-import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -12,7 +11,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -31,12 +29,6 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
    * nothing else uses it: these are the bytes of "QUIPUADM".
    */
   static final long ADMINISTRATORS_LOCK = 0x515549505541444DL;
-
-  /** uq_users_document: the document of any account, administrator or guest. */
-  static final String DOCUMENT_CONSTRAINT = "uq_users_document";
-
-  /** users_email_key and the case-insensitive index uq_users_email_lower. */
-  static final Set<String> EMAIL_CONSTRAINTS = Set.of("users_email_key", "uq_users_email_lower");
 
   /**
    * The ADMIN accounts that can still log in, the same rule as UserAccount.isDisabled() and the
@@ -89,15 +81,11 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
           .query(Long.class)
           .single();
     } catch (DuplicateKeyException e) {
-      // By the name of the rule, never by the message: the language of the server does not matter.
-      String constraint = ViolatedConstraint.nameOf(e);
-      if (DOCUMENT_CONSTRAINT.equals(constraint)) {
-        throw new AccountTakenException(Taken.DOCUMENT, e);
+      Taken taken = AccountConstraints.taken(e);
+      if (taken == null) {
+        throw e;
       }
-      if (constraint != null && EMAIL_CONSTRAINTS.contains(constraint)) {
-        throw new AccountTakenException(Taken.EMAIL, e);
-      }
-      throw e;
+      throw new AccountTakenException(taken, e);
     }
   }
 

@@ -391,31 +391,37 @@
                     <limit>
                       <counter>INSTRUCTION</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.96</minimum>
+                      <minimum>0.97</minimum>
                     </limit>
                     <limit>
                       <counter>LINE</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.96</minimum>
+                      <minimum>0.97</minimum>
                     </limit>
                     <limit>
                       <counter>BRANCH</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.88</minimum>
+                      <minimum>0.89</minimum>
                     </limit>
                   </limits>
                 </rule>
+                <!-- Ningún paquete queda atrás (antes: 80 % solo en domain y application.service).
+                     Fuera queda solo el paquete raíz: el main de la aplicación. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>
-                    <include>com.tarimatwasi.quipu.*.domain</include>
-                    <include>com.tarimatwasi.quipu.*.application.service</include>
+                    <include>com.tarimatwasi.quipu.*</include>
                   </includes>
                   <limits>
                     <limit>
                       <counter>INSTRUCTION</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.80</minimum>
+                      <minimum>0.90</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.75</minimum>
                     </limit>
                   </limits>
                 </rule>
