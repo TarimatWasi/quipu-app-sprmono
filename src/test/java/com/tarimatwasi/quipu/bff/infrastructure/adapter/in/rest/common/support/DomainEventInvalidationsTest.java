@@ -16,7 +16,6 @@ import com.tarimatwasi.quipu.shared.events.EventMetadata;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.YearMonth;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -67,6 +66,6 @@ class DomainEventInvalidationsTest {
     verifyNoInteractions(streams);
 
     invalidations.on(new ExpenseDeleted(META, 4L));
-    verify(streams).committed(List.of(new Change(Kind.EXPENSE, null, false, null, null)));
+    verify(streams).changed(new Change(Kind.EXPENSE, null, false, null, null));
   }
 }

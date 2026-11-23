@@ -79,16 +79,6 @@ public class ChangeStreamRegistry implements ChangeSignals {
     pending().add(change);
   }
 
-  /**
-   * Changes of a transaction that already committed, derived from its domain events. Delivered at
-   * once: a synchronization registered while another completes would never run.
-   */
-  public void committed(List<Change> changes) {
-    var batch = new Pending(this);
-    changes.forEach(batch::add);
-    deliver(batch);
-  }
-
   @Override
   public void revokeSession(Long userId, String sidHash) {
     pending()

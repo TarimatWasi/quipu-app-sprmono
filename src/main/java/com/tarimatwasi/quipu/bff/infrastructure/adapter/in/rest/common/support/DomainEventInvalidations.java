@@ -12,14 +12,15 @@ import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change;
 import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.shared.events.DomainEvent;
 import java.util.List;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * Live invalidations of the open streams, derived from the domain events after the commit. In
- * memory and best effort: not an outbox listener (an invalidation replayed after a restart is
- * worthless, the epoch changed and every client resynchronizes). The routing of each resource group
- * to the keys of the contract stays in {@link ChangeStreamRegistry}.
+ * Live invalidations of the open streams, derived from the domain events. It listens inside the
+ * transaction that publishes them and only appends to the transaction buffer of {@link
+ * ChangeStreamRegistry}, which delivers the whole transaction as one batch after the commit,
+ * security closures first; a rollback delivers nothing. In memory and best effort, never an outbox
+ * listener: an invalidation replayed after a restart is worthless.
  */
 @Component
 public class DomainEventInvalidations {
@@ -29,12 +30,9 @@ public class DomainEventInvalidations {
     this.streams = streams;
   }
 
-  @TransactionalEventListener
+  @EventListener
   public void on(DomainEvent event) {
-    List<Change> changes = changesOf(event);
-    if (!changes.isEmpty()) {
-      streams.committed(changes);
-    }
+    changesOf(event).forEach(streams::changed);
   }
 
   /** The resource groups a fact touches; empty for facts no open screen shows. */
