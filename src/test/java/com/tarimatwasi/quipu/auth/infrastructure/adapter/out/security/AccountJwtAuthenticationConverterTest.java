@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import javax.crypto.SecretKey;
@@ -347,8 +348,7 @@ class AccountJwtAuthenticationConverterTest {
   }
 
   private static String sessionOf(Jwt token) {
-    return java.util.Objects.requireNonNull(
-        token.getClaimAsString(AccessSessions.SESSION_ID_CLAIM));
+    return Objects.requireNonNull(token.getClaimAsString(AccessSessions.SESSION_ID_CLAIM));
   }
 
   /** A token from before the masking carried the numeric id: it no longer opens a session. */

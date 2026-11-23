@@ -29,7 +29,6 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,8 +62,7 @@ import org.springframework.test.web.servlet.ResultActions;
 @ImportTestcontainers(PostgresContainers.class)
 class AdministratorRateLimitBffTest {
 
-  private static final String SPEC =
-      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/administrators";
   private static final String REAUTHENTICATION = "{\"currentPassword\":\"Actor12345\"}";
   private static final String RATE_LIMITED =

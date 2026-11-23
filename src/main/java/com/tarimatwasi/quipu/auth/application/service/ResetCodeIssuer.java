@@ -3,15 +3,12 @@ package com.tarimatwasi.quipu.auth.application.service;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -91,13 +88,7 @@ class ResetCodeIssuer {
   }
 
   static String hash(String code) {
-    try {
-      byte[] digest =
-          MessageDigest.getInstance("SHA-256").digest(code.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(digest);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("Every Java platform provides SHA-256", e);
-    }
+    return Sha256.hex(code);
   }
 
   /**

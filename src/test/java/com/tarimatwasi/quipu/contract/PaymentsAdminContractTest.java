@@ -12,12 +12,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /**
  * TAR-43: the queue, the detail and the review of the payments (RF-05, CU-05) against the shared
@@ -207,7 +212,7 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .isEqualTo(adminId);
     assertThat(
             jdbc.queryForObject(
-                    "SELECT reviewed_at FROM payments WHERE id = ?", java.sql.Timestamp.class, id)
+                    "SELECT reviewed_at FROM payments WHERE id = ?", Timestamp.class, id)
                 .toInstant())
         .isEqualTo(Instant.parse("2026-10-14T14:00:00Z"));
   }
@@ -249,9 +254,8 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
 
     mockMvc
         .perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(
-                    org.springframework.http.HttpMethod.PUT,
-                    URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
+            MockMvcRequestBuilders.multipart(
+                    HttpMethod.PUT, URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
                 .with(csrf())
                 .file(
                     proofsPart(
@@ -279,9 +283,8 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.status").value("APPROVED"));
     mockMvc
         .perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(
-                    org.springframework.http.HttpMethod.PUT,
-                    URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
+            MockMvcRequestBuilders.multipart(
+                    HttpMethod.PUT, URL + "/" + ids().mask(IdKind.PAYMENT, id) + "/proofs")
                 .with(csrf())
                 .file(proofsPart("[{\"kind\":\"CASH\",\"amount\":800}]"))
                 .header("Origin", ORIGIN)
@@ -309,11 +312,11 @@ class PaymentsAdminContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.content[0].reviewedAt").value("2026-10-14T14:00:00Z"));
 
     // TAR-239: the rejected payment is corrected, so another one cannot take its period
-    org.assertj.core.api.Assertions.assertThatThrownBy(
+    Assertions.assertThatThrownBy(
             () ->
                 insertPayment(
                     contractGuest, contract, null, "2026-09", "PENDING", "2026-10-05T10:00:00Z"))
-        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        .isInstanceOf(DataIntegrityViolationException.class);
     assertThat(
             jdbc.queryForObject(
                 "SELECT reason FROM payment_reviews WHERE payment_id = ?", String.class, id))

@@ -73,7 +73,7 @@ class GuestDebtServiceTest {
         null,
         Instant.parse("2026-10-01T15:00:00Z"),
         TestIds.next(),
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -67,7 +68,7 @@ class InitialAdminServiceTest {
     service().provision(COMMAND);
 
     var passwords = ArgumentCaptor.forClass(CharSequence.class);
-    verify(encoder, org.mockito.Mockito.times(2)).encode(passwords.capture());
+    verify(encoder, Mockito.times(2)).encode(passwords.capture());
     assertThat(passwords.getAllValues().get(0).toString())
         .hasSizeGreaterThanOrEqualTo(43)
         .isNotEqualTo(passwords.getAllValues().get(1).toString());
@@ -77,7 +78,7 @@ class InitialAdminServiceTest {
   void toleratesTheConcurrentCreationByAnotherInstance() {
     when(store.countActiveAdmins()).thenReturn(0, 1);
     when(encoder.encode(any())).thenReturn("hash");
-    org.mockito.Mockito.doThrow(new AccountAlreadyExistsException(new RuntimeException()))
+    Mockito.doThrow(new AccountAlreadyExistsException(new RuntimeException()))
         .when(store)
         .insert(any());
 
@@ -90,7 +91,7 @@ class InitialAdminServiceTest {
   void failsWhenTheEmailOrDocumentBelongsToAnotherUser() {
     when(store.countActiveAdmins()).thenReturn(0);
     when(encoder.encode(any())).thenReturn("hash");
-    org.mockito.Mockito.doThrow(new AccountAlreadyExistsException(new RuntimeException()))
+    Mockito.doThrow(new AccountAlreadyExistsException(new RuntimeException()))
         .when(store)
         .insert(any());
 

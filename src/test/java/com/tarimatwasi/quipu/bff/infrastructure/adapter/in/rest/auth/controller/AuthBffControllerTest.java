@@ -20,6 +20,8 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Objects;
@@ -612,30 +614,28 @@ class AuthBffControllerTest {
 
     assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
         .isZero();
-    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
-        .isNull();
+    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class)).isNull();
   }
 
   @Test
   void failuresThatArriveWhileLockedDoNotExtendTheLock() {
     Long id = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM users", Long.class));
-    java.time.Instant start = java.time.Instant.now();
-    java.time.Duration fifteen = java.time.Duration.ofMinutes(15);
+    Instant start = Instant.now();
+    Duration fifteen = Duration.ofMinutes(15);
     // The application layer owns the transaction; the row lock needs one.
     var tx = new TransactionTemplate(transactionManager);
     for (int i = 0; i < 5; i++) {
       Boolean alreadyLocked = tx.execute(s -> users.registerFailedLogin(id, start, 5, fifteen));
       assertThat(alreadyLocked).isFalse();
     }
-    var lockedUntil =
-        jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class);
+    var lockedUntil = jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class);
 
     boolean alreadyLocked =
         Boolean.TRUE.equals(
             tx.execute(s -> users.registerFailedLogin(id, start.plusSeconds(60), 5, fifteen)));
 
     assertThat(alreadyLocked).isTrue();
-    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
+    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class))
         .isEqualTo(lockedUntil);
     assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
         .isEqualTo(5);
@@ -648,7 +648,7 @@ class AuthBffControllerTest {
     Long id = jdbc.queryForObject("SELECT id FROM users", Long.class);
 
     users.changePassword(
-        Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"), java.time.Instant.now());
+        Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"), Instant.now());
 
     mockMvc
         .perform(

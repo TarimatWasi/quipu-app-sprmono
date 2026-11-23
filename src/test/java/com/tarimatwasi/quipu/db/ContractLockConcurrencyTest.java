@@ -227,11 +227,9 @@ class ContractLockConcurrencyTest {
                   NOVEMBER,
                   null,
                   null,
-                  java.util.List.of(
-                      new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                          .ProofUpload(
-                          com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                              .ProofType.VOUCHER,
+                  List.of(
+                      new ManagePaymentsUseCase.ProofUpload(
+                          ManagePaymentsUseCase.ProofType.VOUCHER,
                           new BigDecimal("800"),
                           null,
                           new VoucherUpload("v.pdf", PDF)))));

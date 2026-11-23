@@ -23,15 +23,17 @@ import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class FineServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final Long GUEST = TestIds.next();
@@ -144,7 +146,7 @@ class FineServiceTest {
 
   @Test
   void deletesAFine() {
-    when(repository.findById(ID)).thenReturn(java.util.Optional.of(NOISE));
+    when(repository.findById(ID)).thenReturn(Optional.of(NOISE));
     when(repository.delete(ID)).thenReturn(true);
 
     service().delete(ID);
@@ -154,7 +156,7 @@ class FineServiceTest {
 
   @Test
   void deletingAMissingFineIsNotFound() {
-    when(repository.findById(ID)).thenReturn(java.util.Optional.empty());
+    when(repository.findById(ID)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service().delete(ID)).isInstanceOf(FineNotFoundException.class);
   }

@@ -63,8 +63,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ImportTestcontainers(PostgresContainers.class)
 class GuestOwnDocumentsContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String ORIGIN = "http://localhost:3000";
   private static final String CONTRACT_PROFILE = "/bff/guest/profile";
   private static final String CONTRACT_DOCUMENTS = "/bff/guest/documents";

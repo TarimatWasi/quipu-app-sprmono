@@ -178,13 +178,13 @@ class PaymentTest {
     assertThat(stay.approve(9L, new BigDecimal("800.00"), AT).period()).isNull();
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
+  @ParameterizedTest
   @ValueSource(strings = {"0.01", "1", "800.5", "800.50", "800.500", "99999999.99"})
   void validAmount_acceptsAPositiveAmountOfTwoDecimalsThatFitsTheColumn(String amount) {
     assertThat(Payment.validAmount(new BigDecimal(amount))).isTrue();
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
+  @ParameterizedTest
   @ValueSource(
       strings = {
         "0",

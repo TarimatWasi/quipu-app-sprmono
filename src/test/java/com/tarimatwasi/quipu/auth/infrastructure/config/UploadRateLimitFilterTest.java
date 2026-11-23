@@ -5,15 +5,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.servlet.AsyncContext;
+import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.Part;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockAsyncContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -184,7 +188,7 @@ class UploadRateLimitFilterTest {
       throws Exception {
     var filter = limitedTo(10);
     var concurrent = new CountingRequest("POST", ROUTE);
-    var answers = new java.util.ArrayList<MockHttpServletResponse>();
+    var answers = new ArrayList<MockHttpServletResponse>();
     signIn("7");
 
     filter.doFilter(
@@ -242,7 +246,7 @@ class UploadRateLimitFilterTest {
     signIn("7");
     var async = new MockHttpServletRequest("POST", ROUTE);
     async.setAsyncSupported(true);
-    var started = new java.util.concurrent.atomic.AtomicReference<AsyncContext>();
+    var started = new AtomicReference<AsyncContext>();
     filter.doFilter(
         async, new MockHttpServletResponse(), (req, res) -> started.set(req.startAsync()));
 
@@ -261,16 +265,16 @@ class UploadRateLimitFilterTest {
     signIn("7");
     var first = new MockHttpServletRequest("POST", ROUTE);
     first.setAsyncSupported(true);
-    var started = new java.util.concurrent.atomic.AtomicReference<AsyncContext>();
+    var started = new AtomicReference<AsyncContext>();
     filter.doFilter(
         first, new MockHttpServletResponse(), (req, res) -> started.set(req.startAsync()));
-    var context = (org.springframework.mock.web.MockAsyncContext) started.get();
-    var event = new jakarta.servlet.AsyncEvent(context);
+    var context = (MockAsyncContext) started.get();
+    var event = new AsyncEvent(context);
     for (var listener : context.getListeners()) {
       listener.onTimeout(event);
     }
 
-    var answers = new java.util.ArrayList<MockHttpServletResponse>();
+    var answers = new ArrayList<MockHttpServletResponse>();
     filter.doFilter(
         new MockHttpServletRequest("POST", ROUTE),
         new MockHttpServletResponse(),

@@ -17,6 +17,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.StayNotFoundException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidPaymentException;
 import com.tarimatwasi.quipu.payment.application.port.in.InvalidVoucherFileException;
+import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.Decision;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.DirectPayment;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.GuestKind;
@@ -60,6 +61,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -359,11 +361,9 @@ class PaymentServiceTest extends PaymentServiceFixture {
             OCTOBER,
             null,
             null,
-            java.util.List.of(
-                new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                    .ProofUpload(
-                    com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                        .ProofType.VOUCHER,
+            List.of(
+                new ManagePaymentsUseCase.ProofUpload(
+                    ManagePaymentsUseCase.ProofType.VOUCHER,
                     BigDecimal.TEN,
                     "Yape\u200B",
                     new VoucherUpload("v.pdf", PDF))));
@@ -499,11 +499,9 @@ class PaymentServiceTest extends PaymentServiceFixture {
               OCTOBER,
               null,
               null,
-              java.util.List.of(
-                  new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                      .ProofUpload(
-                      com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                          .ProofType.VOUCHER,
+              List.of(
+                  new ManagePaymentsUseCase.ProofUpload(
+                      ManagePaymentsUseCase.ProofType.VOUCHER,
                       new BigDecimal("99999999.99"),
                       "m".repeat(50),
                       new VoucherUpload("v.pdf", PDF))));
@@ -694,7 +692,7 @@ class PaymentServiceTest extends PaymentServiceFixture {
           .isInstanceOf(VoucherAlreadyExistsException.class);
       assertThatThrownBy(() -> service.registerDirect(forPeriod("2026-10", "800", PDF)))
           .isInstanceOf(PaymentAlreadyExistsForPeriodException.class);
-      verify(files, org.mockito.Mockito.times(2)).delete(KEY);
+      verify(files, Mockito.times(2)).delete(KEY);
     }
 
     @Test
@@ -738,11 +736,9 @@ class PaymentServiceTest extends PaymentServiceFixture {
               OCTOBER,
               null,
               null,
-              java.util.List.of(
-                  new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                      .ProofUpload(
-                      com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase
-                          .ProofType.VOUCHER,
+              List.of(
+                  new ManagePaymentsUseCase.ProofUpload(
+                      ManagePaymentsUseCase.ProofType.VOUCHER,
                       new BigDecimal("800"),
                       "   ",
                       new VoucherUpload("v.pdf", PDF))));
@@ -778,7 +774,7 @@ class PaymentServiceTest extends PaymentServiceFixture {
       service.registerDirect(forPeriod("2026-10", "800.500", PDF));
 
       ArgumentCaptor<NewPayment> draft = ArgumentCaptor.forClass(NewPayment.class);
-      verify(payments, org.mockito.Mockito.times(2)).insert(draft.capture());
+      verify(payments, Mockito.times(2)).insert(draft.capture());
       assertThat(draft.getAllValues())
           .allSatisfy(d -> assertThat(d.proofs().get(0).declaredAmount().scale()).isEqualTo(2));
       assertThat(draft.getAllValues().get(1).proofs().get(0).declaredAmount())

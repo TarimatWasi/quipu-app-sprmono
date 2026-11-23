@@ -10,8 +10,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.atlassian.oai.validator.OpenApiInteractionValidator;
+import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
+import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
@@ -23,6 +27,7 @@ import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +55,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /**
  * TAR-36 (RF-11, RF-12, RF-17, RN-32): registering a guest with its first access, generating a new
@@ -68,8 +74,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @Import(SynchronousBackgroundTasksConfig.class)
 class GuestAccessContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String GUESTS = "/bff/admin/guests";
   private static final String NEW_PASSWORD = "MiClave-2026";
 
@@ -411,11 +416,8 @@ class GuestAccessContractTest {
     return new Handed(guestId, session, secret);
   }
 
-  private static String sha256(String value) throws Exception {
-    return java.util.HexFormat.of()
-        .formatHex(
-            java.security.MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+  private static String sha256(String value) {
+    return Sha256.hex(value);
   }
 
   /** TAR-36: a live link or temporary password cannot become the password by changing it. */
@@ -447,7 +449,7 @@ class GuestAccessContractTest {
         "UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ?"
             + " WHERE email = 'ana@example.com'",
         sha256(code),
-        java.sql.Timestamp.from(clock.instant().plus(Duration.ofMinutes(30))));
+        Timestamp.from(clock.instant().plus(Duration.ofMinutes(30))));
 
     mockMvc
         .perform(
@@ -565,8 +567,7 @@ class GuestAccessContractTest {
 
     mockMvc
         .perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(
-                    GUESTS + "/" + guestId)
+            MockMvcRequestBuilders.patch(GUESTS + "/" + guestId)
                 .with(csrf())
                 .cookie(admin())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -784,12 +785,10 @@ class GuestAccessContractTest {
   private static ResultMatcher satisfiesTheContractToAnInvalidRequest() {
     return openApi()
         .isValid(
-            com.atlassian.oai.validator.OpenApiInteractionValidator.createFor(SPEC)
+            OpenApiInteractionValidator.createFor(SPEC)
                 .withWhitelist(
-                    com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist.create()
-                        .withRule(
-                            "the request is invalid on purpose",
-                            com.atlassian.oai.validator.whitelist.rule.WhitelistRules.isRequest()))
+                    ValidationErrorsWhitelist.create()
+                        .withRule("the request is invalid on purpose", WhitelistRules.isRequest()))
                 .build());
   }
 

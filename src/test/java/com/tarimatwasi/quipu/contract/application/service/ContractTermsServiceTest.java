@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,7 +50,7 @@ class ContractTermsServiceTest {
         "a.pdf",
         10,
         terminatedAt,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test
@@ -80,7 +81,7 @@ class ContractTermsServiceTest {
 
     assertThat(terms).extracting(t -> t.contractId()).containsExactly(1L);
     assertThat(terms.get(0).terminatedAt()).isEqualTo(finished);
-    org.mockito.Mockito.verify(contracts, org.mockito.Mockito.never()).findAllByGuest(9L);
+    Mockito.verify(contracts, Mockito.never()).findAllByGuest(9L);
   }
 
   @Test

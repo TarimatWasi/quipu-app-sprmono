@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -74,8 +75,7 @@ class GuestAreaFilterTest {
     GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
     OwnGuestUseCase guests = mock(OwnGuestUseCase.class);
     when(accounts.guestOf(1L))
-        .thenThrow(
-            new org.springframework.dao.DataAccessResourceFailureException("down jdbc://secret"));
+        .thenThrow(new DataAccessResourceFailureException("down jdbc://secret"));
     for (String principal : List.of("1", "not-a-number")) {
       SecurityContextHolder.getContext()
           .setAuthentication(new TestingAuthenticationToken(principal, null));

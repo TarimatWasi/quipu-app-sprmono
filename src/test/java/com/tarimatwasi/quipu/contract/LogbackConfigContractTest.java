@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
@@ -63,7 +64,7 @@ class LogbackConfigContractTest {
 
     assertThat(profile.getAttribute("name")).isEqualTo("dev | prod");
     var refs = profile.getElementsByTagName("appender-ref");
-    var names = new java.util.ArrayList<String>();
+    var names = new ArrayList<String>();
     for (int i = 0; i < refs.getLength(); i++) {
       names.add(((Element) refs.item(i)).getAttribute("ref"));
     }

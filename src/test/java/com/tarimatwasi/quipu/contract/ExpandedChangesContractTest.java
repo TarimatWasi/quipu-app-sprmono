@@ -20,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 /** TAR-376: real secured mutations, database transactions and SSE resource contracts. */
 @TestPropertySource(properties = {"app.changes.heartbeat=1ms", "app.changes.max-duration=10m"})
@@ -248,9 +249,7 @@ class ExpandedChangesContractTest extends PaymentsContractSupport {
   @Test
   void rolledBackMutation_emitsNothingAndLeavesNoExpense() throws Exception {
     try (var admin = adminStream()) {
-      var tx =
-          transactions.getTransaction(
-              new org.springframework.transaction.support.DefaultTransactionDefinition());
+      var tx = transactions.getTransaction(new DefaultTransactionDefinition());
       try {
         expense();
       } finally {

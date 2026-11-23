@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.time.Duration;
 import java.time.Instant;
@@ -195,7 +196,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
             documentType,
             documentNumber,
             unusablePasswordHash,
-            com.tarimatwasi.quipu.auth.domain.Role.GUEST,
+            Role.GUEST,
             guestId,
             true,
             "ACTIVE",

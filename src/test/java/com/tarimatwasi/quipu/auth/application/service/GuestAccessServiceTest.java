@@ -24,11 +24,12 @@ import java.time.Instant;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /** TAR-229: the account email of a guest, set at the registration or by the administrator. */
 class GuestAccessServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Long OTHER_GUEST = 8L;

@@ -16,11 +16,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -69,8 +72,8 @@ class ChangeStreamRegistryTest {
     TransactionSynchronizationManager.clear();
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.EnumSource(
+  @ParameterizedTest
+  @EnumSource(
       value = Kind.class,
       names = {"GUEST_RECORD", "PROFILE", "DOCUMENT"})
   void profileChange_isPostCommitAndPrivate(Kind kind) throws Exception {
@@ -106,8 +109,8 @@ class ChangeStreamRegistryTest {
     }
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.EnumSource(
+  @ParameterizedTest
+  @EnumSource(
       value = Kind.class,
       names = {"ENVIRONMENT", "EXPENSE", "FINE"})
   void administrativeChange_neverSignalsGuests(Kind kind) throws Exception {
@@ -131,15 +134,11 @@ class ChangeStreamRegistryTest {
         var guest = subscribe(2L, 5L, false);
         var other = subscribe(3L, 9L, false)) {
       transaction(
-          () ->
-              streams.changed(
-                  new Change(Kind.DIRECTORY, null, false, null, 7L, java.util.Set.of(5L))),
+          () -> streams.changed(new Change(Kind.DIRECTORY, null, false, null, 7L, Set.of(5L))),
           false);
       assertThat(admin.next()).isEqualTo(": heartbeat\n\n");
       transaction(
-          () ->
-              streams.changed(
-                  new Change(Kind.DIRECTORY, null, false, null, 7L, java.util.Set.of(5L))),
+          () -> streams.changed(new Change(Kind.DIRECTORY, null, false, null, 7L, Set.of(5L))),
           true);
       assertThat(admin.next())
           .contains("\"invalidate\":\"ALL\"")

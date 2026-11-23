@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.port.out;
 
 import java.io.Serial;
+import java.util.Locale;
 
 /** A unique rule of the accounts refused the new one; {@link #taken()} says which. */
 public class AccountTakenException extends RuntimeException {
@@ -17,9 +18,7 @@ public class AccountTakenException extends RuntimeException {
 
   /** Creates the exception with the cause the store reported. */
   public AccountTakenException(Taken taken, Throwable cause) {
-    super(
-        "Another account already has that " + taken.name().toLowerCase(java.util.Locale.ROOT),
-        cause);
+    super("Another account already has that " + taken.name().toLowerCase(Locale.ROOT), cause);
     this.taken = taken;
   }
 

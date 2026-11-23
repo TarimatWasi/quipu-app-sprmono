@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controlle
 
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.InvalidQueryParameterException;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.PagedResponse;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.MonthParam;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
 import com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.GuestKind;
 import com.tarimatwasi.quipu.payment.application.port.in.ManageRefundsUseCase;
@@ -46,10 +47,6 @@ public class RefundsBffController {
   /** Read as text so that a value that is not a UUID is a 400 that names the field. */
   private static final String UUID_TEXT =
       "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
-
-  /** The use case refuses year 0000, which the pattern lets through. */
-  private static final java.util.regex.Pattern MONTH =
-      java.util.regex.Pattern.compile("^\\d{4}-(0[1-9]|1[0-2])$");
 
   private final ManageRefundsUseCase refunds;
   private final IdMasker ids;
@@ -134,10 +131,8 @@ public class RefundsBffController {
       @RequestParam("month") String month,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
       @RequestParam(name = "after", required = false) @Nullable String after) {
-    if (!MONTH.matcher(month).matches()) {
-      throw new InvalidQueryParameterException("month");
-    }
-    RefundPage found = refunds.list(YearMonth.parse(month), PageParams.query(after, limit));
+    // The use case refuses year 0000, which the pattern lets through.
+    RefundPage found = refunds.list(MonthParam.query(month), PageParams.query(after, limit));
     PagedResponse<RefundResponse> page =
         PagedResponse.of(found.page(), refund -> RefundResponse.of(refund, ids));
     // Money returned to people: no cache keeps it.

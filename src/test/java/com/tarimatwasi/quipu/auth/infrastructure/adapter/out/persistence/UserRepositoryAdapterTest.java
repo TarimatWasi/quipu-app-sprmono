@@ -12,6 +12,7 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -110,7 +111,7 @@ class UserRepositoryAdapterTest {
               adapter.changePassword(accountId, "new-hash", Instant.EPOCH);
               return tokens.renew(
                   accountId.toString(),
-                  java.util.Objects.requireNonNull(decoder.decode(old).getClaimAsString("sid")));
+                  Objects.requireNonNull(decoder.decode(old).getClaimAsString("sid")));
             });
 
     assertThat(adapter.securityVersion(accountId)).isEqualTo(1L);
@@ -119,7 +120,7 @@ class UserRepositoryAdapterTest {
     assertThat(sessions.convert(decoder.decode(replacement))).isNotNull();
     assertThat(decoder.decode(replacement).<Long>getClaim("sv")).isEqualTo(1L);
     assertThat(decoder.decode(replacement).getClaimAsString("sid"))
-        .isEqualTo(java.util.Objects.requireNonNull(decoder.decode(old).getClaimAsString("sid")));
+        .isEqualTo(Objects.requireNonNull(decoder.decode(old).getClaimAsString("sid")));
   }
 
   @Test

@@ -47,6 +47,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -526,7 +527,7 @@ class AdministratorStatusServiceTest {
     public List<String> activeAdministratorEmailsExcept(Collection<Long> excluded) {
       events.add("emails");
       if (failEmails) {
-        throw new org.springframework.dao.DataAccessResourceFailureException("down");
+        throw new DataAccessResourceFailureException("down");
       }
       lastExcluded = List.copyOf(excluded);
       return admins.stream()

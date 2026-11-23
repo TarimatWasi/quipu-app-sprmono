@@ -13,13 +13,11 @@ import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.LoginCommand;
 import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -271,12 +269,6 @@ class LoginPasswordChangeConcurrencyTest {
   }
 
   private static String sha256(String code) {
-    try {
-      return HexFormat.of()
-          .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(code.getBytes(StandardCharsets.UTF_8)));
-    } catch (java.security.NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
-    }
+    return Sha256.hex(code);
   }
 }

@@ -31,10 +31,11 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class GuestEmailVerificationServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Long ACCOUNT = 70L;

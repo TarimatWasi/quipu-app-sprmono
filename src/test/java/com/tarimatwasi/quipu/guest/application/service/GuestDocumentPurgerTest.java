@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -53,7 +54,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
  */
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class GuestDocumentPurgerTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Instant NOW = Instant.parse("2026-10-24T15:00:00Z");
   private static final Instant ASKED = NOW.minusSeconds(3600);

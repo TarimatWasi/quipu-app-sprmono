@@ -34,15 +34,18 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class EnvironmentServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final Instant CREATED = Instant.parse("2026-10-01T15:00:00Z");
@@ -303,10 +306,10 @@ class EnvironmentServiceTest {
 
   @Test
   void codesOf_mapsEachIdToItsCodeAndAsksNothingForNoIds() {
-    when(repository.findAllByIds(java.util.Set.of(ID))).thenReturn(List.of(ROOM_201));
+    when(repository.findAllByIds(Set.of(ID))).thenReturn(List.of(ROOM_201));
 
-    assertThat(service().codesOf(java.util.Set.of(ID))).isEqualTo(java.util.Map.of(ID, "201"));
-    assertThat(service().codesOf(java.util.Set.of())).isEmpty();
-    verify(repository, never()).findAllByIds(java.util.Set.of());
+    assertThat(service().codesOf(Set.of(ID))).isEqualTo(Map.of(ID, "201"));
+    assertThat(service().codesOf(Set.of())).isEmpty();
+    verify(repository, never()).findAllByIds(Set.of());
   }
 }

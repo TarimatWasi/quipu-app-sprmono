@@ -28,9 +28,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -500,7 +502,7 @@ class PasswordRecoveryServiceTest {
 
     service.resetPassword(mail.sent.get(0).code(), "Nueva12345", null);
 
-    org.mockito.Mockito.verify(grants).revokeLive(77L, clock.instant());
+    Mockito.verify(grants).revokeLive(77L, clock.instant());
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
   }
 
@@ -509,8 +511,7 @@ class PasswordRecoveryServiceTest {
   void aLiveAccessOfTheGuestCannotBeTheNewPassword() {
     UserAccount user = guestAccount(false);
     service.requestReset(EMAIL);
-    org.mockito.Mockito.when(
-            grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
+    Mockito.when(grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
         .thenReturn(true);
 
     assertThatThrownBy(
@@ -529,9 +530,8 @@ class PasswordRecoveryServiceTest {
     service.requestReset(EMAIL);
     String code = mail.sent.get(0).code();
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> service.resetPassword(code, code, null))
-        .isInstanceOf(com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException.class);
+    Assertions.assertThatThrownBy(() -> service.resetPassword(code, code, null))
+        .isInstanceOf(WeakPasswordException.class);
     service.resetPassword(code, "Nueva12345", null);
 
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();

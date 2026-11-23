@@ -1,7 +1,15 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.persistence;
 
+import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.domain.Role;
+import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Table;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
@@ -22,7 +30,7 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
 
   @Column(name = "document_type")
   @Enumerated(EnumType.STRING)
-  private com.tarimatwasi.quipu.auth.domain.DocumentType documentType;
+  private DocumentType documentType;
 
   @Column(name = "document_number")
   private String documentNumber;
@@ -31,7 +39,7 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
   private String passwordHash;
 
   @Enumerated(EnumType.STRING)
-  private com.tarimatwasi.quipu.auth.domain.Role role;
+  private Role role;
 
   @Column(name = "guest_id")
   private Long guestId;
@@ -113,8 +121,8 @@ public class UserJpaEntity extends AbstractAuditable<AuditorJpaEntity, Long> {
     this.resetTokenExpiresAt = expiresAt;
   }
 
-  public com.tarimatwasi.quipu.auth.domain.UserAccount toDomain() {
-    return new com.tarimatwasi.quipu.auth.domain.UserAccount(
+  public UserAccount toDomain() {
+    return new UserAccount(
         Objects.requireNonNull(getId()),
         email,
         documentType,

@@ -1,15 +1,13 @@
 package com.tarimatwasi.quipu.guest.application.service;
 
 import com.tarimatwasi.quipu.guest.application.port.out.ConsentVersionPort;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -146,12 +144,6 @@ class ConsentTexts {
 
   /** The SHA-256, in hexadecimal, of the text as it is shown (UTF-8). */
   static String sha256(String text) {
-    try {
-      return HexFormat.of()
-          .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is not available", e);
-    }
+    return Sha256.hex(text);
   }
 }

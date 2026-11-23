@@ -26,6 +26,7 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -58,7 +59,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 abstract class PaymentsContractSupport {
 
   protected static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
   protected static final String URL = "/bff/admin/payments";
   protected static final String ORIGIN = "http://localhost:3000";
   protected static final byte[] PDF = TestPdfs.plain();

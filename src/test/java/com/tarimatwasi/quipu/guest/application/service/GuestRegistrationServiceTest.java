@@ -32,10 +32,11 @@ import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.mockito.Mockito;
 
 /** TAR-229: the account email of a guest, at the registration and set by the administrator. */
 class GuestRegistrationServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = 42L;
 

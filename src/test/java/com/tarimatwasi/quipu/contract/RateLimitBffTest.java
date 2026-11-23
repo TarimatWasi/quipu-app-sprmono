@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tarimatwasi.quipu.support.PostgresContainers;
-import java.nio.file.Path;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,8 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @ImportTestcontainers(PostgresContainers.class)
 class RateLimitBffTest {
 
-  private static final String SPEC =
-      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
 
   @Autowired MockMvc mockMvc;
 
@@ -44,7 +43,7 @@ class RateLimitBffTest {
   @Test
   void theFourthSensitiveRequestOfTheMinuteGets429WithRetryAfter() throws Exception {
     for (int i = 0; i < 3; i++) {
-      org.assertj.core.api.Assertions.assertThat(forgot()).isEqualTo(202);
+      Assertions.assertThat(forgot()).isEqualTo(202);
     }
 
     mockMvc

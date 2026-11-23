@@ -48,6 +48,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class AuthApplicationServiceTest {
@@ -481,7 +482,7 @@ class AuthApplicationServiceTest {
 
   @Test
   void theAllowanceIsAskedForTheDocumentTheLoginNamed() {
-    var asked = new java.util.ArrayList<String>();
+    var asked = new ArrayList<String>();
     var counting =
         new AuthApplicationService(
             repository,
@@ -610,7 +611,7 @@ class AuthApplicationServiceTest {
 
     // TAR-36: an unlocked read only finds the guest to lock first (lock order guest, account,
     // accesses); every decision is taken on the copy read under the lock.
-    var order = org.mockito.Mockito.inOrder(spied);
+    var order = Mockito.inOrder(spied);
     order.verify(spied).findById(user.id());
     order.verify(spied).findByIdForUpdate(user.id());
   }

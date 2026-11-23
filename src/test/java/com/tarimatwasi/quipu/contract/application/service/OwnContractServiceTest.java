@@ -74,8 +74,7 @@ class OwnContractServiceTest {
             });
   }
 
-  private static final java.time.Instant TERMINATED_AT =
-      java.time.Instant.parse("2026-09-30T20:00:00Z");
+  private static final Instant TERMINATED_AT = Instant.parse("2026-09-30T20:00:00Z");
 
   private static Contract contract(boolean terminated, String end) {
     return new Contract(
@@ -91,7 +90,7 @@ class OwnContractServiceTest {
         "a.pdf",
         10,
         terminated ? TERMINATED_AT : null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test
@@ -136,7 +135,7 @@ class OwnContractServiceTest {
         "a.pdf",
         10,
         null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   /** TAR-237: the contract in force today and a renewal already loaded after it. */

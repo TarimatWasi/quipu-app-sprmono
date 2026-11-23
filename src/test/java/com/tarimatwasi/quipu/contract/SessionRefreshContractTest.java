@@ -46,8 +46,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ImportTestcontainers(PostgresContainers.class)
 class SessionRefreshContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String LOGIN = "/bff/auth/login";
   private static final String REFRESH = "/bff/auth/refresh";
   private static final String LOGOUT = "/bff/auth/logout";

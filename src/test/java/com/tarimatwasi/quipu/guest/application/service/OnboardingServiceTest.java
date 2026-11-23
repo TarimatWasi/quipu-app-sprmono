@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -46,7 +47,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 /** TAR-137: what the contract tests cannot force, such as a failed insert after the upload. */
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class OnboardingServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
+  private final ChangeSignals changes = Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Instant NOW = Instant.parse("2026-10-14T15:00:00Z");
@@ -105,7 +106,7 @@ class OnboardingServiceTest {
     when(files.store(PDF, FileKind.PDF)).thenReturn("guest-documents/k");
     when(records.addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong()))
         .thenThrow(new IllegalStateException("insert failed"));
-    org.mockito.Mockito.doThrow(
+    Mockito.doThrow(
             new GuestDocumentStorageException(
                 "down", R2Failures.clientFailure("guest-documents/k")))
         .when(files)
