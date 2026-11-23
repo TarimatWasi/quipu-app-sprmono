@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,7 +27,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -276,17 +274,6 @@ class AdministratorServiceTest {
   }
 
   @Test
-  void anEmailThatFailsLeavesTheAccountCreatedWithEmailSentFalse() {
-    when(mail.sendAccessLinkNow(anyString(), anyString(), any()))
-        .thenThrow(new MailDeliveryException("refused", null));
-
-    AdministratorCreated created = service.create(command(PASSWORD));
-
-    assertThat(created.emailSent()).isFalse();
-    assertThat(users.findById(created.id())).isPresent();
-  }
-
-  @Test
   void theOtherActiveAdministratorsAreToldWhoCreatedWhichAccount() {
     store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
     store.add(admin(TestIds.next(), "c@example.test", "11111113", false, "INACTIVE"));
@@ -298,21 +285,6 @@ class AdministratorServiceTest {
     verify(notices, never()).administratorCreated(eq(CREATOR_EMAIL), anyString(), anyString());
     verify(notices, never()).administratorCreated(eq(NEW_EMAIL), anyString(), anyString());
     assertThat(store.lastExcluded.get()).containsExactlyInAnyOrder(creatorId, created.id());
-  }
-
-  @Test
-  void aNoticeThatFailsDoesNotUndoTheCreationNorStopTheOtherNotices() {
-    store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
-    store.add(admin(TestIds.next(), "c@example.test", "11111113", false, "ACTIVE"));
-    doThrow(new MailDeliveryException("down", null))
-        .when(notices)
-        .administratorCreated(eq("b@example.test"), anyString(), anyString());
-
-    AdministratorCreated created = service.create(command(PASSWORD));
-
-    assertThat(users.findById(created.id())).isPresent();
-    assertThat(created.emailSent()).isTrue();
-    verify(notices).administratorCreated("c@example.test", CREATOR_EMAIL, NEW_EMAIL);
   }
 
   @Test
@@ -387,9 +359,6 @@ class AdministratorServiceTest {
   void theLogsCarryOnlyTheIdsOfTheAccounts() {
     when(mail.sendAccessLinkNow(anyString(), anyString(), any())).thenReturn(false);
     store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
-    doThrow(new MailDeliveryException("down " + NEW_EMAIL, null))
-        .when(notices)
-        .administratorCreated(anyString(), anyString(), anyString());
 
     AdministratorCreated created = service.create(command(PASSWORD));
 

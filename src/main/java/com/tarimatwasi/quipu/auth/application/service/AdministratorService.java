@@ -4,7 +4,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.CreateAdministratorUseCase
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidAdministratorDocumentException;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.application.service.AdministratorRegistrar.Registered;
 import com.tarimatwasi.quipu.auth.application.service.AdministratorRegistrar.Registration;
@@ -120,8 +119,8 @@ public class AdministratorService implements CreateAdministratorUseCase {
         LOG.warn("The access email of administrator {} was not delivered", id);
       }
       return sent;
-    } catch (MailDeliveryException | DataAccessException | TransactionException e) {
-      // Only the type: the message of a provider can echo the address.
+    } catch (DataAccessException | TransactionException e) {
+      // Only the type: a message can carry internal details.
       LOG.warn(
           "The access email of administrator {} was not delivered ({})",
           id,
@@ -145,15 +144,9 @@ public class AdministratorService implements CreateAdministratorUseCase {
           e.getClass().getSimpleName());
       return;
     }
+    // Queued in the background, best-effort: the adapter logs what it could not send.
     for (String other : others) {
-      try {
-        notices.administratorCreated(other, registered.creatorEmail(), email);
-      } catch (MailDeliveryException e) {
-        LOG.warn(
-            "An administrator was not told about administrator {} ({})",
-            registered.id(),
-            e.getClass().getSimpleName());
-      }
+      notices.administratorCreated(other, registered.creatorEmail(), email);
     }
   }
 

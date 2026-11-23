@@ -14,7 +14,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNameRequiredE
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
@@ -29,7 +28,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.assertj.core.api.Assertions;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -338,14 +336,6 @@ class PasswordRecoveryServiceTest {
   }
 
   @Test
-  void aFailedDeliveryIsNotShownToTheCaller() {
-    savedUser("ACTIVE");
-    mail.failWith(new MailDeliveryException("provider down", null));
-
-    assertThatCode(() -> service.requestReset(EMAIL)).doesNotThrowAnyException();
-  }
-
-  @Test
   void resetsThePasswordAndClearsThePendingChange() {
     UserAccount user = savedUser("ACTIVE");
     service.requestReset(EMAIL);
@@ -442,17 +432,9 @@ class PasswordRecoveryServiceTest {
 
   private static final class RecordingMail implements PasswordResetMailPort {
     final List<Sent> sent = new ArrayList<>();
-    private @Nullable MailDeliveryException failure;
-
-    void failWith(MailDeliveryException e) {
-      this.failure = e;
-    }
 
     @Override
     public void sendResetLink(String toEmail, String code, Duration validFor, boolean activation) {
-      if (failure != null) {
-        throw failure;
-      }
       sent.add(new Sent(toEmail, code, validFor, activation));
     }
 

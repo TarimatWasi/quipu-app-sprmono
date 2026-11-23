@@ -5,12 +5,9 @@ import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase.Account
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase.EmailChangeOutcome;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.GuestAccountEmailNoticePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,8 +17,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 class GuestAccountEmailChanger {
-
-  private static final Logger LOG = LoggerFactory.getLogger(GuestAccountEmailChanger.class);
 
   private final UserRepositoryPort users;
   private final GuestAccountEmailNoticePort notices;
@@ -54,15 +49,8 @@ class GuestAccountEmailChanger {
     return new AccountEmailChange(EmailChangeOutcome.CHANGED, previous);
   }
 
-  /** Tells the previous email about the change, best-effort. */
+  /** Tells the previous email about the change, best-effort: the adapter logs a failure. */
   void notice(String previousEmail, String newEmail) {
-    try {
-      notices.accountEmailChanged(previousEmail, newEmail);
-    } catch (MailDeliveryException e) {
-      // Only the type: the message of a provider can echo the address.
-      LOG.warn(
-          "The previous account email was not told about the change ({})",
-          e.getClass().getSimpleName());
-    }
+    notices.accountEmailChanged(previousEmail, newEmail);
   }
 }

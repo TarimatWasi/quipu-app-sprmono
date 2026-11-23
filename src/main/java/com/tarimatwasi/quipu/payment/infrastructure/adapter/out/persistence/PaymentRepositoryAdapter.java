@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentProof;
 import com.tarimatwasi.quipu.payment.domain.PaymentReview;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
@@ -117,8 +118,8 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
 
   /** Which of the two unique indexes of the live payments refused the row. */
   private static boolean isLiveIndexViolation(DataIntegrityViolationException e) {
-    String message = e.getMostSpecificCause().getMessage();
-    return message != null && message.contains(LIVE_INDEX_PREFIX);
+    String constraint = ViolatedConstraint.nameOf(e);
+    return constraint != null && constraint.startsWith(LIVE_INDEX_PREFIX);
   }
 
   /**

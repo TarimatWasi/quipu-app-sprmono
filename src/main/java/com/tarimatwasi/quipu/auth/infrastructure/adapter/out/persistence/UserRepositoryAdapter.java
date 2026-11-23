@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort.FailedLogin;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -88,7 +89,7 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
       jpaRepository.updateEmailById(id, email);
     } catch (DataIntegrityViolationException e) {
       // By the name of the rule, never by the message: the language of the server does not matter.
-      String constraint = ConstraintName.of(e);
+      String constraint = ViolatedConstraint.nameOf(e);
       if (constraint != null && AdministratorStoreAdapter.EMAIL_CONSTRAINTS.contains(constraint)) {
         throw new AccountTakenException(Taken.EMAIL, e);
       }

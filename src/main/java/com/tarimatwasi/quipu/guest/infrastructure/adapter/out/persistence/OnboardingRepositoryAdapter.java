@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestConsentAlreadyExist
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;

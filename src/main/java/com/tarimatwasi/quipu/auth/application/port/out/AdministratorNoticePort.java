@@ -14,17 +14,14 @@ public interface AdministratorNoticePort {
 
   /**
    * Sends the notice in the background: who created which account, and nothing that gives access
-   * (no link, code or document).
-   *
-   * @throws MailDeliveryException if the notice could not be handed over; the caller only logs it
+   * (no link, code or document). Never throws: the adapter logs what it could not send.
    */
   void administratorCreated(String toEmail, String creatorEmail, String newAdministratorEmail);
 
   /**
    * Sends the notice in the background: who deactivated or reactivated which account, and nothing
-   * that gives access (no link, code or document).
-   *
-   * @throws MailDeliveryException if the notice could not be handed over; the caller only logs it
+   * that gives access (no link, code or document). Never throws: the adapter logs what it could not
+   * send.
    */
   void administratorStatusChanged(
       String toEmail, String actorEmail, String administratorEmail, StatusChange change);

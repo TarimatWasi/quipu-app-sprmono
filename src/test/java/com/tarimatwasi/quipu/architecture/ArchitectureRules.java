@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.Set;
 import java.util.concurrent.Executors;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -297,6 +298,10 @@ final class ArchitectureRules {
   @ArchTest static final ArchRule BE_SPR_COD_05 = NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
 
   @ArchTest
+  static final ArchRule QP_SPRMONO_COD_01 =
+      ArchitectureConditions.caughtOwnExceptionsAreCreated(ROOT);
+
+  @ArchTest
   static final ArchRule BE_SPR_NUL_03 =
       noClasses()
           .should()
@@ -518,6 +523,26 @@ final class ArchitectureRules {
                           HasOwner.Predicates.With.owner(
                               JavaClass.Predicates.assignableTo(ManageGuestsUseCase.class)))))
           .because("another module reads the summaries of its guests together (summariesOf)");
+
+  /**
+   * QP-SPRMONO-DAT-05: the constraint a write broke is read only by ViolatedConstraint, by the name
+   * the server reports. Three modules had their own copy of it and the payments read the message of
+   * the server, whose wording changes with its language.
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_05 =
+      noClasses()
+          .that()
+          .doNotHaveFullyQualifiedName(ROOT + ".shared.adapter.out.persistence.ViolatedConstraint")
+          .should()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("org.postgresql.util.ServerErrorMessage")
+          .orShould()
+          .callMethod(ConstraintViolationException.class, "getConstraintName")
+          .orShould()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("getMostSpecificCause")))
+          .because("ViolatedConstraint reads it by name, whatever the language of the server");
 
   @ArchTest
   static final ArchRule QP_SPRMONO_DAT_01 =

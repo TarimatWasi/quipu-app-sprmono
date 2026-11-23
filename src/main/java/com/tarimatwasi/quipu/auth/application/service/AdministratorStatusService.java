@@ -6,7 +6,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort.StatusChange;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort.StoredAdministrator;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.service.AdministratorStatusChanger.Changed;
 import java.util.List;
 import java.util.Optional;
@@ -99,17 +98,10 @@ public class AdministratorStatusService implements ManageAdministratorsUseCase {
           e.getClass().getSimpleName());
       return;
     }
+    // Queued in the background, best-effort: the adapter logs what it could not send.
     for (String other : others) {
-      try {
-        notices.administratorStatusChanged(
-            other, changed.actorEmail(), changed.administratorEmail(), change);
-      } catch (MailDeliveryException e) {
-        // Only the type: the message of a provider can echo the address.
-        LOG.warn(
-            "An administrator was not told about administrator {} ({})",
-            changed.id(),
-            e.getClass().getSimpleName());
-      }
+      notices.administratorStatusChanged(
+          other, changed.actorEmail(), changed.administratorEmail(), change);
     }
   }
 

@@ -4,6 +4,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -89,7 +90,7 @@ public class AdministratorStoreAdapter implements AdministratorStorePort {
           .single();
     } catch (DuplicateKeyException e) {
       // By the name of the rule, never by the message: the language of the server does not matter.
-      String constraint = ConstraintName.of(e);
+      String constraint = ViolatedConstraint.nameOf(e);
       if (DOCUMENT_CONSTRAINT.equals(constraint)) {
         throw new AccountTakenException(Taken.DOCUMENT, e);
       }

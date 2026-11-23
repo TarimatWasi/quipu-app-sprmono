@@ -1,4 +1,4 @@
-package com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence;
+package com.tarimatwasi.quipu.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -15,6 +15,10 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
+import com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence.GuestDocumentActionRepositoryAdapter;
+import com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence.GuestRepositoryAdapter;
+import com.tarimatwasi.quipu.guest.infrastructure.adapter.out.persistence.OnboardingRepositoryAdapter;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Instant;
@@ -40,13 +44,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
- * TAR-207: the unique rule that broke is found by the name the server gives, not by the wording of
- * its message. The server here answers in Spanish ({@code «name»}, not {@code "name"}), which the
- * name extractor of Hibernate does not read.
+ * TAR-207 (ViolatedConstraint): the unique rule that broke is found by the name the server gives,
+ * not by the wording of its message. The server here answers in Spanish ({@code «name»}, not {@code
+ * "name"}), which the name extractor of Hibernate does not read.
  */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
-@ImportTestcontainers(ViolatedConstraintTest.SpanishPostgres.class)
-class ViolatedConstraintTest {
+@ImportTestcontainers(SpanishServerConstraintsTest.SpanishPostgres.class)
+class SpanishServerConstraintsTest {
 
   /**
    * A server that answers in Spanish. The Debian image carries the Spanish catalogs but only the C

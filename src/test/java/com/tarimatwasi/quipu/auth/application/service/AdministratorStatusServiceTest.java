@@ -2,10 +2,6 @@ package com.tarimatwasi.quipu.auth.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -26,7 +22,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCas
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort.StatusChange;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
@@ -342,23 +337,6 @@ class AdministratorStatusServiceTest {
   }
 
   @Test
-  void aNoticeThatFailsDoesNotUndoTheChangeNorStopTheOtherNotices() {
-    Long fourth = TestIds.next();
-    store.add(
-        account(fourth, "cuarta@example.test", "11111114", Role.ADMIN, "ACTIVE", false), "04");
-    doThrow(new MailDeliveryException("down", null))
-        .when(notices)
-        .administratorStatusChanged(eq(THIRD_EMAIL), anyString(), anyString(), any());
-
-    service.deactivate(command(targetId, PASSWORD));
-
-    assertThat(statusOf(targetId)).isEqualTo("INACTIVE");
-    verify(notices)
-        .administratorStatusChanged(
-            "cuarta@example.test", ACTOR_EMAIL, TARGET_EMAIL, StatusChange.DEACTIVATED);
-  }
-
-  @Test
   void theOthersThatCannotBeReadDoNotUndoTheChange() {
     store.failEmails = true;
 
@@ -371,10 +349,6 @@ class AdministratorStatusServiceTest {
   /** Only internal ids reach the logs: no document, email or password. */
   @Test
   void theLogsCarryOnlyTheIdsOfTheAccounts() {
-    doThrow(new MailDeliveryException("down " + THIRD_EMAIL, null))
-        .when(notices)
-        .administratorStatusChanged(anyString(), anyString(), anyString(), any());
-
     service.deactivate(command(targetId, PASSWORD));
     service.reactivate(command(targetId, PASSWORD));
 
