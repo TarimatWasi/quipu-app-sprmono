@@ -54,7 +54,7 @@ class PasswordRecoveryServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new PasswordRecoveryService(
-            new ResetCodeIssuer(repository, clock),
+            new ResetCodeIssuer(repository, clock, TestSecurityFacts.over(repository)),
             new AccountAccess(repository, TestSecurityFacts.over(repository)),
             encoder,
             mail,
@@ -223,7 +223,7 @@ class PasswordRecoveryServiceTest {
     List<Runnable> queued = new ArrayList<>();
     var deferred =
         new PasswordRecoveryService(
-            new ResetCodeIssuer(users, clock),
+            new ResetCodeIssuer(users, clock, TestSecurityFacts.over(users)),
             new AccountAccess(users, TestSecurityFacts.over(users)),
             spiedEncoder,
             spiedMail,

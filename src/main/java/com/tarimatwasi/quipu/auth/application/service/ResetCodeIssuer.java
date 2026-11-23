@@ -39,8 +39,10 @@ class ResetCodeIssuer {
   private static final SecureRandom RANDOM = new SecureRandom();
   private final UserRepositoryPort userRepository;
   private final Clock clock;
+  private final SecurityFacts facts;
 
-  ResetCodeIssuer(UserRepositoryPort userRepository, Clock clock) {
+  ResetCodeIssuer(UserRepositoryPort userRepository, Clock clock, SecurityFacts facts) {
+    this.facts = facts;
     this.userRepository = userRepository;
     this.clock = clock;
   }
@@ -65,7 +67,7 @@ class ResetCodeIssuer {
       return Optional.empty();
     }
     String code = newCode();
-    userRepository.saveResetToken(user.id(), hash(code), now.plus(CODE_VALIDITY));
+    facts.issueResetCode(user.id(), hash(code), now.plus(CODE_VALIDITY));
     return Optional.of(new IssuedCode(user, code));
   }
 

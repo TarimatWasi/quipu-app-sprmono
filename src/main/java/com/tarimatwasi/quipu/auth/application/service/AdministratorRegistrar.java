@@ -37,11 +37,14 @@ class AdministratorRegistrar {
   private final AdministratorReauthentication reauthentication;
   private final AdministratorStorePort store;
   private final int maxAdministrators;
+  private final SecurityFacts facts;
 
   AdministratorRegistrar(
       AdministratorReauthentication reauthentication,
       AdministratorStorePort store,
-      AdministratorLimitPort limit) {
+      AdministratorLimitPort limit,
+      SecurityFacts facts) {
+    this.facts = facts;
     this.reauthentication = reauthentication;
     this.store = store;
     this.maxAdministrators = limit.maxAdministrators();
@@ -64,7 +67,7 @@ class AdministratorRegistrar {
     Long id;
     try {
       id =
-          store.insert(
+          facts.createAdministrator(
               new NewAdministrator(
                   registration.documentType(),
                   registration.documentNumber(),

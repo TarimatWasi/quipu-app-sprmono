@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.service;
 
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort.NewAdministrator;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort.RevokedReason;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort.StoredSession;
@@ -8,8 +9,12 @@ import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort.FailedLogin;
 import com.tarimatwasi.quipu.auth.domain.event.AccountLocked;
 import com.tarimatwasi.quipu.auth.domain.event.AccountsDeactivated;
+import com.tarimatwasi.quipu.auth.domain.event.AdministratorCreated;
+import com.tarimatwasi.quipu.auth.domain.event.AdministratorReactivated;
 import com.tarimatwasi.quipu.auth.domain.event.CredentialsChanged;
+import com.tarimatwasi.quipu.auth.domain.event.PasswordResetIssued;
 import com.tarimatwasi.quipu.auth.domain.event.SessionEnd;
+import com.tarimatwasi.quipu.auth.domain.event.SessionOpened;
 import com.tarimatwasi.quipu.auth.domain.event.SessionRevoked;
 import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import java.time.Duration;
@@ -37,6 +42,39 @@ public class SecurityFacts {
     this.sessions = sessions;
     this.users = users;
     this.administrators = administrators;
+  }
+
+  /** Opens a session of the account; returns its id. */
+  @Transactional
+  @PublishEvent(
+      type = SessionOpened.class,
+      args = {"#result", "#userId", "#temporary"})
+  public Long openSession(
+      Long userId,
+      String sidHash,
+      long securityVersion,
+      boolean temporary,
+      Instant absoluteExpiresAt,
+      Instant now) {
+    return sessions.open(userId, sidHash, securityVersion, temporary, absoluteExpiresAt, now);
+  }
+
+  /** Stores the hash of a new recovery code; the code itself never leaves its flow. */
+  @Transactional
+  @PublishEvent(
+      type = PasswordResetIssued.class,
+      args = {"#userId", "#expiresAt"})
+  public void issueResetCode(Long userId, String codeHash, Instant expiresAt) {
+    users.saveResetToken(userId, codeHash, expiresAt);
+  }
+
+  /** Stores a new administrator (RF-22); returns its id. */
+  @Transactional
+  @PublishEvent(
+      type = AdministratorCreated.class,
+      args = {"#result"})
+  public Long createAdministrator(NewAdministrator administrator) {
+    return administrators.insert(administrator);
   }
 
   /** Closes one session. */
@@ -91,6 +129,10 @@ public class SecurityFacts {
 
   /** Sets the status of an administrator; a deactivation ends its sessions. */
   @Transactional
+  @PublishEvent(
+      type = AdministratorReactivated.class,
+      when = "#status == 'ACTIVE'",
+      args = {"#administratorId"})
   @PublishEvent(
       type = AccountsDeactivated.class,
       when = "#status == 'INACTIVE'",

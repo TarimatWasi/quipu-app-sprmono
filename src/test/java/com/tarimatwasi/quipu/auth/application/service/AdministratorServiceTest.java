@@ -79,8 +79,9 @@ class AdministratorServiceTest {
         new AdministratorRegistrar(
             new AdministratorReauthentication(users, encoder, clock, TestSecurityFacts.over(users)),
             store,
-            () -> max),
-        new ResetCodeIssuer(users, clock),
+            () -> max,
+            TestSecurityFacts.over(users, store)),
+        new ResetCodeIssuer(users, clock, TestSecurityFacts.over(users, store)),
         mail,
         notices,
         store,

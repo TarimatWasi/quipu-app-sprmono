@@ -84,7 +84,7 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
     String sid = randomToken(IdMasker.SESSION_ID_BYTES);
     Instant absolute = now.plus(policy.absolute());
     Long id =
-        sessions.open(
+        facts.openSession(
             Long.parseLong(userId),
             SessionStorePort.hash(sid),
             versionOf(userId),
@@ -101,7 +101,7 @@ public class SessionService implements RefreshSessionUseCase, LogoutUseCase {
   IssuedSession openTemporary(String userId, Long grantId, Instant expiresAt) {
     Instant now = clock.instant();
     String sid = randomToken(IdMasker.SESSION_ID_BYTES);
-    sessions.open(
+    facts.openSession(
         Long.parseLong(userId),
         SessionStorePort.hash(sid),
         versionOf(userId),
