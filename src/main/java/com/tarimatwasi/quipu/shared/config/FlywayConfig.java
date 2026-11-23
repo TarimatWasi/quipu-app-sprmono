@@ -13,9 +13,10 @@ import org.springframework.context.annotation.Configuration;
 /**
  * TAR-204: the migrations wait for a lock up to 60 s ({@code spring.flyway.init-sqls}), longer than
  * the 15 s of the requests, so a deploy is not cut, and an ACCESS EXCLUSIVE behind an idle
- * transaction does not hold the table forever. Flyway borrows connections from the pool and that
- * setting stays on them, so once it is done, or has failed, they are evicted: the next ones open
- * with the {@code connection-init-sql} of the application again.
+ * transaction does not hold the table forever; no statement of theirs has a time limit, as the
+ * requests do. Flyway borrows connections from the pool and those settings stay on them, so once it
+ * is done, or has failed, they are evicted: the next ones open with the {@code connection-init-sql}
+ * of the application again.
  *
  * <p>TAR-214: with {@code app.migration.url} Flyway migrates through a connection of its own, as
  * the owner of the tables, and the migrations grant the application role ({@link
@@ -33,7 +34,7 @@ class FlywayConfig {
       try {
         flyway.migrate();
       } finally {
-        // Also when the migration fails: the connections it borrowed keep its lock_timeout.
+        // Also when the migration fails: the connections it borrowed keep its settings.
         if (dataSource instanceof HikariDataSource hikari) {
           HikariPoolMXBean pool = hikari.getHikariPoolMXBean();
           if (pool != null) {
