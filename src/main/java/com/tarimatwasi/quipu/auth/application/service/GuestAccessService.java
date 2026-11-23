@@ -162,6 +162,8 @@ public class GuestAccessService implements GuestAccessUseCase {
   }
 
   @Override
+  // The sweep of the business day reads them as the system (SystemActor).
+  @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM')")
   @Transactional(readOnly = true)
   public Map<Long, Instant> unusedAccessExpiries(Collection<Long> guestIds) {
     return guestIds.isEmpty() ? Map.of() : grants.unusedExpiries(guestIds);

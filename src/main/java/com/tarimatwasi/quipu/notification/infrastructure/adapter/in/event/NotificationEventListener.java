@@ -4,8 +4,10 @@ import com.tarimatwasi.quipu.contract.domain.event.ContractExpiring;
 import com.tarimatwasi.quipu.contract.domain.event.ContractSigned;
 import com.tarimatwasi.quipu.contract.domain.event.ContractTerminated;
 import com.tarimatwasi.quipu.fine.domain.event.FineApplied;
+import com.tarimatwasi.quipu.guest.domain.event.AccessExpired;
 import com.tarimatwasi.quipu.guest.domain.event.GuestDocumentUploaded;
 import com.tarimatwasi.quipu.guest.domain.event.OnboardingCompleted;
+import com.tarimatwasi.quipu.guest.domain.event.StayEnding;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Kind;
 import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.NewNotification;
@@ -21,6 +23,7 @@ import com.tarimatwasi.quipu.shared.events.delivery.DurableListener;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -32,6 +35,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class NotificationEventListener {
+  /** The days of the facts are the days of Lima. */
+  private static final ZoneId LIMA = ZoneId.of("America/Lima");
+
   private final RaiseNotificationUseCase notifications;
 
   public NotificationEventListener(RaiseNotificationUseCase notifications) {
@@ -172,6 +178,28 @@ public class NotificationEventListener {
         Target.CONTRACT,
         contract.contractId(),
         Map.of("endDate", contract.endDate().toString()));
+  }
+
+  @DurableListener
+  public void on(StayEnding stay) {
+    raise(
+        stay,
+        Kind.STAY_ENDING,
+        stay.guestId(),
+        Target.GUEST,
+        stay.guestId(),
+        Map.of("endDate", stay.endDate().toString()));
+  }
+
+  @DurableListener
+  public void on(AccessExpired access) {
+    raise(
+        access,
+        Kind.ACCESS_EXPIRED,
+        access.guestId(),
+        Target.GUEST,
+        access.guestId(),
+        Map.of("expiredOn", LocalDate.ofInstant(access.expiredAt(), LIMA).toString()));
   }
 
   /** The facts with the due date of the charge. */

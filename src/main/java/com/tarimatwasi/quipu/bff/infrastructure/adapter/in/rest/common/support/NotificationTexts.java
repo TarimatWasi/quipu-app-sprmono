@@ -81,6 +81,13 @@ public final class NotificationTexts {
         new Template(
             "Devolución registrada", "Se registró una devolución de {amount} a tu favor."));
     all.put(
+        Kind.STAY_ENDING,
+        new Template("Estadía por terminar", "Una estadía termina el {endDate}."));
+    all.put(
+        Kind.ACCESS_EXPIRED,
+        new Template(
+            "Acceso vencido", "Un acceso venció el {expiredOn} sin usarse: entrega uno nuevo."));
+    all.put(
         Kind.PAYMENT_DUE,
         new Template("Pago pendiente", "Tu pago de {amount}{of} vence el {dueDate}."));
     for (Kind kind : Kind.values()) {
