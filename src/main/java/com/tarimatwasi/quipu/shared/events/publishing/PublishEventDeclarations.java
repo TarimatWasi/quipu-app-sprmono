@@ -181,31 +181,47 @@ public class PublishEventDeclarations implements BeanPostProcessor {
       checkVariables(where, source, variables, errors);
       checkType(where, event, source, component, variables, errors);
     }
-    Expression when = null;
-    if (!declaration.when().isBlank()) {
-      try {
-        when = parser.parseExpression(declaration.when());
-        checkVariables(where, declaration.when(), variables, errors);
-        checkCondition(where, declaration.when(), variables, errors);
-      } catch (ParseException e) {
-        errors.add(where + ": cannot parse when '" + declaration.when() + "'");
-      }
-    }
+    Expression when = condition(where, declaration.when(), variables, errors);
     if (errors.size() > before) {
       return null;
     }
+    return compiled(where, declaration.type(), components, expressions, when, errors);
+  }
+
+  /** The parsed {@code when}, or null when it is empty or broken (then with its error). */
+  private @Nullable Expression condition(
+      String where, String source, Map<String, Class<?>> variables, List<String> errors) {
+    if (source.isBlank()) {
+      return null;
+    }
+    try {
+      Expression when = parser.parseExpression(source);
+      checkVariables(where, source, variables, errors);
+      checkCondition(where, source, variables, errors);
+      return when;
+    } catch (ParseException e) {
+      errors.add(where + ": cannot parse when '" + source + "'");
+      return null;
+    }
+  }
+
+  private static @Nullable Compiled compiled(
+      String where,
+      Class<? extends DomainEvent> type,
+      RecordComponent[] components,
+      List<Expression> expressions,
+      @Nullable Expression when,
+      List<String> errors) {
     Class<?>[] types = new Class<?>[components.length];
     for (int i = 0; i < components.length; i++) {
       types[i] = components[i].getType();
     }
     try {
-      Constructor<? extends DomainEvent> constructor =
-          declaration.type().getDeclaredConstructor(types);
+      Constructor<? extends DomainEvent> constructor = type.getDeclaredConstructor(types);
       ReflectionUtils.makeAccessible(constructor);
-      return new Compiled(
-          declaration.type(), constructor, List.of(types), List.copyOf(expressions), when);
+      return new Compiled(type, constructor, List.of(types), List.copyOf(expressions), when);
     } catch (NoSuchMethodException e) {
-      errors.add(where + ": " + event + " has no canonical constructor");
+      errors.add(where + ": " + type.getSimpleName() + " has no canonical constructor");
       return null;
     }
   }
