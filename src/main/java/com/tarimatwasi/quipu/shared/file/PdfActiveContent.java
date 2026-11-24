@@ -251,7 +251,7 @@ final class PdfActiveContent {
    * every file would stay in the heap. Names are compared by their bytes, so emptying the table
    * only costs the names being created again.
    */
-  @SuppressWarnings("deprecation") // the only way to empty the table of PDFBox
+  @SuppressWarnings("deprecation") // BE-SPR-DEP-04 TAR-39: the only way to empty PDFBox's table
   private static void forgetNames() {
     COSName.clearResources();
   }

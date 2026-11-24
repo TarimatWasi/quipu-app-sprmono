@@ -63,6 +63,15 @@
          en el código (los strings y comentarios quedan fuera de la regla). -->
     <module name="AvoidStarImport"/>
   </module>
+  <!-- OPS-GHA-CI-05 (TAR-384): una supresión cita en su línea el ID de la regla y la tarea. -->
+  <module name="RegexpSingleline">
+    <property name="id" value="SuppressionWithoutRuleAndTask"/>
+    <property name="format"
+        value="(@SuppressWarnings|NOSONAR)(?!.*(([A-Z]{2,}(-[A-Z0-9]+)+-\d+|java:S\d+).*TAR-\d+|TAR-\d+.*([A-Z]{2,}(-[A-Z0-9]+)+-\d+|java:S\d+)))"/>
+    <property name="fileExtensions" value="java"/>
+    <property name="message"
+        value="Supresión sin el ID de la regla y la tarea en su línea (OPS-GHA-CI-05)."/>
+  </module>
   <module name="RegexpSingleline">
     <property name="id" value="FullyQualifiedName"/>
     <property name="format"

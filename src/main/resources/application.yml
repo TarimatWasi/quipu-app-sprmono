@@ -198,6 +198,9 @@ logging:
   level:
     org.apache.pdfbox: OFF
     org.hibernate.orm.connections.pooling: WARN
+    # BE-SPR-OBS-06: a failed durable listener is logged at INFO with the message of its exception,
+    # which can carry personal data; AsyncFailureLog logs the method and the class instead.
+    org.springframework.modulith.events.support.CompletionRegisteringAdvisor: WARN
 
 # TAR-371: finite NIO no-progress write timeout; not a total deadline for trickling readers.
 server:

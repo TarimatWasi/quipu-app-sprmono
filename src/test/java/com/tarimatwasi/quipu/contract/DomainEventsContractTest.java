@@ -5,12 +5,17 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.tarimatwasi.quipu.shared.events.delivery.AsyncFailureLog;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.modulith.events.support.CompletionRegisteringAdvisor;
+import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
@@ -24,6 +29,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 class DomainEventsContractTest extends PaymentsContractSupport {
   private static final String EXPENSE_CREATED = "com.tarimatwasi.quipu.expense.expense-created.v1";
   private static final String EXPENSE_DELETED = "com.tarimatwasi.quipu.expense.expense-deleted.v1";
+
+  @Autowired private AsyncConfigurer asyncFailures;
 
   private String createExpense() throws Exception {
     String body =
@@ -93,6 +100,21 @@ class DomainEventsContractTest extends PaymentsContractSupport {
                 "SELECT count(*) FROM event_publication WHERE listener_id LIKE '%Invalidations%'",
                 Integer.class))
         .isZero();
+  }
+
+  /**
+   * BE-SPR-OBS-06: Spring Modulith logs a failed durable listener at INFO with the message of its
+   * exception; that line stays off, AsyncFailureLog writes the method and the class instead.
+   */
+  @Test
+  void failedDeliveries_neverLogTheMessageOfTheirException() {
+    assertThat(
+            LoggerFactory.getLogger(
+                    CompletionRegisteringAdvisor.class.getName()
+                        + "$CompletionRegisteringMethodInterceptor")
+                .isInfoEnabled())
+        .isFalse();
+    assertThat(asyncFailures).isInstanceOf(AsyncFailureLog.class);
   }
 
   @Test
