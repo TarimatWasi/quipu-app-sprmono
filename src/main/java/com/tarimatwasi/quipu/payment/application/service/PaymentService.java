@@ -40,7 +40,10 @@ import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentCorrected;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentRegistered;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentResolved;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -83,7 +86,7 @@ public class PaymentService implements ManagePaymentsUseCase {
   private final ProofRecorder recorder;
   private final AccountStatus accountStatus;
   private final Credits credits;
-  private final PaymentChangeRecorder changes;
+  private final PaymentScopes scopes;
 
   PaymentService(
       PaymentRepositoryPort payments,
@@ -91,8 +94,7 @@ public class PaymentService implements ManagePaymentsUseCase {
       PaymentContractPort contracts,
       PaymentDirectory directory,
       RefundRepositoryPort refunds,
-      Clock clock,
-      ChangeSignals signals) {
+      Clock clock) {
     this.payments = payments;
     this.files = files;
     this.guests = directory.guests();
@@ -101,7 +103,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     this.stays = directory.stays();
     this.reviewers = directory.reviewers();
     this.clock = clock;
-    this.changes = new PaymentChangeRecorder(signals, contracts, directory.stays());
+    this.scopes = new PaymentScopes(contracts, directory.stays());
     this.recorder = new ProofRecorder(files, payments);
     this.accountStatus = new AccountStatus(payments, contracts, clock);
     this.credits = new Credits(payments, contracts, stays, refunds, clock);
@@ -284,12 +286,17 @@ public class PaymentService implements ManagePaymentsUseCase {
 
   private List<PayablePeriodView> payablePeriodsOfContracts(Long guestId, LocalDate today) {
     List<PayablePeriodView> payable = new ArrayList<>();
-    for (ContractInfo contract : contracts.contractsOf(guestId)) {
+    List<ContractInfo> owned = contracts.contractsOf(guestId);
+    Map<Long, List<Payment>> paid =
+        payments.findAllByContracts(owned.stream().map(ContractInfo::id).toList()).stream()
+            .collect(
+                Collectors.groupingBy(payment -> Objects.requireNonNull(payment.contractId())));
+    for (ContractInfo contract : owned) {
       CreditLedger ledger =
           CreditLedger.of(
               contract.terms(),
               contract.monthlyAmount(),
-              payments.findAllByContract(contract.id()),
+              paid.getOrDefault(contract.id(), List.of()),
               today);
       for (CreditLedger.Line line : ledger.lines()) {
         PayableState state = payableState(line.status().state(), line.status().paymentId());
@@ -320,9 +327,12 @@ public class PaymentService implements ManagePaymentsUseCase {
         stays.staysOfGuest(guestId).stream()
             .sorted(Comparator.comparing(StayTerms::startDate).thenComparing(StayTerms::id))
             .toList();
+    Map<Long, List<Payment>> paid =
+        payments.findAllByStays(ofGuest.stream().map(StayTerms::id).toList()).stream()
+            .collect(Collectors.groupingBy(payment -> Objects.requireNonNull(payment.stayId())));
     for (StayTerms stay : ofGuest) {
       StayPayments.StayStatus status =
-          StayPayments.status(stay.endDate(), payments.findAllByStay(stay.id()), today);
+          StayPayments.status(stay.endDate(), paid.getOrDefault(stay.id(), List.of()), today);
       PayableState state = payableState(status.state(), status.paymentId());
       if (state != null) {
         payable.add(
@@ -441,6 +451,18 @@ public class PaymentService implements ManagePaymentsUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = PaymentResolved.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.contractId()",
+        "#result.stayId()",
+        "#result.environmentId()",
+        "#result.period()",
+        "#result.amount()",
+        "#result.status().name() == 'APPROVED'"
+      })
   public PaymentView resolve(Long id, Resolution resolution) {
     boolean approving = resolution.decision() == Decision.APPROVED;
     // TAR-204: an approval reads the terms again with the contracts locked before the payment
@@ -475,7 +497,7 @@ public class PaymentService implements ManagePaymentsUseCase {
         id,
         new PaymentReview(
             resolved.status(), resolved.rejectionReason(), now, resolution.reviewerId()));
-    return changes.record(ProofRecorder.view(saved), ChangeSignals.Kind.FINANCIAL);
+    return scopes.scoped(ProofRecorder.view(saved));
   }
 
   /**
@@ -557,6 +579,17 @@ public class PaymentService implements ManagePaymentsUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = PaymentCorrected.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.contractId()",
+        "#result.stayId()",
+        "#result.environmentId()",
+        "#result.period()",
+        "#result.amount()"
+      })
   public PaymentView correct(Long adminId, Long id, List<ProofEdit> proofs) {
     ProofRecorder.checkEdits(proofs);
     Map<Integer, VoucherType> types = ProofRecorder.typesOfEdits(proofs);
@@ -565,16 +598,26 @@ public class PaymentService implements ManagePaymentsUseCase {
     if (!stored.payment().resolvable()) {
       throw new PaymentNotCorrectableException();
     }
-    return changes.record(
+    return scopes.scoped(
         ProofRecorder.view(
-            recorder.correct(stored, proofs, types, ProofAuthor.ADMIN, false, clock.instant())),
-        ChangeSignals.Kind.PAYMENT);
+            recorder.correct(stored, proofs, types, ProofAuthor.ADMIN, false, clock.instant())));
   }
 
   // --- the payment registered by hand ---
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = PaymentRegistered.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.contractId()",
+        "#result.stayId()",
+        "#result.environmentId()",
+        "#result.period()",
+        "#result.amount()"
+      })
   public PaymentView registerDirect(DirectPayment direct) {
     validate(direct);
     // TAR-38: the guest is locked before its state is read and before the contracts (order: guest,
@@ -599,7 +642,7 @@ public class PaymentService implements ManagePaymentsUseCase {
     Instant now = clock.instant();
     LocalDate receivedOn =
         direct.receivedOn() == null ? BusinessDay.today(clock) : direct.receivedOn();
-    return changes.record(
+    return scopes.scoped(
         ProofRecorder.view(
             recorder.insert(
                 direct.guestId(),
@@ -619,8 +662,7 @@ public class PaymentService implements ManagePaymentsUseCase {
                         proofs,
                         now,
                         now,
-                        direct.adminId()))),
-        ChangeSignals.Kind.FINANCIAL);
+                        direct.adminId()))));
   }
 
   /**

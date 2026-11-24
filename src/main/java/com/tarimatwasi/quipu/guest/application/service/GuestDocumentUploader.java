@@ -10,14 +10,12 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
 import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.FileNames;
+import com.tarimatwasi.quipu.shared.transaction.AfterTransaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Stores a document a guest uploads, during the onboarding or later from «Mis datos» (RN-37,
@@ -33,13 +31,10 @@ class GuestDocumentUploader {
   /** The name of a document whose browser name is unusable. */
   private static final String DEFAULT_NAME = "documento";
 
-  private final ChangeSignals changes;
   private final OnboardingRepositoryPort records;
   private final GuestDocumentFilePort files;
 
-  GuestDocumentUploader(
-      OnboardingRepositoryPort records, GuestDocumentFilePort files, ChangeSignals changes) {
-    this.changes = changes;
+  GuestDocumentUploader(OnboardingRepositoryPort records, GuestDocumentFilePort files) {
     this.records = records;
     this.files = files;
   }
@@ -82,8 +77,6 @@ class GuestDocumentUploader {
         discard(guestId, key);
       }
     }
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.DOCUMENT, guestId, false, null, null));
     return view(saved);
   }
 
@@ -106,23 +99,22 @@ class GuestDocumentUploader {
   }
 
   /**
-   * Inside a transaction the object is removed whenever the transaction does not commit: the insert
+   * Inside a transaction the object is removed whenever the transaction rolls back: the insert
    * failed, or something after it did. Returns true if it will be; otherwise the caller removes it.
+   * An unknown outcome keeps it (AfterTransaction).
    */
   private boolean removeUnlessCommitted(Long guestId, String key) {
-    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-      return false;
-    }
-    TransactionSynchronizationManager.registerSynchronization(
-        new TransactionSynchronization() {
-          @Override
-          public void afterCompletion(int status) {
-            if (status != STATUS_COMMITTED) {
-              discard(guestId, key);
-            }
-          }
-        });
-    return true;
+    return AfterTransaction.unlessCommitted(() -> discard(guestId, key), () -> kept(guestId));
+  }
+
+  /**
+   * The commit of the row may have happened: its object stays, and the internal id of the guest
+   * traces it (TAR-216) without the storage key (TAR-205).
+   */
+  private static void kept(Long guestId) {
+    LOGGER.warn(
+        "A document of guest {} stays in the bucket: the commit of its row had an unknown outcome",
+        guestId);
   }
 
   /**

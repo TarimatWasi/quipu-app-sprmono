@@ -161,7 +161,14 @@ public interface ManageContractsUseCase {
    * Finishes the contract by hand, freeing the environment (RN-21). One that is already finished or
    * expired stays as it is.
    *
+   * @return the contract and whether this call finished it
    * @throws ContractNotFoundException if there is no contract with that id
    */
-  void terminate(Long id);
+  Termination terminate(Long id);
+
+  /**
+   * The outcome of {@link #terminate}: {@code happened} is false when the contract was already
+   * finished or expired, so a repeated request states no new fact.
+   */
+  record Termination(Long contractId, Long guestId, Long environmentId, boolean happened) {}
 }

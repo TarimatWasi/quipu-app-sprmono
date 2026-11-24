@@ -16,5 +16,5 @@ public interface GuestAccessListener {
    * The guest chose its password with an access: a guest pending activation starts its onboarding
    * (D-30, RN-36); any other state is kept.
    */
-  void accessUsed(Long guestId);
+  boolean accessUsed(Long guestId);
 }

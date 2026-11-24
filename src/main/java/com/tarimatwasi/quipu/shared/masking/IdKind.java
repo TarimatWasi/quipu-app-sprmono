@@ -1,9 +1,7 @@
 package com.tarimatwasi.quipu.shared.masking;
 
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 
 /** What an id identifies. A masked id only unmasks as the kind it was issued for. */
 public enum IdKind {
@@ -18,7 +16,8 @@ public enum IdKind {
   GUEST_DOCUMENT_ACTION("guest-document-action"),
   FINE("fine"),
   PAYMENT_PROOF("payment-proof"),
-  REFUND("refund");
+  REFUND("refund"),
+  NOTIFICATION("notification");
 
   private final long tag;
 
@@ -32,13 +31,6 @@ public enum IdKind {
   }
 
   private static long tagOf(String label) {
-    try {
-      byte[] digest =
-          MessageDigest.getInstance("SHA-256")
-              .digest(("quipu-id:" + label).getBytes(StandardCharsets.UTF_8));
-      return ByteBuffer.wrap(digest).getLong();
-    } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("SHA-256 is not available", e);
-    }
+    return ByteBuffer.wrap(Sha256.digest("quipu-id:" + label)).getLong();
   }
 }

@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
+import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFilePort;
 import com.tarimatwasi.quipu.contract.application.port.out.ContractFileStorageException;
@@ -34,8 +35,11 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -62,8 +66,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 @ImportTestcontainers(PostgresContainers.class)
 class ContractsContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/contracts";
   private static final byte[] PDF = TestPdfs.plain();
   private static final String KEY = "contracts/fake.pdf";
@@ -175,7 +178,7 @@ class ContractsContractTest {
   void aProgramAPdfThatRunsSomethingOrAFileOverTenMegabytesIsRefused() throws Exception {
     byte[] exe = {'M', 'Z', (byte) 0x90, 0, 3, 0, 0, 0};
     byte[] unreadable = "%PDF-1.7%fake".getBytes(StandardCharsets.US_ASCII);
-    byte[] overTenMegabytes = java.util.Arrays.copyOf(PDF, 10 * 1024 * 1024 + 1);
+    byte[] overTenMegabytes = Arrays.copyOf(PDF, 10 * 1024 * 1024 + 1);
 
     for (byte[] content :
         new byte[][] {exe, TestPdfs.withJavaScript(), unreadable, overTenMegabytes}) {
@@ -411,8 +414,7 @@ class ContractsContractTest {
             .andExpect(satisfiesTheContract())
             .andExpect(jsonPath("$.content.length()").value(1))
             .andReturn();
-    String cursor =
-        com.jayway.jsonpath.JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
+    String cursor = JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
     mockMvc
         .perform(get(URL).param("limit", "1").param("after", cursor).cookie(admin()))
         .andExpect(status().isOk())
@@ -475,11 +477,11 @@ class ContractsContractTest {
     terminate(id).andExpect(status().isNoContent());
     Instant first = terminatedAt(id);
     var fixedDay = (MutableClock) clock;
-    fixedDay.advance(java.time.Duration.ofDays(3));
+    fixedDay.advance(Duration.ofDays(3));
     try {
       terminate(id).andExpect(status().isNoContent());
     } finally {
-      fixedDay.advance(java.time.Duration.ofDays(-3));
+      fixedDay.advance(Duration.ofDays(-3));
     }
 
     assertThat(first).isEqualTo(Instant.parse("2026-10-14T14:00:00Z"));
@@ -488,7 +490,7 @@ class ContractsContractTest {
 
   private Instant terminatedAt(Long id) {
     return jdbc.queryForObject(
-            "SELECT terminated_at FROM contracts WHERE id = ?", java.sql.Timestamp.class, id)
+            "SELECT terminated_at FROM contracts WHERE id = ?", Timestamp.class, id)
         .toInstant();
   }
 

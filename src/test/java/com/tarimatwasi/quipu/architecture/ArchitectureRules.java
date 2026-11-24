@@ -9,8 +9,11 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
 
+import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.properties.HasName;
 import com.tngtech.archunit.core.domain.properties.HasOwner;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -24,6 +27,7 @@ import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.Set;
 import java.util.concurrent.Executors;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -31,6 +35,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.domain.AbstractAuditable;
 import org.springframework.data.repository.Repository;
+import org.springframework.jdbc.core.JdbcOperations;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcOperations;
+import org.springframework.jdbc.core.simple.JdbcClient.MappedQuerySpec;
+import org.springframework.jdbc.core.simple.JdbcClient.ResultQuerySpec;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -52,7 +60,18 @@ final class ArchitectureRules {
 
   /** Modules in hexagonal packages (TAR-226): the business ones (batch 1) and bff (batch 2). */
   static final Set<String> HEXAGONAL_MODULES =
-      Set.of("auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment");
+      Set.of(
+          "audit",
+          "auth",
+          "bff",
+          "calendar",
+          "contract",
+          "environment",
+          "expense",
+          "fine",
+          "guest",
+          "notification",
+          "payment");
 
   private ArchitectureRules() {}
 
@@ -126,9 +145,12 @@ final class ArchitectureRules {
       classes()
           .that()
           .resideInAPackage("..domain..")
+          .and()
+          .doNotHaveSimpleName("package-info") // @NamedInterface is module metadata, not code
           .should()
           .onlyDependOnClassesThat()
-          .resideInAnyPackage("java..", "org.jspecify..", "..domain..");
+          // QP-EVT-01: the event kernel is plain Java; a domain states its facts with it.
+          .resideInAnyPackage("java..", "org.jspecify..", "..domain..", ROOT + ".shared.events");
 
   @ArchTest
   static final ArchRule BE_SPR_ARQ_09_CONTROLLERS =
@@ -276,6 +298,10 @@ final class ArchitectureRules {
   @ArchTest static final ArchRule BE_SPR_COD_05 = NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
 
   @ArchTest
+  static final ArchRule QP_SPRMONO_COD_01 =
+      ArchitectureConditions.caughtOwnExceptionsAreCreated(ROOT);
+
+  @ArchTest
   static final ArchRule BE_SPR_NUL_03 =
       noClasses()
           .should()
@@ -302,8 +328,13 @@ final class ArchitectureRules {
           .dependOnClassesThat()
           .areAnnotatedWith(Entity.class)
           .orShould()
-          .dependOnClassesThat()
-          .resideInAPackage("..domain..");
+          .dependOnClassesThat(
+              // The published facts (domain.event, a named interface) are not the domain model:
+              // the live invalidations of the bff listen to them.
+              JavaClass.Predicates.resideInAPackage("..domain..")
+                  .and(
+                      DescribedPredicate.not(
+                          JavaClass.Predicates.resideInAPackage("..domain.event.."))));
 
   @ArchTest static final ArchRule BE_SPR_WEB_03 = ArchitectureConditions.requestBodyIsValidated();
 
@@ -354,6 +385,40 @@ final class ArchitectureRules {
 
   @ArchTest static final ArchRule BE_SPR_DAT_07 = ArchitectureConditions.toOneRelationsAreLazy();
 
+  /**
+   * QP-SPRMONO-DAT-03: SQL by hand goes through JdbcClient, with named parameters; positional
+   * arguments built in a list beside a dynamic query were the way a parameter ended up in the wrong
+   * place. JdbcTemplate stays only behind JdbcClient (and in tests, which prepare data with it).
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_03 =
+      noClasses()
+          .should()
+          .dependOnClassesThat()
+          .areAssignableTo(JdbcOperations.class)
+          .orShould()
+          .dependOnClassesThat()
+          .areAssignableTo(NamedParameterJdbcOperations.class)
+          .because("JdbcClient is the API of Spring for SQL by hand");
+
+  /**
+   * QP-SPRMONO-DAT-04: the stream of a JdbcClient query holds its connection open until it is
+   * closed, unlike the list JdbcTemplate returned; a {@code .query(mapper).stream()} chained like
+   * one leaked a connection of the pool on every notice to the administrators. Read a list.
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_04 =
+      noClasses()
+          .should()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("stream"))
+                  .and(
+                      JavaCall.Predicates.target(
+                          HasOwner.Predicates.With.owner(
+                              JavaClass.Predicates.assignableTo(MappedQuerySpec.class)
+                                  .or(JavaClass.Predicates.assignableTo(ResultQuerySpec.class))))))
+          .because("an unclosed stream keeps the connection out of the pool");
+
   // --- Seguridad, observabilidad y concurrencia ---
 
   @ArchTest
@@ -393,7 +458,8 @@ final class ArchitectureRules {
                   .or()
                   .areAnnotatedWith(Async.class)
                   .should()
-                  .resideInAPackage("..adapter.out..")
+                  // QP-EVT: DurableListener, the delivery of domain events, names its own executor.
+                  .resideInAnyPackage("..adapter.out..", ROOT + ".shared.events.delivery")
                   .because("@EnableAsync and a class-level @Async belong to the output adapters")
                   .allowEmptyShould(true))
           .and(
@@ -438,6 +504,45 @@ final class ArchitectureRules {
 
   @ArchTest
   static final ArchRule QP_SPRMONO_API_03 = ArchitectureConditions.newApiVersionsCoexistWithV1();
+
+  /**
+   * QP-SPRMONO-DAT-05: the detail of a guest (ManageGuestsUseCase.get) is the one of its screen,
+   * about eight reads; another module asks for summaries in one read. The payment queue called it
+   * once per guest of a page of up to 100 payments.
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_05 =
+      noClasses()
+          .that()
+          .resideOutsideOfPackages(ROOT + ".guest..", ROOT + ".bff..")
+          .should()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("get"))
+                  .and(
+                      JavaCall.Predicates.target(
+                          HasOwner.Predicates.With.owner(
+                              JavaClass.Predicates.assignableTo(ManageGuestsUseCase.class)))))
+          .because("another module reads the summaries of its guests together (summariesOf)");
+
+  /**
+   * QP-SPRMONO-DAT-06: the constraint a write broke is read only by ViolatedConstraint, by the name
+   * the server reports. Three modules had their own copy of it and the payments read the message of
+   * the server, whose wording changes with its language.
+   */
+  @ArchTest
+  static final ArchRule QP_SPRMONO_DAT_06 =
+      noClasses()
+          .that()
+          .doNotHaveFullyQualifiedName(ROOT + ".shared.adapter.out.persistence.ViolatedConstraint")
+          .should()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("org.postgresql.util.ServerErrorMessage")
+          .orShould()
+          .callMethod(ConstraintViolationException.class, "getConstraintName")
+          .orShould()
+          .callMethodWhere(
+              JavaCall.Predicates.target(HasName.Predicates.name("getMostSpecificCause")))
+          .because("ViolatedConstraint reads it by name, whatever the language of the server");
 
   @ArchTest
   static final ArchRule QP_SPRMONO_DAT_01 =

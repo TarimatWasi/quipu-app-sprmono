@@ -17,12 +17,33 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # La cobertura de lo que cambia compara con la rama base del PR.
+          fetch-depth: 0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           java-version: '25'
           distribution: temurin
           cache: maven
       - run: mvn -B verify
+      # QP-SPRMONO-CI-01: toda línea de producción que el PR agrega o cambia, y cada rama de ella,
+      # la ejercita algún test. El piso de JaCoCo del pom cuida el total; esto, cada cambio.
+      - name: Cobertura de lo que cambia
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          java src/test/java/com/tarimatwasi/quipu/support/DiffCoverage.java
+          target/site/jacoco/jacoco.xml "origin/$BASE_REF"
+      # El reporte de cada corrida queda como artefacto: la cobertura de cada cambio, registrada.
+      - name: Reporte de cobertura
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jacoco
+          path: target/site/jacoco
+          retention-days: 30
+          if-no-files-found: ignore
   trivy:
     runs-on: ubuntu-latest
     timeout-minutes: 10

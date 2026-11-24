@@ -42,6 +42,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -308,8 +310,8 @@ class AdminDashboardServiceTest {
 
   @Test
   void thePendingVouchersAreThePageOfTheQueueOfTheOldestTwentyWithTheirTotal() {
-    QueueItemView row = org.mockito.Mockito.mock(QueueItemView.class);
-    List<QueueItemView> oldest = java.util.Collections.nCopies(20, row);
+    QueueItemView row = Mockito.mock(QueueItemView.class);
+    List<QueueItemView> oldest = Collections.nCopies(20, row);
     when(queue.list(PaymentState.PENDING, new PageQuery(null, 20)))
         .thenReturn(new CursorPage<>(oldest, "next"));
     when(payments.countByStatus(PaymentStatus.PENDING)).thenReturn(23L);

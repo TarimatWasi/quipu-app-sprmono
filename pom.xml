@@ -45,12 +45,12 @@
     <bucket4j.version>8.21.0</bucket4j.version>
     <pdfbox.version>3.0.8</pdfbox.version>
 
-    <!-- Contrato del BFF (TAR-376): commit inmutable del PR 77 de quipu-lib-contracts y sha256
-         de su openapi/bff.yaml publicado (LF). Sustituir por tag cuando se publique la versión.
+    <!-- Contrato del BFF: tag de quipu-lib-contracts y sha256 de su openapi/bff.yaml publicado (LF).
+         v0.29.0: 503 SERVICE_BUSY global cuando la base no atiende a tiempo (PR #81).
          Para subir de versión se cambian los dos juntos: el hash se obtiene con
          `curl -sL <url del tag> | sha256sum` y el build rechaza un spec con otro hash. -->
-    <contract.version>f2f99ed9b7671eb346ce85aa2d3cd636b5e98003</contract.version>
-    <contract.sha256>2614f8505eed54a499daa8f565d61c932912c51653d4404549a94eb5d98324d9</contract.sha256>
+    <contract.version>v0.29.0</contract.version>
+    <contract.sha256>6925632e2e9247c8f91f364ce09f9534334650fef22068f70a7f8c4d095cd4de</contract.sha256>
   </properties>
 
   <dependencyManagement>
@@ -128,6 +128,13 @@
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-core</artifactId>
     </dependency>
+    <!-- Outbox de eventos de dominio (registro de publicaciones JDBC): la fila se escribe en la
+         transacción del caso de uso y los listeners durables (auditoría) la consumen después del
+         commit, con reintento. Spike del 2026-11-22: atomicidad, reintento e idempotencia. -->
+    <dependency>
+      <groupId>org.springframework.modulith</groupId>
+      <artifactId>spring-modulith-starter-jdbc</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
@@ -185,6 +192,12 @@
     <dependency>
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Espera acotada de efectos asíncronos (entrega del outbox) en las pruebas; versión del BOM de Boot. -->
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -369,15 +382,44 @@
             </goals>
             <configuration>
               <rules>
+                <!-- QP-SPRMONO-CI-01: piso del total, en el nivel alcanzado al cubrir todo lo que
+                     cambió la rama de la plataforma de eventos; solo sube. Lo que cambia cada PR
+                     lo exige completo DiffCoverage (src/test/java/.../support) en CI. -->
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>INSTRUCTION</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.97</minimum>
+                    </limit>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.97</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.89</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+                <!-- Ningún paquete queda atrás (antes: 80 % solo en domain y application.service).
+                     Fuera queda solo el paquete raíz: el main de la aplicación. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>
-                    <include>com.tarimatwasi.quipu.*.domain</include>
-                    <include>com.tarimatwasi.quipu.*.application.service</include>
+                    <include>com.tarimatwasi.quipu.*</include>
                   </includes>
                   <limits>
                     <limit>
                       <counter>INSTRUCTION</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
                       <value>COVEREDRATIO</value>
                       <minimum>0.80</minimum>
                     </limit>
@@ -390,4 +432,58 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Contrato local (contract-first sin publicar): mvn -Dcontract.dir=<carpeta con bff.yaml> ...
+         omite la descarga fijada por contract.version y copia ese bff.yaml a target/contract. Solo
+         para desarrollo: sin hash, y CI nunca lo activa. -->
+    <profile>
+      <id>local-contract</id>
+      <activation>
+        <property>
+          <name>contract.dir</name>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>io.github.download-maven-plugin</groupId>
+            <artifactId>download-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>download-bff-contract</id>
+                <configuration>
+                  <skip>true</skip>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>copy-local-bff-contract</id>
+                <phase>generate-test-resources</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.directory}/contract</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${contract.dir}</directory>
+                      <includes>
+                        <include>bff.yaml</include>
+                      </includes>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

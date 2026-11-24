@@ -104,6 +104,11 @@ class SessionStoreAdapter implements SessionStorePort {
     return sessions.isClosed(sidHash, now);
   }
 
+  @Override
+  public int deleteExpiredBefore(Instant cutoff, int max) {
+    return sessions.deleteExpiredBefore(cutoff, max);
+  }
+
   private static StoredSession view(SessionJpaEntity session) {
     return new StoredSession(
         session.getId(),
@@ -114,5 +119,10 @@ class SessionStoreAdapter implements SessionStorePort {
         session.absoluteExpiresAt(),
         session.lastUsedAt(),
         session.revokedAt());
+  }
+
+  @Override
+  public Optional<String> sidHashOf(Long sessionId) {
+    return sessions.findById(sessionId).map(SessionJpaEntity::sidHash);
   }
 }

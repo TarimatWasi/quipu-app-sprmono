@@ -79,8 +79,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 @ExtendWith(OutputCaptureExtension.class)
 class GuestDocumentActionsContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String ORIGIN = "http://localhost:3000";
   private static final String DNI = "45678912";
   private static final String NAME = "Rosa Mamani";

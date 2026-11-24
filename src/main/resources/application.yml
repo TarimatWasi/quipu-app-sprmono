@@ -13,9 +13,15 @@ spring:
   # que app.r2.api-call-timeout (10 s): quien sube a R2 con filas bloqueadas termina antes de que
   # venza la espera de otro. Las migraciones esperan hasta 60 s (spring.flyway.init-sqls,
   # FlywayConfig).
+  # Además, ninguna sentencia corre más de 30 s (más que la espera de un bloqueo, así que esa sigue
+  # cortando antes, con 55P03) y una transacción abierta sin actividad se cierra al minuto: un hilo
+  # colgado con filas bloqueadas no las retiene, ni deja una conexión fuera del pool, sin fin. Las
+  # migraciones no tienen límite de sentencia: un índice grande puede tardar más.
   datasource:
     hikari:
-      connection-init-sql: SET lock_timeout = '15s'
+      connection-init-sql: >-
+        SET lock_timeout = '15s'; SET statement_timeout = '30s';
+        SET idle_in_transaction_session_timeout = '60s'
       # TAR-206: un pool acotado y una espera corta por conexión: con el pool agotado, la petición
       # falla a los 5 s en vez de quedarse colgada. Ningún perfil los cambia.
       maximum-pool-size: 10
@@ -37,7 +43,7 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    init-sqls: SET lock_timeout = '60s'
+    init-sqls: SET lock_timeout = '60s'; SET statement_timeout = 0
   mvc:
     problemdetails:
       enabled: true
@@ -60,6 +66,19 @@ spring:
       shutdown:
         await-termination: true
         await-termination-period: 8s
+  # Eventos de dominio (outbox de Spring Modulith). Solo los @DurableListener (durables, en su propio ejecutor:
+  # auditoría) dejan fila en event_publication; las invalidaciones en vivo (@TransactionalEventListener
+  # en memoria) no. La tabla la crea Flyway (V2). Una publicación completada se borra: el hecho ya
+  # quedó en audit_event. Las pendientes (listener caído o rechazado por el ejecutor) se republican
+  # al arrancar; los listeners son idempotentes por id de evento.
+  modulith:
+    events:
+      registry-trigger-annotation: com.tarimatwasi.quipu.shared.events.delivery.DurableListener
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+      jdbc:
+        schema-initialization:
+          enabled: false
   web:
     error:
       include-message: never
@@ -70,6 +89,9 @@ spring:
 # Sesión (TAR-62 PR3: pasa a @ConfigurationProperties con Duration de 30 días). El secreto viene
 # siempre del entorno: sin valor por defecto en ningún perfil.
 app:
+  # El día hábil de Lima como hecho de dominio: lo inicia el tráfico (sin tarea programada).
+  calendar:
+    traffic-trigger: true
   # TAR-371, ADR-SSE-01: bounded single-instance registry, heartbeat without database access.
   changes:
     per-account: 4
@@ -78,6 +100,9 @@ app:
     frame-bytes: 8192
     heartbeat: 20s
     max-duration: 15m
+    # Claves de campana (contrato v0.27.0): se encienden cuando el front que las entiende está
+    # desplegado y el contrato fijado las admite.
+    notification-keys: false
   jwt:
     secret: ${JWT_SECRET}
     # TAR-228: el access token dura 15 minutos; la sesión se renueva con el refresh token.
@@ -173,6 +198,9 @@ logging:
   level:
     org.apache.pdfbox: OFF
     org.hibernate.orm.connections.pooling: WARN
+    # BE-SPR-OBS-06: a failed durable listener is logged at INFO with the message of its exception,
+    # which can carry personal data; AsyncFailureLog logs the method and the class instead.
+    org.springframework.modulith.events.support.CompletionRegisteringAdvisor: WARN
 
 # TAR-371: finite NIO no-progress write timeout; not a total deadline for trickling readers.
 server:

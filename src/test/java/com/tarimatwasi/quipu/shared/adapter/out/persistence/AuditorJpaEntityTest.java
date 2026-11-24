@@ -51,7 +51,7 @@ class AuditorJpaEntityTest {
         editor);
 
     // Read through the base type: the audit columns belong to it, whatever entity extends it.
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings("unchecked") // BE-SPR-DEP-04 TAR-384: no module entity in shared
     var entity =
         (AbstractAuditable<AuditorJpaEntity, Long>)
             entityManager

@@ -1,10 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.port.out;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -91,14 +88,17 @@ public interface SessionStorePort {
    */
   boolean isClosed(String sidHash, Instant now);
 
+  /**
+   * Deletes, with their refresh tokens, at most {@code max} sessions whose absolute expiry is
+   * before {@code cutoff}, the oldest first; returns how many.
+   */
+  int deleteExpiredBefore(Instant cutoff, int max);
+
+  /** The SHA-256 of the sid of a session, as the live streams know it; empty if unknown. */
+  Optional<String> sidHashOf(Long sessionId);
+
   /** The SHA-256, in hexadecimal, under which a sid or the secret of a refresh token is stored. */
   static String hash(String secret) {
-    try {
-      return HexFormat.of()
-          .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("Every Java platform provides SHA-256", e);
-    }
+    return Sha256.hex(secret);
   }
 }

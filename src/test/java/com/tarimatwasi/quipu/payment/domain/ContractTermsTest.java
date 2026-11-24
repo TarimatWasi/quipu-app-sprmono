@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -48,7 +49,7 @@ class ContractTermsTest {
         reason,
         null,
         null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   // --- the periods ---
@@ -211,7 +212,7 @@ class ContractTermsTest {
             terms("2026-09-30", null, null, 5, 0),
             terms("2026-11-01", null, null, 5, 3));
     for (ContractTerms contract : contracts) {
-      List<Payment> paid = new java.util.ArrayList<>();
+      List<Payment> paid = new ArrayList<>();
       for (DebtPeriod owed : DebtCalculator.debt(contract, List.of(), TODAY)) {
         assertThat(contract.acceptsPayment(owed.period(), TODAY))
             .as("%s %s", contract, owed.period())
@@ -340,7 +341,7 @@ class ContractTermsTest {
         reason,
         Instant.parse(reviewedAt),
         9L,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test

@@ -79,5 +79,8 @@ public interface OwnProfileUseCase {
    * @throws GuestNotFoundException if there is no such guest
    * @throws OwnProfileRefusedException if the guest is of the other type or still onboarding
    */
-  GuestSummaryView update(Long guestId, GuestKind area, ProfileChange change);
+  ProfileUpdate update(Long guestId, GuestKind area, ProfileChange change);
+
+  /** The outcome of {@link #update}: the guest as it is now and whether its name changed. */
+  record ProfileUpdate(GuestSummaryView view, boolean renamed) {}
 }

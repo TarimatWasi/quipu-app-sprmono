@@ -17,10 +17,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.atlassian.oai.validator.OpenApiInteractionValidator;
+import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
+import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.application.port.out.GuestAccountEmailNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
@@ -30,13 +34,11 @@ import com.tarimatwasi.quipu.support.SynchronousBackgroundTasksConfig;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -76,8 +78,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @Import(SynchronousBackgroundTasksConfig.class)
 class GuestAccountEmailContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String GUESTS = "/bff/admin/guests";
   private static final String ADMIN_EMAIL = "admin@example.com";
   private static final String OTHER_ACCOUNT_EMAIL = "beto@example.com";
@@ -127,12 +128,10 @@ class GuestAccountEmailContractTest {
   private static ResultMatcher satisfiesTheContractToAnInvalidRequest() {
     return openApi()
         .isValid(
-            com.atlassian.oai.validator.OpenApiInteractionValidator.createFor(SPEC)
+            OpenApiInteractionValidator.createFor(SPEC)
                 .withWhitelist(
-                    com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist.create()
-                        .withRule(
-                            "the request is invalid on purpose",
-                            com.atlassian.oai.validator.whitelist.rule.WhitelistRules.isRequest()))
+                    ValidationErrorsWhitelist.create()
+                        .withRule("the request is invalid on purpose", WhitelistRules.isRequest()))
                 .build());
   }
 
@@ -205,10 +204,8 @@ class GuestAccountEmailContractTest {
     return count == null ? 0 : count;
   }
 
-  private static String sha256(String value) throws Exception {
-    return HexFormat.of()
-        .formatHex(
-            MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+  private static String sha256(String value) {
+    return Sha256.hex(value);
   }
 
   @Test
@@ -459,7 +456,7 @@ class GuestAccountEmailContractTest {
             pool.submit(
                 () -> {
                   start.await();
-                  return setEmail(second, email.toUpperCase(java.util.Locale.ROOT))
+                  return setEmail(second, email.toUpperCase(Locale.ROOT))
                       .andReturn()
                       .getResponse()
                       .getStatus();
@@ -471,7 +468,7 @@ class GuestAccountEmailContractTest {
         assertThat(
                 count(
                     "SELECT count(*) FROM users WHERE lower(email) = '"
-                        + email.toLowerCase(java.util.Locale.ROOT)
+                        + email.toLowerCase(Locale.ROOT)
                         + "'"))
             .isEqualTo(1);
       }

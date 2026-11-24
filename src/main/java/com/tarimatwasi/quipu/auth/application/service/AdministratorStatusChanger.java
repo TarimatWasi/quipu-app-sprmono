@@ -38,9 +38,14 @@ class AdministratorStatusChanger {
   private final UserRepositoryPort users;
   private final AdministratorStorePort store;
   private final int maxAdministrators;
+  private final SecurityFacts facts;
 
   AdministratorStatusChanger(
-      UserRepositoryPort users, AdministratorStorePort store, AdministratorLimitPort limit) {
+      UserRepositoryPort users,
+      AdministratorStorePort store,
+      AdministratorLimitPort limit,
+      SecurityFacts facts) {
+    this.facts = facts;
     this.users = users;
     this.store = store;
     this.maxAdministrators = limit.maxAdministrators();
@@ -81,7 +86,7 @@ class AdministratorStatusChanger {
     if (to == AdministratorStatus.ACTIVE && store.countAdministrators() >= maxAdministrators) {
       throw new AdministratorLimitReachedException(maxAdministrators);
     }
-    store.setAdministratorStatus(administratorId, to.name(), actorId);
+    facts.setAdministratorStatus(administratorId, to.name(), actorId);
     return Optional.of(
         new Changed(administratorId, Objects.requireNonNull(actor.email()), administrator.email()));
   }

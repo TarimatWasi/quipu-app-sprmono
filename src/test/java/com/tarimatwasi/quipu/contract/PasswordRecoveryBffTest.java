@@ -29,14 +29,17 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -66,7 +69,7 @@ class PasswordRecoveryBffTest {
   /** The PostgreSQL container is shared by all integration tests: this test owns its users. */
   @BeforeEach
   void oneGuestWithAPendingPasswordChange() {
-    org.mockito.Mockito.reset(mail);
+    Mockito.reset(mail);
     TestTables.clear(jdbc);
     insertUser(EMAIL, "11111111", "ACTIVE", true);
   }
@@ -192,9 +195,9 @@ class PasswordRecoveryBffTest {
 
   @Test
   void anEmailThatDiffersOnlyInCaseCannotBeRegisteredTwice() {
-    org.assertj.core.api.Assertions.assertThatThrownBy(
+    Assertions.assertThatThrownBy(
             () -> insertUser("GUEST@example.test", "22222222", "ACTIVE", false))
-        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   @Test
@@ -204,12 +207,12 @@ class PasswordRecoveryBffTest {
         "UPDATE users SET reset_token_hash = 'abc', reset_token_expires_at = now() WHERE email = ?",
         EMAIL);
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(
+    Assertions.assertThatThrownBy(
             () ->
                 jdbc.update(
                     "UPDATE users SET reset_token_hash = 'abc' WHERE email = ?",
                     "other@example.test"))
-        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   /** A tiny table is scanned by choice; with scans disabled the planner shows what it could use. */
@@ -301,7 +304,7 @@ class PasswordRecoveryBffTest {
 
     postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}").andExpect(status().isAccepted());
 
-    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any(), anyBoolean());
+    verify(mail, Mockito.times(2)).sendResetLink(any(), any(), any(), anyBoolean());
   }
 
   @Test
@@ -311,7 +314,7 @@ class PasswordRecoveryBffTest {
 
     postJson(FORGOT, "{\"email\":\"" + EMAIL + "\"}").andExpect(status().isAccepted());
 
-    verify(mail, org.mockito.Mockito.times(2)).sendResetLink(any(), any(), any(), anyBoolean());
+    verify(mail, Mockito.times(2)).sendResetLink(any(), any(), any(), anyBoolean());
   }
 
   @Test

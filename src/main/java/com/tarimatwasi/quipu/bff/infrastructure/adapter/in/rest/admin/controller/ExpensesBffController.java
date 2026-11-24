@@ -1,8 +1,8 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.InvalidQueryParameterException;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.response.PagedResponse;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.MonthParam;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.PageParams;
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase.ExpenseCommand;
@@ -40,10 +40,7 @@ public class ExpensesBffController {
   // PostgreSQL cannot store the NUL character in a TEXT column
   private static final String NO_NUL = "(?s)[^\\x00]*";
 
-  private static final String MONTH = "^\\d{4}-(0[1-9]|1[0-2])$";
-
-  private static final java.util.regex.Pattern MONTH_PATTERN =
-      java.util.regex.Pattern.compile(MONTH);
+  private static final String MONTH = MonthParam.REGEX;
 
   private final ManageExpensesUseCase expenses;
   private final IdMasker ids;
@@ -97,10 +94,7 @@ public class ExpensesBffController {
       @RequestParam("month") String month,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
       @RequestParam(name = "after", required = false) @Nullable String after) {
-    if (!MONTH_PATTERN.matcher(month).matches()) {
-      throw new InvalidQueryParameterException("month");
-    }
-    ExpensePage found = expenses.list(YearMonth.parse(month), PageParams.query(after, limit));
+    ExpensePage found = expenses.list(MonthParam.query(month), PageParams.query(after, limit));
     PagedResponse<ExpenseResponse> page =
         PagedResponse.of(found.page(), expense -> ExpenseResponse.of(expense, ids));
     return new PagedExpensesResponse(page.content(), page.nextCursor(), found.totalCount());

@@ -4,9 +4,9 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountAlreadyExistsExcep
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort.FailedLogin;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -15,21 +15,18 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
 public class UserRepositoryAdapter implements UserRepositoryPort {
 
   private final UserJpaRepository jpaRepository;
-  private final JdbcTemplate jdbc;
-  private final ChangeSignals signals;
+  private final JdbcClient jdbc;
 
-  public UserRepositoryAdapter(
-      UserJpaRepository jpaRepository, JdbcTemplate jdbc, ChangeSignals signals) {
+  public UserRepositoryAdapter(UserJpaRepository jpaRepository, JdbcClient jdbc) {
     this.jpaRepository = jpaRepository;
     this.jdbc = jdbc;
-    this.signals = signals;
   }
 
   /**
@@ -90,12 +87,7 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     try {
       jpaRepository.updateEmailById(id, email);
     } catch (DataIntegrityViolationException e) {
-      // By the name of the rule, never by the message: the language of the server does not matter.
-      String constraint = ConstraintName.of(e);
-      if (constraint != null && AdministratorStoreAdapter.EMAIL_CONSTRAINTS.contains(constraint)) {
-        throw new AccountTakenException(Taken.EMAIL, e);
-      }
-      throw e;
+      throw AccountConstraints.translated(e);
     }
   }
 
@@ -108,22 +100,23 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     }
   }
 
-  private int insertGuest(
+  int insertGuest(
       Long guestId,
       DocumentType documentType,
       String documentNumber,
       @Nullable String email,
       String unusablePasswordHash) {
-    return jdbc.update(
-        "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
-            + " guest_id, must_change_password, status)"
-            + " VALUES (nextval('users_seq'), ?, ?, ?, ?, 'GUEST', ?, TRUE, 'ACTIVE')"
-            + " ON CONFLICT DO NOTHING",
-        email,
-        documentType.name(),
-        documentNumber,
-        unusablePasswordHash,
-        guestId);
+    return jdbc.sql(
+            "INSERT INTO users (id, email, document_type, document_number, password_hash, role,"
+                + " guest_id, must_change_password, status)"
+                + " VALUES (nextval('users_seq'), :email, :documentType, :documentNumber,"
+                + " :passwordHash, 'GUEST', :guestId, TRUE, 'ACTIVE') ON CONFLICT DO NOTHING")
+        .param("email", email)
+        .param("documentType", documentType.name())
+        .param("documentNumber", documentNumber)
+        .param("passwordHash", unusablePasswordHash)
+        .param("guestId", guestId)
+        .update();
   }
 
   @Override
@@ -184,13 +177,14 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void setGuestAccountStatus(Long guestId, String status) {
+  public List<Long> setGuestAccountStatus(Long guestId, String status) {
     jpaRepository.updateStatusByGuestId(guestId, status);
-    if ("INACTIVE".equals(status)) {
-      for (var user : jpaRepository.findByGuestIdIn(List.of(guestId))) {
-        signals.credentialsChanged(user.getId(), securityVersion(user.getId()), null);
-      }
+    if (!"INACTIVE".equals(status)) {
+      return List.of();
     }
+    return jpaRepository.findByGuestIdIn(List.of(guestId)).stream()
+        .map(user -> Objects.requireNonNull(user.getId()))
+        .toList();
   }
 
   @Override
@@ -226,21 +220,21 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public void resetPassword(Long id, String newPasswordHash, Instant changedAt) {
+  public long resetPassword(Long id, String newPasswordHash, Instant changedAt) {
     UserJpaEntity user = load(id);
     user.changePassword(newPasswordHash, changedAt);
     jpaRepository.save(user);
-    signals.credentialsChanged(id, user.toDomain().securityVersion(), null);
+    return user.toDomain().securityVersion();
   }
 
   @Override
-  public void resetPasswordAndName(
+  public long resetPasswordAndName(
       Long id, String newPasswordHash, Instant changedAt, String name) {
     UserJpaEntity user = load(id);
     user.changePassword(newPasswordHash, changedAt);
     user.name(name);
     jpaRepository.save(user);
-    signals.credentialsChanged(id, user.toDomain().securityVersion(), null);
+    return user.toDomain().securityVersion();
   }
 
   @Override
@@ -249,14 +243,12 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   @Override
-  public boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration) {
+  public FailedLogin registerFailedLogin(
+      Long id, Instant now, int maxAttempts, Duration lockDuration) {
     UserJpaEntity user = loadLocked(id);
     boolean alreadyLocked = user.registerFailedLogin(now, maxAttempts, lockDuration);
     jpaRepository.save(user);
-    if (user.toDomain().isLockedAt(now)) {
-      signals.accountLocked(id);
-    }
-    return alreadyLocked;
+    return new FailedLogin(alreadyLocked, user.toDomain().isLockedAt(now));
   }
 
   @Override

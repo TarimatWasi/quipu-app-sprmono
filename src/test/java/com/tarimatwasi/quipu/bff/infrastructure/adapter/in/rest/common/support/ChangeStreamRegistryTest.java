@@ -3,8 +3,8 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Change;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals.Kind;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Change;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeSignals.Kind;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -16,11 +16,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -37,7 +40,7 @@ class ChangeStreamRegistryTest {
   private ChangeStreamRegistry registry(int perAccount, int keys) {
     return new ChangeStreamRegistry(
         new ChangeStreamProperties(
-            perAccount, 64, keys, 8192, Duration.ofMillis(1), Duration.ofMinutes(15)),
+            perAccount, 64, keys, 8192, Duration.ofMillis(1), Duration.ofMinutes(15), true),
         clock);
   }
 
@@ -69,8 +72,8 @@ class ChangeStreamRegistryTest {
     TransactionSynchronizationManager.clear();
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.EnumSource(
+  @ParameterizedTest
+  @EnumSource(
       value = Kind.class,
       names = {"GUEST_RECORD", "PROFILE", "DOCUMENT"})
   void profileChange_isPostCommitAndPrivate(Kind kind) throws Exception {
@@ -106,8 +109,8 @@ class ChangeStreamRegistryTest {
     }
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.EnumSource(
+  @ParameterizedTest
+  @EnumSource(
       value = Kind.class,
       names = {"ENVIRONMENT", "EXPENSE", "FINE"})
   void administrativeChange_neverSignalsGuests(Kind kind) throws Exception {
@@ -131,21 +134,71 @@ class ChangeStreamRegistryTest {
         var guest = subscribe(2L, 5L, false);
         var other = subscribe(3L, 9L, false)) {
       transaction(
-          () ->
-              streams.changed(
-                  new Change(Kind.DIRECTORY, null, false, null, 7L, java.util.Set.of(5L))),
+          () -> streams.changed(new Change(Kind.DIRECTORY, null, false, null, 7L, Set.of(5L))),
           false);
       assertThat(admin.next()).isEqualTo(": heartbeat\n\n");
       transaction(
-          () ->
-              streams.changed(
-                  new Change(Kind.DIRECTORY, null, false, null, 7L, java.util.Set.of(5L))),
+          () -> streams.changed(new Change(Kind.DIRECTORY, null, false, null, 7L, Set.of(5L))),
           true);
       assertThat(admin.next())
           .contains("\"invalidate\":\"ALL\"")
           .doesNotContain("admin.environment");
       assertThat(guest.next()).contains("\"invalidate\":\"ALL\"").doesNotContain("admin.");
       assertThat(other.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  /** A new day of Lima changes what every screen derives from the date: everybody reloads. */
+  @Test
+  void dayChange_reloadsEveryRecipient() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false);
+        var other = subscribe(3L, 9L, false)) {
+      transaction(() -> streams.changed(new Change(Kind.DAY, null, false, null, null)), true);
+      assertThat(admin.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(guest.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(other.next()).contains("\"invalidate\":\"ALL\"");
+    }
+  }
+
+  /** A new name shows in the history of the guests that shared a resource with it too. */
+  @Test
+  void directoryChange_reachesItsGuestAndTheRelatedOnesOnly() throws Exception {
+    try (var guest = subscribe(2L, 5L, false);
+        var related = subscribe(3L, 9L, false);
+        var unrelated = subscribe(4L, 11L, false)) {
+      transaction(
+          () -> streams.changed(new Change(Kind.DIRECTORY, 5L, false, null, null, Set.of(9L))),
+          true);
+      assertThat(guest.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(related.next()).contains("\"invalidate\":\"ALL\"");
+      assertThat(unrelated.next()).isEqualTo(": heartbeat\n\n");
+    }
+  }
+
+  /** The bell of the administrators is shared; a guest hears only of its own. */
+  @Test
+  void notificationChange_namesOnlyTheBellOfItsReaders() throws Exception {
+    try (var admin = subscribe(1L, 0L, true);
+        var guest = subscribe(2L, 5L, false)) {
+      transaction(
+          () -> streams.changed(new Change(Kind.NOTIFICATION, null, false, null, null)), true);
+      assertThat(admin.next()).contains("admin.notifications").doesNotContain("guest.");
+      assertThat(guest.next()).isEqualTo(": heartbeat\n\n");
+
+      transaction(
+          () -> streams.changed(new Change(Kind.NOTIFICATION, 5L, false, null, null)), true);
+      assertThat(guest.next()).contains("guest.notifications").doesNotContain("admin.");
+      assertThat(admin.next()).doesNotContain("admin.notifications");
+    }
+  }
+
+  /** An environment is the business of the administrators, even if a guest is named. */
+  @Test
+  void environmentChange_namesNothingForItsGuest() throws Exception {
+    try (var guest = subscribe(2L, 5L, false)) {
+      transaction(() -> streams.changed(new Change(Kind.ENVIRONMENT, 5L, false, null, 7L)), true);
+      assertThat(guest.next()).doesNotContain("admin.", "environment");
     }
   }
 
@@ -239,6 +292,19 @@ class ChangeStreamRegistryTest {
   }
 
   @Test
+  void activate_lifetimeEndedWhileOpening_closesWithItsReasonInsteadOfRejecting() throws Exception {
+    try (var listener =
+        streams.reserve(1L, "sid", 0, true, mask, clock.instant().plusSeconds(60))) {
+      clock.advance(Duration.ofSeconds(61));
+
+      assertThat(listener.activate(null)).startsWith("event: ready");
+      assertThat(listener.next())
+          .isEqualTo("event: closing\ndata: {\"reason\":\"access-token-expired\"}\n\n");
+      assertThat(listener.finished()).isTrue();
+    }
+  }
+
+  @Test
   void activate_concurrentRevocation_rejects() {
     try (var listener =
         streams.reserve(1L, "sid", 0, true, mask, clock.instant().plusSeconds(60))) {
@@ -295,7 +361,7 @@ class ChangeStreamRegistryTest {
     var limited =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 2, 64, 8192, Duration.ofMillis(1), Duration.ofMinutes(15)),
+                4, 2, 64, 8192, Duration.ofMillis(1), Duration.ofMinutes(15), true),
             clock);
     try (var first = limited.reserve(1L, "one", 0, true, mask, clock.instant().plusSeconds(60));
         var second = limited.reserve(2L, "two", 0, true, mask, clock.instant().plusSeconds(60))) {
@@ -313,7 +379,7 @@ class ChangeStreamRegistryTest {
     var limited =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 64, 64, 256, Duration.ofMillis(1), Duration.ofMinutes(15)),
+                4, 64, 64, 256, Duration.ofMillis(1), Duration.ofMinutes(15), true),
             clock);
     try (var listener =
         limited.reserve(1L, "one", 0, true, mask, clock.instant().plusSeconds(60))) {

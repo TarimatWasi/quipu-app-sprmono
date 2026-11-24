@@ -9,10 +9,12 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.Guest
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnGuestUseCase.OwnGuestView;
+import java.sql.SQLTransientConnectionException;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -74,8 +76,7 @@ class GuestAreaFilterTest {
     GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
     OwnGuestUseCase guests = mock(OwnGuestUseCase.class);
     when(accounts.guestOf(1L))
-        .thenThrow(
-            new org.springframework.dao.DataAccessResourceFailureException("down jdbc://secret"));
+        .thenThrow(new DataAccessResourceFailureException("down jdbc://secret"));
     for (String principal : List.of("1", "not-a-number")) {
       SecurityContextHolder.getContext()
           .setAuthentication(new TestingAuthenticationToken(principal, null));
@@ -96,5 +97,27 @@ class GuestAreaFilterTest {
           .doesNotContain("jdbc");
       assertThat(chain.getRequest()).as(principal).isNull();
     }
+  }
+
+  /** v0.29.0: a database that did not serve in time answers 503, still failing closed. */
+  @Test
+  void aBusyDatabaseAnswers503AndFailsClosed() throws Exception {
+    GuestAccountUseCase accounts = mock(GuestAccountUseCase.class);
+    OwnGuestUseCase guests = mock(OwnGuestUseCase.class);
+    when(accounts.guestOf(1L))
+        .thenThrow(
+            new DataAccessResourceFailureException(
+                "Unable to acquire JDBC Connection",
+                new SQLTransientConnectionException("pool timed out")));
+    SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("1", null));
+    var request = new MockHttpServletRequest("GET", "/bff/guest/contract");
+    var response = new MockHttpServletResponse();
+    var chain = new MockFilterChain();
+
+    new GuestAreaFilter(accounts, guests).doFilter(request, response, chain);
+
+    assertThat(response.getStatus()).isEqualTo(503);
+    assertThat(response.getContentAsString()).contains("\"code\":\"SERVICE_BUSY\"");
+    assertThat(chain.getRequest()).isNull();
   }
 }

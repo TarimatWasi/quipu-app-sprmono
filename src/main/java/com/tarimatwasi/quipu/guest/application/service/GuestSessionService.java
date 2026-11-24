@@ -7,8 +7,9 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.Guest
 import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
+import com.tarimatwasi.quipu.guest.domain.event.GuestAccessUsed;
 import com.tarimatwasi.quipu.shared.access.GuestAccessListener;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,11 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GuestSessionService implements GuestSessionUseCase, GuestAccessListener {
 
-  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
 
-  GuestSessionService(GuestRepositoryPort guests, ChangeSignals changes) {
-    this.changes = changes;
+  GuestSessionService(GuestRepositoryPort guests) {
     this.guests = guests;
   }
 
@@ -51,17 +50,16 @@ public class GuestSessionService implements GuestSessionUseCase, GuestAccessList
   /** D-30: the password chosen with an access opens the onboarding; any other state is kept. */
   @Override
   @Transactional
-  public void accessUsed(Long guestId) {
-    guests
+  @PublishEvent(
+      type = GuestAccessUsed.class,
+      when = "#result",
+      args = {"#guestId"})
+  public boolean accessUsed(Long guestId) {
+    return guests
         .findByIdForUpdate(guestId)
         .filter(guest -> guest.status() == GuestStatus.PENDING_ACTIVATION)
-        .ifPresent(
-            guest -> {
-              guests.save(GuestService.withStatus(guest, GuestStatus.ONBOARDING, null));
-              changes.changed(
-                  new ChangeSignals.Change(
-                      ChangeSignals.Kind.GUEST_RECORD, guestId, false, null, null));
-            });
+        .map(guest -> guests.save(GuestService.withStatus(guest, GuestStatus.ONBOARDING, null)))
+        .isPresent();
   }
 
   /** RN-33 order after the password: personal data, documents, consent. */

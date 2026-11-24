@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.shared.web.UploadRoutes;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.http.Part;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -158,13 +161,13 @@ class JsonOnlyFilterTest {
     }
 
     @Override
-    public jakarta.servlet.ServletInputStream getInputStream() {
+    public ServletInputStream getInputStream() {
       reads.incrementAndGet();
       return super.getInputStream();
     }
 
     @Override
-    public java.util.Collection<jakarta.servlet.http.Part> getParts() {
+    public Collection<Part> getParts() {
       reads.incrementAndGet();
       return List.of();
     }

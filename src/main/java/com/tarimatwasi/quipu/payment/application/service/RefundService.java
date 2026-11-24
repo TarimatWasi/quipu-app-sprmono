@@ -22,7 +22,8 @@ import com.tarimatwasi.quipu.payment.domain.GuestCredit.Source;
 import com.tarimatwasi.quipu.payment.domain.MonthlyBalance;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.Refund;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.payment.domain.event.RefundCreated;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -61,15 +62,13 @@ public class RefundService implements ManageRefundsUseCase {
   private final PaymentEnvironmentPort environments;
   private final Clock clock;
   private final Credits credits;
-  private final ChangeSignals signals;
 
   RefundService(
       RefundRepositoryPort refunds,
       PaymentRepositoryPort payments,
       PaymentDirectory directory,
       PaymentContractPort contracts,
-      Clock clock,
-      ChangeSignals signals) {
+      Clock clock) {
     this.refunds = refunds;
     this.payments = payments;
     this.guests = directory.guests();
@@ -77,13 +76,21 @@ public class RefundService implements ManageRefundsUseCase {
     this.stays = directory.stays();
     this.environments = directory.environments();
     this.clock = clock;
-    this.signals = signals;
     this.credits = new Credits(payments, contracts, this.stays, refunds, clock);
   }
 
   @Override
   @Transactional
-  public RefundView create(RefundCommand command) {
+  @PublishEvent(
+      type = RefundCreated.class,
+      args = {
+        "#result.view().id()",
+        "#result.view().guestId()",
+        "#result.fromPaymentId()",
+        "#result.fromContract()",
+        "#result.view().amount()"
+      })
+  public RefundCreation create(RefundCommand command) {
     BigDecimal amount = command.amount();
     if (amount.signum() <= 0
         || amount.stripTrailingZeros().scale() > 2
@@ -112,14 +119,8 @@ public class RefundService implements ManageRefundsUseCase {
     }
     Refund refund =
         refunds.insert(guestId, first.paymentId(), amount, command.date(), method, note);
-    signals.changed(
-        new ChangeSignals.Change(
-            ChangeSignals.Kind.FINANCIAL,
-            guestId,
-            first.contractId() != null,
-            first.paymentId(),
-            null));
-    return views(List.of(refund)).getFirst();
+    return new RefundCreation(
+        views(List.of(refund)).getFirst(), first.paymentId(), first.contractId() != null);
   }
 
   @Override

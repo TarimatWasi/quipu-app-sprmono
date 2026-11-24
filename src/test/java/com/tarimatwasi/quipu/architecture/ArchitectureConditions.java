@@ -8,8 +8,10 @@ import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaEnumConstant;
 import com.tngtech.archunit.core.domain.JavaMember;
+import com.tngtech.archunit.core.domain.TryCatchBlock;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.CompositeArchRule;
@@ -154,6 +156,50 @@ final class ArchitectureConditions {
                                                 violated(m, m.getFullName() + " lacks @Valid"));
                                           }
                                         }))));
+  }
+
+  /**
+   * QP-SPRMONO-COD-01: a catch of an own exception that no production code creates guards against
+   * nothing, and its comment and the {@code @throws} of a port tell a story that is no longer true.
+   * The mail adapters went to the background and stopped throwing MailDeliveryException; four
+   * services kept catching it, and tests kept faking it.
+   */
+  static ArchRule caughtOwnExceptionsAreCreated(String root) {
+    return classes()
+        .should(
+            new ArchCondition<JavaClass>("catch only own exceptions that production code creates") {
+              private final Set<JavaClass> created = new HashSet<>();
+
+              @Override
+              public void init(Collection<JavaClass> all) {
+                for (JavaClass type : all) {
+                  type.getConstructorCallsFromSelf()
+                      .forEach(call -> created.add(call.getTargetOwner()));
+                  type.getConstructorReferencesFromSelf()
+                      .forEach(reference -> created.add(reference.getTargetOwner()));
+                }
+              }
+
+              @Override
+              public void check(JavaClass type, ConditionEvents events) {
+                for (JavaCodeUnit unit : type.getCodeUnits()) {
+                  for (TryCatchBlock block : unit.getTryCatchBlocks()) {
+                    for (JavaClass caught : block.getCaughtThrowables()) {
+                      if (caught.getPackageName().startsWith(root)
+                          && created.stream().noneMatch(c -> c.isAssignableTo(caught.getName()))) {
+                        events.add(
+                            violated(
+                                unit,
+                                unit.getFullName()
+                                    + " catches "
+                                    + caught.getSimpleName()
+                                    + ", which no production code creates"));
+                      }
+                    }
+                  }
+                }
+              }
+            });
   }
 
   /** BE-SPR-DAT-07: {@code @ManyToOne} and {@code @OneToOne} declare {@code fetch = LAZY}. */

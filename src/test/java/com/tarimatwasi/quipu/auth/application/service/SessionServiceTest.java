@@ -2,12 +2,17 @@ package com.tarimatwasi.quipu.auth.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.application.port.in.IssuedSession;
 import com.tarimatwasi.quipu.auth.application.port.in.NoActiveSessionException;
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort.RevokedReason;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
@@ -15,7 +20,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.auth.domain.event.SessionEnd;
 import com.tarimatwasi.quipu.support.InMemorySessionStore;
 import com.tarimatwasi.quipu.support.MutableClock;
 import java.time.Duration;
@@ -42,7 +47,8 @@ class SessionServiceTest {
   private final MutableClock clock = new MutableClock(NOW);
   private final InMemorySessionStore store = new InMemorySessionStore();
   private final UserRepositoryPort users = mock(UserRepositoryPort.class);
-  private final ChangeSignals signals = mock(ChangeSignals.class);
+  private final SecurityFacts facts =
+      spy(new SecurityFacts(store, users, mock(AdministratorStorePort.class)));
   private long version;
   private String status = "ACTIVE";
 
@@ -80,7 +86,7 @@ class SessionServiceTest {
           users,
           new SessionPolicy(Duration.ofDays(7), Duration.ofDays(30), Duration.ofSeconds(30)),
           clock,
-          signals);
+          facts);
 
   @BeforeEach
   void anActiveAccount() {
@@ -169,7 +175,11 @@ class SessionServiceTest {
 
     var rows = store.sessions();
     assertThat(rows.get(0).revokedReason).isEqualTo(RevokedReason.REUSE);
-    verify(signals).revokeSession(USER, SessionStorePort.hash(sidOf(stolen)));
+    verify(facts)
+        .revoke(
+            argThat(s -> s.sidHash().equals(SessionStorePort.hash(sidOf(stolen)))),
+            eq(SessionEnd.REUSE),
+            any());
     assertThat(rows.get(1).revokedAt).as("the other device stays").isNull();
     // The legitimate holder of the session is out too: its renewed token no longer works.
     assertThatThrownBy(() -> service.refresh(refreshOf(renewed)))
@@ -189,7 +199,11 @@ class SessionServiceTest {
     assertThatThrownBy(() -> service.refresh(refreshOf(session)))
         .isInstanceOf(NoActiveSessionException.class);
     assertThat(store.only().revokedReason).isEqualTo(RevokedReason.INVALIDATED);
-    verify(signals).revokeSession(USER, SessionStorePort.hash(sidOf(session)));
+    verify(facts)
+        .revoke(
+            argThat(s -> s.sidHash().equals(SessionStorePort.hash(sidOf(session)))),
+            eq(SessionEnd.INVALIDATED),
+            any());
   }
 
   @Test
@@ -259,7 +273,8 @@ class SessionServiceTest {
 
     assertThat(sidOf(full)).as("the same session goes on (TAR-227)").isEqualTo(sid);
     assertThat(full.refreshToken()).startsWith(sid + ".");
-    verify(signals).credentialsChanged(USER, version, SessionStorePort.hash(sid));
+    verify(facts)
+        .keepOnly(argThat(s -> s.sidHash().equals(SessionStorePort.hash(sid))), eq(version), any());
     var rows = store.sessions();
     assertThat(rows.get(1).temporary).isFalse();
     assertThat(rows.get(1).securityVersion).isEqualTo(1);
@@ -278,8 +293,16 @@ class SessionServiceTest {
 
     service.logout(refreshOf(byRefresh), "not-a-token");
     service.logout(null, temporary.accessToken());
-    verify(signals).revokeSession(USER, SessionStorePort.hash(sidOf(byRefresh)));
-    verify(signals).revokeSession(USER, SessionStorePort.hash(sidOf(temporary)));
+    verify(facts)
+        .revoke(
+            argThat(s -> s.sidHash().equals(SessionStorePort.hash(sidOf(byRefresh)))),
+            eq(SessionEnd.LOGOUT),
+            any());
+    verify(facts)
+        .revoke(
+            argThat(s -> s.sidHash().equals(SessionStorePort.hash(sidOf(temporary)))),
+            eq(SessionEnd.LOGOUT),
+            any());
 
     assertThat(store.sessions())
         .allSatisfy(row -> assertThat(row.revokedReason).isEqualTo(RevokedReason.LOGOUT));

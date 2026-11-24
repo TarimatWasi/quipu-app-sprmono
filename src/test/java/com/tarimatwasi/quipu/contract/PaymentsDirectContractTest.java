@@ -17,12 +17,16 @@ import com.tarimatwasi.quipu.payment.domain.VoucherType;
 import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
+import java.sql.Date;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /**
  * TAR-43, TAR-239: the payment the administrator registers by hand (CU-14, A5.1), with one or more
@@ -63,7 +67,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .containsEntry("original_name", "v.pdf")
         .containsEntry("file_key", KEY)
         .containsEntry("uploaded_by", "ADMIN")
-        .containsEntry("received_on", java.sql.Date.valueOf("2026-10-14"));
+        .containsEntry("received_on", Date.valueOf("2026-10-14"));
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_reviews", Integer.class))
         .isEqualTo(1);
   }
@@ -96,10 +100,8 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
         .andExpect(jsonPath("$.proofCount").value(2))
         .andExpect(jsonPath("$.voucherCount").value(1))
         .andExpect(jsonPath("$.hasCash").value(true));
-    assertThat(
-            jdbc.queryForList(
-                "SELECT received_on FROM payment_proofs ORDER BY id", java.sql.Date.class))
-        .containsOnly(java.sql.Date.valueOf("2026-10-12"));
+    assertThat(jdbc.queryForList("SELECT received_on FROM payment_proofs ORDER BY id", Date.class))
+        .containsOnly(Date.valueOf("2026-10-12"));
   }
 
   /** RN-16, TAR-239: a short payment is not registered; one received in the future neither. */
@@ -124,10 +126,7 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
   @Test
   void theProofsAreBetweenOneAndFiveAndEachPointsToItsFile() throws Exception {
     String six =
-        "["
-            + String.join(
-                ",", java.util.Collections.nCopies(6, "{\"kind\":\"CASH\",\"amount\":200}"))
-            + "]";
+        "[" + String.join(",", Collections.nCopies(6, "{\"kind\":\"CASH\",\"amount\":200}")) + "]";
     for (String json : new String[] {"[]", six, "{}", "nonsense"}) {
       postForm(
               multipart()
@@ -161,10 +160,8 @@ class PaymentsDirectContractTest extends PaymentsContractSupport {
     verify(files, never()).store(any(), any());
   }
 
-  private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder
-      multipart() {
-    return org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart(URL)
-        .with(csrf());
+  private static MockMultipartHttpServletRequestBuilder multipart() {
+    return MockMvcRequestBuilders.multipart(URL).with(csrf());
   }
 
   @Test

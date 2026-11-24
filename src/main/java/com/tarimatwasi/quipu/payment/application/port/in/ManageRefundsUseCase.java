@@ -78,7 +78,15 @@ public interface ManageRefundsUseCase {
    *     {@code method} blank or over 50; {@code note} over 500
    * @throws RefundGuestNotFoundException if there is no guest with that id
    */
-  RefundView create(RefundCommand command);
+  RefundCreation create(RefundCommand command);
+
+  /**
+   * A new refund and the payment whose credit it draws first, the facts of its event.
+   *
+   * @param fromPaymentId the payment the refund draws first
+   * @param fromContract whether that payment is of a contract (false for a stay)
+   */
+  record RefundCreation(RefundView view, Long fromPaymentId, boolean fromContract) {}
 
   /**
    * One page of the refunds dated in the month, newest first.

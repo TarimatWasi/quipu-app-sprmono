@@ -1,6 +1,7 @@
 package com.tarimatwasi.quipu.auth.infrastructure.adapter.out.async;
 
 import com.tarimatwasi.quipu.auth.application.port.out.BackgroundTaskPort;
+import java.time.Duration;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,7 +41,15 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
   private final AtomicBoolean running = new AtomicBoolean();
   private final AtomicBoolean stopping = new AtomicBoolean();
 
+  private final Duration terminationTimeout;
+
   public AsyncBackgroundTasks() {
+    this(Duration.ofSeconds(TERMINATION_TIMEOUT_SECONDS));
+  }
+
+  /** With the wait of the stop for the running tasks. */
+  AsyncBackgroundTasks(Duration terminationTimeout) {
+    this.terminationTimeout = terminationTimeout;
     executor.setThreadFactory(
         Thread.ofVirtual()
             .name("background-", 0)
@@ -72,8 +81,13 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
     }
   }
 
+  /**
+   * Also after a stop: Spring stops and starts again a context it pauses (the test context cache
+   * does), and a stop that stayed in force would drop every later task, silently.
+   */
   @Override
   public void start() {
+    stopping.set(false);
     running.set(true);
   }
 
@@ -83,7 +97,8 @@ public class AsyncBackgroundTasks implements BackgroundTaskPort, SmartLifecycle,
     running.set(false);
     stopping.set(true);
     try {
-      if (permits.tryAcquire(CONCURRENCY_LIMIT, TERMINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+      if (permits.tryAcquire(
+          CONCURRENCY_LIMIT, terminationTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
         // Given back so that the close that follows the stop does not wait again.
         permits.release(CONCURRENCY_LIMIT);
       } else {

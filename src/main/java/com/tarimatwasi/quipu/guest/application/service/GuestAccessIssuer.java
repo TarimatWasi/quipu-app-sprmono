@@ -17,8 +17,10 @@ import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.guest.domain.event.GuestAccessIssued;
+import com.tarimatwasi.quipu.guest.domain.event.GuestRegistered;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -33,21 +35,23 @@ import org.springframework.transaction.annotation.Transactional;
 class GuestAccessIssuer {
 
   /** What was committed; {@code access} is null for an already registered document. */
-  record Issued(
+  public record Issued(
       @Nullable GuestSummaryView guest, @Nullable IssuedAccess access, @Nullable String email) {}
 
-  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
 
-  GuestAccessIssuer(GuestRepositoryPort guests, GuestAccountPort accounts, ChangeSignals changes) {
-    this.changes = changes;
+  GuestAccessIssuer(GuestRepositoryPort guests, GuestAccountPort accounts) {
     this.guests = guests;
     this.accounts = accounts;
   }
 
   @Transactional
-  Issued register(RegisterCommand command) {
+  @PublishEvent(
+      type = GuestRegistered.class,
+      when = "#result.access() != null",
+      args = {"#result.guest().id()"})
+  public Issued register(RegisterCommand command) {
     DocumentType type = DocumentType.valueOf(command.documentType().name());
     String number = GuestService.documentNumber(type, command.documentNumber(), "");
     if (accounts.documentBelongsToAdministrator(type.name(), number)) {
@@ -81,13 +85,15 @@ class GuestAccessIssuer {
       throw new GuestAccountEmailTakenException(e);
     }
     IssuedAccess access = accounts.issueAccess(created.id(), command.accessMode());
-    changed(created.id());
     return new Issued(GuestService.summary(created, stateOf(created)), access, email);
   }
 
   /** The guest row stays locked until the commit: two regenerations are applied one by one. */
   @Transactional
-  Issued generate(Long guestId, AccessMode mode) {
+  @PublishEvent(
+      type = GuestAccessIssued.class,
+      args = {"#guestId"})
+  public Issued generate(Long guestId, AccessMode mode) {
     Guest guest = guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new);
     if (guest.status() == GuestStatus.INACTIVE) {
       throw new GuestInactiveException(guestId);
@@ -99,7 +105,6 @@ class GuestAccessIssuer {
       throw new GuestDocumentTakenException(e);
     }
     IssuedAccess access = accounts.issueAccess(guestId, mode);
-    changed(guestId);
     return new Issued(null, access, accounts.accountEmail(guestId).orElse(null));
   }
 
@@ -126,11 +131,6 @@ class GuestAccessIssuer {
       case UNCHANGED -> Optional.empty();
       case CHANGED -> Optional.ofNullable(change.previousEmail());
     };
-  }
-
-  private void changed(Long guestId) {
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.GUEST_RECORD, guestId, false, null, null));
   }
 
   private AccountState stateOf(Guest guest) {

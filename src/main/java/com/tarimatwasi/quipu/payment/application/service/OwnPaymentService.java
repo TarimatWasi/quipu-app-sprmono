@@ -38,7 +38,9 @@ import com.tarimatwasi.quipu.payment.domain.StayPayments;
 import com.tarimatwasi.quipu.payment.domain.StayPayments.StayStatus;
 import com.tarimatwasi.quipu.payment.domain.StayTerms;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentResubmitted;
+import com.tarimatwasi.quipu.payment.domain.event.PaymentSubmitted;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -70,7 +72,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
   private final ProofRecorder recorder;
   private final AccountStatus accountStatus;
   private final Credits credits;
-  private final PaymentChangeRecorder changes;
+  private final PaymentScopes scopes;
 
   OwnPaymentService(
       PaymentRepositoryPort payments,
@@ -78,14 +80,13 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
       PaymentDirectory directory,
       PaymentContractPort contracts,
       RefundRepositoryPort refunds,
-      Clock clock,
-      ChangeSignals signals) {
+      Clock clock) {
     this.payments = payments;
     this.guests = directory.guests();
     this.contracts = contracts;
     this.stays = directory.stays();
     this.clock = clock;
-    this.changes = new PaymentChangeRecorder(signals, contracts, this.stays);
+    this.scopes = new PaymentScopes(contracts, this.stays);
     this.recorder = new ProofRecorder(files, payments);
     this.accountStatus = new AccountStatus(payments, contracts, clock);
     this.credits = new Credits(payments, contracts, this.stays, refunds, clock);
@@ -268,6 +269,17 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = PaymentSubmitted.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.contractId()",
+        "#result.stayId()",
+        "#result.environmentId()",
+        "#result.period()",
+        "#result.amount()"
+      })
   public PaymentView uploadForPeriod(PeriodPayment payment) {
     Long guestId = payment.guestId();
     OwnGuest guest = admitted(guestId, true);
@@ -301,6 +313,17 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = PaymentSubmitted.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.contractId()",
+        "#result.stayId()",
+        "#result.environmentId()",
+        "#result.period()",
+        "#result.amount()"
+      })
   public PaymentView uploadForStay(StayPayment payment) {
     Long guestId = payment.guestId();
     OwnGuest guest = admitted(guestId, false);
@@ -328,7 +351,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
       @Nullable Long stayId,
       @Nullable YearMonth period) {
     Instant now = clock.instant();
-    return changes.recordOwn(
+    return scopes.ownScoped(
         ProofRecorder.view(
             recorder.insert(
                 guestId,
@@ -348,14 +371,24 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
                         added,
                         now,
                         null,
-                        null))),
-        ChangeSignals.Kind.PAYMENT);
+                        null))));
   }
 
   // --- correcting a rejected payment (H3, T2 «Enviar de nuevo», RN-05) ---
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = PaymentResubmitted.class,
+      args = {
+        "#result.id()",
+        "#result.guestId()",
+        "#result.contractId()",
+        "#result.stayId()",
+        "#result.environmentId()",
+        "#result.period()",
+        "#result.amount()"
+      })
   public PaymentView correct(
       Long guestId, Long paymentId, boolean contractType, List<ProofEdit> proofs) {
     OwnGuest guest = admitted(guestId, contractType);
@@ -367,7 +400,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
     if (stored.payment().status() != PaymentStatus.REJECTED) {
       throw new PaymentNotCorrectableException();
     }
-    return changes.recordOwn(
+    return scopes.ownScoped(
         ProofRecorder.view(
             recorder.correct(
                 stored,
@@ -375,8 +408,7 @@ public class OwnPaymentService implements OwnPaymentsUseCase {
                 types,
                 ProofAuthor.GUEST,
                 true,
-                Objects.requireNonNull(clock.instant()))),
-        ChangeSignals.Kind.PAYMENT);
+                Objects.requireNonNull(clock.instant()))));
   }
 
   // --- who may ---

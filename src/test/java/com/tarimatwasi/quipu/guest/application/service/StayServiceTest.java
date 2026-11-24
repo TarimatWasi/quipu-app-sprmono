@@ -28,7 +28,6 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -47,7 +46,6 @@ import org.springframework.dao.OptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class StayServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST_ID = TestIds.next();
   private static final Long STAY_ID = TestIds.next();
@@ -66,7 +64,7 @@ class StayServiceTest {
   }
 
   private StayService service() {
-    return new StayService(guests, stays, environments, contracts, changes);
+    return new StayService(guests, stays, environments, contracts);
   }
 
   private static Guest guest(GuestType type, GuestStatus status) {

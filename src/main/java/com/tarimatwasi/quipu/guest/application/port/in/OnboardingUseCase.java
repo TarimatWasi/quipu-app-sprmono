@@ -88,7 +88,10 @@ public interface OnboardingUseCase {
    *
    * @throws OnboardingConflictException if the guest is not onboarding
    */
-  OnboardingView savePersonalData(Long guestId, PersonalDataInput data);
+  PersonalDataOutcome savePersonalData(Long guestId, PersonalDataInput data);
+
+  /** The outcome of {@link #savePersonalData}: the state and whether the name changed. */
+  record PersonalDataOutcome(OnboardingView view, boolean renamed) {}
 
   /**
    * Stores one document of the documents step.

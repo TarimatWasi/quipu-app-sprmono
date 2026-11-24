@@ -32,7 +32,6 @@ import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
 import com.tarimatwasi.quipu.guest.domain.Stay;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.debt.GuestDebtQuery;
 import com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException;
 import com.tarimatwasi.quipu.shared.occupancy.ContractOccupancyQuery;
@@ -48,6 +47,7 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -71,11 +71,9 @@ class GuestServiceTest {
   @Mock ContractOccupancyQuery contracts;
   @Mock GuestDebtQuery debts;
   @Mock OnboardingRepositoryPort onboarding;
-  @Mock ChangeSignals changes;
 
   private GuestService service() {
-    return new GuestService(
-        repository, accounts, stays, contracts, debts, onboarding, CLOCK, changes);
+    return new GuestService(repository, accounts, stays, contracts, debts, onboarding, CLOCK);
   }
 
   private static Guest guest(GuestStatus status) {
@@ -125,6 +123,48 @@ class GuestServiceTest {
 
   private void noAccount() {
     when(accounts.stateOf(Set.of(ID))).thenReturn(Map.of());
+  }
+
+  // --- summaries for other modules ---
+
+  @Test
+  void theSummariesOfAPageAreReadTogetherAndAGuestThatIsGoneIsLeftOut() {
+    Long other = TestIds.next();
+    Long gone = TestIds.next();
+    Guest active = with(guest(GuestStatus.ACTIVE), null, null);
+    Guest temporary =
+        new Guest(
+            other,
+            DocumentType.CE,
+            "X1234567",
+            null,
+            null,
+            GuestType.TEMPORARY,
+            GuestStatus.ONBOARDING,
+            null,
+            null,
+            null,
+            null);
+    Set<Long> ids = Set.of(ID, other, gone);
+    when(repository.findAllByIds(ids)).thenReturn(List.of(active, temporary));
+    when(accounts.stateOf(ids)).thenReturn(Map.of(ID, new AccountState(true, true)));
+
+    Map<Long, GuestSummaryView> summaries = service().summariesOf(ids);
+
+    assertThat(summaries).containsOnlyKeys(ID, other);
+    GuestSummaryView first = Objects.requireNonNull(summaries.get(ID));
+    GuestSummaryView second = Objects.requireNonNull(summaries.get(other));
+    assertThat(first.name()).isEqualTo("Ana Quispe");
+    assertThat(first.hasLoginAccess()).isTrue();
+    assertThat(second.type()).isEqualTo(GuestKind.TEMPORARY);
+    assertThat(second.hasLoginAccess()).isFalse();
+    verify(repository, never()).findById(any());
+  }
+
+  @Test
+  void noIdsReadNothing() {
+    assertThat(service().summariesOf(Set.of())).isEmpty();
+    verify(repository, never()).findAllByIds(any());
   }
 
   // --- list ---
@@ -590,15 +630,13 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ONBOARDING)));
     when(contracts.guestContractInForce(ID)).thenReturn(Optional.empty());
 
-    service().deactivate(ID);
+    assertThat(service().deactivate(ID)).as("the deactivation states its fact").isTrue();
 
     ArgumentCaptor<Guest> saved = ArgumentCaptor.forClass(Guest.class);
     verify(repository).save(saved.capture());
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.INACTIVE);
     assertThat(saved.getValue().statusBeforeInactive()).isEqualTo(GuestStatus.ONBOARDING);
     verify(accounts).setActive(ID, false);
-    verify(changes)
-        .changed(new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
   }
 
   @Test
@@ -654,15 +692,13 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     accountIs(true, true);
 
-    GuestSummaryView view = service().reactivate(ID);
+    GuestSummaryView view = service().reactivate(ID).view();
 
     ArgumentCaptor<Guest> saved = ArgumentCaptor.forClass(Guest.class);
     verify(repository).save(saved.capture());
     assertThat(saved.getValue().status()).isEqualTo(GuestStatus.ONBOARDING);
     assertThat(saved.getValue().statusBeforeInactive()).isNull();
     verify(accounts).setActive(ID, true);
-    verify(changes)
-        .changed(new ChangeSignals.Change(ChangeSignals.Kind.GUEST, ID, true, null, null));
     assertThat(view.status()).isEqualTo(GuestState.ONBOARDING);
     assertThat(view.hasLoginAccess()).isTrue();
   }
@@ -676,7 +712,7 @@ class GuestServiceTest {
     when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
     noAccount();
 
-    assertThat(service().reactivate(ID).status()).isEqualTo(GuestState.PENDING_ACTIVATION);
+    assertThat(service().reactivate(ID).view().status()).isEqualTo(GuestState.PENDING_ACTIVATION);
   }
 
   @Test
@@ -698,7 +734,7 @@ class GuestServiceTest {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(guest(GuestStatus.ACTIVE)));
     accountIs(true, true);
 
-    GuestSummaryView view = service().reactivate(ID);
+    GuestSummaryView view = service().reactivate(ID).view();
 
     assertThat(view.status()).isEqualTo(GuestState.ACTIVE);
     verify(repository, never()).save(any());

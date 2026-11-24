@@ -20,6 +20,8 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Objects;
@@ -95,9 +97,7 @@ class AuthBffControllerTest {
 
   @Test
   void loginWithAdminSucceedsAndSetsCookie() throws Exception {
-    mockMvc
-        .perform(
-            postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
+    login(ADMIN_LOGIN_BODY)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.role").value("ADMIN"))
         .andExpect(jsonPath("$.mustChangePassword").value(true))
@@ -113,11 +113,7 @@ class AuthBffControllerTest {
   @Test
   void loginCookieIsLaxSecureHttpOnlyAndLastsAsLongAsTheToken() throws Exception {
     var setCookie =
-        mockMvc
-            .perform(
-                postWithCsrf(LOGIN)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(ADMIN_LOGIN_BODY))
+        login(ADMIN_LOGIN_BODY)
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
@@ -145,8 +141,7 @@ class AuthBffControllerTest {
         {"documentType":"DNI","documentNumber":"00000000","password":"wrong"}
         """;
 
-    mockMvc
-        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+    login(body)
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
@@ -161,8 +156,7 @@ class AuthBffControllerTest {
         {"documentType":"LICENSE","documentNumber":"00000000","password":"whatever"}
         """;
 
-    mockMvc
-        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+    login(body)
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.type").doesNotExist());
@@ -175,8 +169,7 @@ class AuthBffControllerTest {
         {"documentType":"DNI","documentNumber":"99999999","password":"anything"}
         """;
 
-    mockMvc
-        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+    login(body)
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
@@ -228,8 +221,7 @@ class AuthBffControllerTest {
           """)
   void loginWithMissingOrBlankFieldsReturns400WithTheFieldName(String body, String field)
       throws Exception {
-    mockMvc
-        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+    login(body)
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.field").value(field))
@@ -264,8 +256,7 @@ class AuthBffControllerTest {
     var body =
         "{\"documentType\":\"DNI\",\"documentNumber\":\"00000000\",\"password\":\"%s\"}"
             .formatted("a".repeat(100));
-    mockMvc
-        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+    login(body)
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
   }
@@ -343,6 +334,11 @@ class AuthBffControllerTest {
         .andExpect(jsonPath("$.field").value(field));
   }
 
+  private ResultActions login(String body) throws Exception {
+    return mockMvc.perform(
+        postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
   private Cookie loginCookie(String password) throws Exception {
     var body =
         """
@@ -350,12 +346,7 @@ class AuthBffControllerTest {
         """
             .formatted(password);
     return Objects.requireNonNull(
-        mockMvc
-            .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getCookie("sessionToken"));
+        login(body).andExpect(status().isOk()).andReturn().getResponse().getCookie("sessionToken"));
   }
 
   private ResultActions changePassword(Cookie session, String body) throws Exception {
@@ -397,16 +388,12 @@ class AuthBffControllerTest {
                 "SELECT last_modified_by_id FROM users WHERE document_number = '00000000'",
                 Long.class))
         .isEqualTo(userId);
-    mockMvc
-        .perform(
-            postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
-        .andExpect(status().isUnauthorized());
+    login(ADMIN_LOGIN_BODY).andExpect(status().isUnauthorized());
     var newLogin =
         """
         {"documentType":"DNI","documentNumber":"00000000","password":"Nueva12345"}
         """;
-    mockMvc
-        .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(newLogin))
+    login(newLogin)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.mustChangePassword").value(false));
   }
@@ -568,17 +555,11 @@ class AuthBffControllerTest {
         {"documentType":"DNI","documentNumber":"00000000","password":"Equivocada-1"}
         """;
     for (int i = 0; i < 5; i++) {
-      mockMvc
-          .perform(postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(wrong))
-          .andExpect(status().isUnauthorized());
+      login(wrong).andExpect(status().isUnauthorized());
     }
 
     var locked =
-        mockMvc
-            .perform(
-                postWithCsrf(LOGIN)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(ADMIN_LOGIN_BODY))
+        login(ADMIN_LOGIN_BODY)
             .andExpect(status().isLocked())
             .andExpect(jsonPath("$.code").value("AUTH_ACCOUNT_LOCKED"))
             .andReturn()
@@ -605,37 +586,37 @@ class AuthBffControllerTest {
     jdbc.update(
         "UPDATE users SET failed_login_attempts = 5, locked_until = now() - interval '1 minute'");
 
-    mockMvc
-        .perform(
-            postWithCsrf(LOGIN).contentType(MediaType.APPLICATION_JSON).content(ADMIN_LOGIN_BODY))
-        .andExpect(status().isOk());
+    login(ADMIN_LOGIN_BODY).andExpect(status().isOk());
 
     assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
         .isZero();
-    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
-        .isNull();
+    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class)).isNull();
   }
 
   @Test
   void failuresThatArriveWhileLockedDoNotExtendTheLock() {
     Long id = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM users", Long.class));
-    java.time.Instant start = java.time.Instant.now();
-    java.time.Duration fifteen = java.time.Duration.ofMinutes(15);
+    Instant start = Instant.now();
+    Duration fifteen = Duration.ofMinutes(15);
     // The application layer owns the transaction; the row lock needs one.
     var tx = new TransactionTemplate(transactionManager);
     for (int i = 0; i < 5; i++) {
-      Boolean alreadyLocked = tx.execute(s -> users.registerFailedLogin(id, start, 5, fifteen));
+      Boolean alreadyLocked =
+          tx.execute(s -> users.registerFailedLogin(id, start, 5, fifteen).alreadyLocked());
       assertThat(alreadyLocked).isFalse();
     }
-    var lockedUntil =
-        jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class);
+    var lockedUntil = jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class);
 
     boolean alreadyLocked =
         Boolean.TRUE.equals(
-            tx.execute(s -> users.registerFailedLogin(id, start.plusSeconds(60), 5, fifteen)));
+            tx.execute(
+                s ->
+                    users
+                        .registerFailedLogin(id, start.plusSeconds(60), 5, fifteen)
+                        .alreadyLocked()));
 
     assertThat(alreadyLocked).isTrue();
-    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", java.sql.Timestamp.class))
+    assertThat(jdbc.queryForObject("SELECT locked_until FROM users", Timestamp.class))
         .isEqualTo(lockedUntil);
     assertThat(jdbc.queryForObject("SELECT failed_login_attempts FROM users", Integer.class))
         .isEqualTo(5);
@@ -648,7 +629,7 @@ class AuthBffControllerTest {
     Long id = jdbc.queryForObject("SELECT id FROM users", Long.class);
 
     users.changePassword(
-        Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"), java.time.Instant.now());
+        Objects.requireNonNull(id), passwordEncoder.encode("Nueva12345"), Instant.now());
 
     mockMvc
         .perform(

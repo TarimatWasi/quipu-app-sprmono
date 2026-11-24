@@ -27,6 +27,7 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.PdfInspections;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
@@ -36,8 +37,6 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -71,8 +70,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ExtendWith(OutputCaptureExtension.class)
 class GuestOnboardingContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String ORIGIN = "http://localhost:3000";
   private static final String ONBOARDING = "/bff/guest/onboarding";
   private static final String PERSONAL_DATA = ONBOARDING + "/personal-data";
@@ -704,10 +702,8 @@ class GuestOnboardingContractTest {
     return count == null ? 0 : count;
   }
 
-  private static String sha256(String text) throws Exception {
-    return HexFormat.of()
-        .formatHex(
-            MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+  private static String sha256(String text) {
+    return Sha256.hex(text);
   }
 
   private void insertAccount(Long id, String role, String document, @Nullable Long guestId) {

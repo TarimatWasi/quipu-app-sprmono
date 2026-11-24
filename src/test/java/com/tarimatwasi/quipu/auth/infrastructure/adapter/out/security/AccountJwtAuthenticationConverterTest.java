@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import javax.crypto.SecretKey;
@@ -347,8 +348,7 @@ class AccountJwtAuthenticationConverterTest {
   }
 
   private static String sessionOf(Jwt token) {
-    return java.util.Objects.requireNonNull(
-        token.getClaimAsString(AccessSessions.SESSION_ID_CLAIM));
+    return Objects.requireNonNull(token.getClaimAsString(AccessSessions.SESSION_ID_CLAIM));
   }
 
   /** A token from before the masking carried the numeric id: it no longer opens a session. */
@@ -382,6 +382,24 @@ class AccountJwtAuthenticationConverterTest {
       claims.put("sv", bad);
       assertThat(authenticate(signed(claims))).as(String.valueOf(bad)).isEmpty();
     }
+  }
+
+  /**
+   * A token that does not say when it was issued is not one of ours. The decoder of Spring fills a
+   * missing issue time from the expiry, so this guards a Jwt that reaches the converter otherwise.
+   */
+  @Test
+  void aTokenWithoutItsIssueTimeIsRefused() {
+    Jwt withoutIssueTime =
+        Jwt.withTokenValue("t")
+            .header("alg", "HS256")
+            .subject(inSession.mask(IdKind.USER, id).toString())
+            .claim(AccessSessions.SESSION_ID_CLAIM, SESSION)
+            .expiresAt(NOW.plusSeconds(600))
+            .build();
+
+    assertThatThrownBy(() -> converter.convert(withoutIssueTime))
+        .isInstanceOf(InvalidBearerTokenException.class);
   }
 
   @Test

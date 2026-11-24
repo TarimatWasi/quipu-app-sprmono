@@ -66,6 +66,8 @@ public class ContractTermsService implements ContractTermsUseCase {
   }
 
   @Override
+  // The sweep of the business day reads every contract as the system (SystemActor).
+  @PreAuthorize("hasAnyRole('ADMIN', 'GUEST', 'SYSTEM')")
   @Transactional(readOnly = true)
   public List<ContractTermsView> allTerms() {
     return contracts.findEvery().stream().map(ContractTermsService::view).toList();

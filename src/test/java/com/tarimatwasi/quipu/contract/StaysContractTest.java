@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
+import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -21,6 +22,7 @@ import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
 import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,8 +46,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ImportTestcontainers(PostgresContainers.class)
 class StaysContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/guests";
 
   @Autowired MockMvc mockMvc;
@@ -108,8 +109,7 @@ class StaysContractTest {
             .andExpect(jsonPath("$.content[0].agreedAmount").value(200.50))
             .andExpect(jsonPath("$.content[1].startDate").value("2026-05-01"))
             .andReturn();
-    String cursor =
-        com.jayway.jsonpath.JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
+    String cursor = JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
 
     mockMvc
         .perform(get(stays(guest)).param("limit", "2").param("after", cursor).cookie(admin()))
@@ -177,11 +177,9 @@ class StaysContractTest {
             .andExpect(jsonPath("$.agreedAmount").value(300.50))
             .andReturn();
 
-    String id =
-        com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id");
-    org.assertj.core.api.Assertions.assertThat(result.getResponse().getHeader("Location"))
-        .endsWith("/stays/" + id);
-    org.assertj.core.api.Assertions.assertThat(
+    String id = JsonPath.read(result.getResponse().getContentAsString(), "$.id");
+    Assertions.assertThat(result.getResponse().getHeader("Location")).endsWith("/stays/" + id);
+    Assertions.assertThat(
             jdbc.queryForObject(
                 "SELECT count(*) FROM stays WHERE guest_id = ?", Integer.class, guest))
         .isEqualTo(1);
@@ -324,8 +322,7 @@ class StaysContractTest {
           .andExpect(answersTheContractToAnInvalidRequest())
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
-    org.assertj.core.api.Assertions.assertThat(
-            jdbc.queryForObject("SELECT count(*) FROM stays", Integer.class))
+    Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM stays", Integer.class))
         .isZero();
   }
 

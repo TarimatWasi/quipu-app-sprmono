@@ -15,12 +15,14 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -266,7 +268,7 @@ class UploadLimitTest {
   }
 
   private Map<String, String> contractFields() {
-    var fields = new java.util.LinkedHashMap<>(CONTRACT_FIELDS);
+    var fields = new LinkedHashMap<>(CONTRACT_FIELDS);
     fields.put("environmentId", sessionIds().mask(IdKind.ENVIRONMENT, 1L).toString());
     fields.put("guestId", sessionIds().mask(IdKind.GUEST, 1L).toString());
     return fields;
@@ -341,7 +343,7 @@ class UploadLimitTest {
   }
 
   private static void part(ByteArrayOutputStream body, String name, String value)
-      throws java.io.IOException {
+      throws IOException {
     body.write(
         ("--"
                 + BOUNDARY

@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.auth.application.port.in.LoginUseCase.DocumentKind;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
+import com.tarimatwasi.quipu.support.LockWaits;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
@@ -26,8 +27,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.LockSupport;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -150,8 +149,8 @@ class AdministratorCreationConcurrencyTest {
             call -> {
               Object id = call.callRealMethod();
               if (first.getAndSet(false)) {
-                int holder = backendPid();
-                waited.set(waitUntil(() -> someoneWaitsOn(holder)));
+                int holder = LockWaits.backendPid(jdbc);
+                waited.set(LockWaits.until(() -> LockWaits.someoneWaitsOn(jdbc, holder)));
               }
               return id;
             })
@@ -190,32 +189,5 @@ class AdministratorCreationConcurrencyTest {
   private int administratorCount() {
     return Objects.requireNonNull(
         jdbc.queryForObject("SELECT count(*) FROM users WHERE role = 'ADMIN'", Integer.class));
-  }
-
-  private int backendPid() {
-    return Objects.requireNonNull(jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
-  }
-
-  /** Someone waits on a lock that the given backend holds. */
-  private boolean someoneWaitsOn(int holder) {
-    Integer waiting =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM pg_stat_activity a"
-                + " WHERE a.wait_event_type = 'Lock' AND a.datname = current_database()"
-                + " AND ? = ANY (pg_blocking_pids(a.pid))",
-            Integer.class,
-            holder);
-    return waiting != null && waiting > 0;
-  }
-
-  private static boolean waitUntil(BooleanSupplier condition) {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-    while (System.nanoTime() < deadline && !Thread.currentThread().isInterrupted()) {
-      if (condition.getAsBoolean()) {
-        return true;
-      }
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-    }
-    return false;
   }
 }

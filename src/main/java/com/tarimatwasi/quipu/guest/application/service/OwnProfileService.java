@@ -4,7 +4,6 @@ import com.tarimatwasi.quipu.guest.application.port.in.EmptyGuestUpdateException
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.EmergencyContactView;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
-import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestSummaryView;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentView;
 import com.tarimatwasi.quipu.guest.application.port.in.OwnProfileRefusedException;
@@ -18,7 +17,9 @@ import com.tarimatwasi.quipu.guest.domain.EmergencyContact;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDocumentUploaded;
+import com.tarimatwasi.quipu.guest.domain.event.ProfileUpdated;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import java.util.Objects;
 import java.util.Set;
@@ -39,7 +40,6 @@ public class OwnProfileService implements OwnProfileUseCase {
 
   private static final AccountState NO_ACCOUNT = new AccountState(false, false);
 
-  private final ChangeSignals changes;
   private final GuestRepositoryPort guests;
   private final GuestAccountPort accounts;
   private final OnboardingRepositoryPort records;
@@ -49,9 +49,7 @@ public class OwnProfileService implements OwnProfileUseCase {
       GuestRepositoryPort guests,
       GuestAccountPort accounts,
       OnboardingRepositoryPort records,
-      GuestDocumentUploader uploader,
-      ChangeSignals changes) {
-    this.changes = changes;
+      GuestDocumentUploader uploader) {
     this.guests = guests;
     this.accounts = accounts;
     this.records = records;
@@ -78,6 +76,9 @@ public class OwnProfileService implements OwnProfileUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = GuestDocumentUploaded.class,
+      args = {"#guestId", "#result.id()"})
   public DocumentView uploadDocument(Long guestId, GuestKind area, DocumentUpload upload) {
     // RF-15: the file is checked before the row of the guest is locked.
     FileKind kind = GuestDocumentUploader.kindOf(upload);
@@ -87,25 +88,20 @@ public class OwnProfileService implements OwnProfileUseCase {
 
   @Override
   @Transactional
-  public GuestSummaryView update(Long guestId, GuestKind area, ProfileChange change) {
+  @PublishEvent(
+      type = ProfileUpdated.class,
+      args = {"#guestId", "#result.renamed()"})
+  public ProfileUpdate update(Long guestId, GuestKind area, ProfileChange change) {
     if (change.empty()) {
       throw new EmptyGuestUpdateException();
     }
     Guest guest =
         allowed(guests.findByIdForUpdate(guestId).orElseThrow(GuestNotFoundException::new), area);
     Guest saved = guests.save(changed(guest, change));
-    changes.changed(
-        new ChangeSignals.Change(
-            !Objects.equals(guest.fullName(), saved.fullName())
-                ? ChangeSignals.Kind.DIRECTORY
-                : ChangeSignals.Kind.PROFILE,
-            guestId,
-            false,
-            null,
-            null));
     AccountState account =
         accounts.stateOf(Set.of(saved.id())).getOrDefault(saved.id(), NO_ACCOUNT);
-    return GuestService.summary(saved, account);
+    return new ProfileUpdate(
+        GuestService.summary(saved, account), !Objects.equals(guest.fullName(), saved.fullName()));
   }
 
   /**

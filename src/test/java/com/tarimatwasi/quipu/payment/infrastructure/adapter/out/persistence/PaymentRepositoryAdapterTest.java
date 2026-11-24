@@ -327,6 +327,25 @@ class PaymentRepositoryAdapterTest {
             e -> assertThat(e.liveStatus()).isEqualTo(PaymentStatus.APPROVED));
   }
 
+  /** Only the live indexes mean another payment got there: any other rule keeps its failure. */
+  @Test
+  void insert_anotherBrokenRuleIsNotALivePayment() {
+    NewPayment ofAnUnknownContract =
+        approved(
+            guest,
+            TestIds.next(),
+            null,
+            YearMonth.parse("2026-10"),
+            List.of(voucher("800.50", "Yape", VoucherType.PDF, 1234)));
+
+    assertThatThrownBy(
+            () ->
+                new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> adapter.insert(ofAnUnknownContract)))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .isNotInstanceOf(LivePaymentExistsException.class);
+  }
+
   @Test
   void insertApproved_aStayWithALivePaymentIsRefusedWithItsStatus() {
     adapter.insert(draftForStay());

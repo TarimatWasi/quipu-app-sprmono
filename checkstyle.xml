@@ -59,5 +59,25 @@
     </module>
     <module name="UnusedImports"/>
     <module name="RedundantImport"/>
+    <!-- BE-SPR-EST-04: tipos por import explícito; ni comodines ni nombres totalmente calificados
+         en el código (los strings y comentarios quedan fuera de la regla). -->
+    <module name="AvoidStarImport"/>
+  </module>
+  <!-- OPS-GHA-CI-05 (TAR-384): una supresión cita en su línea el ID de la regla y la tarea. -->
+  <module name="RegexpSingleline">
+    <property name="id" value="SuppressionWithoutRuleAndTask"/>
+    <property name="format"
+        value="(@SuppressWarnings|NOSONAR)(?!.*(([A-Z]{2,}(-[A-Z0-9]+)+-\d+|java:S\d+).*TAR-\d+|TAR-\d+.*([A-Z]{2,}(-[A-Z0-9]+)+-\d+|java:S\d+)))"/>
+    <property name="fileExtensions" value="java"/>
+    <property name="message"
+        value="Supresión sin el ID de la regla y la tarea en su línea (OPS-GHA-CI-05)."/>
+  </module>
+  <module name="RegexpSingleline">
+    <property name="id" value="FullyQualifiedName"/>
+    <property name="format"
+        value="^(?!\s*(import|package)\s)(?!\s*(//|\*|/\*))(?:[^&quot;\n]|&quot;(?:[^&quot;\\]|\\.)*&quot;)*?(?&lt;![\w.])(java|javax|jakarta|org|com|io|tools)\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*\.[A-Z]"/>
+    <property name="fileExtensions" value="java"/>
+    <property name="message"
+        value="Nombre totalmente calificado: importar el tipo (BE-SPR-EST-04)."/>
   </module>
 </module>

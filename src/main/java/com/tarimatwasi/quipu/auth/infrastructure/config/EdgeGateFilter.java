@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.auth.infrastructure.config;
 
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -7,7 +8,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -106,10 +106,6 @@ final class EdgeGateFilter extends OncePerRequestFilter {
   }
 
   private static byte[] digest(String value) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is not available", e);
-    }
+    return Sha256.digest(value);
   }
 }

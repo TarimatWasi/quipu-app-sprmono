@@ -23,9 +23,11 @@ class AdministratorReauthentication {
   private final UserRepositoryPort users;
   private final PasswordEncoder passwordEncoder;
   private final Clock clock;
+  private final SecurityFacts facts;
 
   AdministratorReauthentication(
-      UserRepositoryPort users, PasswordEncoder passwordEncoder, Clock clock) {
+      UserRepositoryPort users, PasswordEncoder passwordEncoder, Clock clock, SecurityFacts facts) {
+    this.facts = facts;
     this.users = users;
     this.passwordEncoder = passwordEncoder;
     this.clock = clock;
@@ -75,7 +77,7 @@ class AdministratorReauthentication {
       throw new AdministratorReauthenticationException();
     }
     if (!passwordEncoder.matches(currentPassword, actor.passwordHash())) {
-      users.registerFailedLogin(
+      facts.failedLogin(
           actor.id(),
           now,
           AuthApplicationService.MAX_FAILED_LOGINS,
