@@ -17,6 +17,13 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Una sola versión de codeql-action
+        run: |
+          # init y analyze en versiones distintas rompen el análisis; aquí se falla con el motivo claro.
+          refs=$(grep -ohE 'github/codeql-action/[a-z-]+@[0-9a-f]+' .github/workflows/*.yml | sed 's/.*@//' | sort -u)
+          if [ "$(printf '%s\n' "$refs" | wc -l)" -ne 1 ]; then
+            echo "::error::github/codeql-action fijado en más de una versión: $(echo $refs). Súbelas juntas."; exit 1
+          fi
       - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: java-kotlin
