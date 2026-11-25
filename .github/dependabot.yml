@@ -28,3 +28,9 @@ updates:
     target-branch: development
     schedule:
       interval: weekly
+    groups:
+      # init y analyze de CodeQL deben ir en la misma versión: en PRs separados (#178, #179) cada
+      # uno deja el workflow con versiones mezcladas y el job codeql falla. Se suben juntas.
+      codeql-action:
+        patterns:
+          - github/codeql-action*
