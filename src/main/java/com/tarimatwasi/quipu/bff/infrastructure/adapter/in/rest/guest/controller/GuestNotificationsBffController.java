@@ -20,10 +20,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** The bell of the guest of the session, never one named in the request (RN-09, v0.27.0). */
+/**
+ * The bell of the guest of the session, never one named in the request (RN-09, v0.27.0). Each guest
+ * type reads it in its own area (v0.30.0): GuestAreaFilter keeps the guest with a contract in
+ * /bff/guest/** and the temporary one in /bff/temporary-guest/**, so the same routes serve both.
+ */
 @RestController
 public class GuestNotificationsBffController {
-  private static final String URL = "/bff/guest/notifications";
+  private static final String CONTRACT_AREA = "/bff/guest/notifications";
+  private static final String TEMPORARY_AREA = "/bff/temporary-guest/notifications";
 
   private final ReadNotificationsUseCase notifications;
   private final GuestAccountUseCase accounts;
@@ -36,7 +41,7 @@ public class GuestNotificationsBffController {
     this.ids = ids;
   }
 
-  @GetMapping(URL)
+  @GetMapping({CONTRACT_AREA, TEMPORARY_AREA})
   public PagedNotificationsResponse list(
       Authentication authentication,
       @RequestParam(name = "limit", defaultValue = "20") int limit,
@@ -46,13 +51,13 @@ public class GuestNotificationsBffController {
         notifications.list(reader(authentication), unread, PageParams.query(after, limit)), ids);
   }
 
-  @PostMapping(URL + "/{id}/read")
+  @PostMapping({CONTRACT_AREA + "/{id}/read", TEMPORARY_AREA + "/{id}/read"})
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void read(Authentication authentication, @PathVariable UUID id) {
     notifications.read(reader(authentication), ids.unmask(IdKind.NOTIFICATION, id));
   }
 
-  @PostMapping(URL + "/read-all")
+  @PostMapping({CONTRACT_AREA + "/read-all", TEMPORARY_AREA + "/read-all"})
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void readAll(Authentication authentication) {
     notifications.readAll(reader(authentication));

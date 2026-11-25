@@ -7,12 +7,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.ChangeStreamRegistry;
+import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase;
+import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Kind;
+import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.NewNotification;
+import com.tarimatwasi.quipu.notification.application.port.in.RaiseNotificationUseCase.Target;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
+import com.tarimatwasi.quipu.support.TestIds;
+import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -36,9 +44,23 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 class NotificationsContractTest extends PaymentsContractSupport {
   private static final String GUEST_BELL = "/bff/guest/notifications";
   private static final String ADMIN_BELL = "/bff/admin/notifications";
+  private static final String TEMPORARY_BELL = "/bff/temporary-guest/notifications";
 
   @Autowired ChangeStreamRegistry streams;
   @Autowired Clock clock;
+  @Autowired RaiseNotificationUseCase raise;
+
+  private final Long temporaryAccountId = TestIds.next();
+
+  @BeforeEach
+  void temporaryAccount() {
+    insertAccount(temporaryAccountId, "GUEST", "00000003", temporaryGuest);
+  }
+
+  private Cookie temporary() {
+    return new Cookie(
+        "sessionToken", jwtTokenProvider.renew(temporaryAccountId.toString(), sessionId));
+  }
 
   private void fine() throws Exception {
     mockMvc
@@ -249,5 +271,100 @@ class NotificationsContractTest extends PaymentsContractSupport {
               .until(own::next, next -> next.startsWith("event: changed"));
       assertThat(frame).contains("guest.notifications").doesNotContain("admin.");
     }
+  }
+
+  /** The bell of a temporary guest lives in its own area (v0.30.0) and works like the other. */
+  @Test
+  void temporaryGuest_readsItsBellInItsOwnArea() throws Exception {
+    Cookie temporary = temporary();
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.multipart("/bff/temporary-guest/payments")
+                .with(csrf())
+                .header(HttpHeaders.ORIGIN, ORIGIN)
+                .cookie(temporary)
+                .file(new MockMultipartFile("files", "v.pdf", "application/pdf", PDF))
+                .file(proofs("150", null)))
+        .andExpect(status().isCreated());
+    Long payment = jdbc.queryForObject("SELECT id FROM payments", Long.class);
+    resolve(payment, approval(payment)).andExpect(status().isOk());
+
+    String body =
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(10))
+            .until(
+                () -> temporaryBell(temporary),
+                page -> JsonPath.<List<?>>read(page, "$.content").size() == 1);
+    assertThat(JsonPath.<String>read(body, "$.content[0].type")).isEqualTo("PAYMENT_APPROVED");
+    assertThat(JsonPath.<String>read(body, "$.content[0].target.kind")).isEqualTo("PAYMENT");
+    assertThat(JsonPath.<Integer>read(body, "$.unreadCount")).isOne();
+    String id = JsonPath.read(body, "$.content[0].id");
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post(TEMPORARY_BELL + "/" + id + "/read")
+                .with(csrf())
+                .cookie(temporary))
+        .andExpect(status().isNoContent());
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post(TEMPORARY_BELL + "/read-all")
+                .with(csrf())
+                .cookie(temporary))
+        .andExpect(status().isNoContent());
+    assertThat(JsonPath.<Integer>read(temporaryBell(temporary), "$.unreadCount")).isZero();
+  }
+
+  private String temporaryBell(Cookie temporary) throws Exception {
+    return mockMvc
+        .perform(MockMvcRequestBuilders.get(TEMPORARY_BELL).cookie(temporary))
+        .andExpect(status().isOk())
+        .andExpect(satisfiesTheContract())
+        .andReturn()
+        .getResponse()
+        .getContentAsString();
+  }
+
+  /** Each guest type reads the bell only in the area of its type. */
+  @Test
+  void eachGuestType_isRefusedInTheBellOfTheOtherArea() throws Exception {
+    mockMvc
+        .perform(MockMvcRequestBuilders.get(GUEST_BELL).cookie(temporary()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    mockMvc
+        .perform(MockMvcRequestBuilders.get(TEMPORARY_BELL).cookie(guest()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+  }
+
+  /** A document lives under its guest: the target names both (v0.30.0). */
+  @Test
+  void uploadedDocument_targetsTheDocumentAndItsGuest() throws Exception {
+    Long document = TestIds.next();
+    raise.raise(
+        new NewNotification(
+            UUID.randomUUID(),
+            Kind.GUEST_DOCUMENT_UPLOADED,
+            contractGuest,
+            Target.DOCUMENT,
+            document,
+            Map.of(),
+            clock.instant()));
+
+    String body = adminBell("");
+    assertThat(JsonPath.<String>read(body, "$.content[0].target.kind")).isEqualTo("DOCUMENT");
+    assertThat(JsonPath.<String>read(body, "$.content[0].target.id"))
+        .isEqualTo(id(IdKind.GUEST_DOCUMENT, document));
+    assertThat(JsonPath.<String>read(body, "$.content[0].target.guestId"))
+        .isEqualTo(id(IdKind.GUEST, contractGuest));
+  }
+
+  /** Only DOCUMENT names a guest in its target; the other kinds leave the field out. */
+  @Test
+  void otherTargets_leaveTheGuestOut() throws Exception {
+    String adminBell = proofReachesTheAdministrators();
+    assertThat(JsonPath.<Map<String, Object>>read(adminBell, "$.content[0].target"))
+        .containsOnlyKeys("kind", "id");
   }
 }

@@ -46,11 +46,11 @@
     <pdfbox.version>3.0.8</pdfbox.version>
 
     <!-- Contrato del BFF: tag de quipu-lib-contracts y sha256 de su openapi/bff.yaml publicado (LF).
-         v0.29.0: 503 SERVICE_BUSY global cuando la base no atiende a tiempo (PR #81).
+         v0.30.0: campana del huésped temporal, destino de cada target y claves extensibles (PR #84).
          Para subir de versión se cambian los dos juntos: el hash se obtiene con
          `curl -sL <url del tag> | sha256sum` y el build rechaza un spec con otro hash. -->
-    <contract.version>v0.29.0</contract.version>
-    <contract.sha256>6925632e2e9247c8f91f364ce09f9534334650fef22068f70a7f8c4d095cd4de</contract.sha256>
+    <contract.version>v0.30.0</contract.version>
+    <contract.sha256>071e4cc90b267934b753ed5b64f7221fef2edbf93b4d681ca53c73f4ef4bbc8b</contract.sha256>
   </properties>
 
   <dependencyManagement>
