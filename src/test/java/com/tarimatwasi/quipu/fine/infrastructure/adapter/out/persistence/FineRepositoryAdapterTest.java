@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -67,6 +68,17 @@ class FineRepositoryAdapterTest {
         transaction.execute(status -> adapter.insert(inactive, BigDecimal.ONE, SEPTEMBER, null));
 
     assertThat(fine.guestId()).isEqualTo(inactive);
+  }
+
+  /** Only the foreign key of the guest means a missing guest: another rule keeps its failure. */
+  @Test
+  void insert_anotherBrokenRuleIsNotAMissingGuest() {
+    assertThatThrownBy(
+            () ->
+                transaction.execute(
+                    status -> adapter.insert(guestId, BigDecimal.ZERO, SEPTEMBER, null)))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .isNotInstanceOf(FineGuestMissingException.class);
   }
 
   /** The race of TAR-47: a guest id that is not in guests is refused by the FK, not with a 500. */

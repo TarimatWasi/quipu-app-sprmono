@@ -50,8 +50,10 @@ public interface UserRepositoryPort {
   /**
    * Sets the status (ACTIVE or INACTIVE) of the account of the guest; nothing if it has none. An
    * INACTIVE account cannot log in and its sessions stop working (RN-12).
+   *
+   * @return the accounts it deactivated (empty for ACTIVE or a guest without account)
    */
-  void setGuestAccountStatus(Long guestId, String status);
+  List<Long> setGuestAccountStatus(Long guestId, String status);
 
   /** Emails are unique ignoring case. */
   Optional<UserAccount> findByEmail(String email);
@@ -73,14 +75,16 @@ public interface UserRepositoryPort {
   /**
    * Stores the new hash, clears the pending-change flag and removes the recovery code, so the code
    * cannot be used again.
+   *
+   * @return the new security version of the account
    */
-  void resetPassword(Long id, String newPasswordHash, Instant changedAt);
+  long resetPassword(Long id, String newPasswordHash, Instant changedAt);
 
   /**
    * TAR-127 (A0.5): as {@link #resetPassword}, and stores the full name an administrator writes
    * when activating its account, in the same write.
    */
-  void resetPasswordAndName(Long id, String newPasswordHash, Instant changedAt, String name);
+  long resetPasswordAndName(Long id, String newPasswordHash, Instant changedAt, String name);
 
   /** TAR-127: the full name of the account (an administrator that activated it); else empty. */
   Optional<String> findName(Long id);
@@ -90,10 +94,18 @@ public interface UserRepositoryPort {
    * until {@code now + lockDuration}. A lock that already expired restarts the count. Safe against
    * simultaneous failures: the account's row is locked while it is updated.
    *
-   * @return true if the account was already locked when its row was locked: the attempt is not
-   *     counted and the lock is not extended
+   * @return whether it was already locked when its row was locked (the attempt is not counted and
+   *     the lock is not extended) and whether it is locked now
    */
-  boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration);
+  FailedLogin registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration);
+
+  /**
+   * The outcome of a failed attempt.
+   *
+   * @param alreadyLocked the account was locked before this attempt
+   * @param lockedNow the account is locked after it
+   */
+  record FailedLogin(boolean alreadyLocked, boolean lockedNow) {}
 
   /** Forgets the failed logins and the lock of the account (a successful login). */
   void clearFailedLogins(Long id);

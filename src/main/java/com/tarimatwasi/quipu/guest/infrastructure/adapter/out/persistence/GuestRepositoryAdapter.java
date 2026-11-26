@@ -6,6 +6,7 @@ import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.CursorToken;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;

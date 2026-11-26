@@ -9,6 +9,7 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.shared.adapter.out.persistence.AuditorJpaEntity;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;

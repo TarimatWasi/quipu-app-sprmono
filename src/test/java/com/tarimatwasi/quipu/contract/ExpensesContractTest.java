@@ -19,7 +19,6 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,8 +40,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ImportTestcontainers(PostgresContainers.class)
 class ExpensesContractTest {
 
-  private static final String SPEC =
-      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/expenses";
   private static final String UTILITIES =
       "{\"category\":\"UTILITIES\",\"amount\":120.50,\"month\":\"2026-09\",\"description\":\"Recibo\"}";

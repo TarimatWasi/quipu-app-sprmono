@@ -24,6 +24,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
 /**
  * The upload routes through the whole security chain (ADR-006, RN-08, RN-09): who may reach each
@@ -70,8 +71,7 @@ class UploadRoutesContractTest {
     return new Cookie("sessionToken", jwtTokenProvider.renew(guestAccountId.toString(), sessionId));
   }
 
-  private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder
-      upload(String route) {
+  private static MockMultipartHttpServletRequestBuilder upload(String route) {
     return multipart(route)
         .with(csrf())
         .file(new MockMultipartFile("file", "c.pdf", "application/pdf", new byte[] {1}));

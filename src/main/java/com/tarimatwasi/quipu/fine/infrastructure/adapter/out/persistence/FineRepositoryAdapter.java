@@ -3,14 +3,12 @@ package com.tarimatwasi.quipu.fine.infrastructure.adapter.out.persistence;
 import com.tarimatwasi.quipu.fine.application.port.out.FineGuestMissingException;
 import com.tarimatwasi.quipu.fine.application.port.out.FineRepositoryPort;
 import com.tarimatwasi.quipu.fine.domain.Fine;
+import com.tarimatwasi.quipu.shared.adapter.out.persistence.ViolatedConstraint;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
-import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.Nullable;
-import org.postgresql.util.PSQLException;
-import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +33,7 @@ public class FineRepositoryAdapter implements FineRepositoryPort {
           .saveAndFlush(new FineJpaEntity(guestId, amount, month, description))
           .toDomain();
     } catch (DataIntegrityViolationException e) {
-      if (violates(e, GUEST_FOREIGN_KEY)) {
+      if (ViolatedConstraint.is(e, GUEST_FOREIGN_KEY)) {
         throw new FineGuestMissingException(e);
       }
       throw e;
@@ -64,26 +62,5 @@ public class FineRepositoryAdapter implements FineRepositoryPort {
     BigDecimal sum = jpaRepository.sumAmountByMonth(month.atDay(1));
     return new Total(
         sum == null ? BigDecimal.ZERO : sum, jpaRepository.countByMonth(month.atDay(1)));
-  }
-
-  /**
-   * Whether the write broke that constraint, read from the name the server reports so that the
-   * language of its messages does not matter; the name Hibernate parses is only a fallback.
-   */
-  private static boolean violates(Throwable failure, String constraint) {
-    for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-      if (cause instanceof PSQLException psql) {
-        ServerErrorMessage server = psql.getServerErrorMessage();
-        if (server != null && server.getConstraint() != null) {
-          return constraint.equals(server.getConstraint());
-        }
-      }
-    }
-    for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-      if (cause instanceof ConstraintViolationException violation) {
-        return constraint.equals(violation.getConstraintName());
-      }
-    }
-    return false;
   }
 }

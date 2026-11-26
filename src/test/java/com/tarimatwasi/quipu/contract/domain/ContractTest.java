@@ -18,8 +18,7 @@ class ContractTest {
   private static final LocalDate TODAY = LocalDate.parse("2026-10-14");
   private static final BigDecimal AMOUNT = new BigDecimal("800.00");
 
-  private static final java.time.Instant TERMINATED_AT =
-      java.time.Instant.parse("2026-09-30T20:00:00Z");
+  private static final Instant TERMINATED_AT = Instant.parse("2026-09-30T20:00:00Z");
 
   private static Contract contract(String start, @Nullable String end, boolean terminated) {
     return new Contract(
@@ -35,7 +34,7 @@ class ContractTest {
         "a.pdf",
         100,
         terminated ? TERMINATED_AT : null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test
@@ -91,10 +90,10 @@ class ContractTest {
   void terminatingGivesATerminatedCopy() {
     Contract active = contract("2026-01-01", null, false);
 
-    Contract finished = active.terminate(java.time.Instant.parse("2026-10-14T15:00:00Z"));
+    Contract finished = active.terminate(Instant.parse("2026-10-14T15:00:00Z"));
 
     assertThat(finished.terminated()).isTrue();
-    assertThat(finished.terminatedAt()).isEqualTo(java.time.Instant.parse("2026-10-14T15:00:00Z"));
+    assertThat(finished.terminatedAt()).isEqualTo(Instant.parse("2026-10-14T15:00:00Z"));
     assertThat(finished.id()).isEqualTo(active.id());
     assertThat(active.terminated()).isFalse();
   }

@@ -1,8 +1,8 @@
 package com.tarimatwasi.quipu.auth.application.service;
 
+import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionTokenPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.InMemorySessionStore;
 import java.time.Clock;
 import java.time.Duration;
@@ -44,12 +44,13 @@ final class FakeSessions {
 
   /** The real sessions over those tokens, with the lifetimes decided on 2026-11-09. */
   static SessionService over(SessionTokenPort tokens, UserRepositoryPort users, Clock clock) {
+    InMemorySessionStore store = new InMemorySessionStore();
     return new SessionService(
-        new InMemorySessionStore(),
+        store,
         tokens,
         users,
         new SessionPolicy(Duration.ofDays(7), Duration.ofDays(30), Duration.ofSeconds(30)),
         clock,
-        Mockito.mock(ChangeSignals.class));
+        new SecurityFacts(store, users, Mockito.mock(AdministratorStorePort.class)));
   }
 }

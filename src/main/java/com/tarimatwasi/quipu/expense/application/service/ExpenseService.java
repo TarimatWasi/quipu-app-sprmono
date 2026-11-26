@@ -8,7 +8,10 @@ import com.tarimatwasi.quipu.expense.application.port.in.ManageExpensesUseCase;
 import com.tarimatwasi.quipu.expense.application.port.out.ExpenseRepositoryPort;
 import com.tarimatwasi.quipu.expense.domain.Expense;
 import com.tarimatwasi.quipu.expense.domain.ExpenseCategory;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.expense.domain.event.ExpenseCreated;
+import com.tarimatwasi.quipu.expense.domain.event.ExpenseDeleted;
+import com.tarimatwasi.quipu.expense.domain.event.ExpenseUpdated;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import java.math.BigDecimal;
@@ -28,30 +31,33 @@ public class ExpenseService implements ManageExpensesUseCase {
   /** The limit of the contract, in characters (code points) and not in UTF-16 units. */
   private static final int MAX_DESCRIPTION = 500;
 
-  private final ChangeSignals changes;
   private final ExpenseRepositoryPort expenses;
 
-  ExpenseService(ExpenseRepositoryPort expenses, ChangeSignals changes) {
-    this.changes = changes;
+  ExpenseService(ExpenseRepositoryPort expenses) {
     this.expenses = expenses;
   }
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = ExpenseCreated.class,
+      args = {"#result.id()", "#result.amount()", "#result.month()"})
   public ExpenseView create(ExpenseCommand command) {
     validate(command.amount());
     requireValid(command.month());
-    return changed(
-        view(
-            expenses.insert(
-                category(command.category()),
-                command.amount(),
-                command.month(),
-                description(command.description()))));
+    return view(
+        expenses.insert(
+            category(command.category()),
+            command.amount(),
+            command.month(),
+            description(command.description())));
   }
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = ExpenseUpdated.class,
+      args = {"#result.id()", "#result.amount()", "#result.month()"})
   public ExpenseView update(Long id, long version, ExpenseCommand command) {
     validate(command.amount());
     requireValid(command.month());
@@ -64,17 +70,18 @@ public class ExpenseService implements ManageExpensesUseCase {
             command.month(),
             description(command.description()))
         .map(ExpenseService::view)
-        .map(this::changed)
         .orElseThrow(ExpenseNotFoundException::new);
   }
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = ExpenseDeleted.class,
+      args = {"#id"})
   public void delete(Long id) {
     if (!expenses.delete(id)) {
       throw new ExpenseNotFoundException();
     }
-    signal();
   }
 
   @Override
@@ -91,15 +98,6 @@ public class ExpenseService implements ManageExpensesUseCase {
     requireValid(month);
     ExpenseRepositoryPort.Total total = expenses.totalOfMonth(month);
     return new MonthTotal(total.amount(), total.count());
-  }
-
-  private ExpenseView changed(ExpenseView expense) {
-    signal();
-    return expense;
-  }
-
-  private void signal() {
-    changes.changed(new ChangeSignals.Change(ChangeSignals.Kind.EXPENSE, null, false, null, null));
   }
 
   private static void validate(BigDecimal amount) {

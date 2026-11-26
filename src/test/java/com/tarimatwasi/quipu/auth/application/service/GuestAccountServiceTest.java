@@ -22,7 +22,8 @@ class GuestAccountServiceTest {
   private final InMemoryUserRepository users = new InMemoryUserRepository();
   private final AccessGrantRepositoryPort grants = mock(AccessGrantRepositoryPort.class);
   private final MutableClock clock = new MutableClock(Instant.parse("2026-10-14T14:00:00Z"));
-  private final GuestAccountService service = new GuestAccountService(users, grants, clock);
+  private final GuestAccountService service =
+      new GuestAccountService(users, grants, clock, TestSecurityFacts.over(users));
 
   private UserAccount account(Long guestId, String document, boolean mustChange, String status) {
     var account =

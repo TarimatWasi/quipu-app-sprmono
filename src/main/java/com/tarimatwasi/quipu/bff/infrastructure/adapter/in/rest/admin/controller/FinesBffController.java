@@ -1,7 +1,7 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.admin.controller;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.InvalidQueryParameterException;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support.MonthParam;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentLabel;
 import com.tarimatwasi.quipu.fine.application.port.in.ManageFinesUseCase;
@@ -45,14 +45,11 @@ public class FinesBffController {
   // PostgreSQL cannot store the NUL character in a TEXT column
   private static final String NO_NUL = "(?s)[^\\x00]*";
 
-  private static final String MONTH = "^\\d{4}-(0[1-9]|1[0-2])$";
+  private static final String MONTH = MonthParam.REGEX;
 
   /** Read as text so that a value that is not a UUID is a 400 that names the field. */
   private static final String UUID_TEXT =
       "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
-
-  private static final java.util.regex.Pattern MONTH_PATTERN =
-      java.util.regex.Pattern.compile(MONTH);
 
   private final ManageFinesUseCase fines;
   private final ManageGuestsUseCase guests;
@@ -93,10 +90,7 @@ public class FinesBffController {
 
   @GetMapping(URL)
   public List<FineResponse> list(@RequestParam("month") String month) {
-    if (!MONTH_PATTERN.matcher(month).matches()) {
-      throw new InvalidQueryParameterException("month");
-    }
-    YearMonth asked = YearMonth.parse(month);
+    YearMonth asked = MonthParam.query(month);
     return responses(fines.list(asked), asked);
   }
 

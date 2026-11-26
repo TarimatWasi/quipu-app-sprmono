@@ -19,8 +19,11 @@ import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -45,7 +48,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class ContractRepositoryAdapterTest {
 
   private static final LocalDate TODAY = LocalDate.parse("2026-10-14");
-  private static final java.time.Instant NOW = java.time.Instant.parse("2026-10-14T15:00:00Z");
+  private static final Instant NOW = Instant.parse("2026-10-14T15:00:00Z");
 
   @Autowired ContractRepositoryAdapter adapter;
   @Autowired JdbcTemplate jdbc;
@@ -154,10 +157,8 @@ class ContractRepositoryAdapterTest {
     assertThat(saved.terminatedAt()).isEqualTo(NOW);
     assertThat(
             jdbc.queryForObject(
-                "SELECT terminated_at FROM contracts WHERE id = ?",
-                java.sql.Timestamp.class,
-                contract.id()))
-        .isEqualTo(java.sql.Timestamp.from(NOW));
+                "SELECT terminated_at FROM contracts WHERE id = ?", Timestamp.class, contract.id()))
+        .isEqualTo(Timestamp.from(NOW));
   }
 
   @Test
@@ -268,7 +269,7 @@ class ContractRepositoryAdapterTest {
     } while (cursor != null);
 
     List<Long> newestFirst = new ArrayList<>(created);
-    java.util.Collections.reverse(newestFirst);
+    Collections.reverse(newestFirst);
     assertThat(seen).containsExactlyElementsOf(newestFirst);
   }
 

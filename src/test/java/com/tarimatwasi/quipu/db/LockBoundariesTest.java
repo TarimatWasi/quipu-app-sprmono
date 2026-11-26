@@ -37,8 +37,14 @@ class LockBoundariesTest {
 
   private static final String APPLICATION_LOCK_TIMEOUT = "15s";
 
-  /** spring.flyway.init-sqls sets 60s; Postgres shows it as 1min. */
-  private static final String MIGRATION_LOCK_TIMEOUT = "1min";
+  /**
+   * The limits of a connection of the application: lock wait, statement, idle transaction (60s,
+   * that Postgres shows as 1min).
+   */
+  private static final String APPLICATION_LIMITS = "15s 30s 1min";
+
+  /** spring.flyway.init-sqls: a lock wait of 60s (1min), no statement limit; the idle one stays. */
+  private static final String MIGRATION_LIMITS = "1min 0 1min";
 
   @Autowired LockGuestUseCase locks;
   @Autowired JdbcTemplate jdbc;
@@ -62,11 +68,15 @@ class LockBoundariesTest {
         .isInstanceOf(IllegalTransactionStateException.class);
   }
 
-  /** Every connection of the application waits for a row lock 15 s at most. */
+  /**
+   * Every connection of the application waits for a row lock 15 s at most, runs a statement 30 s at
+   * most (the lock wait still ends first) and is cut after a minute idle inside a transaction.
+   */
   @Test
-  void theConnectionsOfTheApplicationHaveALockTimeout() {
+  void theConnectionsOfTheApplicationHaveTheirLimits() {
     assertThat(jdbc.queryForObject("SHOW lock_timeout", String.class))
         .isEqualTo(APPLICATION_LOCK_TIMEOUT);
+    assertThat(jdbc.execute(LockBoundariesTest::limitsOf)).isEqualTo(APPLICATION_LIMITS);
   }
 
   /** A call to R2 made while rows are locked gives up before the lock of anyone waiting does. */
@@ -93,7 +103,7 @@ class LockBoundariesTest {
 
     migrateAProbe(new LockTimeoutProbe(seen, false));
 
-    assertThat(seen).isNotEmpty().containsOnly(MIGRATION_LOCK_TIMEOUT);
+    assertThat(seen).isNotEmpty().containsOnly(MIGRATION_LIMITS);
     assertThatEveryPooledConnectionHasTheApplicationLockTimeout();
   }
 
@@ -105,7 +115,7 @@ class LockBoundariesTest {
     assertThatThrownBy(() -> migrateAProbe(new LockTimeoutProbe(seen, true)))
         .isInstanceOf(RuntimeException.class);
 
-    assertThat(seen).containsOnly(MIGRATION_LOCK_TIMEOUT);
+    assertThat(seen).containsOnly(MIGRATION_LIMITS);
     assertThatEveryPooledConnectionHasTheApplicationLockTimeout();
   }
 
@@ -134,7 +144,7 @@ class LockBoundariesTest {
         all.add(pool.getConnection());
       }
       for (Connection connection : all) {
-        assertThat(lockTimeoutOf(connection)).isEqualTo(APPLICATION_LOCK_TIMEOUT);
+        assertThat(limitsOf(connection)).isEqualTo(APPLICATION_LIMITS);
       }
     } finally {
       for (Connection connection : all) {
@@ -143,15 +153,18 @@ class LockBoundariesTest {
     }
   }
 
-  private static String lockTimeoutOf(Connection connection) throws SQLException {
+  private static String limitsOf(Connection connection) throws SQLException {
     try (Statement statement = connection.createStatement();
-        var result = statement.executeQuery("SHOW lock_timeout")) {
+        var result =
+            statement.executeQuery(
+                "SELECT current_setting('lock_timeout') || ' ' || current_setting('statement_timeout')"
+                    + " || ' ' || current_setting('idle_in_transaction_session_timeout')")) {
       result.next();
       return result.getString(1);
     }
   }
 
-  /** Reads lock_timeout on the connection Flyway migrates with. */
+  /** Reads the limits of the connection Flyway migrates with. */
   private record LockTimeoutProbe(List<String> seen, boolean failAfterReading) implements Callback {
 
     @Override
@@ -167,7 +180,7 @@ class LockBoundariesTest {
     @Override
     public void handle(Event event, Context context) {
       try {
-        seen.add(lockTimeoutOf(context.getConnection()));
+        seen.add(limitsOf(context.getConnection()));
       } catch (SQLException e) {
         throw new IllegalStateException(e);
       }

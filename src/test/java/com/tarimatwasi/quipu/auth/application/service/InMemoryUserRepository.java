@@ -3,7 +3,9 @@ package com.tarimatwasi.quipu.auth.application.service;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
+import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort.FailedLogin;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
 import java.time.Duration;
 import java.time.Instant;
@@ -113,16 +115,18 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public void resetPassword(Long id, String newPasswordHash, Instant changedAt) {
+  public long resetPassword(Long id, String newPasswordHash, Instant changedAt) {
     changePassword(id, newPasswordHash, changedAt);
     resetTokens.remove(id);
+    return find(id).securityVersion();
   }
 
   @Override
-  public void resetPasswordAndName(
+  public long resetPasswordAndName(
       Long id, String newPasswordHash, Instant changedAt, String name) {
-    resetPassword(id, newPasswordHash, changedAt);
+    long version = resetPassword(id, newPasswordHash, changedAt);
     names.put(id, name);
+    return version;
   }
 
   @Override
@@ -136,13 +140,14 @@ final class InMemoryUserRepository implements UserRepositoryPort {
   }
 
   @Override
-  public boolean registerFailedLogin(Long id, Instant now, int maxAttempts, Duration lockDuration) {
+  public FailedLogin registerFailedLogin(
+      Long id, Instant now, int maxAttempts, Duration lockDuration) {
     UserAccount user = find(id);
     int attempts = user.failedLoginAttempts();
     Instant lockedUntil = user.lockedUntil();
     if (lockedUntil != null) {
       if (lockedUntil.isAfter(now)) {
-        return true;
+        return new FailedLogin(true, true);
       }
       attempts = 0;
       lockedUntil = null;
@@ -152,31 +157,32 @@ final class InMemoryUserRepository implements UserRepositoryPort {
       lockedUntil = now.plus(lockDuration);
     }
     save(withLock(user, attempts, lockedUntil));
-    return false;
+    return new FailedLogin(false, lockedUntil != null);
   }
 
   @Override
-  public void setGuestAccountStatus(Long guestId, String status) {
-    findAllByGuestIds(List.of(guestId))
-        .forEach(
-            user ->
-                save(
-                    new UserAccount(
-                        user.id(),
-                        user.email(),
-                        user.documentType(),
-                        user.documentNumber(),
-                        user.passwordHash(),
-                        user.role(),
-                        user.guestId(),
-                        user.mustChangePassword(),
-                        status,
-                        user.failedLoginAttempts(),
-                        user.lockedUntil(),
-                        user.passwordChangedAt(),
-                        "INACTIVE".equals(status) && !user.isDisabled()
-                            ? Math.incrementExact(user.securityVersion())
-                            : user.securityVersion())));
+  public List<Long> setGuestAccountStatus(Long guestId, String status) {
+    List<UserAccount> accounts = findAllByGuestIds(List.of(guestId));
+    accounts.forEach(
+        user ->
+            save(
+                new UserAccount(
+                    user.id(),
+                    user.email(),
+                    user.documentType(),
+                    user.documentNumber(),
+                    user.passwordHash(),
+                    user.role(),
+                    user.guestId(),
+                    user.mustChangePassword(),
+                    status,
+                    user.failedLoginAttempts(),
+                    user.lockedUntil(),
+                    user.passwordChangedAt(),
+                    "INACTIVE".equals(status) && !user.isDisabled()
+                        ? Math.incrementExact(user.securityVersion())
+                        : user.securityVersion())));
+    return "INACTIVE".equals(status) ? accounts.stream().map(UserAccount::id).toList() : List.of();
   }
 
   private long nextId = 1_000_000L;
@@ -195,7 +201,7 @@ final class InMemoryUserRepository implements UserRepositoryPort {
             documentType,
             documentNumber,
             unusablePasswordHash,
-            com.tarimatwasi.quipu.auth.domain.Role.GUEST,
+            Role.GUEST,
             guestId,
             true,
             "ACTIVE",

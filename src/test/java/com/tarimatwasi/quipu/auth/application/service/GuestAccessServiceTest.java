@@ -1,9 +1,7 @@
 package com.tarimatwasi.quipu.auth.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -14,11 +12,9 @@ import com.tarimatwasi.quipu.auth.application.port.in.GuestAccessUseCase.EmailCh
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.GuestAccountEmailNoticePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.MutableClock;
 import java.time.Instant;
 import java.util.List;
@@ -28,7 +24,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /** TAR-229: the account email of a guest, set at the registration or by the administrator. */
 class GuestAccessServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Long OTHER_GUEST = 8L;
@@ -42,7 +37,7 @@ class GuestAccessServiceTest {
           users,
           mock(AccessGrantRepositoryPort.class),
           mock(AccessMailPort.class),
-          new GuestAccountEmailChanger(users, notices, changes),
+          new GuestAccountEmailChanger(users, notices),
           new BCryptPasswordEncoder(4),
           new MutableClock(NOW));
 
@@ -153,15 +148,9 @@ class GuestAccessServiceTest {
   }
 
   @Test
-  void theNoticeGoesToThePreviousEmailAndAFailedOneIsOnlyLogged() {
+  void theNoticeGoesToThePreviousEmail() {
     service.noticeAccountEmailChanged("old@example.com", "new@example.com");
     verify(notices).accountEmailChanged("old@example.com", "new@example.com");
-
-    doThrow(new MailDeliveryException("provider down", null))
-        .when(notices)
-        .accountEmailChanged("old@example.com", "other@example.com");
-    assertThatCode(() -> service.noticeAccountEmailChanged("old@example.com", "other@example.com"))
-        .doesNotThrowAnyException();
   }
 
   @Test

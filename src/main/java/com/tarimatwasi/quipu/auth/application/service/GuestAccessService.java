@@ -9,7 +9,9 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountAlreadyExistsExcep
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
+import com.tarimatwasi.quipu.auth.domain.event.GuestAccountEmailChanged;
 import com.tarimatwasi.quipu.shared.access.AccessMode;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -107,6 +109,10 @@ public class GuestAccessService implements GuestAccessUseCase {
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = GuestAccountEmailChanged.class,
+      when = "#result.outcome().name() == 'CHANGED'",
+      args = {"#guestId"})
   public AccountEmailChange changeAccountEmail(Long guestId, String email) {
     return emails.change(guestId, email);
   }
@@ -156,6 +162,8 @@ public class GuestAccessService implements GuestAccessUseCase {
   }
 
   @Override
+  // The sweep of the business day reads them as the system (SystemActor).
+  @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM')")
   @Transactional(readOnly = true)
   public Map<Long, Instant> unusedAccessExpiries(Collection<Long> guestIds) {
     return guestIds.isEmpty() ? Map.of() : grants.unusedExpiries(guestIds);

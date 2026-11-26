@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.auth.infrastructure.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.AccountJwtAuthenticationConverter;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -24,9 +25,7 @@ class PasswordChangePendingMatcherTest {
 
   private static void signIn(String... authorities) {
     List<GrantedAuthority> granted =
-        java.util.Arrays.stream(authorities)
-            .<GrantedAuthority>map(SimpleGrantedAuthority::new)
-            .toList();
+        Arrays.stream(authorities).<GrantedAuthority>map(SimpleGrantedAuthority::new).toList();
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("7", null, granted));
   }

@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.contract.infrastructure.adapter.out.guest;
 
 import com.tarimatwasi.quipu.contract.application.port.out.ContractGuestPort;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestLabelsUseCase;
+import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.LockGuestUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
@@ -10,6 +11,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.Guest
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /** The contract module asks the guest module, through its exposed port, about one guest. */
@@ -47,7 +49,10 @@ public class GuestContractAdapter implements ContractGuestPort {
 
   @Override
   public GuestProfile profileOf(Long guestId) {
-    GuestSummaryView guest = guests.get(guestId).summary();
+    GuestSummaryView guest = guests.summariesOf(Set.of(guestId)).get(guestId);
+    if (guest == null) {
+      throw new GuestNotFoundException();
+    }
     return new GuestProfile(
         guest.status() == GuestState.ACTIVE, guest.type() == GuestKind.CONTRACT);
   }

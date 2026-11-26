@@ -28,7 +28,6 @@ import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Reason;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Why;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -53,7 +52,6 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
  */
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class GuestDocumentPurgerTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Instant NOW = Instant.parse("2026-10-24T15:00:00Z");
   private static final Instant ASKED = NOW.minusSeconds(3600);
@@ -75,7 +73,8 @@ class GuestDocumentPurgerTest {
   @Mock PlatformTransactionManager transactions;
 
   private GuestDocumentPurger purger() {
-    return new GuestDocumentPurger(guests, records, files, transactions, CLOCK, changes);
+    return new GuestDocumentPurger(
+        new GuestDocumentRemovals(guests, records), records, files, transactions, CLOCK);
   }
 
   private void nothingPending() {
@@ -100,17 +99,14 @@ class GuestDocumentPurgerTest {
   }
 
   @Test
-  void replacementRecordsEvidenceAndSignalInTheSameTransaction() {
+  void replacementRecordsItsEvidenceThenRemovesTheRowAndPendsTheObject() {
     GuestDocument old =
         new GuestDocument(DOCUMENT, GUEST, KEY, "old.pdf", "application/pdf", 10, NOW);
     purger().replaced(old, 71L, WHY, 1L);
-    var order = inOrder(records, changes);
+    var order = inOrder(records);
     order.verify(records).addAction(Kind.REPLACE, old, 71L, WHY, 1L, NOW);
     order.verify(records).removeDocument(old);
     order.verify(records).addPurge(KEY);
-    order
-        .verify(changes)
-        .changed(new ChangeSignals.Change(ChangeSignals.Kind.DOCUMENT, GUEST, false, null, null));
   }
 
   @Test

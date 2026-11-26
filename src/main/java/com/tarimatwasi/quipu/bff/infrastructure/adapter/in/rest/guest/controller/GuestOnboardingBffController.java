@@ -193,7 +193,7 @@ public class GuestOnboardingBffController {
                     blankToNull(contact.relationship()),
                     blankToNull(contact.phone())));
     Long guestId = guestOf(authentication);
-    return answer(guestId, onboarding.savePersonalData(guestId, data));
+    return answer(guestId, onboarding.savePersonalData(guestId, data).view());
   }
 
   @PostMapping(

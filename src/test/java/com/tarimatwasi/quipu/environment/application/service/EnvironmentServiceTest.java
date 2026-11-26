@@ -16,6 +16,7 @@ import com.tarimatwasi.quipu.environment.application.port.in.InvalidEnvironmentC
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.CreateCommand;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentKind;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentState;
+import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentUpdate;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.EnvironmentView;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.StatusFilter;
 import com.tarimatwasi.quipu.environment.application.port.in.ManageEnvironmentsUseCase.UpdateCommand;
@@ -25,7 +26,6 @@ import com.tarimatwasi.quipu.environment.application.port.out.EnvironmentReposit
 import com.tarimatwasi.quipu.environment.domain.Environment;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -34,7 +34,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -42,7 +44,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class EnvironmentServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long ID = TestIds.next();
   private static final Instant CREATED = Instant.parse("2026-10-01T15:00:00Z");
@@ -66,7 +67,7 @@ class EnvironmentServiceTest {
   @Mock EnvironmentOccupancyPort occupancy;
 
   private EnvironmentService service() {
-    return new EnvironmentService(repository, occupancy, CLOCK, changes);
+    return new EnvironmentService(repository, occupancy, CLOCK);
   }
 
   @Test
@@ -174,7 +175,8 @@ class EnvironmentServiceTest {
 
     var updated = service().update(ID, new UpdateCommand(0L, " 202 ", null));
 
-    assertThat(updated).isEqualTo(VIEW_201);
+    // The store answered the same label: the update states no relabel.
+    assertThat(updated).isEqualTo(new EnvironmentUpdate(VIEW_201, false));
   }
 
   @Test
@@ -215,21 +217,35 @@ class EnvironmentServiceTest {
 
   @Test
   void deactivatingAndReactivatingSetTheStatus() {
-    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
+    Environment inactive =
+        new Environment(
+            ID, "201", EnvironmentType.ROOM, EnvironmentStatus.INACTIVE, CREATED, CREATED, 1L);
+    when(repository.findByIdForUpdate(ID))
+        .thenReturn(Optional.of(ROOM_201))
+        .thenReturn(Optional.of(inactive));
     when(repository.updateStatus(eq(ID), eq(EnvironmentStatus.INACTIVE), any())).thenReturn(true);
     when(repository.updateStatus(eq(ID), eq(EnvironmentStatus.ACTIVE), any())).thenReturn(true);
 
-    service().deactivate(ID);
-    service().reactivate(ID);
+    assertThat(service().deactivate(ID)).isTrue();
+    assertThat(service().reactivate(ID)).isTrue();
 
     verify(repository).updateStatus(eq(ID), eq(EnvironmentStatus.INACTIVE), any());
     verify(repository).updateStatus(eq(ID), eq(EnvironmentStatus.ACTIVE), any());
   }
 
+  /** Reactivating an active environment changes nothing, so it states no fact. */
+  @Test
+  void reactivatingAnActiveEnvironmentChangesNothing() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
+
+    assertThat(service().reactivate(ID)).isFalse();
+
+    verify(repository, never()).updateStatus(any(), any(), any());
+  }
+
   @Test
   void changingTheStatusOfAnUnknownEnvironmentIsNotFound() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
-    when(repository.updateStatus(eq(ID), any(), any())).thenReturn(false);
 
     assertThatThrownBy(() -> service().deactivate(ID))
         .isInstanceOf(EnvironmentNotFoundException.class);
@@ -303,10 +319,10 @@ class EnvironmentServiceTest {
 
   @Test
   void codesOf_mapsEachIdToItsCodeAndAsksNothingForNoIds() {
-    when(repository.findAllByIds(java.util.Set.of(ID))).thenReturn(List.of(ROOM_201));
+    when(repository.findAllByIds(Set.of(ID))).thenReturn(List.of(ROOM_201));
 
-    assertThat(service().codesOf(java.util.Set.of(ID))).isEqualTo(java.util.Map.of(ID, "201"));
-    assertThat(service().codesOf(java.util.Set.of())).isEmpty();
-    verify(repository, never()).findAllByIds(java.util.Set.of());
+    assertThat(service().codesOf(Set.of(ID))).isEqualTo(Map.of(ID, "201"));
+    assertThat(service().codesOf(Set.of())).isEmpty();
+    verify(repository, never()).findAllByIds(Set.of());
   }
 }

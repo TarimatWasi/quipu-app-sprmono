@@ -27,7 +27,7 @@ class StayPaymentsTest {
         status == PaymentStatus.REJECTED ? "No coincide" : null,
         null,
         null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   private static PeriodState state(String endDate, Payment... payments) {
@@ -98,7 +98,7 @@ class StayPaymentsTest {
         reason,
         Instant.parse(reviewedAt),
         9L,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   @Test

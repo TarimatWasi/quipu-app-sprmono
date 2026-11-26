@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -164,10 +165,9 @@ class GuestDeactivationConcurrencyTest {
         OCTOBER,
         null,
         null,
-        java.util.List.of(
-            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
-                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
-                    .VOUCHER,
+        List.of(
+            new ManagePaymentsUseCase.ProofUpload(
+                ManagePaymentsUseCase.ProofType.VOUCHER,
                 new BigDecimal("800"),
                 "Efectivo",
                 new VoucherUpload("v.pdf", PDF))));

@@ -19,14 +19,18 @@ import com.tarimatwasi.quipu.payment.application.port.in.PaymentPeriodNotPayable
 import com.tarimatwasi.quipu.payment.application.port.in.VoucherAlreadyExistsException;
 import com.tarimatwasi.quipu.payment.application.port.out.PaymentFilePort;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
+import com.tarimatwasi.quipu.support.LockWaits;
 import com.tarimatwasi.quipu.support.PaymentRows;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
+import com.zaxxer.hikari.HikariDataSource;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.YearMonth;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,9 +40,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import javax.sql.DataSource;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
@@ -46,6 +53,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Two requests at once, through the real service and the real database: the row lock and the unique
@@ -62,8 +70,8 @@ class PaymentConcurrencyTest {
   @Autowired ManagePaymentsUseCase payments;
   @Autowired OwnPaymentsUseCase ownPayments;
   @Autowired JdbcTemplate jdbc;
-  @Autowired javax.sql.DataSource dataSource;
-  @Autowired org.springframework.transaction.support.TransactionTemplate transaction;
+  @Autowired DataSource dataSource;
+  @Autowired TransactionTemplate transaction;
   @MockitoBean PaymentFilePort files;
 
   private Long admin;
@@ -134,10 +142,9 @@ class PaymentConcurrencyTest {
         JANUARY,
         null,
         null,
-        java.util.List.of(
-            new com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofUpload(
-                com.tarimatwasi.quipu.payment.application.port.in.ManagePaymentsUseCase.ProofType
-                    .VOUCHER,
+        List.of(
+            new ManagePaymentsUseCase.ProofUpload(
+                ManagePaymentsUseCase.ProofType.VOUCHER,
                 new BigDecimal("800"),
                 null,
                 new VoucherUpload("v.pdf", PDF))));
@@ -180,7 +187,7 @@ class PaymentConcurrencyTest {
 
   private void approveNow(Long id) {
     // TAR-239: every proof of the payment verified at its declared amount.
-    java.util.Map<Long, BigDecimal> verified = new java.util.HashMap<>();
+    Map<Long, BigDecimal> verified = new HashMap<>();
     jdbc.query(
         "SELECT id, declared_amount FROM payment_proofs WHERE payment_id = ?",
         row -> {
@@ -229,7 +236,9 @@ class PaymentConcurrencyTest {
 
     var approval = start(new CyclicBarrier(1), () -> approveNow(id));
     long deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
-    while (!approval.isDone() && waitingForALock() == 0 && System.nanoTime() < deadline) {
+    while (!approval.isDone()
+        && LockWaits.waitingForALock(jdbc) == 0
+        && System.nanoTime() < deadline) {
       LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
     }
     assertThat(approval.isDone()).as("the approval waits for the contract").isFalse();
@@ -239,15 +248,6 @@ class PaymentConcurrencyTest {
     assertThat(approval.join()).containsInstanceOf(PaymentPeriodNotPayableException.class);
     assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
         .isEqualTo("PENDING");
-  }
-
-  private int waitingForALock() {
-    Integer waiting =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM pg_stat_activity"
-                + " WHERE wait_event_type = 'Lock' AND datname = current_database()",
-            Integer.class);
-    return waiting == null ? 0 : waiting;
   }
 
   private static void awaitLatch(CountDownLatch latch) {
@@ -298,11 +298,11 @@ class PaymentConcurrencyTest {
           .isEqualTo("APPROVED");
       // whatever was uploaded for the loser was removed
       var uploaded =
-          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+          Mockito.mockingDetails(files).getInvocations().stream()
               .filter(i -> i.getMethod().getName().equals("store"))
               .count();
       var removed =
-          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+          Mockito.mockingDetails(files).getInvocations().stream()
               .filter(i -> i.getMethod().getName().equals("delete"))
               .count();
       assertThat(removed).as("objects removed").isEqualTo(uploaded);
@@ -327,11 +327,11 @@ class PaymentConcurrencyTest {
       assertThat(livePayments()).isEqualTo(1);
       verify(files, atLeast(1)).store(any(), any());
       var uploaded =
-          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+          Mockito.mockingDetails(files).getInvocations().stream()
               .filter(i -> i.getMethod().getName().equals("store"))
               .count();
       var removed =
-          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+          Mockito.mockingDetails(files).getInvocations().stream()
               .filter(i -> i.getMethod().getName().equals("delete"))
               .count();
       assertThat(uploaded - removed).as("only the stored voucher is left").isEqualTo(1);
@@ -348,7 +348,7 @@ class PaymentConcurrencyTest {
     SecurityContextHolder.getContext()
         .setAuthentication(new TestingAuthenticationToken(admin.toString(), "x", "ROLE_ADMIN"));
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(() -> payments.registerDirect(direct()))
+    Assertions.assertThatThrownBy(() -> payments.registerDirect(direct()))
         .isInstanceOf(VoucherAlreadyExistsException.class);
     assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?", String.class, id))
         .isEqualTo("PENDING");
@@ -384,7 +384,7 @@ class PaymentConcurrencyTest {
 
     payments.registerDirect(direct());
 
-    org.mockito.Mockito.verify(files, org.mockito.Mockito.never()).delete(any());
+    Mockito.verify(files, Mockito.never()).delete(any());
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments", Integer.class)).isEqualTo(1);
   }
 
@@ -401,11 +401,10 @@ class PaymentConcurrencyTest {
       Runnable upload =
           () ->
               ownPayments.uploadForPeriod(
-                  new com.tarimatwasi.quipu.payment.application.port.in.OwnPaymentsUseCase
-                      .PeriodPayment(
+                  new OwnPaymentsUseCase.PeriodPayment(
                       guest,
                       JANUARY,
-                      java.util.List.of(
+                      List.of(
                           new com.tarimatwasi.quipu.payment.application.port.in
                               .ManagePaymentsUseCase.ProofUpload(
                               com.tarimatwasi.quipu.payment.application.port.in
@@ -423,11 +422,11 @@ class PaymentConcurrencyTest {
       assertThat(jdbc.queryForObject("SELECT status FROM payments", String.class))
           .isEqualTo("PENDING");
       var uploaded =
-          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+          Mockito.mockingDetails(files).getInvocations().stream()
               .filter(i -> i.getMethod().getName().equals("store"))
               .count();
       var removed =
-          org.mockito.Mockito.mockingDetails(files).getInvocations().stream()
+          Mockito.mockingDetails(files).getInvocations().stream()
               .filter(i -> i.getMethod().getName().equals("delete"))
               .count();
       assertThat(uploaded - removed).as("only the stored voucher is left").isEqualTo(1);
@@ -440,7 +439,7 @@ class PaymentConcurrencyTest {
   /** The conflict of the unique index reads the live payment on a second connection. */
   @Test
   void thePoolHasMoreThanOneConnection() {
-    var pool = (com.zaxxer.hikari.HikariDataSource) dataSource;
+    var pool = (HikariDataSource) dataSource;
 
     assertThat(pool.getMaximumPoolSize()).isGreaterThan(1);
   }

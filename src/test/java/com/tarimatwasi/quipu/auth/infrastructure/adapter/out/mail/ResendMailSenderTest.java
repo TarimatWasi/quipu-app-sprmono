@@ -13,6 +13,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.tarimatwasi.quipu.shared.adapter.out.email.ResendProperties;
 import java.io.IOException;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
@@ -183,5 +184,45 @@ class ResendMailSenderTest {
     sender.sendNotice("otra@example.test", new MailContent("Aviso", "<p>Texto</p>", "Texto"));
 
     server.verify();
+  }
+
+  /** TAR-127 (A0.5): an administrator without name gets the link of the activation. */
+  @Test
+  void anActivationLinksToTheActivationOfTheAccount() {
+    server
+        .expect(requestTo("https://api.resend.com/emails"))
+        .andExpect(
+            request ->
+                assertThat(((MockClientHttpRequest) request).getBodyAsString())
+                    .contains("https://app.example.test/activate-admin?code=" + CODE))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+    sender.send("admin@example.test", CODE, Duration.ofMinutes(30), true);
+
+    server.verify();
+  }
+
+  @Test
+  void theAccessOfAGuestGoesAsGiven() {
+    server
+        .expect(requestTo("https://api.resend.com/emails"))
+        .andExpect(jsonPath("$.to").value("guest@example.test"))
+        .andExpect(jsonPath("$.subject").value("Acceso"))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+    sender.sendAccess("guest@example.test", new MailContent("Acceso", "<p>x</p>", "x"));
+
+    server.verify();
+  }
+
+  /** The bean of the application builds its own client, with the timeouts that bound a hang. */
+  @Test
+  void theApplicationBuildsItsOwnClient() {
+    assertThat(
+            new ResendMailSender(
+                new ResendProperties("re_key", "Quipu <no-reply@example.test>"),
+                () -> "https://app.example.test",
+                templates))
+        .isNotNull();
   }
 }

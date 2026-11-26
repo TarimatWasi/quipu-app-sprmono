@@ -29,7 +29,6 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -61,8 +60,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @ImportTestcontainers(PostgresContainers.class)
 class AdministratorManagementContractTest {
 
-  private static final String SPEC =
-      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/administrators";
   private static final String PASSWORD = "Actor12345";
   private static final String BODY = "{\"currentPassword\":\"" + PASSWORD + "\"}";

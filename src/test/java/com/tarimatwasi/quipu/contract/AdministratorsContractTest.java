@@ -30,10 +30,10 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,8 +62,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ImportTestcontainers(PostgresContainers.class)
 class AdministratorsContractTest {
 
-  private static final String SPEC =
-      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/administrators";
   private static final String PASSWORD = "Creador12345";
   private static final String NEW_DOCUMENT = "22222222";
@@ -200,7 +199,7 @@ class AdministratorsContractTest {
                     "{\"code\":\"%s\",\"newPassword\":\"Nueva12345\",\"name\":\"Rosa Huaman\"}"
                         .formatted(code)))
         .andExpect(status().isNoContent());
-    org.assertj.core.api.Assertions.assertThat(
+    Assertions.assertThat(
             jdbc.queryForObject("SELECT name FROM users WHERE id = ?", String.class, id))
         .isEqualTo("Rosa Huaman");
     login(NEW_DOCUMENT, "Nueva12345")

@@ -14,7 +14,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.AdministratorNameRequiredE
 import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
@@ -28,9 +27,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -52,8 +52,8 @@ class PasswordRecoveryServiceTest {
     repository = new InMemoryUserRepository();
     service =
         new PasswordRecoveryService(
-            new ResetCodeIssuer(repository, clock),
-            repository,
+            new ResetCodeIssuer(repository, clock, TestSecurityFacts.over(repository)),
+            new AccountAccess(repository, TestSecurityFacts.over(repository)),
             encoder,
             mail,
             Runnable::run,
@@ -221,8 +221,8 @@ class PasswordRecoveryServiceTest {
     List<Runnable> queued = new ArrayList<>();
     var deferred =
         new PasswordRecoveryService(
-            new ResetCodeIssuer(users, clock),
-            users,
+            new ResetCodeIssuer(users, clock, TestSecurityFacts.over(users)),
+            new AccountAccess(users, TestSecurityFacts.over(users)),
             spiedEncoder,
             spiedMail,
             queued::add,
@@ -336,14 +336,6 @@ class PasswordRecoveryServiceTest {
   }
 
   @Test
-  void aFailedDeliveryIsNotShownToTheCaller() {
-    savedUser("ACTIVE");
-    mail.failWith(new MailDeliveryException("provider down", null));
-
-    assertThatCode(() -> service.requestReset(EMAIL)).doesNotThrowAnyException();
-  }
-
-  @Test
   void resetsThePasswordAndClearsThePendingChange() {
     UserAccount user = savedUser("ACTIVE");
     service.requestReset(EMAIL);
@@ -440,17 +432,9 @@ class PasswordRecoveryServiceTest {
 
   private static final class RecordingMail implements PasswordResetMailPort {
     final List<Sent> sent = new ArrayList<>();
-    private @Nullable MailDeliveryException failure;
-
-    void failWith(MailDeliveryException e) {
-      this.failure = e;
-    }
 
     @Override
     public void sendResetLink(String toEmail, String code, Duration validFor, boolean activation) {
-      if (failure != null) {
-        throw failure;
-      }
       sent.add(new Sent(toEmail, code, validFor, activation));
     }
 
@@ -500,7 +484,7 @@ class PasswordRecoveryServiceTest {
 
     service.resetPassword(mail.sent.get(0).code(), "Nueva12345", null);
 
-    org.mockito.Mockito.verify(grants).revokeLive(77L, clock.instant());
+    Mockito.verify(grants).revokeLive(77L, clock.instant());
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();
   }
 
@@ -509,8 +493,7 @@ class PasswordRecoveryServiceTest {
   void aLiveAccessOfTheGuestCannotBeTheNewPassword() {
     UserAccount user = guestAccount(false);
     service.requestReset(EMAIL);
-    org.mockito.Mockito.when(
-            grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
+    Mockito.when(grants.isLiveAccess(77L, ResetCodeIssuer.hash("Enlace-vivo-123"), clock.instant()))
         .thenReturn(true);
 
     assertThatThrownBy(
@@ -529,9 +512,8 @@ class PasswordRecoveryServiceTest {
     service.requestReset(EMAIL);
     String code = mail.sent.get(0).code();
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> service.resetPassword(code, code, null))
-        .isInstanceOf(com.tarimatwasi.quipu.auth.application.port.in.WeakPasswordException.class);
+    Assertions.assertThatThrownBy(() -> service.resetPassword(code, code, null))
+        .isInstanceOf(WeakPasswordException.class);
     service.resetPassword(code, "Nueva12345", null);
 
     assertThat(encoder.matches("Nueva12345", repository.find(user.id()).passwordHash())).isTrue();

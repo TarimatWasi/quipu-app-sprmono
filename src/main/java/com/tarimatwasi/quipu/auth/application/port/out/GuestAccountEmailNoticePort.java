@@ -5,9 +5,8 @@ public interface GuestAccountEmailNoticePort {
 
   /**
    * Sends the notice in the background, best-effort. The new email is only partly shown and nothing
-   * gives access (no link, code or document).
-   *
-   * @throws MailDeliveryException if the notice could not be handed over; the caller only logs it
+   * gives access (no link, code or document). Never throws: the adapter logs what it could not
+   * send.
    */
   void accountEmailChanged(String previousEmail, String newEmail);
 }

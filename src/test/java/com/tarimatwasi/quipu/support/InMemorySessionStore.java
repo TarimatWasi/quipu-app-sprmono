@@ -3,6 +3,7 @@ package com.tarimatwasi.quipu.support;
 import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -170,5 +171,25 @@ public final class InMemorySessionStore implements SessionStorePort {
             row ->
                 row.sidHash.equals(sidHash)
                     && (row.revokedAt != null || !now.isBefore(row.absoluteExpiresAt)));
+  }
+
+  @Override
+  public int deleteExpiredBefore(Instant cutoff, int max) {
+    List<Long> gone =
+        sessions.values().stream()
+            .filter(row -> row.absoluteExpiresAt.isBefore(cutoff))
+            .sorted(Comparator.comparing((Row row) -> row.absoluteExpiresAt))
+            .limit(max)
+            .map(row -> row.id)
+            .toList();
+    gone.forEach(sessions::remove);
+    tokens.removeIf(token -> gone.contains(token.sessionId));
+    return gone.size();
+  }
+
+  @Override
+  public Optional<String> sidHashOf(Long sessionId) {
+    Row row = sessions.get(sessionId);
+    return row == null ? Optional.empty() : Optional.of(row.sidHash);
   }
 }

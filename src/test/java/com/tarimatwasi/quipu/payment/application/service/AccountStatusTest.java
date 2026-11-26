@@ -27,7 +27,6 @@ import com.tarimatwasi.quipu.payment.application.port.out.RefundRepositoryPort;
 import com.tarimatwasi.quipu.payment.domain.ContractTerms;
 import com.tarimatwasi.quipu.payment.domain.Payment;
 import com.tarimatwasi.quipu.payment.domain.PaymentStatus;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
 import java.math.BigDecimal;
@@ -40,7 +39,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -81,8 +79,7 @@ class AccountStatusTest {
             contracts,
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
-            clock,
-            Mockito.mock(ChangeSignals.class));
+            clock);
   }
 
   private static GuestProfile guest(boolean contractType, boolean active) {
@@ -117,7 +114,7 @@ class AccountStatusTest {
   void anInactiveGuestWithAContractHasEveryChargedPeriodClassified() {
     when(guests.profileOf(GUEST)).thenReturn(guest(true, false));
     when(contracts.contractsOf(GUEST)).thenReturn(List.of(contractFromSeptember()));
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(approved(SEPTEMBER)));
+    when(payments.findAllByContracts(List.of(CONTRACT))).thenReturn(List.of(approved(SEPTEMBER)));
 
     List<PeriodView> periods = service.accountStatus(GUEST);
 
@@ -138,7 +135,7 @@ class AccountStatusTest {
     when(contracts.contractsOf(GUEST)).thenReturn(List.of());
 
     assertThat(service.accountStatus(GUEST)).isEmpty();
-    verify(payments, never()).findAllByContract(any());
+    verify(payments, never()).findAllByContracts(any());
   }
 
   @Test
@@ -153,7 +150,7 @@ class AccountStatusTest {
   @Test
   void anEnvironmentHasThePeriodsOfItsCurrentContractOnly() {
     when(contracts.currentContractsOf(ENVIRONMENT)).thenReturn(List.of(contractFromSeptember()));
-    when(payments.findAllByContract(CONTRACT)).thenReturn(List.of(approved(SEPTEMBER)));
+    when(payments.findAllByContracts(List.of(CONTRACT))).thenReturn(List.of(approved(SEPTEMBER)));
 
     List<PeriodView> periods = service.environmentAccountStatus(ENVIRONMENT);
 
@@ -172,7 +169,7 @@ class AccountStatusTest {
     when(contracts.currentContractsOf(ENVIRONMENT)).thenReturn(List.of());
 
     assertThat(service.environmentAccountStatus(ENVIRONMENT)).isEmpty();
-    verify(payments, never()).findAllByContract(any());
+    verify(payments, never()).findAllByContracts(any());
   }
 
   @Test

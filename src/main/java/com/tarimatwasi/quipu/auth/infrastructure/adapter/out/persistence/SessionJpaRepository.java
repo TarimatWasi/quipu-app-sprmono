@@ -59,6 +59,15 @@ interface SessionJpaRepository extends JpaRepository<SessionJpaEntity, Long> {
       @Param("reason") String reason,
       @Param("now") Instant now);
 
+  /** Their refresh tokens go with them (ON DELETE CASCADE). */
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query(
+      value =
+          "DELETE FROM sessions WHERE id IN (SELECT id FROM sessions"
+              + " WHERE absolute_expires_at < :cutoff ORDER BY absolute_expires_at LIMIT :max)",
+      nativeQuery = true)
+  int deleteExpiredBefore(@Param("cutoff") Instant cutoff, @Param("max") int max);
+
   @Query(
       value =
           "SELECT EXISTS (SELECT 1 FROM sessions WHERE sid_hash = :sidHash"

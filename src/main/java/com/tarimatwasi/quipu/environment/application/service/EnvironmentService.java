@@ -13,7 +13,12 @@ import com.tarimatwasi.quipu.environment.application.port.out.EnvironmentReposit
 import com.tarimatwasi.quipu.environment.domain.Environment;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentStatus;
 import com.tarimatwasi.quipu.environment.domain.EnvironmentType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentCreated;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentDeactivated;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentReactivated;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentRelabeled;
+import com.tarimatwasi.quipu.environment.domain.event.EnvironmentUpdated;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import com.tarimatwasi.quipu.shared.occupancy.Occupancy;
 import com.tarimatwasi.quipu.shared.paging.CursorPage;
 import com.tarimatwasi.quipu.shared.paging.PageQuery;
@@ -50,17 +55,12 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
   /** An environment that no contract or stay ever occupied. */
   private static final EnvironmentOccupancies NOTHING = new EnvironmentOccupancies(List.of());
 
-  private final ChangeSignals changes;
   private final EnvironmentRepositoryPort environments;
   private final EnvironmentOccupancyPort occupancy;
   private final Clock clock;
 
   EnvironmentService(
-      EnvironmentRepositoryPort environments,
-      EnvironmentOccupancyPort occupancy,
-      Clock clock,
-      ChangeSignals changes) {
-    this.changes = changes;
+      EnvironmentRepositoryPort environments, EnvironmentOccupancyPort occupancy, Clock clock) {
     this.environments = environments;
     this.occupancy = occupancy;
     this.clock = clock;
@@ -68,11 +68,13 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   @Override
   @Transactional
+  @PublishEvent(
+      type = EnvironmentCreated.class,
+      args = {"#result.id()"})
   public EnvironmentView create(CreateCommand command) {
     String code = visibleCode(command.code());
     try {
       Environment saved = environments.insert(code, EnvironmentType.valueOf(command.type().name()));
-      changed(saved.id());
       return views(List.of(saved)).getFirst();
     } catch (EnvironmentCodeAlreadyExistsException e) {
       throw new EnvironmentCodeTakenException(e);
@@ -81,7 +83,14 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   @Override
   @Transactional
-  public EnvironmentView update(Long id, UpdateCommand command) {
+  @PublishEvent(
+      type = EnvironmentUpdated.class,
+      args = {"#id"})
+  @PublishEvent(
+      type = EnvironmentRelabeled.class,
+      when = "#result.relabeled()",
+      args = {"#id"})
+  public EnvironmentUpdate update(Long id, UpdateCommand command) {
     if (command.code() == null && command.type() == null) {
       throw new EmptyEnvironmentUpdateException();
     }
@@ -97,9 +106,9 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
           environments
               .update(id, code, optionalType(command.type()))
               .orElseThrow(EnvironmentNotFoundException::new);
-      changed(id);
-      labelsChanged(current, updated);
-      return views(List.of(updated)).getFirst();
+      boolean relabeled =
+          !current.code().equals(updated.code()) || current.type() != updated.type();
+      return new EnvironmentUpdate(views(List.of(updated)).getFirst(), relabeled);
     } catch (EnvironmentCodeAlreadyExistsException e) {
       throw new EnvironmentCodeTakenException(e);
     }
@@ -107,16 +116,21 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   @Override
   @Transactional
-  public void deactivate(Long id) {
+  @PublishEvent(
+      type = EnvironmentDeactivated.class,
+      when = "#result",
+      args = {"#id"})
+  public boolean deactivate(Long id) {
     Environment environment =
         environments.findByIdForUpdate(id).orElseThrow(EnvironmentNotFoundException::new);
     if (environment.status() == EnvironmentStatus.INACTIVE) {
-      return;
+      return false;
     }
     if (occupancy.isOccupied(id)) {
       throw new EnvironmentOccupiedException(occupancy.occupantOf(id).orElse(null));
     }
     setStatus(id, EnvironmentStatus.INACTIVE);
+    return true;
   }
 
   @Override
@@ -131,29 +145,30 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
 
   @Override
   @Transactional
-  public void reactivate(Long id) {
+  @PublishEvent(
+      type = EnvironmentReactivated.class,
+      when = "#result",
+      args = {"#id"})
+  public boolean reactivate(Long id) {
+    Environment environment =
+        environments.findByIdForUpdate(id).orElseThrow(EnvironmentNotFoundException::new);
+    if (environment.status() == EnvironmentStatus.ACTIVE) {
+      return false;
+    }
     setStatus(id, EnvironmentStatus.ACTIVE);
+    return true;
   }
 
   private void setStatus(Long id, EnvironmentStatus status) {
     if (!environments.updateStatus(id, status, clock.instant())) {
       throw new EnvironmentNotFoundException();
     }
-    changed(id);
   }
 
-  private void labelsChanged(Environment current, Environment updated) {
-    if (!current.code().equals(updated.code()) || current.type() != updated.type()) {
-      Set<Long> recipients = occupancy.labelReadersOf(updated.id());
-      changes.changed(
-          new ChangeSignals.Change(
-              ChangeSignals.Kind.DIRECTORY, null, false, null, updated.id(), recipients));
-    }
-  }
-
-  private void changed(Long id) {
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.ENVIRONMENT, null, false, null, id));
+  @Override
+  @Transactional(readOnly = true)
+  public Set<Long> labelReadersOf(Long id) {
+    return occupancy.labelReadersOf(id);
   }
 
   @Override

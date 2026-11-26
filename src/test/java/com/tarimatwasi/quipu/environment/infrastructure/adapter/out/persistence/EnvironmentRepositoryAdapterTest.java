@@ -12,6 +12,8 @@ import com.tarimatwasi.quipu.shared.paging.PageQuery;
 import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,7 +42,7 @@ class EnvironmentRepositoryAdapterTest {
   @Test
   void findAll_walksTheWholeListByCodeWithoutRepeatingOrSkipping() {
     PageQuery query = new PageQuery(null, 2);
-    var codes = new java.util.ArrayList<String>();
+    var codes = new ArrayList<String>();
     int pages = 0;
     do {
       CursorPage<Environment> page = adapter.findAll(null, query);
@@ -89,10 +91,10 @@ class EnvironmentRepositoryAdapterTest {
 
   @Test
   void findAllByIds_readsOnlyTheEnvironmentsAsked() {
-    var one = adapter.insert("A1", com.tarimatwasi.quipu.environment.domain.EnvironmentType.ROOM);
-    adapter.insert("A2", com.tarimatwasi.quipu.environment.domain.EnvironmentType.CABIN);
+    var one = adapter.insert("A1", EnvironmentType.ROOM);
+    adapter.insert("A2", EnvironmentType.CABIN);
 
-    assertThat(adapter.findAllByIds(java.util.List.of(one.id(), -3L)))
+    assertThat(adapter.findAllByIds(List.of(one.id(), -3L)))
         .extracting(e -> e.code())
         .containsExactly("A1");
   }

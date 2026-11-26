@@ -86,7 +86,7 @@ class ContractOccupancyServiceTest {
         "a.pdf",
         10,
         terminated,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   private static Contract contract(Long id, @Nullable String end, @Nullable Instant terminated) {
@@ -103,6 +103,6 @@ class ContractOccupancyServiceTest {
         "a.pdf",
         10,
         terminated,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 }

@@ -2,6 +2,7 @@ package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.guest.filter;
 
 import com.tarimatwasi.quipu.auth.application.port.in.GuestAccountUseCase;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.BffExceptionHandler;
+import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.error.ServiceBusy;
 import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestKind;
 import com.tarimatwasi.quipu.guest.application.port.in.ManageGuestsUseCase.GuestState;
@@ -98,6 +99,11 @@ class GuestAreaFilter extends OncePerRequestFilter {
     try {
       refusal = area == null ? null : refusal(area);
     } catch (NumberFormatException | DataAccessException | TransactionException checkFailed) {
+      if (ServiceBusy.causedBy(checkFailed)) {
+        // v0.29.0: the database did not serve in time; nothing was done, it can be repeated.
+        ServiceBusy.write(response);
+        return;
+      }
       // TAR-205: fail closed, in the BFF shape; the log carries neither the principal nor the
       // message, which may hold either the principal or internal details.
       LOGGER.error("The guest area check failed: {}", checkFailed.getClass().getName());

@@ -6,8 +6,14 @@ import com.tarimatwasi.quipu.QuipuApplication;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import jakarta.persistence.Entity;
 import java.util.List;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Guard against silent rules: each scope that the skeleton already has must be selected by the rule
@@ -21,7 +27,7 @@ class ArchitectureScopesTest {
               .withImportOption(new ImportOption.DoNotIncludeTests())
               .importPackages(ArchitectureRules.ROOT));
 
-  private static List<String> names(java.util.function.Predicate<JavaClass> selector) {
+  private static List<String> names(Predicate<JavaClass> selector) {
     return PRODUCTION.stream().filter(selector).map(JavaClass::getName).toList();
   }
 
@@ -29,9 +35,7 @@ class ArchitectureScopesTest {
   void arq01_selectsTheApplicationClass() {
     // BE_SPR_ARQ_01 uses areMetaAnnotatedWith(SpringBootConfiguration): the application class
     // carries @SpringBootApplication, which is meta-annotated.
-    assertThat(
-            names(
-                c -> c.isMetaAnnotatedWith(org.springframework.boot.SpringBootConfiguration.class)))
+    assertThat(names(c -> c.isMetaAnnotatedWith(SpringBootConfiguration.class)))
         .containsExactly(QuipuApplication.class.getName());
   }
 
@@ -40,17 +44,14 @@ class ArchitectureScopesTest {
     assertThat(names(c -> c.getPackageName().startsWith(ArchitectureRules.ROOT + ".shared")))
         .as("shared package")
         .isNotEmpty();
-    assertThat(
-            names(
-                c -> c.isAnnotatedWith(org.springframework.context.annotation.Configuration.class)))
+    assertThat(names(c -> c.isAnnotatedWith(Configuration.class)))
         .as("@Configuration classes")
         .isNotEmpty();
     assertThat(
             names(
                 c ->
-                    c.isAssignableTo(org.springframework.web.filter.OncePerRequestFilter.class)
-                        && !c.isEquivalentTo(
-                            org.springframework.web.filter.OncePerRequestFilter.class)))
+                    c.isAssignableTo(OncePerRequestFilter.class)
+                        && !c.isEquivalentTo(OncePerRequestFilter.class)))
         .as("filters")
         .isNotEmpty();
   }
@@ -60,7 +61,17 @@ class ArchitectureScopesTest {
     // TAR_226_HEXAGONAL_PACKAGES selects its modules by name: each one must exist.
     assertThat(ArchitectureRules.HEXAGONAL_MODULES)
         .containsExactlyInAnyOrder(
-            "auth", "bff", "contract", "environment", "expense", "fine", "guest", "payment")
+            "audit",
+            "auth",
+            "bff",
+            "calendar",
+            "contract",
+            "environment",
+            "expense",
+            "fine",
+            "guest",
+            "notification",
+            "payment")
         .allSatisfy(
             m ->
                 assertThat(
@@ -113,15 +124,7 @@ class ArchitectureScopesTest {
     assertThat(names(c -> c.getPackageName().contains(".adapter.out.persistence")))
         .as("persistence adapters")
         .isNotEmpty();
-    assertThat(
-            names(
-                c ->
-                    c.isAnnotatedWith(
-                        org.springframework.web.bind.annotation.RestController.class)))
-        .as("controllers")
-        .isNotEmpty();
-    assertThat(names(c -> c.isAnnotatedWith(jakarta.persistence.Entity.class)))
-        .as("entities")
-        .isNotEmpty();
+    assertThat(names(c -> c.isAnnotatedWith(RestController.class))).as("controllers").isNotEmpty();
+    assertThat(names(c -> c.isAnnotatedWith(Entity.class))).as("entities").isNotEmpty();
   }
 }

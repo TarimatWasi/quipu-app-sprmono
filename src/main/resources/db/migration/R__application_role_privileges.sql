@@ -47,9 +47,16 @@ BEGIN
     EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE %I.guest_document_actions FROM %I',
                    target, app_role);
 
+    -- La traza de auditoría (V2) también: solo se inserta y se lee.
+    EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE %I.audit_event FROM %I',
+                   target, app_role);
+
     -- Comprobación final: ningún privilegio heredado (por ejemplo pg_write_all_data) deja modificar la evidencia.
     IF has_table_privilege(app_role, format('%I.guest_document_actions', target), 'UPDATE, DELETE, TRUNCATE') THEN
         RAISE EXCEPTION 'El rol de aplicación conserva UPDATE, DELETE o TRUNCATE sobre guest_document_actions por otra vía';
+    END IF;
+    IF has_table_privilege(app_role, format('%I.audit_event', target), 'UPDATE, DELETE, TRUNCATE') THEN
+        RAISE EXCEPTION 'El rol de aplicación conserva UPDATE, DELETE o TRUNCATE sobre audit_event por otra vía';
     END IF;
 END
 $$;

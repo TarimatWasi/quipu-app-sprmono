@@ -18,6 +18,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.GuestAccountEmailNoticePo
 import com.tarimatwasi.quipu.auth.application.port.out.GuestEmailVerificationMailPort;
 import com.tarimatwasi.quipu.support.TestIds;
 import jakarta.servlet.http.Cookie;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -158,12 +159,12 @@ class GuestEmailVerificationContractTest extends PaymentsContractSupport {
 
   @Test
   void itsOwnEmailIsUnchangedAndTheEmailOfAnotherAccountIsTaken() throws Exception {
-    request(CONTRACT, guest(), CURRENT.toUpperCase(java.util.Locale.ROOT))
+    request(CONTRACT, guest(), CURRENT.toUpperCase(Locale.ROOT))
         .andExpect(status().isBadRequest())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("EMAIL_UNCHANGED"))
         .andExpect(jsonPath("$.field").value("email"));
-    request(CONTRACT, guest(), ADMIN.toUpperCase(java.util.Locale.ROOT))
+    request(CONTRACT, guest(), ADMIN.toUpperCase(Locale.ROOT))
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("ACCOUNT_EMAIL_TAKEN"))

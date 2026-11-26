@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -241,9 +243,7 @@ class EnvironmentsBffControllerTest {
         statuses.add(result.get());
       }
     }
-    org.assertj.core.api.Assertions.assertThat(statuses)
-        .containsOnly(200, 409)
-        .containsOnlyOnce(200);
+    Assertions.assertThat(statuses).containsOnly(200, 409).containsOnlyOnce(200);
   }
 
   /** TAR-276: an edit from a version the environment no longer has is 409. */
@@ -461,7 +461,7 @@ class EnvironmentsBffControllerTest {
             .andReturn()
             .getResponse()
             .getContentAsString();
-    return com.jayway.jsonpath.JsonPath.read(body, "$.id");
+    return JsonPath.read(body, "$.id");
   }
 
   private void post204(String id, String action) throws Exception {
@@ -488,7 +488,7 @@ class EnvironmentsBffControllerTest {
     if (response.getStatus() != 200) {
       return 0;
     }
-    Number version = com.jayway.jsonpath.JsonPath.read(response.getContentAsString(), "$.version");
+    Number version = JsonPath.read(response.getContentAsString(), "$.version");
     return version.longValue();
   }
 
@@ -520,7 +520,7 @@ class EnvironmentsBffControllerTest {
             .andReturn()
             .getResponse()
             .getContentAsString();
-    String cursor = com.jayway.jsonpath.JsonPath.read(first, "$.nextCursor");
+    String cursor = JsonPath.read(first, "$.nextCursor");
 
     mockMvc
         .perform(get(URL).param("limit", "2").param("after", cursor).cookie(admin()))
@@ -552,10 +552,9 @@ class EnvironmentsBffControllerTest {
   @Test
   void creatingAnEnvironmentAnswersItsLocation() throws Exception {
     var body = create("301", "ROOM").andExpect(status().isCreated()).andReturn().getResponse();
-    String id = com.jayway.jsonpath.JsonPath.read(body.getContentAsString(), "$.id");
+    String id = JsonPath.read(body.getContentAsString(), "$.id");
 
-    org.assertj.core.api.Assertions.assertThat(body.getHeader("Location"))
-        .isEqualTo(URL + "/" + id);
+    Assertions.assertThat(body.getHeader("Location")).isEqualTo(URL + "/" + id);
   }
 
   /** The ids as the session of the test shows them. */

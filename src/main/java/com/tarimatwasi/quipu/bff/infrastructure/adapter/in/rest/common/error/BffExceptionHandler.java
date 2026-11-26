@@ -56,6 +56,8 @@ import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.shared.masking.UnknownMaskedIdException;
 import com.tarimatwasi.quipu.shared.paging.InvalidCursorException;
+import jakarta.persistence.LockTimeoutException;
+import jakarta.persistence.PessimisticLockException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -231,8 +233,8 @@ public class BffExceptionHandler {
    */
   @ExceptionHandler({
     PessimisticLockingFailureException.class,
-    jakarta.persistence.PessimisticLockException.class,
-    jakarta.persistence.LockTimeoutException.class
+    PessimisticLockException.class,
+    LockTimeoutException.class
   })
   public ResponseEntity<BffErrorResponse> handleLockConflict() {
     return handleConcurrentModification();
@@ -709,6 +711,7 @@ public class BffExceptionHandler {
           throw new IllegalStateException("A payment proof id is never part of a BFF path");
       // A refund is only listed (TAR-240); it is not edited nor deleted, so no path carries it.
       case REFUND -> throw new IllegalStateException("A refund id is never part of a BFF path");
+      case NOTIFICATION -> BffNotificationExceptionHandler.notificationNotFound();
     };
   }
 

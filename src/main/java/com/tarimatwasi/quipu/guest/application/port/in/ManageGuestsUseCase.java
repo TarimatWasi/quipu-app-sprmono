@@ -153,6 +153,12 @@ public interface ManageGuestsUseCase {
   Map<Long, GuestRef> refsOf(Collection<Long> ids, LocalDate from, LocalDate to);
 
   /**
+   * The summaries of the guests of those ids that exist, whatever their state, read together: the
+   * rows of another module name their guests with it, never with a {@link #get} per guest.
+   */
+  Map<Long, GuestSummaryView> summariesOf(Collection<Long> ids);
+
+  /**
    * Lists one page of the guests of the filter, ordered by document type and number and read by
    * last index (BE-SPR-WEB-08); {@code type == null} returns both kinds.
    *
@@ -191,7 +197,7 @@ public interface ManageGuestsUseCase {
    * @throws GuestNotFoundException if there is no guest with that id
    * @throws GuestHasActiveContractException if the guest has a contract in force
    */
-  void deactivate(Long id);
+  boolean deactivate(Long id);
 
   /**
    * RF-13, RN-12, CU-28: the guest comes back to the state it had when it was deactivated and its
@@ -201,5 +207,8 @@ public interface ManageGuestsUseCase {
    * @throws com.tarimatwasi.quipu.shared.debt.GuestHasPendingDebtException if the guest owes
    *     periods (RN-25, RN-35)
    */
-  GuestSummaryView reactivate(Long id);
+  GuestReactivation reactivate(Long id);
+
+  /** The outcome of {@link #reactivate}: {@code happened} is false for a guest not inactive. */
+  record GuestReactivation(GuestSummaryView view, boolean happened) {}
 }

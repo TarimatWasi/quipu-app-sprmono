@@ -33,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -366,11 +367,11 @@ class BffExceptionHandlerTest {
   @Test
   void aVersionConflictOnAPaymentIsAlreadyResolved() {
     var payment =
-        new org.springframework.orm.ObjectOptimisticLockingFailureException(
+        new ObjectOptimisticLockingFailureException(
             "com.tarimatwasi.quipu.payment.infrastructure.adapter.out.persistence.PaymentJpaEntity",
             7L);
     var other =
-        new org.springframework.orm.ObjectOptimisticLockingFailureException(
+        new ObjectOptimisticLockingFailureException(
             "com.tarimatwasi.quipu.contract.infrastructure.adapter.out.persistence.ContractJpaEntity",
             7L);
 

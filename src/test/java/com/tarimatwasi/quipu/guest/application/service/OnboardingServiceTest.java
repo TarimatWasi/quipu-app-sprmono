@@ -15,6 +15,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestDocumentUnavailableE
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingConflictException.Reason;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
+import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.PersonalDataInput;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestAccountPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestConsentAlreadyExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
@@ -24,12 +25,13 @@ import com.tarimatwasi.quipu.guest.application.port.out.OnboardingRepositoryPort
 import com.tarimatwasi.quipu.guest.domain.DocumentType;
 import com.tarimatwasi.quipu.guest.domain.Guest;
 import com.tarimatwasi.quipu.guest.domain.GuestConsent;
+import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestStatus;
 import com.tarimatwasi.quipu.guest.domain.GuestType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.FileKind;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.R2Failures;
+import com.tarimatwasi.quipu.support.TestTransactions;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -39,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -46,7 +49,6 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 /** TAR-137: what the contract tests cannot force, such as a failed insert after the upload. */
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class OnboardingServiceTest {
-  private final ChangeSignals changes = org.mockito.Mockito.mock(ChangeSignals.class);
 
   private static final Long GUEST = 7L;
   private static final Instant NOW = Instant.parse("2026-10-14T15:00:00Z");
@@ -62,13 +64,7 @@ class OnboardingServiceTest {
 
   private OnboardingService service() {
     return new OnboardingService(
-        guests,
-        accounts,
-        records,
-        new GuestDocumentUploader(records, files, changes),
-        consents,
-        CLOCK,
-        changes);
+        guests, accounts, records, new GuestDocumentUploader(records, files), consents, CLOCK);
   }
 
   private static Guest onboarding(@Nullable Instant personalData, @Nullable Instant documents) {
@@ -86,6 +82,24 @@ class OnboardingServiceTest {
         null);
   }
 
+  /** Only a new name renames the guest: the history shows names, not phones. */
+  @Test
+  void personalDataRenamesOnlyWhenTheNameChanges() {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(null, null)));
+    when(guests.save(any())).thenAnswer(call -> call.getArgument(0));
+
+    assertThat(
+            service()
+                .savePersonalData(GUEST, new PersonalDataInput("Ana", "999111222", null))
+                .renamed())
+        .isFalse();
+    assertThat(
+            service()
+                .savePersonalData(GUEST, new PersonalDataInput("Ana Quispe", "999111222", null))
+                .renamed())
+        .isTrue();
+  }
+
   @Test
   void aDocumentWhoseRowIsNotSavedIsRemovedFromTheBucket() {
     when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(NOW, null)));
@@ -98,6 +112,25 @@ class OnboardingServiceTest {
     verify(files).delete("guest-documents/k");
   }
 
+  /** The commit was sent and its answer lost: the row may exist, so its document stays. */
+  @Test
+  void anUnknownOutcomeOfTheCommitKeepsTheDocument(CapturedOutput output) {
+    when(guests.findByIdForUpdate(GUEST)).thenReturn(Optional.of(onboarding(NOW, null)));
+    when(files.store(PDF, FileKind.PDF)).thenReturn("guest-documents/k");
+    when(records.addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong()))
+        .thenReturn(
+            new GuestDocument(3L, GUEST, "guest-documents/k", "d.pdf", "application/pdf", 4L, NOW));
+
+    TestTransactions.endingWith(
+        TestTransactions.UNKNOWN,
+        () -> service().uploadDocument(GUEST, new DocumentUpload("d.pdf", PDF)));
+
+    verify(files, never()).delete(anyString());
+    assertThat(output)
+        .contains("A document of guest " + GUEST + " stays in the bucket")
+        .doesNotContain("guest-documents/k");
+  }
+
   /** TAR-205: a failed cleanup is logged with the guest id, never the storage key. */
   @Test
   void aFailedCleanupIsLoggedWithoutTheStorageKey(CapturedOutput output) {
@@ -105,7 +138,7 @@ class OnboardingServiceTest {
     when(files.store(PDF, FileKind.PDF)).thenReturn("guest-documents/k");
     when(records.addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong()))
         .thenThrow(new IllegalStateException("insert failed"));
-    org.mockito.Mockito.doThrow(
+    Mockito.doThrow(
             new GuestDocumentStorageException(
                 "down", R2Failures.clientFailure("guest-documents/k")))
         .when(files)

@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 class AccountUserDetailsServiceTest {
@@ -85,7 +86,7 @@ class AccountUserDetailsServiceTest {
         .isInstanceOf(UsernameNotFoundException.class);
     assertThatThrownBy(() -> service.loadUserByUsername("DNI:1:2"))
         .isInstanceOf(UsernameNotFoundException.class);
-    org.mockito.Mockito.verifyNoInteractions(users);
+    Mockito.verifyNoInteractions(users);
   }
 
   private static UserAccount account(Role role, String status, @Nullable Instant lockedUntil) {

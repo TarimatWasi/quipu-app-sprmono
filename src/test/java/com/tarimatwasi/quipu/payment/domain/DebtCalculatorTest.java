@@ -3,8 +3,10 @@ package com.tarimatwasi.quipu.payment.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -32,7 +34,7 @@ class DebtCalculatorTest {
         status == PaymentStatus.REJECTED ? "No coincide" : null,
         null,
         null,
-        java.time.Instant.EPOCH);
+        Instant.EPOCH);
   }
 
   private static List<String> debt(ContractTerms terms, List<Payment> payments) {
@@ -131,16 +133,16 @@ class DebtCalculatorTest {
         ContractTerms.of(
             LocalDate.parse("2026-09-01"),
             null,
-            java.time.Instant.parse("2026-10-11T03:00:00Z"),
-            java.time.ZoneId.of("America/Lima"),
+            Instant.parse("2026-10-11T03:00:00Z"),
+            ZoneId.of("America/Lima"),
             10,
             0);
     var dueLater =
         ContractTerms.of(
             LocalDate.parse("2026-09-01"),
             null,
-            java.time.Instant.parse("2026-10-11T03:00:00Z"),
-            java.time.ZoneId.of("America/Lima"),
+            Instant.parse("2026-10-11T03:00:00Z"),
+            ZoneId.of("America/Lima"),
             20,
             0);
 

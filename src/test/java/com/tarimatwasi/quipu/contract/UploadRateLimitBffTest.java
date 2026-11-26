@@ -26,7 +26,6 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
-import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,8 +54,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 @ImportTestcontainers(PostgresContainers.class)
 class UploadRateLimitBffTest {
 
-  private static final String SPEC =
-      Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String ORIGIN = "http://localhost:3000";
 
   @Autowired MockMvc mockMvc;

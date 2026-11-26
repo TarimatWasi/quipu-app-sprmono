@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /** RF-01: create, read, edit and list the rentable environments. */
@@ -84,7 +85,13 @@ public interface ManageEnvironmentsUseCase {
    * @throws org.springframework.dao.OptimisticLockingFailureException if the version is not the
    *     current one
    */
-  EnvironmentView update(Long id, UpdateCommand command);
+  EnvironmentUpdate update(Long id, UpdateCommand command);
+
+  /**
+   * The outcome of {@link #update}: the environment as it is now and whether its label (code or
+   * type) changed, the fact the history of its occupants depends on.
+   */
+  record EnvironmentUpdate(EnvironmentView view, boolean relabeled) {}
 
   /**
    * Reads one environment, active or not.
@@ -97,17 +104,25 @@ public interface ManageEnvironmentsUseCase {
    * Takes the environment out of the operational listings, keeping its history (RN-12). Doing it to
    * an inactive environment changes nothing.
    *
+   * @return false if it was already inactive: a repetition states no new fact
    * @throws EnvironmentNotFoundException if there is no environment with that id
    */
-  void deactivate(Long id);
+  boolean deactivate(Long id);
 
   /**
    * Brings an inactive environment back to the operational listings. Doing it to an active
    * environment changes nothing.
    *
+   * @return true if it was inactive and is active now
    * @throws EnvironmentNotFoundException if there is no environment with that id
    */
-  void reactivate(Long id);
+  boolean reactivate(Long id);
+
+  /**
+   * The guests that see the label of the environment in their own history (contracts and stays,
+   * cancelled ones included): who must refresh when it is relabeled.
+   */
+  Set<Long> labelReadersOf(Long id);
 
   /**
    * Lists one page of the environments of the filter, ordered by code and read by last index

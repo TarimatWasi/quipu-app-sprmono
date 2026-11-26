@@ -5,7 +5,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.tarimatwasi.quipu.auth.application.port.in.StreamSessionUseCase;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.masking.IdMaskProperties;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
 import com.tarimatwasi.quipu.support.SessionIds;
@@ -59,7 +58,7 @@ class ChangeStreamWriterTest {
     var registry =
         new ChangeStreamRegistry(
             new ChangeStreamProperties(
-                4, 64, 64, 8192, Duration.ofSeconds(20), Duration.ofSeconds(30)),
+                4, 64, 64, 8192, Duration.ofSeconds(20), Duration.ofSeconds(30), true),
             clock);
     try (var transport = new Transport(temporary, writer(registry, clock), authentication(clock))) {
       transport.open(trickle);

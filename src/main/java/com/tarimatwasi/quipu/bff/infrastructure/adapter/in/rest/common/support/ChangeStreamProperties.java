@@ -7,7 +7,11 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-/** Initial resource bounds of ADR-SSE-01; no deployment-specific defaults. */
+/**
+ * Initial resource bounds of ADR-SSE-01; no deployment-specific defaults. {@code notificationKeys}
+ * turns on the bell keys of contract v0.27.0: the contract asks to deploy compatible consumers
+ * before a new resource key is enabled.
+ */
 @Validated
 @ConfigurationProperties("app.changes")
 public record ChangeStreamProperties(
@@ -16,7 +20,8 @@ public record ChangeStreamProperties(
     @Min(1) @Max(64) int pendingKeys,
     @Min(256) @Max(8192) int frameBytes,
     @NotNull Duration heartbeat,
-    @NotNull Duration maxDuration) {
+    @NotNull Duration maxDuration,
+    boolean notificationKeys) {
   public ChangeStreamProperties {
     if (heartbeat != null
         && (heartbeat.isZero()

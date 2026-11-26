@@ -25,7 +25,6 @@ import com.tarimatwasi.quipu.payment.domain.ProofAuthor;
 import com.tarimatwasi.quipu.payment.domain.ProofFile;
 import com.tarimatwasi.quipu.payment.domain.ProofKind;
 import com.tarimatwasi.quipu.payment.domain.VoucherType;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.file.TestPdfs;
 import com.tarimatwasi.quipu.support.MutableClock;
 import com.tarimatwasi.quipu.support.TestIds;
@@ -40,7 +39,6 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
@@ -91,8 +89,7 @@ abstract class PaymentServiceFixture {
             contracts,
             new PaymentDirectory(guests, environments, stays, reviewers),
             refunds,
-            clock,
-            Mockito.mock(ChangeSignals.class));
+            clock);
   }
 
   static Payment payment(PaymentStatus status, @Nullable YearMonth period, @Nullable Long stay) {

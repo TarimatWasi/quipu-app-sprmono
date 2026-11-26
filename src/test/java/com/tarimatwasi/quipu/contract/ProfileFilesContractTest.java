@@ -6,9 +6,12 @@ import com.tarimatwasi.quipu.auth.infrastructure.config.CorsProperties;
 import com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.auth.support.SessionCookieProperties;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -47,7 +50,7 @@ class ProfileFilesContractTest {
 
   private static Map<String, Object> load(String file) throws IOException {
     var sources = new YamlPropertySourceLoader().load(file, new ClassPathResource(file));
-    var all = new java.util.HashMap<String, Object>();
+    var all = new HashMap<String, Object>();
     for (var source : sources) {
       var enumerable = (EnumerablePropertySource<?>) source;
       for (var name : enumerable.getPropertyNames()) {
@@ -270,7 +273,7 @@ class ProfileFilesContractTest {
     // MockEnvironment has neither system properties nor environment variables: a placeholder that
     // needs JWT_SECRET, DATABASE_URL or similar cannot be resolved here and throws.
     var env = new MockEnvironment();
-    var sources = new java.util.ArrayList<PropertySource<?>>();
+    var sources = new ArrayList<PropertySource<?>>();
     sources.addAll(
         new YamlPropertySourceLoader()
             .load("local", new ClassPathResource("application-local.yml")));
@@ -279,9 +282,9 @@ class ProfileFilesContractTest {
     sources.forEach(env.getPropertySources()::addLast);
     env.getPropertySources().addLast(new RandomValuePropertySource());
 
-    var names = new java.util.TreeSet<String>();
+    var names = new TreeSet<String>();
     sources.forEach(
-        s -> names.addAll(java.util.List.of(((EnumerablePropertySource<?>) s).getPropertyNames())));
+        s -> names.addAll(List.of(((EnumerablePropertySource<?>) s).getPropertyNames())));
     names.forEach(env::getProperty);
 
     assertThat(env.getProperty("spring.datasource.url"))

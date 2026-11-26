@@ -1,5 +1,6 @@
 package com.tarimatwasi.quipu.shared.file;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -110,7 +111,7 @@ final class ActiveEntries {
   }
 
   private static Set<COSName> names(String... names) {
-    return Set.of(java.util.Arrays.stream(names).map(ActiveEntries::name).toArray(COSName[]::new));
+    return Set.of(Arrays.stream(names).map(ActiveEntries::name).toArray(COSName[]::new));
   }
 
   /**

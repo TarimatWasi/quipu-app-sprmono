@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -266,8 +267,7 @@ class StayRepositoryAdapterTest {
             LocalDate.parse("2026-10-25"),
             BigDecimal.TEN);
 
-    assertThatThrownBy(() -> adapter.update(missing))
-        .isInstanceOf(java.util.NoSuchElementException.class);
+    assertThatThrownBy(() -> adapter.update(missing)).isInstanceOf(NoSuchElementException.class);
   }
 
   @Test

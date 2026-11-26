@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,7 +27,6 @@ import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException;
 import com.tarimatwasi.quipu.auth.application.port.out.AccountTakenException.Taken;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -49,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -77,8 +76,11 @@ class AdministratorServiceTest {
   private AdministratorService serviceWithLimit(int max) {
     return new AdministratorService(
         new AdministratorRegistrar(
-            new AdministratorReauthentication(users, encoder, clock), store, () -> max),
-        new ResetCodeIssuer(users, clock),
+            new AdministratorReauthentication(users, encoder, clock, TestSecurityFacts.over(users)),
+            store,
+            () -> max,
+            TestSecurityFacts.over(users, store)),
+        new ResetCodeIssuer(users, clock, TestSecurityFacts.over(users, store)),
         mail,
         notices,
         store,
@@ -272,10 +274,11 @@ class AdministratorServiceTest {
     assertThat(users.findById(created.id())).isPresent();
   }
 
+  /** The account is already committed: a failure of the database meanwhile only means no link. */
   @Test
-  void anEmailThatFailsLeavesTheAccountCreatedWithEmailSentFalse() {
+  void aDatabaseFailureWhileSendingTheLinkLeavesTheAccountCreatedWithEmailSentFalse() {
     when(mail.sendAccessLinkNow(anyString(), anyString(), any()))
-        .thenThrow(new MailDeliveryException("refused", null));
+        .thenThrow(new DataAccessResourceFailureException("down"));
 
     AdministratorCreated created = service.create(command(PASSWORD));
 
@@ -295,21 +298,6 @@ class AdministratorServiceTest {
     verify(notices, never()).administratorCreated(eq(CREATOR_EMAIL), anyString(), anyString());
     verify(notices, never()).administratorCreated(eq(NEW_EMAIL), anyString(), anyString());
     assertThat(store.lastExcluded.get()).containsExactlyInAnyOrder(creatorId, created.id());
-  }
-
-  @Test
-  void aNoticeThatFailsDoesNotUndoTheCreationNorStopTheOtherNotices() {
-    store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
-    store.add(admin(TestIds.next(), "c@example.test", "11111113", false, "ACTIVE"));
-    doThrow(new MailDeliveryException("down", null))
-        .when(notices)
-        .administratorCreated(eq("b@example.test"), anyString(), anyString());
-
-    AdministratorCreated created = service.create(command(PASSWORD));
-
-    assertThat(users.findById(created.id())).isPresent();
-    assertThat(created.emailSent()).isTrue();
-    verify(notices).administratorCreated("c@example.test", CREATOR_EMAIL, NEW_EMAIL);
   }
 
   @Test
@@ -384,9 +372,6 @@ class AdministratorServiceTest {
   void theLogsCarryOnlyTheIdsOfTheAccounts() {
     when(mail.sendAccessLinkNow(anyString(), anyString(), any())).thenReturn(false);
     store.add(admin(TestIds.next(), "b@example.test", "11111112", false, "ACTIVE"));
-    doThrow(new MailDeliveryException("down " + NEW_EMAIL, null))
-        .when(notices)
-        .administratorCreated(anyString(), anyString(), anyString());
 
     AdministratorCreated created = service.create(command(PASSWORD));
 

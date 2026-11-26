@@ -6,10 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -109,6 +111,85 @@ class AsyncBackgroundTasksTest {
 
     assertThat(finished).isTrue();
     assertThat(tasks.isRunning()).isFalse();
+  }
+
+  @Test
+  void startAfterAStop_acceptsTasksAgain() throws Exception {
+    try (var tasks = new AsyncBackgroundTasks()) {
+      tasks.start();
+      tasks.stop();
+      tasks.start();
+      var ran = new CountDownLatch(1);
+
+      tasks.run(ran::countDown);
+
+      assertThat(ran.await(5, TimeUnit.SECONDS)).as("a restarted executor runs tasks").isTrue();
+      assertThat(tasks.isRunning()).isTrue();
+    }
+  }
+
+  /** At the limit, or while stopping, a task is dropped: the person asks again later. */
+  @Test
+  void aTaskOverTheLimitOrWhileStoppingIsDropped() {
+    var release = new CountDownLatch(1);
+    var ran = new AtomicInteger();
+    try (var tasks = new AsyncBackgroundTasks(Duration.ofMillis(50))) {
+      tasks.start();
+      for (int i = 0; i < 10; i++) {
+        tasks.run(() -> await(release));
+      }
+
+      tasks.run(ran::incrementAndGet);
+      release.countDown();
+      tasks.stop();
+      tasks.run(ran::incrementAndGet);
+    }
+
+    assertThat(ran).hasValue(0);
+  }
+
+  /** A closed executor refuses the task: it is dropped, and its permit goes back. */
+  @Test
+  void aTaskTheClosedExecutorRefusesIsDropped() {
+    var tasks = new AsyncBackgroundTasks(Duration.ofMillis(50));
+    tasks.close();
+    tasks.start();
+    var ran = new AtomicInteger();
+
+    tasks.run(ran::incrementAndGet);
+
+    assertThat(ran).hasValue(0);
+  }
+
+  /** The stop does not wait past its bound for a task that does not end. */
+  @Test
+  void theStopGivesUpOnATaskThatDoesNotEnd() {
+    var release = new CountDownLatch(1);
+    try (var tasks = new AsyncBackgroundTasks(Duration.ofMillis(50))) {
+      tasks.start();
+      tasks.run(() -> await(release));
+
+      tasks.stop();
+
+      assertThat(tasks.isRunning()).isFalse();
+      release.countDown();
+    }
+  }
+
+  /** An interrupted stop keeps the interruption for its caller. */
+  @Test
+  void anInterruptedStopKeepsTheInterruption() {
+    var release = new CountDownLatch(1);
+    try (var tasks = new AsyncBackgroundTasks(Duration.ofSeconds(5))) {
+      tasks.start();
+      tasks.run(() -> await(release));
+
+      Thread.currentThread().interrupt();
+      tasks.stop();
+
+      assertThat(Thread.interrupted()).isTrue();
+      release.countDown();
+    }
   }
 
   @Test

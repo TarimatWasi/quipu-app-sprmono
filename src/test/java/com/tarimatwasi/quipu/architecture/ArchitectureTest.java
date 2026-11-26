@@ -12,4 +12,6 @@ import com.tngtech.archunit.junit.ArchTests;
 class ArchitectureTest {
 
   @ArchTest static final ArchTests RULES = ArchTests.in(ArchitectureRules.class);
+
+  @ArchTest static final ArchTests EVENTS = ArchTests.in(EventRules.class);
 }

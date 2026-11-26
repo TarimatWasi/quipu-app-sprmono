@@ -38,9 +38,10 @@ public interface ManageFinesUseCase {
   /**
    * Deletes a fine for good (RN-24); there is no edit.
    *
+   * @return the fine as it was, the fact the deletion states
    * @throws FineNotFoundException if there is no fine with that id
    */
-  void delete(Long id);
+  FineView delete(Long id);
 
   /**
    * The fines of the month, oldest first and not paged: a month has few.

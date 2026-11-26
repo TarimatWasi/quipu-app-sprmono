@@ -5,12 +5,12 @@ import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionRepos
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentDeletionPendingException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
-import com.tarimatwasi.quipu.guest.application.port.out.GuestRepositoryPort;
 import com.tarimatwasi.quipu.guest.domain.GuestDocument;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.Kind;
 import com.tarimatwasi.quipu.guest.domain.GuestDocumentAction.PendingDeletion;
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
+import com.tarimatwasi.quipu.guest.domain.event.GuestDocumentReplaced;
+import com.tarimatwasi.quipu.shared.events.PublishEvent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,6 +27,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -61,22 +62,19 @@ public class GuestDocumentPurger {
    */
   static final Duration IN_COURSE = Duration.ofMinutes(1);
 
-  private final ChangeSignals changes;
-  private final GuestRepositoryPort guests;
+  private final GuestDocumentRemovals removals;
   private final GuestDocumentActionRepositoryPort records;
   private final GuestDocumentFilePort files;
   private final TransactionTemplate separate;
   private final Clock clock;
 
   GuestDocumentPurger(
-      GuestRepositoryPort guests,
+      GuestDocumentRemovals removals,
       GuestDocumentActionRepositoryPort records,
       GuestDocumentFilePort files,
       PlatformTransactionManager transactions,
-      Clock clock,
-      ChangeSignals changes) {
-    this.changes = changes;
-    this.guests = guests;
+      Clock clock) {
+    this.removals = removals;
     this.records = records;
     this.files = files;
     this.separate = new TransactionTemplate(transactions);
@@ -98,18 +96,7 @@ public class GuestDocumentPurger {
    */
   public Optional<PendingDeletion> begin(PendingDeletion asked) {
     try {
-      return Optional.of(
-          Objects.requireNonNull(
-              separate.execute(
-                  status ->
-                      records
-                          .pendingDeletionOf(asked.documentId())
-                          .orElseGet(
-                              () -> {
-                                records.addPendingDeletion(asked);
-                                changed(asked.guestId());
-                                return asked;
-                              }))));
+      return Optional.of(removals.record(asked).deletion());
     } catch (GuestDocumentDeletionPendingException raced) {
       // Another request recorded it at the same time: its record is the one kept, unless that
       // request already finished and forgot it.
@@ -137,41 +124,19 @@ public class GuestDocumentPurger {
   }
 
   private boolean completeLocked(PendingDeletion deletion) {
-    return Boolean.TRUE.equals(
-        separate.execute(
-            status -> {
-              Optional<GuestDocument> document =
-                  guests.findByIdForUpdate(deletion.guestId()).isPresent()
-                      ? records.findDocumentForUpdate(deletion.guestId(), deletion.documentId())
-                      : Optional.empty();
-              document.ifPresent(
-                  row -> {
-                    records.addAction(
-                        Kind.DELETE,
-                        row,
-                        null,
-                        deletion.why(),
-                        deletion.actorId(),
-                        deletion.requestedOn());
-                    records.removeDocument(row);
-                    changed(deletion.guestId());
-                  });
-              records.removePendingDeletion(deletion.documentId());
-              return document.isPresent();
-            }));
+    return removals.complete(deletion);
   }
 
   /** Atomically records a replacement and the old object to purge, in the caller's transaction. */
-  void replaced(GuestDocument old, Long replacement, GuestDocumentAction.Why why, Long actorId) {
+  @Transactional
+  @PublishEvent(
+      type = GuestDocumentReplaced.class,
+      args = {"#old.guestId()", "#old.id()", "#replacement", "#actorId"})
+  public void replaced(
+      GuestDocument old, Long replacement, GuestDocumentAction.Why why, Long actorId) {
     records.addAction(Kind.REPLACE, old, replacement, why, actorId, clock.instant());
     records.removeDocument(old);
     records.addPurge(old.storageKey());
-    changed(old.guestId());
-  }
-
-  private void changed(Long guestId) {
-    changes.changed(
-        new ChangeSignals.Change(ChangeSignals.Kind.DOCUMENT, guestId, false, null, null));
   }
 
   /**

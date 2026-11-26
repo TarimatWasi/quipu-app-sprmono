@@ -24,8 +24,7 @@ class GuestAccountEmailNoticeMailAdapterTest {
 
   private final ResendMailSender sender = mock(ResendMailSender.class);
 
-  @SuppressWarnings("unchecked")
-  private final ObjectProvider<ResendMailSender> provider = mock(ObjectProvider.class);
+  private final ObjectProvider<ResendMailSender> provider = mock();
 
   private final GuestAccountEmailNoticeMailAdapter adapter =
       new GuestAccountEmailNoticeMailAdapter(

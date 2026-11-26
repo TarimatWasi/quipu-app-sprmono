@@ -1,6 +1,5 @@
 package com.tarimatwasi.quipu.bff.infrastructure.adapter.in.rest.common.support;
 
-import com.tarimatwasi.quipu.shared.changes.ChangeSignals;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.MaskSession;
 import jakarta.annotation.PreDestroy;
@@ -152,6 +151,7 @@ public class ChangeStreamRegistry implements ChangeSignals {
             if (subscription.active
                 && subscription.reason == null
                 && (subscription.administrator
+                    || change.kind() == Kind.DAY
                     || (change.guestId() != null && change.guestId().equals(subscription.guestId))
                     || change.relatedGuests().contains(subscription.guestId))) {
               subscription.add(change);
@@ -253,14 +253,21 @@ public class ChangeStreamRegistry implements ChangeSignals {
       this.deadlineReason = deadlineReason;
     }
 
-    /** Activate only after the second authorization; revocation during that read cannot be lost. */
+    /**
+     * Activate only after the second authorization; revocation during that read cannot be lost. A
+     * lifetime that ended meanwhile (access token or maximum duration) is no rejection: the stream
+     * opens and closes at once with its reason, so the client renews instead of logging out.
+     */
     public String activate(@Nullable Long guest) {
       synchronized (ChangeStreamRegistry.this) {
-        if (reason != null || !clock.instant().isBefore(deadline)) {
+        if (reason != null) {
           throw new InvalidBearerTokenException("The stream session is no longer valid");
         }
         guestId = guest;
         active = true;
+        if (!clock.instant().isBefore(deadline)) {
+          end(deadlineReason);
+        }
         return frame(
             "ready", "{\"epoch\":\"" + state.epoch + "\",\"version\":" + state.version + "}");
       }
@@ -331,21 +338,28 @@ public class ChangeStreamRegistry implements ChangeSignals {
       }
     }
 
-    /** TAR-376: route resources, including broad refreshes for historical derived details. */
+    /**
+     * TAR-376: route resources, including broad refreshes for historical derived details. True when
+     * the change is routed here; false for the payment-like kinds, which {@link #add} routes.
+     */
     private boolean expanded(Change change) {
-      switch (change.kind()) {
+      return switch (change.kind()) {
         case DIRECTORY, STAY -> {
           // Labels and stay terms also appear in historical payment/contract details.
           // Their ids are not enumerated here: refresh this recipient's visible resources.
-          all = true;
-          keys.clear();
+          everything();
+          yield true;
         }
-        case GUEST_RECORD, PROFILE, DOCUMENT -> profileChanged(change);
+        case GUEST_RECORD, PROFILE, DOCUMENT -> {
+          profileChanged(change);
+          yield true;
+        }
         case ENVIRONMENT -> {
           if (administrator) {
             key("admin.environments");
             key("admin.environment", IdKind.ENVIRONMENT, change.environmentId());
           }
+          yield true;
         }
         case EXPENSE, FINE -> {
           if (administrator) {
@@ -354,12 +368,31 @@ public class ChangeStreamRegistry implements ChangeSignals {
               key("admin.guest", IdKind.GUEST, change.guestId());
             }
           }
+          yield true;
         }
-        case PAYMENT, FINANCIAL, CONTRACT, GUEST -> {
-          return false;
+        case DAY -> {
+          // A new day of Lima changes what the date derives (dues, arrears, terms): all reload.
+          everything();
+          yield true;
         }
-      }
-      return true;
+        case NOTIFICATION -> {
+          // A null guest is the shared bell of the administrators; a guest only gets its own.
+          if (properties.notificationKeys()) {
+            if (!administrator) {
+              key("guest.notifications");
+            } else if (change.guestId() == null) {
+              key("admin.notifications");
+            }
+          }
+          yield true;
+        }
+        case PAYMENT, FINANCIAL, CONTRACT, GUEST -> false;
+      };
+    }
+
+    private void everything() {
+      all = true;
+      keys.clear();
     }
 
     private void profileChanged(Change change) {

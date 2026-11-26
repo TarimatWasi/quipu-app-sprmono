@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.whitelist.ValidationErrorsWhitelist;
 import com.atlassian.oai.validator.whitelist.rule.WhitelistRules;
+import com.jayway.jsonpath.JsonPath;
 import com.tarimatwasi.quipu.auth.infrastructure.adapter.out.security.JwtTokenProvider;
 import com.tarimatwasi.quipu.shared.masking.IdKind;
 import com.tarimatwasi.quipu.shared.masking.IdMasker;
@@ -19,7 +20,10 @@ import com.tarimatwasi.quipu.support.SessionIds;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import jakarta.servlet.http.Cookie;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,8 +45,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 @ImportTestcontainers(PostgresContainers.class)
 class GuestsContractTest {
 
-  private static final String SPEC =
-      java.nio.file.Path.of("target/contract/bff.yaml").toAbsolutePath().toString();
+  private static final String SPEC = ContractSpec.PATH;
   private static final String URL = "/bff/admin/guests";
 
   @Autowired MockMvc mockMvc;
@@ -133,7 +136,7 @@ class GuestsContractTest {
   /** A3 (TAR-237): each row names the environment it occupies and, if pending, its access. */
   @Test
   void eachRowShowsItsEnvironmentAndThePendingOneWhenItsAccessExpires() throws Exception {
-    var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"));
+    var today = LocalDate.now(ZoneId.of("America/Lima"));
     var withContract = insertGuest("11111111", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
     var withStay = insertGuest("22222222", "DNI", "TEMPORARY", "ACTIVE", "Luis Mamani");
     var pending = insertGuest("33333333", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
@@ -169,7 +172,7 @@ class GuestsContractTest {
   /** A4.1 (TAR-237): to load a contract only the guests without one in force are offered. */
   @Test
   void withoutContractLeavesOutTheGuestsWithAContractInForce() throws Exception {
-    var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"));
+    var today = LocalDate.now(ZoneId.of("America/Lima"));
     var withContract = insertGuest("11111111", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
     insertGuest("22222222", "DNI", "CONTRACT", "ACTIVE", "Luis Mamani");
     insertGuest("33333333", "DNI", "CONTRACT", "PENDING_ACTIVATION", null);
@@ -189,8 +192,7 @@ class GuestsContractTest {
             .andExpect(jsonPath("$.content.length()").value(1))
             .andExpect(jsonPath("$.content[0].documentNumber").value("22222222"))
             .andReturn();
-    String cursor =
-        com.jayway.jsonpath.JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
+    String cursor = JsonPath.read(first.getResponse().getContentAsString(), "$.nextCursor");
     mockMvc
         .perform(
             get(URL)
@@ -223,7 +225,7 @@ class GuestsContractTest {
    */
   @Test
   void theDetailCarriesTheContractOfTheGuestByTheRuleOfH2() throws Exception {
-    var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"));
+    var today = LocalDate.now(ZoneId.of("America/Lima"));
     var inForce = insertGuest("11111111", "DNI", "CONTRACT", "ACTIVE", "Ana Quispe");
     var ended = insertGuest("22222222", "DNI", "CONTRACT", "INACTIVE", "Luis Mamani");
     var without = insertGuest("33333333", "DNI", "TEMPORARY", "ACTIVE", "Eva Paz");
@@ -343,7 +345,7 @@ class GuestsContractTest {
         .andExpect(status().isConflict())
         .andExpect(satisfiesTheContract())
         .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
-    org.assertj.core.api.Assertions.assertThat(
+    Assertions.assertThat(
             jdbc.queryForObject(
                 "SELECT document_number FROM guests WHERE id = ?", String.class, id))
         .isEqualTo("87654321");
@@ -400,7 +402,7 @@ class GuestsContractTest {
                   "validation.request.body.schema.additionalProperties"));
     }
     var stays = jdbc.queryForObject("SELECT count(*) FROM stays", Integer.class);
-    org.assertj.core.api.Assertions.assertThat(stays).isZero();
+    Assertions.assertThat(stays).isZero();
   }
 
   @Test
@@ -485,8 +487,7 @@ class GuestsContractTest {
     return id;
   }
 
-  private void insertContract(
-      Long guest, Long environment, java.time.LocalDate start, java.time.LocalDate end) {
+  private void insertContract(Long guest, Long environment, LocalDate start, LocalDate end) {
     jdbc.update(
         "INSERT INTO contracts (id, guest_id, environment_id, start_date, end_date, monthly_amount,"
             + " payment_day, grace_days, file_key, original_name, size_bytes, status)"
@@ -498,8 +499,7 @@ class GuestsContractTest {
         end);
   }
 
-  private void insertStay(
-      Long guest, Long environment, java.time.LocalDate start, java.time.LocalDate end) {
+  private void insertStay(Long guest, Long environment, LocalDate start, LocalDate end) {
     jdbc.update(
         "INSERT INTO stays (id, guest_id, environment_id, start_date, end_date, agreed_amount)"
             + " VALUES (?, ?, ?, ?, ?, 100)",

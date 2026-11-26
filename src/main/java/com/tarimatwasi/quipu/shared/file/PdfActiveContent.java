@@ -1,12 +1,11 @@
 package com.tarimatwasi.quipu.shared.file;
 
+import com.tarimatwasi.quipu.shared.hashing.Sha256;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.BufferOverflowException;
 import java.nio.BufferUnderflowException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.ProviderException;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -14,7 +13,6 @@ import java.util.ConcurrentModificationException;
 import java.util.Deque;
 import java.util.EmptyStackException;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -172,11 +170,7 @@ final class PdfActiveContent {
   }
 
   private static String digest(byte[] content) {
-    try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is in every Java", e);
-    }
+    return Sha256.hex(content);
   }
 
   /** The verdict, or null if the inspection ran past its deadline: no verdict to keep. */
@@ -257,7 +251,7 @@ final class PdfActiveContent {
    * every file would stay in the heap. Names are compared by their bytes, so emptying the table
    * only costs the names being created again.
    */
-  @SuppressWarnings("deprecation") // the only way to empty the table of PDFBox
+  @SuppressWarnings("deprecation") // BE-SPR-DEP-04 TAR-39: the only way to empty PDFBox's table
   private static void forgetNames() {
     COSName.clearResources();
   }

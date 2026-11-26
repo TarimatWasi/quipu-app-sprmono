@@ -234,7 +234,31 @@ public interface ManagePaymentsUseCase {
       boolean hasCash,
       @Nullable Instant reviewedAt,
       Instant submittedAt,
-      Instant createdAt) {}
+      Instant createdAt,
+      @Nullable Long environmentId) {
+
+    /** The same payment with the environment of what it pays (of its contract or its stay). */
+    public PaymentView inEnvironment(@Nullable Long environment) {
+      return new PaymentView(
+          id,
+          guestId,
+          contractId,
+          stayId,
+          period,
+          amount,
+          verifiedAmount,
+          paymentMethod,
+          status,
+          rejectionReason,
+          proofCount,
+          voucherCount,
+          hasCash,
+          reviewedAt,
+          submittedAt,
+          createdAt,
+          environment);
+    }
+  }
 
   /**
    * The administrator's detail of a payment (A5.2): what is paid, its proofs with their signed URLs

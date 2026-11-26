@@ -320,6 +320,6 @@ public class GuestProfileBffController {
     Long guestId = guestOf(authentication);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(GuestSummaryResponse.of(profiles.update(guestId, area, change), ids));
+        .body(GuestSummaryResponse.of(profiles.update(guestId, area, change).view(), ids));
   }
 }

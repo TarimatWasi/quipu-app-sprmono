@@ -21,6 +21,7 @@ import com.tarimatwasi.quipu.guest.application.port.in.GuestNotFoundException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidDocumentActionException;
 import com.tarimatwasi.quipu.guest.application.port.in.InvalidOnboardingInputException;
 import com.tarimatwasi.quipu.guest.application.port.in.OnboardingUseCase.DocumentUpload;
+import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionExistsException;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentActionRepositoryPort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentFilePort;
 import com.tarimatwasi.quipu.guest.application.port.out.GuestDocumentStorageException;
@@ -49,6 +50,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -515,6 +517,21 @@ class GuestDocumentsServiceTest {
     complete(TransactionSynchronization.STATUS_ROLLED_BACK);
 
     verify(files).delete(NEW_KEY);
+  }
+
+  /**
+   * Another action took the document between the lock and the evidence: it is gone for this one.
+   */
+  @Test
+  void aReplacementThatLosesTheDocumentToAnotherActionFindsItGone() {
+    theNewObjectIsStored();
+    when(records.addDocument(anyLong(), anyString(), anyString(), anyString(), anyLong()))
+        .thenReturn(NEW);
+    Mockito.doThrow(new GuestDocumentActionExistsException(new IllegalStateException("unique")))
+        .when(purger)
+        .replaced(OLD, 71L, WHY, ACTOR);
+
+    assertThatThrownBy(this::replaceIt).isInstanceOf(GuestDocumentNotFoundException.class);
   }
 
   private void replaceIt() {

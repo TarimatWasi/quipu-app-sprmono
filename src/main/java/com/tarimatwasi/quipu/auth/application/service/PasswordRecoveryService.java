@@ -5,7 +5,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.InvalidResetCodeException;
 import com.tarimatwasi.quipu.auth.application.port.in.PasswordRecoveryUseCase;
 import com.tarimatwasi.quipu.auth.application.port.out.AccessGrantRepositoryPort;
 import com.tarimatwasi.quipu.auth.application.port.out.BackgroundTaskPort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.application.port.out.PasswordResetMailPort;
 import com.tarimatwasi.quipu.auth.application.port.out.UserRepositoryPort;
 import com.tarimatwasi.quipu.auth.domain.Role;
@@ -15,8 +14,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PasswordRecoveryService implements PasswordRecoveryUseCase {
 
-  private static final Logger LOG = LoggerFactory.getLogger(PasswordRecoveryService.class);
-
   private final ResetCodeIssuer issuer;
   private final UserRepositoryPort userRepository;
   private final PasswordEncoder passwordEncoder;
@@ -34,17 +29,19 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
   private final BackgroundTaskPort background;
   private final AccessGrantRepositoryPort grants;
   private final Clock clock;
+  private final SecurityFacts facts;
 
   PasswordRecoveryService(
       ResetCodeIssuer issuer,
-      UserRepositoryPort userRepository,
+      AccountAccess accounts,
       PasswordEncoder passwordEncoder,
       PasswordResetMailPort mail,
       BackgroundTaskPort background,
       AccessGrantRepositoryPort grants,
       Clock clock) {
+    this.facts = accounts.facts();
     this.issuer = issuer;
-    this.userRepository = userRepository;
+    this.userRepository = accounts.users();
     this.passwordEncoder = passwordEncoder;
     this.mail = mail;
     this.background = background;
@@ -67,26 +64,19 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
         .issueFor(email)
         .ifPresent(
             issued -> {
-              try {
-                // TAR-127 (A0.5): an administrator without name gets the link to activate its
-                // account, where it writes the name, not the one of the recovery.
-                UserAccount account = issued.account();
-                boolean activation =
-                    account.role() == Role.ADMIN && userRepository.findName(account.id()).isEmpty();
-                mail.sendResetLink(
-                    Objects.requireNonNull(account.email()),
-                    issued.code(),
-                    ResetCodeIssuer.CODE_VALIDITY,
-                    activation);
-              } catch (MailDeliveryException e) {
-                // The caller must not learn whether the account exists, so a failed delivery is
-                // only logged, without the address or the provider's answer (it can echo the
-                // address). The person can ask again once the cooldown passes.
-                LOG.warn(
-                    "Recovery email for account {} was not delivered: {}",
-                    issued.account().id(),
-                    e.getMessage());
-              }
+              // TAR-127 (A0.5): an administrator without name gets the link to activate its
+              // account, where it writes the name, not the one of the recovery.
+              UserAccount account = issued.account();
+              boolean activation =
+                  account.role() == Role.ADMIN && userRepository.findName(account.id()).isEmpty();
+              // Best-effort: the adapter logs a failed delivery, without the address, and the
+              // caller never learns whether the account exists. The person can ask again once
+              // the cooldown passes.
+              mail.sendResetLink(
+                  Objects.requireNonNull(account.email()),
+                  issued.code(),
+                  ResetCodeIssuer.CODE_VALIDITY,
+                  activation);
             });
   }
 
@@ -111,9 +101,7 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     UserAccount account = pending.account();
     boolean activation =
         account.role() == Role.ADMIN && userRepository.findName(account.id()).isEmpty();
-    if (activation && (name == null || name.isBlank())) {
-      throw new AdministratorNameRequiredException();
-    }
+    String chosenName = activation ? nameToActivate(name) : null;
     // Checked after the code and before consuming it: a weak password can be corrected.
     PasswordPolicy.require(newPassword);
     PasswordPolicy.requireNotTheCredential(newPassword, code);
@@ -121,15 +109,19 @@ public class PasswordRecoveryService implements PasswordRecoveryUseCase {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     PasswordPolicy.requireNotALiveAccess(grants, account.guestId(), newPassword, now);
     String newHash = passwordEncoder.encode(newPassword);
-    if (activation && name != null) {
-      userRepository.resetPasswordAndName(account.id(), newHash, now, name.strip());
-    } else {
-      userRepository.resetPassword(account.id(), newHash, now);
-    }
+    facts.resetPassword(account.id(), newHash, now, chosenName);
     Long guestId = pending.account().guestId();
     if (guestId != null) {
       // A new password ends any access the administrator handed before.
       grants.revokeLive(guestId, now);
     }
+  }
+
+  /** The name an administrator writes when it activates its account; it cannot be left out. */
+  private static String nameToActivate(@Nullable String name) {
+    if (name == null || name.isBlank()) {
+      throw new AdministratorNameRequiredException();
+    }
+    return name.strip();
   }
 }

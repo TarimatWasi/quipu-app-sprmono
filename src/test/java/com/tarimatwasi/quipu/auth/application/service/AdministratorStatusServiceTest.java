@@ -2,10 +2,6 @@ package com.tarimatwasi.quipu.auth.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -26,7 +22,6 @@ import com.tarimatwasi.quipu.auth.application.port.in.ManageAdministratorsUseCas
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorNoticePort.StatusChange;
 import com.tarimatwasi.quipu.auth.application.port.out.AdministratorStorePort;
-import com.tarimatwasi.quipu.auth.application.port.out.MailDeliveryException;
 import com.tarimatwasi.quipu.auth.domain.DocumentType;
 import com.tarimatwasi.quipu.auth.domain.Role;
 import com.tarimatwasi.quipu.auth.domain.UserAccount;
@@ -47,6 +42,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -78,8 +74,9 @@ class AdministratorStatusServiceTest {
 
   private AdministratorStatusService serviceWithLimit(int max) {
     return new AdministratorStatusService(
-        new AdministratorReauthentication(users, encoder, clock),
-        new AdministratorStatusChanger(users, store, () -> max),
+        new AdministratorReauthentication(users, encoder, clock, TestSecurityFacts.over(users)),
+        new AdministratorStatusChanger(
+            users, store, () -> max, TestSecurityFacts.over(users, store)),
         store,
         notices);
   }
@@ -340,23 +337,6 @@ class AdministratorStatusServiceTest {
   }
 
   @Test
-  void aNoticeThatFailsDoesNotUndoTheChangeNorStopTheOtherNotices() {
-    Long fourth = TestIds.next();
-    store.add(
-        account(fourth, "cuarta@example.test", "11111114", Role.ADMIN, "ACTIVE", false), "04");
-    doThrow(new MailDeliveryException("down", null))
-        .when(notices)
-        .administratorStatusChanged(eq(THIRD_EMAIL), anyString(), anyString(), any());
-
-    service.deactivate(command(targetId, PASSWORD));
-
-    assertThat(statusOf(targetId)).isEqualTo("INACTIVE");
-    verify(notices)
-        .administratorStatusChanged(
-            "cuarta@example.test", ACTOR_EMAIL, TARGET_EMAIL, StatusChange.DEACTIVATED);
-  }
-
-  @Test
   void theOthersThatCannotBeReadDoNotUndoTheChange() {
     store.failEmails = true;
 
@@ -369,10 +349,6 @@ class AdministratorStatusServiceTest {
   /** Only internal ids reach the logs: no document, email or password. */
   @Test
   void theLogsCarryOnlyTheIdsOfTheAccounts() {
-    doThrow(new MailDeliveryException("down " + THIRD_EMAIL, null))
-        .when(notices)
-        .administratorStatusChanged(anyString(), anyString(), anyString(), any());
-
     service.deactivate(command(targetId, PASSWORD));
     service.reactivate(command(targetId, PASSWORD));
 
@@ -526,7 +502,7 @@ class AdministratorStatusServiceTest {
     public List<String> activeAdministratorEmailsExcept(Collection<Long> excluded) {
       events.add("emails");
       if (failEmails) {
-        throw new org.springframework.dao.DataAccessResourceFailureException("down");
+        throw new DataAccessResourceFailureException("down");
       }
       lastExcluded = List.copyOf(excluded);
       return admins.stream()

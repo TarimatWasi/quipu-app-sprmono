@@ -7,6 +7,7 @@ import com.tarimatwasi.quipu.support.PostgresContainers;
 import com.tarimatwasi.quipu.support.TestIds;
 import com.tarimatwasi.quipu.support.TestTables;
 import java.util.List;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicLong;
@@ -391,7 +392,7 @@ class PaymentsMigrationTest {
       return true;
     } catch (DataIntegrityViolationException refused) {
       return false;
-    } catch (InterruptedException | java.util.concurrent.BrokenBarrierException broken) {
+    } catch (InterruptedException | BrokenBarrierException broken) {
       throw new IllegalStateException(broken);
     }
   }
