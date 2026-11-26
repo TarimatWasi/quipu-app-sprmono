@@ -60,6 +60,10 @@ spring:
       enabled: true
   task:
     execution:
+      # force: Boot crea su ejecutor aunque exista otro Executor (domainEventExecutor, de los
+      # eventos de dominio). Sin esto, el @Async del correo corría en el ejecutor de eventos, detrás
+      # del barrido del día, y su límite y rechazo dejaban de aplicar (AsyncExecutorsContractTest).
+      mode: force
       simple:
         concurrency-limit: 10
         reject-tasks-when-limit-reached: true

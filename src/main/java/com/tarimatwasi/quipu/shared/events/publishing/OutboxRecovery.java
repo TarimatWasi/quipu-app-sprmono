@@ -27,8 +27,13 @@ public class OutboxRecovery {
   /** At most one round per this interval. */
   static final Duration EVERY = Duration.ofMinutes(1);
 
-  /** Only publications older than this: a younger one may still be running. */
-  static final Duration STALE = Duration.ofMinutes(2);
+  /**
+   * Only publications older than this: a younger one may still be running or waiting its turn. A
+   * resubmission repeats the delivery (Modulith resubmits every incomplete one, queued ones too),
+   * so this outlasts a full queue of the delivery executor: 1000 waiting on 4 threads at a generous
+   * 2 s each drain in about 8 minutes. A delivery the executor rejected is recovered after it.
+   */
+  static final Duration STALE = Duration.ofMinutes(10);
 
   private final IncompleteEventPublications incomplete;
   private final Clock clock;

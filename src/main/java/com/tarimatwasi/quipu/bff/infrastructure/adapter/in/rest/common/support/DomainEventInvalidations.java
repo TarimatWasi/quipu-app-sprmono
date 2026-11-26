@@ -55,8 +55,12 @@ import org.springframework.stereotype.Component;
  * Live invalidations of the open streams, derived from the domain events. It listens inside the
  * transaction that publishes them and only appends to the transaction buffer of {@link
  * ChangeStreamRegistry}, which delivers the whole transaction as one batch after the commit,
- * security closures first; a rollback delivers nothing. In memory and best effort, never an outbox
- * listener: an invalidation replayed after a restart is worthless.
+ * security closures first; a rollback delivers nothing. In memory, never an outbox listener: an
+ * invalidation replayed after a restart is worthless. The few reads it makes (the fingerprint of a
+ * revoked session, the readers of a relabeled environment) run in the publishing transaction, so
+ * their failure fails the operation. That is on purpose: catching it would not save the transaction
+ * (PostgreSQL aborts it on a failed statement), and a security closure must not commit without the
+ * streams it closes.
  */
 @Component
 public class DomainEventInvalidations {

@@ -17,6 +17,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** TAR-228: the sessions no token can name any more are removed, with their refresh tokens. */
 @SpringBootTest(properties = "app.cors.allowed-origin=http://localhost:3000")
@@ -25,6 +27,7 @@ class SessionRetentionServiceTest {
 
   @Autowired SessionRetentionService retention;
   @Autowired JdbcTemplate jdbc;
+  @Autowired PlatformTransactionManager transactions;
 
   @Value("${app.jwt.expiration}")
   Duration accessToken;
@@ -87,6 +90,24 @@ class SessionRetentionServiceTest {
     List<@Nullable Long> left = jdbc.queryForList("SELECT id FROM sessions", Long.class);
     assertThat(left).hasSize(2).contains(newest);
     assertThat(retention.purgeEnded()).isEqualTo(2);
+  }
+
+  /**
+   * Each batch commits on its own, also when called from a transaction (the durable listener runs
+   * in one): a batch that fails later, or a caller that rolls back, does not undo the earlier ones.
+   */
+  @Test
+  void aBatchCommitsOnItsOwnEvenInsideTheTransactionOfItsCaller() {
+    Long old = session(Instant.now().minus(Duration.ofDays(3)), null);
+
+    new TransactionTemplate(transactions)
+        .executeWithoutResult(
+            status -> {
+              assertThat(retention.purgeEnded()).isOne();
+              status.setRollbackOnly();
+            });
+
+    assertThat(jdbc.queryForList("SELECT id FROM sessions", Long.class)).doesNotContain(old);
   }
 
   private Long session(Instant absoluteExpiresAt, @Nullable Instant revokedAt) {

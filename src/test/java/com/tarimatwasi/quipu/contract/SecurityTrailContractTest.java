@@ -34,6 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @ImportTestcontainers(PostgresContainers.class)
 class SecurityTrailContractTest {
   private static final String SESSION_OPENED = "com.tarimatwasi.quipu.auth.session-opened.v1";
+  private static final String ACCOUNT_LOCKED = "com.tarimatwasi.quipu.auth.account-locked.v1";
   private static final String RESET_ISSUED = "com.tarimatwasi.quipu.auth.password-reset-issued.v1";
   private static final String PASSWORD = "Temporal123!";
 
@@ -132,5 +133,25 @@ class SecurityTrailContractTest {
         jdbc.queryForObject(
             "SELECT reset_token_hash FROM users WHERE id = ?", String.class, adminId);
     assertThat(data).contains("expiresAt").doesNotContain(String.valueOf(codeHash));
+  }
+
+  /**
+   * Only the attempt that reaches the limit locks the account: the wrong attempts made while it is
+   * locked change nothing and state nothing, so the trail keeps one lock, not one per attempt.
+   */
+  @Test
+  void wrongAttemptsWhileLocked_stateTheLockOnce() throws Exception {
+    for (int attempt = 0; attempt < 8; attempt++) {
+      mockMvc.perform(
+          postWithCsrf("/bff/auth/login")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(
+                  "{\"documentType\":\"DNI\",\"documentNumber\":\"00000001\","
+                      + "\"password\":\"Wrong123!\"}"));
+    }
+
+    awaitOne(ACCOUNT_LOCKED);
+    awaitOutboxDrained();
+    assertThat(trail(ACCOUNT_LOCKED)).hasSize(1);
   }
 }

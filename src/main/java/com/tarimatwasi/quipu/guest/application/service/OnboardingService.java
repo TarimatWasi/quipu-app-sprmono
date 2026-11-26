@@ -108,6 +108,7 @@ public class OnboardingService implements OnboardingUseCase {
   @Transactional
   @PublishEvent(
       type = DocumentsStepFinished.class,
+      id = "#guestId",
       args = {"#guestId"})
   public OnboardingView finishDocuments(Long guestId) {
     Guest guest = onboarding(guestId);

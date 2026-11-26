@@ -5,14 +5,18 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
-import com.tarimatwasi.quipu.shared.events.delivery.AsyncFailureLog;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.LoggerFactory;
+import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.modulith.events.support.CompletionRegisteringAdvisor;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
@@ -26,6 +30,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
  * here (production deletes them) to see which listeners the outbox tracked.
  */
 @TestPropertySource(properties = "spring.modulith.events.completion-mode=update")
+@ExtendWith(OutputCaptureExtension.class)
 class DomainEventsContractTest extends PaymentsContractSupport {
   private static final String EXPENSE_CREATED = "com.tarimatwasi.quipu.expense.expense-created.v1";
   private static final String EXPENSE_DELETED = "com.tarimatwasi.quipu.expense.expense-deleted.v1";
@@ -107,14 +112,23 @@ class DomainEventsContractTest extends PaymentsContractSupport {
    * exception; that line stays off, AsyncFailureLog writes the method and the class instead.
    */
   @Test
-  void failedDeliveries_neverLogTheMessageOfTheirException() {
+  void failedDeliveries_neverLogTheMessageOfTheirException(CapturedOutput output)
+      throws NoSuchMethodException {
     assertThat(
             LoggerFactory.getLogger(
                     CompletionRegisteringAdvisor.class.getName()
                         + "$CompletionRegisteringMethodInterceptor")
                 .isInfoEnabled())
         .isFalse();
-    assertThat(asyncFailures).isInstanceOf(AsyncFailureLog.class);
+    // Boot wraps the AsyncConfigurer of the application to name its executor; the handler of
+    // AsyncFailureLog is what still runs: the method and the class, never the message.
+    AsyncUncaughtExceptionHandler handler =
+        Objects.requireNonNull(asyncFailures.getAsyncUncaughtExceptionHandler());
+    handler.handleUncaughtException(
+        new IllegalStateException("row value 12345678"), Object.class.getMethod("toString"));
+    assertThat(output)
+        .contains("An asynchronous call failed: Object.toString (java.lang.IllegalStateException)")
+        .doesNotContain("row value 12345678");
   }
 
   @Test

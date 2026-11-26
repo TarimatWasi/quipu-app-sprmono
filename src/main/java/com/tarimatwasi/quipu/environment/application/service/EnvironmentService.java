@@ -147,9 +147,16 @@ public class EnvironmentService implements ManageEnvironmentsUseCase, LockEnviro
   @Transactional
   @PublishEvent(
       type = EnvironmentReactivated.class,
+      when = "#result",
       args = {"#id"})
-  public void reactivate(Long id) {
+  public boolean reactivate(Long id) {
+    Environment environment =
+        environments.findByIdForUpdate(id).orElseThrow(EnvironmentNotFoundException::new);
+    if (environment.status() == EnvironmentStatus.ACTIVE) {
+      return false;
+    }
     setStatus(id, EnvironmentStatus.ACTIVE);
+    return true;
   }
 
   private void setStatus(Long id, EnvironmentStatus status) {

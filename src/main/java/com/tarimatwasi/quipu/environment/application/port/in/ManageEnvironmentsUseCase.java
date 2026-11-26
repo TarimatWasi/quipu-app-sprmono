@@ -113,9 +113,10 @@ public interface ManageEnvironmentsUseCase {
    * Brings an inactive environment back to the operational listings. Doing it to an active
    * environment changes nothing.
    *
+   * @return true if it was inactive and is active now
    * @throws EnvironmentNotFoundException if there is no environment with that id
    */
-  void reactivate(Long id);
+  boolean reactivate(Long id);
 
   /**
    * The guests that see the label of the environment in their own history (contracts and stays,

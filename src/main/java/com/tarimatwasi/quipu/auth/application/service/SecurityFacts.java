@@ -111,7 +111,7 @@ public class SecurityFacts {
   @Transactional
   @PublishEvent(
       type = AccountLocked.class,
-      when = "#result.lockedNow()",
+      when = "!#result.alreadyLocked() && #result.lockedNow()",
       args = {"#userId"})
   public FailedLogin failedLogin(Long userId, Instant now, int maxAttempts, Duration lock) {
     return users.registerFailedLogin(userId, now, maxAttempts, lock);

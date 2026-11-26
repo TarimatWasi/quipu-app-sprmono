@@ -11,6 +11,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.context.support.ServletRequestHandledEvent;
 
 /**
@@ -44,7 +45,12 @@ public class DayStartTrigger {
     startIfNew();
   }
 
-  /** One thread per day states it; a failure leaves the day for the next request. */
+  /**
+   * One thread per day states it; a failure leaves the day for the next request. A database that
+   * does not answer (no connection for the transaction, a statement cut short) is expected at the
+   * edge: it is logged and swallowed, so neither the request nor the startup fails. Anything else
+   * still undoes the mark of the day before it propagates.
+   */
   void startIfNew() {
     if (!enabled) {
       return;
@@ -55,11 +61,16 @@ public class DayStartTrigger {
     if (today.equals(last)) {
       return;
     }
+    boolean done = false;
     try {
       calendar.start(today);
-    } catch (DataAccessException e) {
-      started.compareAndSet(today, last);
+      done = true;
+    } catch (DataAccessException | TransactionException e) {
       LOGGER.warn("The business day could not start yet: {}", e.getClass().getSimpleName());
+    } finally {
+      if (!done) {
+        started.compareAndSet(today, last);
+      }
     }
   }
 }

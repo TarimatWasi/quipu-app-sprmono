@@ -5,6 +5,7 @@ import com.tarimatwasi.quipu.auth.application.port.out.SessionStorePort;
 import java.time.Clock;
 import java.time.Duration;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -29,8 +30,12 @@ public class SessionRetentionService implements SessionRetentionUseCase {
     this.clock = clock;
   }
 
+  /**
+   * One batch in a transaction of its own: the durable listener that loops over the batches runs in
+   * one, and joining it would hold every lock until the last batch and undo them all on a failure.
+   */
   @Override
-  @Transactional
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public int purgeEnded() {
     return sessions.deleteExpiredBefore(clock.instant().minus(GRACE), BATCH);
   }

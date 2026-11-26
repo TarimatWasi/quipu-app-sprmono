@@ -217,21 +217,35 @@ class EnvironmentServiceTest {
 
   @Test
   void deactivatingAndReactivatingSetTheStatus() {
-    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
+    Environment inactive =
+        new Environment(
+            ID, "201", EnvironmentType.ROOM, EnvironmentStatus.INACTIVE, CREATED, CREATED, 1L);
+    when(repository.findByIdForUpdate(ID))
+        .thenReturn(Optional.of(ROOM_201))
+        .thenReturn(Optional.of(inactive));
     when(repository.updateStatus(eq(ID), eq(EnvironmentStatus.INACTIVE), any())).thenReturn(true);
     when(repository.updateStatus(eq(ID), eq(EnvironmentStatus.ACTIVE), any())).thenReturn(true);
 
-    service().deactivate(ID);
-    service().reactivate(ID);
+    assertThat(service().deactivate(ID)).isTrue();
+    assertThat(service().reactivate(ID)).isTrue();
 
     verify(repository).updateStatus(eq(ID), eq(EnvironmentStatus.INACTIVE), any());
     verify(repository).updateStatus(eq(ID), eq(EnvironmentStatus.ACTIVE), any());
   }
 
+  /** Reactivating an active environment changes nothing, so it states no fact. */
+  @Test
+  void reactivatingAnActiveEnvironmentChangesNothing() {
+    when(repository.findByIdForUpdate(ID)).thenReturn(Optional.of(ROOM_201));
+
+    assertThat(service().reactivate(ID)).isFalse();
+
+    verify(repository, never()).updateStatus(any(), any(), any());
+  }
+
   @Test
   void changingTheStatusOfAnUnknownEnvironmentIsNotFound() {
     when(repository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
-    when(repository.updateStatus(eq(ID), any(), any())).thenReturn(false);
 
     assertThatThrownBy(() -> service().deactivate(ID))
         .isInstanceOf(EnvironmentNotFoundException.class);

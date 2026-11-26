@@ -1,5 +1,7 @@
 package com.tarimatwasi.quipu.calendar.infrastructure.adapter.in.traffic;
 
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -14,6 +16,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 class DayStartTriggerTest {
 
@@ -64,5 +67,35 @@ class DayStartTriggerTest {
     trigger.afterARequest();
 
     verify(calendar, never()).start(any());
+  }
+
+  /**
+   * A transaction that cannot even begin (pool exhausted) is not a DataAccessException: neither the
+   * startup nor the request fails, and the next request starts the day.
+   */
+  @Test
+  void aTransactionThatCannotBegin_leavesTheDayForTheNextRequest() {
+    DayStartTrigger trigger = trigger(true);
+    doThrow(new CannotCreateTransactionException("no connection"))
+        .doNothing()
+        .when(calendar)
+        .start(DAY);
+
+    assertThatNoException().isThrownBy(trigger::atStartup);
+    trigger.afterARequest();
+
+    verify(calendar, times(2)).start(DAY);
+  }
+
+  /** Any other failure propagates, but it does not leave the day marked as started. */
+  @Test
+  void anUnexpectedFailure_propagatesAndStillLeavesTheDayForTheNextRequest() {
+    DayStartTrigger trigger = trigger(true);
+    doThrow(new IllegalStateException("bug")).doNothing().when(calendar).start(DAY);
+
+    assertThatThrownBy(trigger::afterARequest).isInstanceOf(IllegalStateException.class);
+    trigger.afterARequest();
+
+    verify(calendar, times(2)).start(DAY);
   }
 }
