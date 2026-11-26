@@ -279,7 +279,13 @@ class PublishEventDeclarationsTest {
 
     var events = declarations.build(twice, new Valid(), new Object[] {5L, 9L}, null, metadata);
 
-    assertThat(events).containsExactly(new Paid(metadata, 5L, 9L), new Paid(metadata, 6L, 9L));
+    assertThat(events).extracting(event -> ((Paid) event).paymentId()).containsExactly(5L, 6L);
+    assertThat(events.getFirst()).isEqualTo(new Paid(metadata, 5L, 9L));
+    // Consumers are idempotent by event id: a shared one would discard the second event.
+    var second = events.get(1).metadata();
+    assertThat(second.eventId()).isNotEqualTo(metadata.eventId());
+    assertThat(second.occurredAt()).isEqualTo(metadata.occurredAt());
+    assertThat(second.actorUserId()).isEqualTo(metadata.actorUserId());
   }
 
   @Test

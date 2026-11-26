@@ -86,7 +86,12 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     }
   }
 
-  /** The events the method declares, built from its invocation; null result for void. */
+  /**
+   * The events the method declares, built from its invocation; null result for void. They share the
+   * instant and the actor of {@code metadata}, never an event id: every consumer is idempotent by
+   * it, so a second event with the same id would be discarded. The first event without a declared
+   * key takes the id of {@code metadata}; each other one, a random id of its own.
+   */
   public List<DomainEvent> build(
       Method method,
       Object target,
@@ -101,13 +106,18 @@ public class PublishEventDeclarations implements BeanPostProcessor {
     var evaluation = new MethodBasedEvaluationContext(target, method, arguments, names);
     evaluation.setVariable("result", result);
     List<DomainEvent> events = new ArrayList<>(declarations.size());
+    EventMetadata unkeyed = metadata;
     for (Compiled declaration : declarations) {
       Expression when = declaration.when();
       if (when != null && !Boolean.TRUE.equals(when.getValue(evaluation, Boolean.class))) {
         continue;
       }
       @Nullable Object[] values = new Object[declaration.componentTypes().size()];
-      values[0] = identified(declaration, evaluation, metadata);
+      values[0] = identified(declaration, evaluation, unkeyed);
+      if (declaration.id() == null) {
+        unkeyed =
+            new EventMetadata(UUID.randomUUID(), metadata.occurredAt(), metadata.actorUserId());
+      }
       for (int i = 1; i < values.length; i++) {
         values[i] =
             declaration
